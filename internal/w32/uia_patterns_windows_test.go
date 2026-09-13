@@ -70,18 +70,18 @@ func TestUIAInvokePattern(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(patternTree())
 
-	c.Equal(COM_S_OK, uiaInvokeInvoke(w.Provider(2).ifacePtr(uiaIfaceInvoke)))
+	c.Equal(COM_S_OK, uiaInvokeInvoke(w.providerFor(2).ifacePtr(uiaIfaceInvoke)))
 	c.Equal(1, len(w.recorded()))
 	c.Equal(accessibility.NodeID(2), uiaRequestAt(w, 0).Node)
 	c.Equal(accessibility.Press, uiaRequestAt(w, 0).Action)
 
 	// Node 3 is a disabled button. It still supports the pattern — a client has to be able to describe it — but nothing
 	// acts on it.
-	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaInvokeInvoke(w.Provider(3).ifacePtr(uiaIfaceInvoke)))
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaInvokeInvoke(w.providerFor(3).ifacePtr(uiaIfaceInvoke)))
 	c.Equal(1, len(w.recorded()))
 
 	plain := NewUIAWindow(UIAConfig{}, patternTree(), UIAGeometry{})
-	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.Provider(2).ifacePtr(uiaIfaceInvoke)))
+	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
 }
 
 // TestUIATogglePattern verifies the Toggle pattern, including that a toggle button reports whether it is pressed while
@@ -95,22 +95,57 @@ func TestUIATogglePattern(t *testing.T) {
 	w := newTestUIAWindow(tree)
 
 	// Node 4 is a check box with a mixed check; node 5 a pressed toggle button.
-	c.Equal(COM_S_OK, uiaToggleState(w.Provider(4).ifacePtr(uiaIfaceToggle), stateAddress))
+	c.Equal(COM_S_OK, uiaToggleState(w.providerFor(4).ifacePtr(uiaIfaceToggle), stateAddress))
 	c.Equal(ToggleState_Indeterminate, *state)
-	c.Equal(COM_S_OK, uiaToggleState(w.Provider(5).ifacePtr(uiaIfaceToggle), stateAddress))
+	c.Equal(COM_S_OK, uiaToggleState(w.providerFor(5).ifacePtr(uiaIfaceToggle), stateAddress))
 	c.Equal(ToggleState_On, *state)
 
 	next := patternTree()
 	next.Nodes[4].Checked = checkenum.Off
 	next.Generation = 2
 	w.Publish(next, nil)
-	c.Equal(COM_S_OK, uiaToggleState(w.Provider(4).ifacePtr(uiaIfaceToggle), stateAddress))
+	c.Equal(COM_S_OK, uiaToggleState(w.providerFor(4).ifacePtr(uiaIfaceToggle), stateAddress))
 	c.Equal(ToggleState_Off, *state)
 
-	c.Equal(COM_S_OK, uiaToggleToggle(w.Provider(4).ifacePtr(uiaIfaceToggle)))
+	c.Equal(COM_S_OK, uiaToggleToggle(w.providerFor(4).ifacePtr(uiaIfaceToggle)))
 	c.Equal(accessibility.NodeID(4), uiaRequestAt(w, 0).Node)
 	c.Equal(accessibility.Toggle, uiaRequestAt(w, 0).Action)
 	c.Equal(1, len(w.recorded()))
+}
+
+// TestUIATogglePressFallback verifies that Toggle presses an element that reports the Toggle pattern but offers only
+// the Press action. A sticky or grouped button is reported as a toggle button, because the state a click leaves it in
+// is what a client has to hear, and Toggle is then the only way a client can operate it: the role carries no Invoke
+// pattern, so dispatching an action the button ignores would answer S_OK while nothing happened.
+func TestUIATogglePressFallback(t *testing.T) {
+	c := check.New(t)
+	tree := patternTree()
+	tree.Nodes[5].Actions = accessibility.ActionSet(0).With(accessibility.Press)
+	w := newTestUIAWindow(tree)
+
+	c.Equal(COM_S_OK, uiaToggleToggle(w.providerFor(5).ifacePtr(uiaIfaceToggle)))
+	c.Equal(1, len(w.recorded()))
+	c.Equal(accessibility.NodeID(5), uiaRequestAt(w, 0).Node)
+	c.Equal(accessibility.Press, uiaRequestAt(w, 0).Action)
+
+	// An element that offers neither is still asked to toggle rather than pressed: pressing it is no more likely to
+	// work, and the request a client made is the one worth reporting.
+	neither := patternTree()
+	neither.Nodes[5].Actions = 0
+	neither.Generation = 2
+	w.Publish(neither, nil)
+	c.Equal(COM_S_OK, uiaToggleToggle(w.providerFor(5).ifacePtr(uiaIfaceToggle)))
+	c.Equal(2, len(w.recorded()))
+	c.Equal(accessibility.Toggle, uiaRequestAt(w, 1).Action)
+
+	// A disabled element refuses either way.
+	disabled := patternTree()
+	disabled.Nodes[5].Actions = accessibility.ActionSet(0).With(accessibility.Press)
+	disabled.Nodes[5].Disabled = true
+	disabled.Generation = 3
+	w.Publish(disabled, nil)
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaToggleToggle(w.providerFor(5).ifacePtr(uiaIfaceToggle)))
+	c.Equal(2, len(w.recorded()))
 }
 
 // TestUIAValuePattern verifies the Value pattern: the text it reports, who owns the BSTR it reports it in, which
@@ -125,13 +160,13 @@ func TestUIAValuePattern(t *testing.T) {
 	w := newTestUIAWindow(tree)
 
 	value := func(node accessibility.NodeID) string {
-		c.Equal(COM_S_OK, uiaValueValue(w.Provider(node).ifacePtr(uiaIfaceValue), strAddress))
+		c.Equal(COM_S_OK, uiaValueValue(w.providerFor(node).ifacePtr(uiaIfaceValue), strAddress))
 		// The BSTR belongs to the caller, which is UI Automation Core in the real thing and this test here.
 		defer str.Free()
 		return BSTRToString(*str)
 	}
 	readOnly := func(node accessibility.NodeID) bool {
-		c.Equal(COM_S_OK, uiaValueIsReadOnly(w.Provider(node).ifacePtr(uiaIfaceValue), booleanAddress))
+		c.Equal(COM_S_OK, uiaValueIsReadOnly(w.providerFor(node).ifacePtr(uiaIfaceValue), booleanAddress))
 		return *boolean != 0
 	}
 
@@ -152,7 +187,7 @@ func TestUIAValuePattern(t *testing.T) {
 	text, err := windows.UTF16PtrFromString("Frodo")
 	c.NoError(err)
 	pin.Pin(text)
-	c.Equal(COM_S_OK, uiaValueSetValue(w.Provider(8).ifacePtr(uiaIfaceValue), uintptr(unsafe.Pointer(text))))
+	c.Equal(COM_S_OK, uiaValueSetValue(w.providerFor(8).ifacePtr(uiaIfaceValue), uintptr(unsafe.Pointer(text))))
 	c.Equal(1, len(w.recorded()))
 	c.Equal(accessibility.NodeID(8), uiaRequestAt(w, 0).Node)
 	c.Equal(accessibility.SetValue, uiaRequestAt(w, 0).Action)
@@ -160,14 +195,14 @@ func TestUIAValuePattern(t *testing.T) {
 
 	// A read-only element refuses; a disabled one refuses differently, so that a client can tell "never" from "not
 	// now"; and a NULL string is a broken call rather than a request to empty the value.
-	c.Equal(UIA_E_NOTSUPPORTED, uiaValueSetValue(w.Provider(10).ifacePtr(uiaIfaceValue),
+	c.Equal(UIA_E_NOTSUPPORTED, uiaValueSetValue(w.providerFor(10).ifacePtr(uiaIfaceValue),
 		uintptr(unsafe.Pointer(text))))
-	c.Equal(COM_E_INVALIDARG, uiaValueSetValue(w.Provider(8).ifacePtr(uiaIfaceValue), 0))
+	c.Equal(COM_E_INVALIDARG, uiaValueSetValue(w.providerFor(8).ifacePtr(uiaIfaceValue), 0))
 	disabled := patternTree()
 	disabled.Nodes[8].Disabled = true
 	disabled.Generation = 2
 	w.Publish(disabled, nil)
-	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaValueSetValue(w.Provider(8).ifacePtr(uiaIfaceValue),
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaValueSetValue(w.providerFor(8).ifacePtr(uiaIfaceValue),
 		uintptr(unsafe.Pointer(text))))
 	c.Equal(1, len(w.recorded()))
 }
@@ -181,7 +216,7 @@ func TestUIARangeValuePattern(t *testing.T) {
 	number, numberAddress := uiaOut[float64](&pin)
 	boolean, booleanAddress := uiaOut[int32](&pin)
 	w := newTestUIAWindow(patternTree())
-	slider := w.Provider(11).ifacePtr(uiaIfaceRangeValue)
+	slider := w.providerFor(11).ifacePtr(uiaIfaceRangeValue)
 
 	double := func(call func(this, out uintptr) uint64, this uintptr) float64 {
 		c.Equal(COM_S_OK, call(this, numberAddress))
@@ -195,7 +230,7 @@ func TestUIARangeValuePattern(t *testing.T) {
 
 	c.Equal(COM_S_OK, uiaRangeValueIsReadOnly(slider, booleanAddress))
 	c.Equal(int32(0), *boolean)
-	c.Equal(COM_S_OK, uiaRangeValueIsReadOnly(w.Provider(13).ifacePtr(uiaIfaceRangeValue), booleanAddress))
+	c.Equal(COM_S_OK, uiaRangeValueIsReadOnly(w.providerFor(13).ifacePtr(uiaIfaceRangeValue), booleanAddress))
 	c.Equal(int32(1), *boolean, "a progress bar is read-only")
 
 	// The value arrives as the raw bits of a double, delivered by the assembly thunk the vtable slot holds; the thunk
@@ -205,14 +240,17 @@ func TestUIARangeValuePattern(t *testing.T) {
 	c.Equal(accessibility.NodeID(11), uiaRequestAt(w, 0).Node)
 	c.Equal(accessibility.SetValue, uiaRequestAt(w, 0).Action)
 	c.Equal(7.5, uiaRequestAt(w, 0).Number)
+	// The same number as text, for a widget that takes its value that way. A numeric field is a text field underneath
+	// and answers SetValue by replacing its text, so a request with only the number in it would blank the field.
+	c.Equal("7.5", uiaRequestAt(w, 0).Value)
 
 	// A value the element could never take, and one that is not a number at all, are refused rather than clamped.
 	c.Equal(COM_E_INVALIDARG, uiaRangeValueSetValue(slider, uintptr(math.Float64bits(99))))
 	c.Equal(COM_E_INVALIDARG, uiaRangeValueSetValue(slider, uintptr(math.Float64bits(-1))))
 	c.Equal(COM_E_INVALIDARG, uiaRangeValueSetValue(slider, uintptr(math.Float64bits(math.NaN()))))
-	c.Equal(UIA_E_NOTSUPPORTED, uiaRangeValueSetValue(w.Provider(13).ifacePtr(uiaIfaceRangeValue),
+	c.Equal(UIA_E_NOTSUPPORTED, uiaRangeValueSetValue(w.providerFor(13).ifacePtr(uiaIfaceRangeValue),
 		uintptr(math.Float64bits(5))))
-	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaRangeValueSetValue(w.Provider(12).ifacePtr(uiaIfaceRangeValue),
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaRangeValueSetValue(w.providerFor(12).ifacePtr(uiaIfaceRangeValue),
 		uintptr(math.Float64bits(2))))
 	c.Equal(1, len(w.recorded()))
 }
@@ -226,31 +264,31 @@ func TestUIASelectionPattern(t *testing.T) {
 	array, arrayAddress := uiaOut[SAFEARRAY](&pin)
 	boolean, booleanAddress := uiaOut[int32](&pin)
 	w := newTestUIAWindow(listTree())
-	list := w.Provider(2).ifacePtr(uiaIfaceSelection)
+	list := w.providerFor(2).ifacePtr(uiaIfaceSelection)
 
 	// Nodes 3 and 5 are the selected list items, 5 of them through an ignored group.
 	c.Equal(COM_S_OK, uiaSelectionGetSelection(list, arrayAddress))
 	c.Equal([]uintptr{
-		w.Provider(3).ifacePtr(uiaIfaceSimple),
-		w.Provider(5).ifacePtr(uiaIfaceSimple),
+		w.providerFor(3).ifacePtr(uiaIfaceSimple),
+		w.providerFor(5).ifacePtr(uiaIfaceSimple),
 	}, uiaSafeArrayUnknowns(c, *array))
 
 	// Storing an element into the array added a reference, and destroying the array — which UI Automation Core does —
 	// gives it back.
-	c.Equal(int32(2), atomic.LoadInt32(&w.Provider(3).refCount))
-	c.Equal(int32(2), atomic.LoadInt32(&w.Provider(5).refCount))
+	c.Equal(int32(2), atomic.LoadInt32(&w.providerFor(3).refCount))
+	c.Equal(int32(2), atomic.LoadInt32(&w.providerFor(5).refCount))
 	array.Destroy()
-	c.Equal(int32(1), atomic.LoadInt32(&w.Provider(3).refCount))
-	c.Equal(int32(1), atomic.LoadInt32(&w.Provider(5).refCount))
+	c.Equal(int32(1), atomic.LoadInt32(&w.providerFor(3).refCount))
+	c.Equal(int32(1), atomic.LoadInt32(&w.providerFor(5).refCount))
 
 	c.Equal(COM_S_OK, uiaSelectionCanSelectMultiple(list, booleanAddress))
 	c.Equal(int32(1), *boolean)
 	c.Equal(COM_S_OK, uiaSelectionIsSelectionRequired(list, booleanAddress))
 	c.Equal(int32(0), *boolean, "nothing unison builds insists on a selection")
 
-	tabs := w.Provider(7).ifacePtr(uiaIfaceSelection)
+	tabs := w.providerFor(7).ifacePtr(uiaIfaceSelection)
 	c.Equal(COM_S_OK, uiaSelectionGetSelection(tabs, arrayAddress))
-	c.Equal([]uintptr{w.Provider(8).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
+	c.Equal([]uintptr{w.providerFor(8).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
 	array.Destroy()
 	c.Equal(COM_S_OK, uiaSelectionCanSelectMultiple(tabs, booleanAddress))
 	c.Equal(int32(0), *boolean, "one tab at a time")
@@ -268,8 +306,8 @@ func TestUIASelectionPattern(t *testing.T) {
 
 	// A table's selection is its rows.
 	table := newTestUIAWindow(tableTree())
-	c.Equal(COM_S_OK, uiaSelectionGetSelection(table.Provider(6).ifacePtr(uiaIfaceSelection), arrayAddress))
-	c.Equal([]uintptr{table.Provider(7).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
+	c.Equal(COM_S_OK, uiaSelectionGetSelection(table.providerFor(6).ifacePtr(uiaIfaceSelection), arrayAddress))
+	c.Equal([]uintptr{table.providerFor(7).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
 	array.Destroy()
 }
 
@@ -282,8 +320,8 @@ func TestUIASelectionItemPattern(t *testing.T) {
 	out, outAddress := uiaOut[uintptr](&pin)
 	boolean, booleanAddress := uiaOut[int32](&pin)
 	w := newTestUIAWindow(listTree())
-	item := w.Provider(3).ifacePtr(uiaIfaceSelectionItem)
-	other := w.Provider(6).ifacePtr(uiaIfaceSelectionItem)
+	item := w.providerFor(3).ifacePtr(uiaIfaceSelectionItem)
+	other := w.providerFor(6).ifacePtr(uiaIfaceSelectionItem)
 
 	c.Equal(COM_S_OK, uiaSelectionItemIsSelected(item, booleanAddress))
 	c.Equal(int32(1), *boolean)
@@ -291,8 +329,8 @@ func TestUIASelectionItemPattern(t *testing.T) {
 	c.Equal(int32(0), *boolean)
 
 	c.Equal(COM_S_OK, uiaSelectionItemSelectionContainer(item, outAddress))
-	c.Equal(w.Provider(2).ifacePtr(uiaIfaceSimple), *out)
-	c.Equal(uintptr(1), w.Provider(2).release(), "the container handed out is AddRef'd")
+	c.Equal(w.providerFor(2).ifacePtr(uiaIfaceSimple), *out)
+	c.Equal(uintptr(1), w.providerFor(2).release(), "the container handed out is AddRef'd")
 
 	c.Equal(COM_S_OK, uiaSelectionItemSelect(other))
 	c.Equal(COM_S_OK, uiaSelectionItemAddToSelection(other))
@@ -307,8 +345,8 @@ func TestUIASelectionItemPattern(t *testing.T) {
 	// A radio button reports its check state as its selected state, is chosen by being pressed, cannot be unchosen, and
 	// has no container to name: its group is a layout panel with no pattern of its own.
 	radios := newTestUIAWindow(patternTree())
-	first := radios.Provider(6).ifacePtr(uiaIfaceSelectionItem)
-	second := radios.Provider(7).ifacePtr(uiaIfaceSelectionItem)
+	first := radios.providerFor(6).ifacePtr(uiaIfaceSelectionItem)
+	second := radios.providerFor(7).ifacePtr(uiaIfaceSelectionItem)
 	c.Equal(COM_S_OK, uiaSelectionItemIsSelected(first, booleanAddress))
 	c.Equal(int32(1), *boolean)
 	c.Equal(COM_S_OK, uiaSelectionItemIsSelected(second, booleanAddress))
@@ -325,15 +363,15 @@ func TestUIASelectionItemPattern(t *testing.T) {
 
 	// A row is a selection item too, and a disabled one is not acted on.
 	rows := newTestUIAWindow(tableTree())
-	c.Equal(COM_S_OK, uiaSelectionItemSelectionContainer(rows.Provider(7).ifacePtr(uiaIfaceSelectionItem),
+	c.Equal(COM_S_OK, uiaSelectionItemSelectionContainer(rows.providerFor(7).ifacePtr(uiaIfaceSelectionItem),
 		outAddress))
-	c.Equal(rows.Provider(6).ifacePtr(uiaIfaceSimple), *out)
-	c.Equal(uintptr(1), rows.Provider(6).release())
+	c.Equal(rows.providerFor(6).ifacePtr(uiaIfaceSimple), *out)
+	c.Equal(uintptr(1), rows.providerFor(6).release())
 	disabled := tableTree()
 	disabled.Nodes[7].Disabled = true
 	disabled.Generation = 2
 	rows.Publish(disabled, nil)
-	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaSelectionItemSelect(rows.Provider(7).ifacePtr(uiaIfaceSelectionItem)))
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaSelectionItemSelect(rows.providerFor(7).ifacePtr(uiaIfaceSelectionItem)))
 	c.Equal(0, len(rows.recorded()))
 }
 
@@ -345,11 +383,11 @@ func TestUIAExpandCollapsePattern(t *testing.T) {
 	defer pin.Unpin()
 	state, stateAddress := uiaOut[ExpandCollapseState](&pin)
 	w := newTestUIAWindow(patternTree())
-	popup := w.Provider(14).ifacePtr(uiaIfaceExpandCollapse)
+	popup := w.providerFor(14).ifacePtr(uiaIfaceExpandCollapse)
 
 	c.Equal(COM_S_OK, uiaExpandCollapseState(popup, stateAddress))
 	c.Equal(ExpandCollapseState_Collapsed, *state)
-	c.Equal(COM_S_OK, uiaExpandCollapseState(w.Provider(15).ifacePtr(uiaIfaceExpandCollapse), stateAddress))
+	c.Equal(COM_S_OK, uiaExpandCollapseState(w.providerFor(15).ifacePtr(uiaIfaceExpandCollapse), stateAddress))
 	c.Equal(ExpandCollapseState_LeafNode, *state, "a combo box with nothing to drop down is a leaf")
 
 	open := patternTree()
@@ -368,9 +406,9 @@ func TestUIAExpandCollapsePattern(t *testing.T) {
 
 	// An expanded row in a hierarchical table is the other user of the pattern.
 	rows := newTestUIAWindow(tableTree())
-	c.Equal(COM_S_OK, uiaExpandCollapseState(rows.Provider(7).ifacePtr(uiaIfaceExpandCollapse), stateAddress))
+	c.Equal(COM_S_OK, uiaExpandCollapseState(rows.providerFor(7).ifacePtr(uiaIfaceExpandCollapse), stateAddress))
 	c.Equal(ExpandCollapseState_Expanded, *state)
-	c.Equal(COM_S_OK, uiaExpandCollapseCollapse(rows.Provider(7).ifacePtr(uiaIfaceExpandCollapse)))
+	c.Equal(COM_S_OK, uiaExpandCollapseCollapse(rows.providerFor(7).ifacePtr(uiaIfaceExpandCollapse)))
 	c.Equal(accessibility.Collapse, uiaRequestAt(rows, 0).Action)
 	c.Equal(accessibility.NodeID(7), uiaRequestAt(rows, 0).Node)
 }
@@ -381,7 +419,7 @@ func TestUIAScrollItemPattern(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(listTree())
 
-	c.Equal(COM_S_OK, uiaScrollItemScrollIntoView(w.Provider(3).ifacePtr(uiaIfaceScrollItem)))
+	c.Equal(COM_S_OK, uiaScrollItemScrollIntoView(w.providerFor(3).ifacePtr(uiaIfaceScrollItem)))
 	c.Equal(1, len(w.recorded()))
 	c.Equal(accessibility.NodeID(3), uiaRequestAt(w, 0).Node)
 	c.Equal(accessibility.ScrollIntoView, uiaRequestAt(w, 0).Action)
@@ -391,7 +429,7 @@ func TestUIAScrollItemPattern(t *testing.T) {
 	disabled.Nodes[3].Disabled = true
 	disabled.Generation = 2
 	w.Publish(disabled, nil)
-	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaScrollItemScrollIntoView(w.Provider(3).ifacePtr(uiaIfaceScrollItem)))
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaScrollItemScrollIntoView(w.providerFor(3).ifacePtr(uiaIfaceScrollItem)))
 	c.Equal(1, len(w.recorded()))
 }
 
@@ -404,7 +442,7 @@ func TestUIAGridPattern(t *testing.T) {
 	out, outAddress := uiaOut[uintptr](&pin)
 	count, countAddress := uiaOut[int32](&pin)
 	w := newTestUIAWindow(tableTree())
-	grid := w.Provider(6).ifacePtr(uiaIfaceGrid)
+	grid := w.providerFor(6).ifacePtr(uiaIfaceGrid)
 
 	c.Equal(COM_S_OK, uiaGridRowCount(grid, countAddress))
 	c.Equal(int32(5), *count, "every row, not only the ones published")
@@ -412,11 +450,11 @@ func TestUIAGridPattern(t *testing.T) {
 	c.Equal(int32(2), *count)
 
 	c.Equal(COM_S_OK, uiaGridGetItem(grid, 1, 0, outAddress))
-	c.Equal(w.Provider(8).ifacePtr(uiaIfaceSimple), *out)
-	c.Equal(uintptr(1), w.Provider(8).release(), "the cell handed out is AddRef'd")
+	c.Equal(w.providerFor(8).ifacePtr(uiaIfaceSimple), *out)
+	c.Equal(uintptr(1), w.providerFor(8).release(), "the cell handed out is AddRef'd")
 	c.Equal(COM_S_OK, uiaGridGetItem(grid, 2, 1, outAddress))
-	c.Equal(w.Provider(12).ifacePtr(uiaIfaceSimple), *out)
-	c.Equal(uintptr(1), w.Provider(12).release())
+	c.Equal(w.providerFor(12).ifacePtr(uiaIfaceSimple), *out)
+	c.Equal(uintptr(1), w.providerFor(12).release())
 
 	// Row 0 is outside the viewport, so it was never published; asking for it is answered with nothing rather than with
 	// an error.
@@ -441,7 +479,7 @@ func TestUIAGridItemPattern(t *testing.T) {
 	out, outAddress := uiaOut[uintptr](&pin)
 	index, indexAddress := uiaOut[int32](&pin)
 	w := newTestUIAWindow(tableTree())
-	cell := w.Provider(9).ifacePtr(uiaIfaceGridItem)
+	cell := w.providerFor(9).ifacePtr(uiaIfaceGridItem)
 
 	c.Equal(COM_S_OK, uiaGridItemRow(cell, indexAddress))
 	c.Equal(int32(1), *index)
@@ -453,8 +491,8 @@ func TestUIAGridItemPattern(t *testing.T) {
 	c.Equal(int32(1), *index)
 
 	c.Equal(COM_S_OK, uiaGridItemContainingGrid(cell, outAddress))
-	c.Equal(w.Provider(6).ifacePtr(uiaIfaceSimple), *out)
-	c.Equal(uintptr(1), w.Provider(6).release())
+	c.Equal(w.providerFor(6).ifacePtr(uiaIfaceSimple), *out)
+	c.Equal(uintptr(1), w.providerFor(6).release())
 }
 
 // TestUIATablePattern verifies the Table pattern a table implements on top of Grid, which is what adds the headers.
@@ -465,7 +503,7 @@ func TestUIATablePattern(t *testing.T) {
 	array, arrayAddress := uiaOut[SAFEARRAY](&pin)
 	major, majorAddress := uiaOut[RowOrColumnMajor](&pin)
 	w := newTestUIAWindow(tableTree())
-	table := w.Provider(6).ifacePtr(uiaIfaceTable)
+	table := w.providerFor(6).ifacePtr(uiaIfaceTable)
 
 	c.Equal(COM_S_OK, uiaTableRowOrColumnMajor(table, majorAddress))
 	c.Equal(RowOrColumnMajor_RowMajor, *major)
@@ -478,12 +516,12 @@ func TestUIATablePattern(t *testing.T) {
 	// The column headers come from the TableHeader panel the table sits with, which is nowhere inside it.
 	c.Equal(COM_S_OK, uiaTableGetColumnHeaders(table, arrayAddress))
 	c.Equal([]uintptr{
-		w.Provider(4).ifacePtr(uiaIfaceSimple),
-		w.Provider(5).ifacePtr(uiaIfaceSimple),
+		w.providerFor(4).ifacePtr(uiaIfaceSimple),
+		w.providerFor(5).ifacePtr(uiaIfaceSimple),
 	}, uiaSafeArrayUnknowns(c, *array))
-	c.Equal(int32(2), atomic.LoadInt32(&w.Provider(4).refCount))
+	c.Equal(int32(2), atomic.LoadInt32(&w.providerFor(4).refCount))
 	array.Destroy()
-	c.Equal(int32(1), atomic.LoadInt32(&w.Provider(4).refCount))
+	c.Equal(int32(1), atomic.LoadInt32(&w.providerFor(4).refCount))
 
 	// A table whose header has left the window reports no columns rather than something unrelated.
 	headerless := tableTree()
@@ -508,18 +546,18 @@ func TestUIATableItemPattern(t *testing.T) {
 	array, arrayAddress := uiaOut[SAFEARRAY](&pin)
 	w := newTestUIAWindow(tableTree())
 
-	c.Equal(COM_S_OK, uiaTableItemGetColumnHeaderItems(w.Provider(8).ifacePtr(uiaIfaceTableItem), arrayAddress))
-	c.Equal([]uintptr{w.Provider(4).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
+	c.Equal(COM_S_OK, uiaTableItemGetColumnHeaderItems(w.providerFor(8).ifacePtr(uiaIfaceTableItem), arrayAddress))
+	c.Equal([]uintptr{w.providerFor(4).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
 	array.Destroy()
-	c.Equal(COM_S_OK, uiaTableItemGetColumnHeaderItems(w.Provider(9).ifacePtr(uiaIfaceTableItem), arrayAddress))
-	c.Equal([]uintptr{w.Provider(5).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
+	c.Equal(COM_S_OK, uiaTableItemGetColumnHeaderItems(w.providerFor(9).ifacePtr(uiaIfaceTableItem), arrayAddress))
+	c.Equal([]uintptr{w.providerFor(5).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
 	array.Destroy()
 
 	// There are no row headers for a cell to belong to.
-	c.Equal(COM_S_OK, uiaTableItemGetRowHeaderItems(w.Provider(8).ifacePtr(uiaIfaceTableItem), arrayAddress))
+	c.Equal(COM_S_OK, uiaTableItemGetRowHeaderItems(w.providerFor(8).ifacePtr(uiaIfaceTableItem), arrayAddress))
 	c.Nil(uiaSafeArrayUnknowns(c, *array))
 	array.Destroy()
-	c.Equal(COM_E_POINTER, uiaTableItemGetColumnHeaderItems(w.Provider(8).ifacePtr(uiaIfaceTableItem), 0))
+	c.Equal(COM_E_POINTER, uiaTableItemGetColumnHeaderItems(w.providerFor(8).ifacePtr(uiaIfaceTableItem), 0))
 }
 
 // TestUIAPatternStale verifies what a client holding a pattern interface for something that has been destroyed is told.
@@ -532,9 +570,9 @@ func TestUIAPatternStale(t *testing.T) {
 	str, strAddress := uiaOut[BSTR](&pin)
 	state, stateAddress := uiaOut[ToggleState](&pin)
 	w := newTestUIAWindow(patternTree())
-	button := w.Provider(2)
+	button := w.providerFor(2)
 	button.addRef() // Stand in for the reference a client would be holding.
-	field := w.Provider(8)
+	field := w.providerFor(8)
 	field.addRef()
 
 	without := patternTree()
@@ -568,7 +606,7 @@ func TestUIAPatternUnsupported(t *testing.T) {
 	number, numberAddress := uiaOut[float64](&pin)
 	str, strAddress := uiaOut[BSTR](&pin)
 	w := newTestUIAWindow(patternTree())
-	slider := w.Provider(11).ifacePtr(uiaIfaceRangeValue)
+	slider := w.providerFor(11).ifacePtr(uiaIfaceRangeValue)
 	c.Equal(COM_S_OK, uiaRangeValueValue(slider, numberAddress))
 	c.Equal(5.0, *number)
 
@@ -585,9 +623,9 @@ func TestUIAPatternUnsupported(t *testing.T) {
 
 	// The same guard is what a method reached through the wrong interface runs into, since the interfaces a provider
 	// hands out are decided from the same table.
-	c.Equal(UIA_E_NOTSUPPORTED, uiaValueValue(w.Provider(2).ifacePtr(uiaIfaceValue), strAddress))
+	c.Equal(UIA_E_NOTSUPPORTED, uiaValueValue(w.providerFor(2).ifacePtr(uiaIfaceValue), strAddress))
 	c.Equal(BSTR(0), *str)
-	c.Equal(UIA_E_NOTSUPPORTED, uiaInvokeInvoke(w.Provider(17).ifacePtr(uiaIfaceInvoke)))
+	c.Equal(UIA_E_NOTSUPPORTED, uiaInvokeInvoke(w.providerFor(17).ifacePtr(uiaIfaceInvoke)))
 }
 
 // TestUIAPatternNullOutParameters verifies that every pattern method that reports something checks its out-parameter
@@ -596,7 +634,7 @@ func TestUIAPatternUnsupported(t *testing.T) {
 func TestUIAPatternNullOutParameters(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(tableTree())
-	root := w.Root()
+	root := w.rootProvider()
 	c.NotNil(root)
 	for _, method := range []struct {
 		call  func(this, out uintptr) uint64

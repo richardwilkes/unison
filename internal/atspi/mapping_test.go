@@ -140,8 +140,28 @@ func TestInterfaces(t *testing.T) {
 			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection},
 		},
 		{
-			name:     "a tree holds a selection",
+			name:     "a tree holds a selection and is laid out as a grid",
 			node:     accessibility.Node{Role: role.Tree},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection, InterfaceTable},
+		},
+		{
+			name:     "a table is a grid as well as a selection",
+			node:     accessibility.Node{Role: role.Table, RowCount: 3, ColumnCount: 2},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection, InterfaceTable},
+		},
+		{
+			name:     "a cell says where in the grid it sits",
+			node:     accessibility.Node{Role: role.Cell, RowIndex: 1, ColumnIndex: 0},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell},
+		},
+		{
+			name:     "a row is the container the cells sit in rather than one of them",
+			node:     accessibility.Node{Role: role.Row, RowIndex: 1},
+			expected: []string{InterfaceAccessible, InterfaceComponent},
+		},
+		{
+			name:     "a list is not a grid",
+			node:     accessibility.Node{Role: role.List, RowCount: 3},
 			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection},
 		},
 		{
@@ -243,12 +263,17 @@ func TestStatesOfFocus(t *testing.T) {
 func TestStatesOfAWindow(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	set := States(&accessibility.Node{Role: role.Window, Focused: true, Modal: true}, true)
+	set := States(&accessibility.Node{Role: role.Window, Focused: true, Modal: true, Resizable: true}, true)
 	c.True(set.Has(StateActive))
 	c.True(set.Has(StateResizable))
 	c.True(set.Has(StateModal))
 	c.False(set.Has(StateFocused), "a window reports being active rather than focused")
 	c.False(States(&accessibility.Node{Role: role.Dialog}, false).Has(StateActive))
+	// A window created with NotResizableWindowOption, and a dialog, which is most often one of those.
+	c.False(States(&accessibility.Node{Role: role.Window, Focused: true}, true).Has(StateResizable),
+		"a fixed size window must not claim it can be resized")
+	c.False(States(&accessibility.Node{Role: role.Dialog}, true).Has(StateResizable))
+	c.True(States(&accessibility.Node{Role: role.Dialog, Resizable: true}, true).Has(StateResizable))
 }
 
 func TestStatesOfCheckables(t *testing.T) {
@@ -348,23 +373,57 @@ func TestStatesOfOrientedControls(t *testing.T) {
 func TestAttributes(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}}, Attributes(&accessibility.Node{Role: role.Button}))
+	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}},
+		Attributes(&accessibility.Node{Role: role.Button}, nil))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: levelAttribute, Value: "3"},
-	}, Attributes(&accessibility.Node{Role: role.Heading, Level: 3}))
+	}, Attributes(&accessibility.Node{Role: role.Heading, Level: 3}, nil))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: sortAttribute, Value: "ascending"},
-	}, Attributes(&accessibility.Node{Role: role.ColumnHeader, Sort: accessibility.SortAscending}))
+		{Key: columnIndexAttribute, Value: "3"},
+	}, Attributes(&accessibility.Node{
+		Role:        role.ColumnHeader,
+		Sort:        accessibility.SortAscending,
+		ColumnIndex: 2,
+	}, nil))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: sortAttribute, Value: "descending"},
-	}, Attributes(&accessibility.Node{Role: role.ColumnHeader, Sort: accessibility.SortDescending}))
+		{Key: columnIndexAttribute, Value: "1"},
+	}, Attributes(&accessibility.Node{Role: role.ColumnHeader, Sort: accessibility.SortDescending}, nil))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: placeholderTextAttribute, Value: "Search"},
-	}, Attributes(&accessibility.Node{Role: role.TextField, Placeholder: "Search"}))
+	}, Attributes(&accessibility.Node{Role: role.TextField, Placeholder: "Search"}, nil))
+}
+
+func TestAttributesOfARowAndItsCells(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// A table describes only the rows it is showing, so the size of the set has to come from the table rather than
+	// from how many rows happen to have objects: "row 4 of 6000", not "row 4 of 6".
+	table := &accessibility.Node{Role: role.Table, RowCount: 6000, ColumnCount: 3}
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: levelAttribute, Value: "2"},
+		{Key: rowIndexAttribute, Value: "4"},
+		{Key: positionInSetAttribute, Value: "4"},
+		{Key: setSizeAttribute, Value: "6000"},
+	}, Attributes(&accessibility.Node{Role: role.Row, Level: 2, RowIndex: 3}, table))
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: rowIndexAttribute, Value: "4"},
+		{Key: columnIndexAttribute, Value: "2"},
+	}, Attributes(&accessibility.Node{Role: role.Cell, RowIndex: 3, ColumnIndex: 1}, table),
+		"a cell is placed by row and column rather than by a position in a run")
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: rowIndexAttribute, Value: "1"},
+		{Key: positionInSetAttribute, Value: "1"},
+	}, Attributes(&accessibility.Node{Role: role.ListItem}, &accessibility.Node{Role: role.List}),
+		"a container that does not know how many rows it holds reports no size")
 }
 
 func TestLayerFor(t *testing.T) {

@@ -109,3 +109,19 @@ func TestEscapeAddressValue(t *testing.T) {
 	c.Equal("unix:path=/tmp/a%20b", "unix:path="+escapeAddressValue("/tmp/a b"))
 	c.NotContains(escapeAddressValue(strings.Repeat("ü", 2)), "ü")
 }
+
+func TestParseAddressTrimsEachAlternative(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// A space after a separator must not turn the alternative that follows it into an unknown transport, and the
+	// newline that a shell leaves on DBUS_SESSION_BUS_ADDRESS must not end up inside a socket path.
+	got, err := parseAddress("unix:path=" + unixBusPath + "; unix:path=/tmp/other\n")
+	c.NoError(err)
+	c.Equal([]transport{
+		{network: unixNetwork, address: unixBusPath},
+		{network: unixNetwork, address: "/tmp/other"},
+	}, got)
+	got, err = parseAddress("\tunix:path=" + unixBusPath + "  \n")
+	c.NoError(err)
+	c.Equal([]transport{{network: unixNetwork, address: unixBusPath}}, got)
+}

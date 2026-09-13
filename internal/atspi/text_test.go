@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/role"
@@ -22,15 +23,19 @@ import (
 // textWindow is the window the text tests publish.
 const textWindow WindowKey = 3
 
-// The granularities of org.a11y.atspi.Text.GetStringAtOffset, from AtspiTextGranularity. V1 answers with the line
-// whichever one is asked for, so the tests use the two that matter: the one that is honored and one that is not.
+// The content of the measured text area: two lines, the first of which ends with a line feed.
 const (
-	granularityChar = uint32(0)
-	granularityLine = uint32(3)
+	textBody       = firstTextLine + secondTextLine
+	firstTextLine  = "ab\n"
+	secondTextLine = "cd"
 )
 
-// textBody is the content of the measured text area: two lines, the first of which ends with a line feed.
-const textBody = "ab\ncd"
+// The members of org.a11y.atspi.Text whose second argument is an AtspiTextBoundaryType rather than a granularity.
+const (
+	textAtOffset     = "GetTextAtOffset"
+	textBeforeOffset = "GetTextBeforeOffset"
+	textAfterOffset  = "GetTextAfterOffset"
+)
 
 // textTree is the window the text tests work over:
 //
@@ -132,30 +137,190 @@ func TestTextContent(t *testing.T) {
 		"there is no character at the end of the text")
 }
 
-func TestTextLines(t *testing.T) {
+// TestTextGranularityAtOffset covers GetStringAtOffset, whose second argument is an AtspiTextGranularity. Orca's
+// character echo and word echo ask for CHAR and WORD on every arrow key, so answering all of them with the line — which
+// is what this used to do — reads a whole line out on every keystroke.
+func TestTextGranularityAtOffset(t *testing.T) {
 	t.Parallel()
 	ta := newTextAdapter(t)
 	c := ta.c
-	for _, member := range []string{
-		"GetStringAtOffset", "GetTextAtOffset", "GetTextBeforeOffset", "GetTextAfterOffset",
+	for _, one := range []struct {
+		why         string
+		text        string
+		granularity Granularity
+		offset      int32
+		start       int32
+		end         int32
+	}{
+		{why: "the first character", granularity: GranularityChar, offset: 0, text: "a", start: 0, end: 1},
+		{why: "a line feed is a character too", granularity: GranularityChar, offset: 2, text: "\n", start: 2, end: 3},
+		{
+			why: "there is no character at the end of the text", granularity: GranularityChar, offset: 5,
+			text: "", start: 5, end: 5,
+		},
+		{
+			why: "a word takes the whitespace that follows it", granularity: GranularityWord, offset: 1,
+			text: firstTextLine, start: 0, end: 3,
+		},
+		{why: "the second word", granularity: GranularityWord, offset: 4, text: secondTextLine, start: 3, end: 5},
+		{
+			why: "a line takes the line feed that ends it", granularity: GranularityLine, offset: 0,
+			text: firstTextLine, start: 0, end: 3,
+		},
+		{why: "the second line", granularity: GranularityLine, offset: 4, text: secondTextLine, start: 3, end: 5},
+		{
+			why: "the end of the text belongs to the last line", granularity: GranularityLine, offset: 5,
+			text: secondTextLine, start: 3, end: 5,
+		},
+		{
+			why: "a paragraph is what the text is divided into", granularity: GranularityParagraph, offset: 1,
+			text: firstTextLine, start: 0, end: 3,
+		},
+		{
+			why: "content with nothing to end a sentence is one sentence", granularity: GranularitySentence,
+			offset: 1, text: textBody, start: 0, end: 5,
+		},
+		{
+			why: "a granularity AT-SPI has never defined is read as a line", granularity: Granularity(99),
+			offset: 4, text: secondTextLine, start: 3, end: 5,
+		},
 	} {
-		// V1 works in lines, whatever granularity or boundary the caller asked for, and a line takes the line feed that
-		// ends it with it.
-		c.Equal([]any{"ab\n", int32(0), int32(3)},
-			ta.values(NodePath(41), InterfaceText, member, "iu", int32(0), granularityLine), member)
-		c.Equal([]any{"ab\n", int32(0), int32(3)},
-			ta.values(NodePath(41), InterfaceText, member, "iu", int32(2), granularityChar), member)
-		c.Equal([]any{"cd", int32(3), int32(5)},
-			ta.values(NodePath(41), InterfaceText, member, "iu", int32(4), granularityLine), member)
-		c.Equal([]any{"cd", int32(3), int32(5)},
-			ta.values(NodePath(41), InterfaceText, member, "iu", int32(5), granularityLine), member,
-			"the end of the text belongs to the last line")
+		c.Equal([]any{one.text, one.start, one.end},
+			ta.values(NodePath(41), InterfaceText, "GetStringAtOffset", "iu", one.offset, uint32(one.granularity)),
+			one.why)
 	}
 
 	// A field that has not been measured, which is every text control but the focused one, reports its whole content as
 	// one line.
 	c.Equal([]any{"Hi", int32(0), int32(2)},
-		ta.values(NodePath(42), InterfaceText, "GetStringAtOffset", "iu", int32(1), granularityLine))
+		ta.values(NodePath(42), InterfaceText, "GetStringAtOffset", "iu", int32(1), uint32(GranularityLine)))
+	c.Equal([]any{"i", int32(1), int32(2)},
+		ta.values(NodePath(42), InterfaceText, "GetStringAtOffset", "iu", int32(1), uint32(GranularityChar)))
+}
+
+// TestTextBoundaryAtBeforeAndAfterOffset covers the three older methods, whose second argument is an
+// AtspiTextBoundaryType rather than a granularity — the same units under different numbers — and whose before and after
+// forms have to answer with the neighboring unit. Handing back the unit at the offset instead leaves a client walking
+// the content on the spot, never reaching the end.
+func TestTextBoundaryAtBeforeAndAfterOffset(t *testing.T) {
+	t.Parallel()
+	ta := newTextAdapter(t)
+	c := ta.c
+	for _, one := range []struct {
+		member   string
+		why      string
+		text     string
+		boundary Boundary
+		offset   int32
+		start    int32
+		end      int32
+	}{
+		{
+			member: textAtOffset, why: "the line holding the offset", boundary: BoundaryLineStart,
+			offset: 4, text: secondTextLine, start: 3, end: 5,
+		},
+		{
+			member: textAtOffset, why: "boundary 3 is a sentence rather than a line", boundary: BoundarySentenceStart,
+			offset: 4, text: textBody, start: 0, end: 5,
+		},
+		{
+			member: textAtOffset, why: "the character at the offset", boundary: BoundaryChar,
+			offset: 1, text: "b", start: 1, end: 2,
+		},
+		{
+			member: textBeforeOffset, why: "the line before the one holding the offset",
+			boundary: BoundaryLineStart, offset: 4, text: firstTextLine, start: 0, end: 3,
+		},
+		{
+			member: textBeforeOffset, why: "there is nothing before the first line",
+			boundary: BoundaryLineStart, offset: 1, text: "", start: 0, end: 0,
+		},
+		{
+			member: textBeforeOffset, why: "the character before the offset", boundary: BoundaryChar,
+			offset: 1, text: "a", start: 0, end: 1,
+		},
+		{
+			member: textBeforeOffset, why: "the word before the one holding the offset",
+			boundary: BoundaryWordStart, offset: 4, text: firstTextLine, start: 0, end: 3,
+		},
+		{
+			member: textAfterOffset, why: "the line after the one holding the offset",
+			boundary: BoundaryLineStart, offset: 0, text: secondTextLine, start: 3, end: 5,
+		},
+		{
+			member: textAfterOffset, why: "there is nothing after the last line", boundary: BoundaryLineStart,
+			offset: 4, text: "", start: 5, end: 5,
+		},
+		{
+			member: textAfterOffset, why: "the character after the offset", boundary: BoundaryChar,
+			offset: 0, text: "b", start: 1, end: 2,
+		},
+		{
+			member: textAfterOffset, why: "the end form divides the text the same way as the start form",
+			boundary: BoundaryWordEnd, offset: 0, text: secondTextLine, start: 3, end: 5,
+		},
+	} {
+		c.Equal([]any{one.text, one.start, one.end},
+			ta.values(NodePath(41), InterfaceText, one.member, "iu", one.offset, uint32(one.boundary)),
+			"%s: %s", one.member, one.why)
+	}
+}
+
+// TestTextUnits covers the division of content into units directly, over content the window the other text tests work
+// with does not hold: real words, sentences and paragraphs. Every unit runs to the start of the next one, so walking a
+// control a unit at a time covers every character exactly once.
+func TestTextUnits(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	content := textContent{runes: []rune("Hi there.  Bye now!\nNext line")}
+	for _, one := range []struct {
+		why    string
+		unit   textUnit
+		offset int
+		start  int
+		end    int
+	}{
+		{why: "the first word, with the space after it", unit: unitWord, offset: 0, start: 0, end: 3},
+		{why: "an offset inside a word finds the whole of it", unit: unitWord, offset: 4, start: 3, end: 11},
+		{why: "the two spaces belong to the word they follow", unit: unitWord, offset: 9, start: 3, end: 11},
+		{why: "a line feed is whitespace like any other", unit: unitWord, offset: 16, start: 15, end: 20},
+		{why: "the last word runs to the end", unit: unitWord, offset: 25, start: 25, end: 29},
+		{why: "the first sentence, with the spaces after it", unit: unitSentence, offset: 0, start: 0, end: 11},
+		{why: "the second sentence, ending at the line feed after it", unit: unitSentence, offset: 12, start: 11, end: 20},
+		{why: "the last sentence runs to the end", unit: unitSentence, offset: 22, start: 20, end: 29},
+		{why: "the first paragraph, with the line feed", unit: unitParagraph, offset: 3, start: 0, end: 20},
+		{why: "the second paragraph", unit: unitParagraph, offset: 20, start: 20, end: 29},
+		{why: "a control with no measured lines is one line", unit: unitLine, offset: 3, start: 0, end: 29},
+	} {
+		c.Equal(textRange{start: one.start, end: one.end}, content.rangeAt(one.unit, one.offset), one.why)
+	}
+
+	// A full stop with a character hard against it is part of the word rather than the end of a sentence, which is what
+	// keeps a version number or a file name from being read as several of them.
+	run := textContent{runes: []rune("Use v1.2.3 now. Then stop.")}
+	c.Equal(textRange{start: 0, end: 16}, run.rangeAt(unitSentence, 0))
+	c.Equal(textRange{start: 16, end: 26}, run.rangeAt(unitSentence, 20))
+
+	// Walking forwards has to carry on from where the unit before it ended and reach the end of the content, which is
+	// what makes a client reading the whole of a control with GetTextAfterOffset terminate.
+	for _, unit := range []textUnit{unitChar, unitWord, unitSentence, unitParagraph} {
+		at := content.rangeAt(unit, 0)
+		c.Equal(0, at.start, "unit %d must begin at the beginning", unit)
+		for range len(content.runes) {
+			if at.end >= len(content.runes) {
+				break
+			}
+			next := content.rangeAfter(unit, at.start)
+			c.Equal(at.end, next.start, "unit %d must carry on from where the one before it ended", unit)
+			c.True(next.end > at.end, "unit %d must advance past %d", unit, at.end)
+			at = next
+		}
+		c.Equal(len(content.runes), at.end, "unit %d must reach the end", unit)
+	}
+	empty := textContent{}
+	c.Equal(textRange{}, empty.rangeAt(unitWord, 0), "there is nothing in an empty control")
+	c.Equal(textRange{}, empty.rangeBefore(unitLine, 0))
+	c.Equal(textRange{}, empty.rangeAfter(unitLine, 0))
 }
 
 func TestTextExtents(t *testing.T) {
@@ -278,7 +443,10 @@ func TestTextOfAProtectedField(t *testing.T) {
 	c.Equal(int32(6), ta.peer.getProperty(NodePath(43), InterfaceText, "CharacterCount"))
 	c.Equal("••••••", ta.one(NodePath(43), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
 	c.Equal([]any{"••••••", int32(0), int32(6)},
-		ta.values(NodePath(43), InterfaceText, "GetStringAtOffset", "iu", int32(0), granularityLine))
+		ta.values(NodePath(43), InterfaceText, "GetStringAtOffset", "iu", int32(0), uint32(GranularityLine)))
+	c.Equal([]any{"•", int32(2), int32(3)},
+		ta.values(NodePath(43), InterfaceText, "GetStringAtOffset", "iu", int32(2), uint32(GranularityChar)),
+		"a bullet is what every unit of a password is made of, however small the unit")
 	c.Equal(int32(bulletRune), ta.one(NodePath(43), InterfaceText, "GetCharacterAtOffset", "i", int32(0)))
 }
 

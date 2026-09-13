@@ -28,16 +28,16 @@ import (
 // accessibility support on, AT-SPI has to be joined before anything can ask: an application is only reachable once it
 // has put objects on the accessibility bus and told the registry about them. What stands in for the first query is the
 // accessibility bus launcher's org.a11y.Status.IsEnabled property, which says whether anything on the desktop is
-// listening. It is read once at startup, over the session-bus connection the color-scheme watcher already keeps, and
-// then watched, so that a screen reader started or stopped while the application runs is followed both ways — which
-// makes Linux the one platform where support is also torn down again.
+// listening. It is watched, over the session-bus connection the color-scheme watcher already keeps, and read once the
+// watch is in place, so that a screen reader started or stopped while the application runs is followed both ways —
+// which makes Linux the one platform where support is also torn down again.
 //
 // The cost to an application nothing is watching is that one property read plus two match rules on a connection that
 // already exists, and nothing whatsoever when there is no session bus. The accessibility bus socket, the goroutines
 // that serve it and every object on it exist only while support is enabled.
 //
-// Everything here runs on the UI thread except the action callback, which arrives on the accessibility connection's
-// dispatcher goroutine and hands its work straight to the UI thread.
+// Everything here runs on the UI thread except the action callback and the report that the accessibility bus connection
+// has died, both of which arrive on that connection's own goroutines and hand their work straight to the UI thread.
 
 // unisonModulePath is this module's import path, which is how the version to report to an assistive technology is found
 // among the modules the running binary was built from.
@@ -56,6 +56,11 @@ var (
 	linuxA11y *atspi.Adapter
 	// linuxA11yCancelWatch stops watching the accessibility bus launcher's IsEnabled property. UI thread only.
 	linuxA11yCancelWatch func()
+	// linuxA11yRejoinAttempted records that the accessibility bus connection has already been lost once and rebuilt
+	// without the desktop having said anything in between, so that a bus which accepts a connection and immediately
+	// drops it is dialed once rather than forever. It is cleared whenever the desktop reports the status itself, since
+	// that is the only evidence that the situation has actually changed. UI thread only.
+	linuxA11yRejoinAttempted bool
 )
 
 // linuxA11yStartMode is what the environment and the startup options have decided about accessibility support before
@@ -78,7 +83,7 @@ const (
 // linuxA11yMode returns what the environment and the startup options have decided. NO_AT_BRIDGE is honored even when
 // AccessibilityEnvKey asks for support, since it is the whole desktop's instruction rather than this application's.
 func linuxA11yMode() linuxA11yStartMode {
-	if noAccessibility || accessibilityEnv < 0 || atspi.DisabledByEnvironment() {
+	if noAccessibility.Load() || accessibilityEnv < 0 || atspi.DisabledByEnvironment() {
 		return linuxA11yRefused
 	}
 	if accessibilityEnv > 0 {
@@ -91,9 +96,11 @@ func linuxA11yMode() linuxA11yStartMode {
 // changes. It is called at the end of nativeLateInit, and again whenever SetAccessibilityEnabled lifts a refusal, and
 // is the only thing on this platform that turns snapshot building on by itself.
 //
-// The watch is installed before the one property read, so that a screen reader starting up in the moment between the
-// two cannot go unnoticed. Both paths end up in linuxSetA11yEnabled, which is idempotent, and the watch's answers
-// arrive on the UI thread behind this call, so they cannot interleave with it.
+// The property is read by the watch rather than here, once the bus has accepted the match rules it needs: those rules
+// are asked for with calls of their own, so the bus is not yet delivering anything when atspi.WatchEnabled returns, and
+// a read taken at that point could miss a screen reader that started in between and then never hear the signal that
+// would have reported it. Every answer, the first one included, therefore arrives through the watch, on the UI thread
+// behind this call, and ends up in linuxSetA11yEnabled, which is idempotent.
 func linuxA11yStatusInit() {
 	if linuxA11yCancelWatch != nil {
 		return
@@ -115,11 +122,13 @@ func linuxA11yStatusInit() {
 	linuxA11yCancelWatch = atspi.WatchEnabled(session, func(enabled bool) {
 		// This arrives on one of the session connection's goroutines, so the answer is handed to the UI thread, which is
 		// the only place the adapter and the window list may be touched.
-		InvokeTask(func() { linuxSetA11yEnabled(enabled) })
+		InvokeTask(func() {
+			// The desktop has spoken for itself, which makes whatever happened to an earlier connection to the
+			// accessibility bus history: a loss after this may be recovered from again.
+			linuxA11yRejoinAttempted = false
+			linuxSetA11yEnabled(enabled)
+		})
 	})
-	if atspi.Enabled(session) {
-		linuxSetA11yEnabled(true)
-	}
 }
 
 // linuxSetA11yEnabled starts or stops serving assistive technologies. UI thread only, and idempotent, so the startup
@@ -143,13 +152,19 @@ func linuxStartA11y() {
 	// the environment forced support on without a session bus to ask; the address is then looked for in the environment
 	// and on the X11 root window instead.
 	session, _ := dbus.Session() //nolint:errcheck // A failure here leaves session nil, which is what Config allows for
-	adapter, err := atspi.Start(atspi.Config{
+	// The adapter names itself in the report of its own connection dying, which arrives on one of that connection's
+	// goroutines, so that a report for an adapter that has since been replaced cannot tear its replacement down. It is
+	// declared ahead of the call for that reason: the report can only be acted on once the UI thread runs the task
+	// below, by which time Start has returned and the variable holds the adapter the report is about.
+	var adapter *atspi.Adapter
+	var err error
+	if adapter, err = atspi.Start(atspi.Config{
 		Session:        session,
 		X11Address:     linuxX11A11yAddress,
 		Action:         linuxA11yAction,
+		Lost:           func(lost error) { InvokeTask(func() { linuxA11yConnectionLost(adapter, lost) }) },
 		ToolkitVersion: linuxToolkitVersion(),
-	})
-	if err != nil {
+	}); err != nil {
 		errs.Log(errs.NewWithCause("unable to join the accessibility bus", err))
 		return
 	}
@@ -186,9 +201,55 @@ func linuxStopA11y() {
 	linuxA11y = nil
 }
 
+// linuxA11yConnectionLost throws away an adapter whose connection to the accessibility bus has died, and asks the
+// desktop whether it wants a fresh one. UI thread only; the report itself arrives on one of the dead connection's
+// goroutines and is handed here by linuxStartA11y.
+//
+// Nothing else notices such a death. The accessibility bus is a dbus-daemon of its own that at-spi-bus-launcher starts
+// and can restart without ever giving up the org.a11y.Bus name, so the watch stays silent, while every snapshot
+// published on the dead connection is quietly dropped and linuxStartA11y refuses to build a replacement for as long as
+// linuxA11y is non-nil. Dropping the adapter is what turns snapshot building off again and makes a replacement
+// possible; asking the desktop once more is what gets one built, since the ordinary answer is still yes and the
+// launcher will have a new bus up by the time the question reaches it.
+//
+// Only one rebuild is attempted for each thing the desktop says, so a bus that accepts a connection and immediately
+// drops it costs one dial rather than an endless succession of them.
+func linuxA11yConnectionLost(adapter *atspi.Adapter, err error) {
+	if adapter == nil || linuxA11y != adapter {
+		// The adapter has already been stopped or replaced, so its connection ending is of no consequence to anyone.
+		return
+	}
+	errs.Log(errs.NewWithCause("the connection to the accessibility bus was lost", err))
+	linuxStopA11y()
+	if linuxA11yRejoinAttempted {
+		return
+	}
+	linuxA11yRejoinAttempted = true
+	switch linuxA11yMode() {
+	case linuxA11yRefused:
+		return
+	case linuxA11yForced:
+		// Nothing is being asked on this path, so there is nothing to wait for the answer to.
+		linuxStartA11y()
+		return
+	default:
+	}
+	session, sessionErr := dbus.Session()
+	if sessionErr != nil || session == nil {
+		return
+	}
+	// Asking is a call on the session bus, which must not be made from the UI thread, so the answer comes back the same
+	// way every answer the watch produces does.
+	go func() {
+		enabled := atspi.Enabled(session)
+		InvokeTask(func() { linuxSetA11yEnabled(enabled) })
+	}()
+}
+
 // linuxA11yTerminate leaves the accessibility bus. It is called from nativeTerminate, before the X11 connection is
 // closed, since the fallback that finds the bus address reads a property from the root window.
 func linuxA11yTerminate() {
+	linuxA11yRejoinAttempted = false
 	if linuxA11yCancelWatch != nil {
 		linuxA11yCancelWatch()
 		linuxA11yCancelWatch = nil
@@ -233,7 +294,6 @@ func (w *Window) nativeAccessibilityShutdown() {
 	linuxA11y.RemoveWindow(atspi.WindowKey(w.wnd.id))
 }
 
-// nativeAccessibilityAnnounce asks the platform's assistive technology to speak text.
 // nativeAccessibilityEnabledChanged stops watching and serving when support is refused, and asks the desktop again
 // whether an assistive technology is there when the refusal is lifted, since on this platform nothing else would ask.
 func nativeAccessibilityEnabledChanged(enabled bool) {
@@ -244,6 +304,8 @@ func nativeAccessibilityEnabledChanged(enabled bool) {
 	linuxA11yTerminate()
 }
 
+// nativeAccessibilityAnnounce asks the platform's assistive technology to speak text. Nothing is said when nothing is
+// listening.
 func nativeAccessibilityAnnounce(text string) {
 	if linuxA11y != nil {
 		linuxA11y.Announce(text)

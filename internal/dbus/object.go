@@ -47,7 +47,8 @@ const introspectPrologue = `<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Obj
 //
 // The standard org.freedesktop.DBus.Introspectable, org.freedesktop.DBus.Properties and org.freedesktop.DBus.Peer
 // interfaces are answered for every object and do not need to be returned. An object that declares one of them anyway
-// takes over that interface completely.
+// replaces only the members it declares, since a call is resolved member by member: the rest are still answered by the
+// built-in implementation, and introspection describes the two together.
 type Object interface {
 	Interfaces() []*Interface
 }
@@ -225,12 +226,17 @@ func findMethod(ifaces []*Interface, name, member string) (iface *Interface, met
 
 // hasInterface returns true if one of the interfaces has the given name.
 func hasInterface(ifaces []*Interface, name string) bool {
+	return interfaceNamed(ifaces, name) != nil
+}
+
+// interfaceNamed returns the interface with the given name, or nil if there is none.
+func interfaceNamed(ifaces []*Interface, name string) *Interface {
 	for _, one := range ifaces {
 		if one.Name == name {
-			return true
+			return one
 		}
 	}
-	return false
+	return nil
 }
 
 // findProperty looks for a property in a list of interfaces, with the same conventions as [findMethod].
@@ -330,8 +336,9 @@ func (call *Call) getProperty() {
 }
 
 // getAllProperties implements org.freedesktop.DBus.Properties.GetAll. An empty interface name asks for the properties of
-// every interface. A property whose getter fails is left out rather than failing the whole call, which is what the
-// clients that use GetAll to fill a cache expect.
+// every interface, while one the object does not implement is an UnknownInterface error rather than an empty
+// dictionary. A property whose getter fails is left out rather than failing the whole call, which is what the clients
+// that use GetAll to fill a cache expect.
 func (call *Call) getAllProperties() {
 	args, err := call.Args()
 	if err != nil {
@@ -344,6 +351,12 @@ func (call *Call) getAllProperties() {
 	}
 	name := names[0]
 	ifaces := call.obj.Interfaces()
+	if name != "" && !hasInterface(ifaces, name) && !hasInterface(builtinInterfaces, name) {
+		// Answering with an empty dictionary would leave the caller unable to tell "no properties" from "wrong
+		// interface", which is the distinction getProperty and setProperty already make.
+		call.Error(UnknownInterface, fmt.Sprintf("%s does not implement %s", call.Message.Path, name))
+		return
+	}
 	dict := make(Dict, 0, 8)
 	for _, iface := range ifaces {
 		if name != "" && iface.Name != name {
@@ -401,13 +414,18 @@ func (call *Call) setProperty() {
 	call.Reply()
 }
 
-// propertyError answers a property call that named something that does not exist.
+// propertyError answers a property call that named something that does not exist. An empty interface name asks for
+// every interface to be searched, so nothing about it can be unknown and only the property can be missing; the error
+// then names the object, since there is no interface to name.
 func (call *Call) propertyError(name, member string, unknownInterface bool) {
-	if unknownInterface {
+	switch {
+	case name == "":
+		call.Error(UnknownProperty, fmt.Sprintf("%s has no %s property", call.Message.Path, member))
+	case unknownInterface:
 		call.Error(UnknownInterface, fmt.Sprintf("%s does not implement %s", call.Message.Path, name))
-		return
+	default:
+		call.Error(UnknownProperty, fmt.Sprintf("%s has no %s property", name, member))
 	}
-	call.Error(UnknownProperty, fmt.Sprintf("%s has no %s property", name, member))
 }
 
 // EmitPropertiesChanged emits the org.freedesktop.DBus.Properties.PropertiesChanged signal for an object. changed holds
@@ -432,7 +450,7 @@ func (call *Call) introspect() {
 	sb.WriteString(introspectPrologue)
 	own := call.obj.Interfaces()
 	for _, iface := range own {
-		writeInterfaceXML(&sb, iface)
+		writeInterfaceXML(&sb, effectiveInterface(iface))
 	}
 	for _, iface := range builtinInterfaces {
 		if !hasInterface(own, iface.Name) {
@@ -444,6 +462,35 @@ func (call *Call) introspect() {
 	}
 	sb.WriteString("</node>\n")
 	call.Reply(sb.String())
+}
+
+// effectiveInterface returns the interface as it actually behaves. An object that declares one of the standard
+// interfaces replaces only the members it declares, since dispatchMethodCall resolves a call member by member and falls
+// through to the built-in implementation for anything the object left out, so those members belong in the introspection
+// document as well. An interface that is not one of the standard ones is returned unchanged.
+func effectiveInterface(iface *Interface) *Interface {
+	builtin := interfaceNamed(builtinInterfaces, iface.Name)
+	if builtin == nil {
+		return iface
+	}
+	return &Interface{
+		Name:       iface.Name,
+		Methods:    withMissingMembers(iface.Methods, builtin.Methods, func(m *Method) string { return m.Name }),
+		Properties: withMissingMembers(iface.Properties, builtin.Properties, func(p *Property) string { return p.Name }),
+		Signals:    withMissingMembers(iface.Signals, builtin.Signals, func(s *Signal) string { return s.Name }),
+	}
+}
+
+// withMissingMembers returns own with each member of builtin whose name own does not already use appended to it,
+// without modifying own.
+func withMissingMembers[T any](own, builtin []T, nameOf func(T) string) []T {
+	result := slices.Clip(own)
+	for _, one := range builtin {
+		if !slices.ContainsFunc(own, func(other T) bool { return nameOf(other) == nameOf(one) }) {
+			result = append(result, one)
+		}
+	}
+	return result
 }
 
 // writeInterfaceXML writes the introspection document's description of one interface.

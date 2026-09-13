@@ -193,7 +193,7 @@ func TestUIAPatterns(t *testing.T) {
 			patterns: PatternSelectionItem | PatternScrollItem | PatternExpandCollapse,
 		},
 		{node: &accessibility.Node{Role: role.Cell}, patterns: PatternGridItem | PatternTableItem},
-		{node: &accessibility.Node{Role: role.Menu}, patterns: PatternExpandCollapse},
+		{node: &accessibility.Node{Role: role.Menu}},
 		{node: &accessibility.Node{Role: role.MenuItem}, patterns: PatternInvoke},
 		{node: &accessibility.Node{Role: role.MenuItem, HasCheck: true}, patterns: PatternInvoke | PatternToggle},
 		{
@@ -668,20 +668,32 @@ func TestUIADecideRaisesValue(t *testing.T) {
 		}))
 }
 
-// TestUIADecideRaisesText verifies that an edit reports the text change and the new value once each, even though the
-// diff describes the edit as a deletion followed by an insertion and reports the value separately. The order follows the
-// diff's, which reports the value before the text it came from.
+// TestUIADecideRaisesText verifies that an edit reports the new value once, even though the diff describes it as a
+// value change plus the deletion and insertion that made it.
+//
+// Neither of UI Automation's text events is raised: both belong to the Text control pattern, which this package does
+// not implement and which every element answers NULL for, so a client that responded to one by asking for ITextProvider
+// would have nothing to read. A caret move reports nothing at all, since it changes no property a client can read back.
 func TestUIADecideRaisesText(t *testing.T) {
 	c := check.New(t)
-	c.Equal([]UIARaise{
-		raiseProperty(2, UIA_ValueValuePropertyId),
-		raiseEvent(2, UIA_Text_TextChangedEventId),
-		raiseEvent(2, UIA_Text_TextSelectionChangedEventId),
-	}, UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
-		{Kind: accessibility.ValueChanged, Node: 2, Old: "hello", New: "help"},
-		{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
-		{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
-		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 4},
+	c.Equal([]UIARaise{raiseProperty(2, UIA_ValueValuePropertyId)},
+		UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
+			{Kind: accessibility.ValueChanged, Node: 2, Old: "hello", New: "help"},
+			{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
+			{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
+			{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 4},
+		}))
+
+	// An edit with no value change of its own still reports the value, since that is where a client reads the text.
+	c.Equal([]UIARaise{raiseProperty(2, UIA_ValueValuePropertyId)},
+		UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
+			{Kind: accessibility.TextInserted, Node: 2, Start: 5, Length: 1, New: "!"},
+		}))
+
+	// A label has no value pattern, so an edit to it reports nothing rather than an event a client cannot follow up.
+	c.Nil(UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
+		{Kind: accessibility.TextInserted, Node: 10, Start: 0, Length: 1, New: "x"},
+		{Kind: accessibility.TextSelectionChanged, Node: 10},
 	}))
 }
 
@@ -719,9 +731,16 @@ func TestUIADecideRaisesStates(t *testing.T) {
 			raiseProperty(3, UIA_ToggleToggleStatePropertyId),
 		}},
 		{state: accessibility.StateExpanded, node: 3},
-		{state: accessibility.StateModal, node: 1},
+		// Modality belongs to the Window pattern, so a window reports it and an element with no such pattern does not.
+		{state: accessibility.StateModal, node: 1, expected: []UIARaise{
+			raiseProperty(1, UIA_WindowIsModalPropertyId),
+		}},
+		{state: accessibility.StateModal, node: 3},
+		// Whether a field hides what is typed into it is answered for every element, so it is reported for every one.
+		{state: accessibility.StateProtected, node: 2, expected: []UIARaise{
+			raiseProperty(2, UIA_IsPasswordPropertyId),
+		}},
 		{state: accessibility.StateBusy, node: 1},
-		{state: accessibility.StateProtected, node: 2},
 		{state: accessibility.StateReadOnly, node: 1},
 	} {
 		raises := UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
@@ -791,6 +810,44 @@ func TestUIADecideRaisesSelection(t *testing.T) {
 		UIADecideRaises(eventTree(), singleOff, []accessibility.Event{
 			{Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateSelected},
 		}))
+}
+
+// TestUIADecideRaisesSelectionNested verifies that a nested row's selection is judged by the container the provider
+// reports — the nearest ancestor supporting the Selection pattern — rather than by its immediate parent. A child row's
+// parent is another row, which is never multiselectable, so asking the parent would report a row joining a multiple
+// selection with ElementSelected, which tells the client everything else was just deselected.
+func TestUIADecideRaisesSelectionNested(t *testing.T) {
+	c := check.New(t)
+	nested := func() *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Focused: true, Children: []accessibility.NodeID{2}},
+			&accessibility.Node{
+				ID: 2, Role: role.Tree, Multiselectable: true, RowCount: 2,
+				Children: []accessibility.NodeID{3},
+			},
+			&accessibility.Node{
+				ID: 3, Role: role.Row, RowIndex: 0, Selectable: true, Selected: true, Expandable: true,
+				Expanded: true, Children: []accessibility.NodeID{4},
+			},
+			&accessibility.Node{ID: 4, Role: role.Row, RowIndex: 1, Selectable: true, Selected: true},
+		)
+	}
+	c.Equal([]UIARaise{
+		raiseProperty(4, UIA_SelectionItemIsSelectedPropertyId),
+		raiseEvent(4, UIA_SelectionItem_ElementAddedToSelectionEventId),
+	}, UIADecideRaises(nested(), nested(), []accessibility.Event{
+		{Kind: accessibility.StateChanged, Node: 4, State: accessibility.StateSelected},
+	}))
+
+	// The same row in a table that holds one selection at a time reports becoming the selection instead.
+	single := nested()
+	single.Node(2).Multiselectable = false
+	c.Equal([]UIARaise{
+		raiseProperty(4, UIA_SelectionItemIsSelectedPropertyId),
+		raiseEvent(4, UIA_SelectionItem_ElementSelectedEventId),
+	}, UIADecideRaises(nested(), single, []accessibility.Event{
+		{Kind: accessibility.StateChanged, Node: 4, State: accessibility.StateSelected},
+	}))
 }
 
 // TestUIADecideRaisesRadioButton verifies that a radio button reports being checked as being selected. It has no Toggle

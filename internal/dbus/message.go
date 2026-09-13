@@ -393,23 +393,30 @@ func (m *Message) validateRequiredFields() error {
 // Decode reads one message from r. It reads exactly as many bytes as the message occupies, so r may be a stream
 // carrying more messages. A reader that has no more data returns [io.EOF], which is how a peer closing the connection
 // cleanly presents itself, while a message that stops part way through returns [io.ErrUnexpectedEOF].
+//
+// Either byte order is accepted, since the specification lets every peer choose the one that suits it. A big-endian
+// message is converted as it is decoded, so the [Message] that comes back is indistinguishable from one a little-endian
+// peer sent: its Body holds the little-endian encoding of the same values, which is what [Message.Args] and
+// [Message.Encode] expect and the only form a Message ever holds.
 func Decode(r io.Reader) (*Message, error) {
 	var fixed [fixedHeaderSize]byte
 	if _, err := io.ReadFull(r, fixed[:]); err != nil {
 		return nil, err
 	}
+	var order binary.ByteOrder = binary.LittleEndian
+	var bigEndian bool
 	switch fixed[0] {
 	case 'l':
 	case 'B':
-		return nil, errors.New("dbus: big-endian messages are not supported")
+		order, bigEndian = binary.BigEndian, true
 	default:
 		return nil, fmt.Errorf("dbus: %q is not a valid endianness flag", string(fixed[0]))
 	}
 	if fixed[3] != protocolVersion {
 		return nil, fmt.Errorf("dbus: protocol version %d is not supported", fixed[3])
 	}
-	bodyLength := binary.LittleEndian.Uint32(fixed[4:8])
-	fieldsLength := binary.LittleEndian.Uint32(fixed[12:fixedHeaderSize])
+	bodyLength := order.Uint32(fixed[4:8])
+	fieldsLength := order.Uint32(fixed[12:fixedHeaderSize])
 	if fieldsLength > MaxArraySize {
 		return nil, fmt.Errorf("dbus: header fields of %d bytes exceed the %d byte limit", fieldsLength, MaxArraySize)
 	}
@@ -433,9 +440,10 @@ func Decode(r io.Reader) (*Message, error) {
 	m := &Message{
 		Type:   Type(fixed[1]),
 		Flags:  Flags(fixed[2]),
-		Serial: binary.LittleEndian.Uint32(fixed[8:12]),
+		Serial: order.Uint32(fixed[8:12]),
 	}
-	d := decoder{data: data, pos: 12} // The header field array starts with its length, which is part of the header
+	// The header field array starts with its length, which is part of the fixed header.
+	d := decoder{data: data, pos: 12, bigEndian: bigEndian}
 	fields, err := d.value(headerFieldsSignature)
 	if err != nil {
 		return nil, err
@@ -453,7 +461,31 @@ func Decode(r io.Reader) (*Message, error) {
 	if err = m.validate(); err != nil {
 		return nil, err
 	}
+	if bigEndian {
+		if err = m.convertBody(); err != nil {
+			return nil, err
+		}
+	}
 	return m, nil
+}
+
+// convertBody rewrites a body that arrived in the big-endian encoding as the little-endian one, which is the only
+// encoding a [Message] holds. It goes through the values rather than swapping bytes in place because only the values
+// know where the multi-byte fields are, and re-marshaling them normalizes the padding at the same time.
+func (m *Message) convertBody() error {
+	if m.Signature == "" || len(m.Body) == 0 {
+		return nil
+	}
+	values, err := unmarshal(m.Signature, m.Body, true)
+	if err != nil {
+		return err
+	}
+	body, err := Marshal(m.Signature, values...)
+	if err != nil {
+		return err
+	}
+	m.Body = body
+	return nil
 }
 
 func (m *Message) applyHeaderFields(fields []any) error {

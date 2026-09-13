@@ -16,6 +16,7 @@ import (
 	"net"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -26,13 +27,34 @@ import (
 )
 
 const (
-	// testTimeout is how long a test waits for something that should happen at once.
-	testTimeout = 2 * time.Second
+	// testTimeout is how long a test waits for something that should happen at once. It only bounds how long a failure
+	// takes to report, so it is generous: a loaded CI runner can stall the whole process for seconds at a time, and the
+	// connection's own timeouts that some tests race against are milliseconds.
+	testTimeout = 10 * time.Second
 	// testService, testPath and testInterface name the peer that the connection under test calls.
 	testService   = "org.example.Service"
 	testPath      = ObjectPath("/org/example/object")
 	testInterface = "org.example.Greeter"
 )
+
+// awaitOne waits for one value to arrive on ch, reporting whether one did before testTimeout passed. The channel is
+// checked once more after the deadline: when a loaded machine stalls the whole process, the deadline and the value it
+// was waiting for arrive together, and a select with both ready would pick between them at random.
+func awaitOne[T any](ch <-chan T) (value T, ok bool) {
+	timer := time.NewTimer(testTimeout)
+	defer timer.Stop()
+	select {
+	case value = <-ch:
+		return value, true
+	case <-timer.C:
+		select {
+		case value = <-ch:
+			return value, true
+		default:
+			return value, false
+		}
+	}
+}
 
 // fakeBus is the other end of a connection: it answers the handful of calls that the bus itself implements, records the
 // method calls and signals it receives, and lets a test call into the objects the connection exports.
@@ -206,37 +228,31 @@ func (b *fakeBus) call(path ObjectPath, iface, member string, sig Signature, arg
 	b.c.NoError(err)
 	_, err = b.side.Write(data)
 	b.c.NoError(err)
-	select {
-	case reply := <-ch:
-		return reply
-	case <-time.After(testTimeout):
+	reply, ok := awaitOne(ch)
+	if !ok {
 		b.t.Fatalf("timed out waiting for a reply to %s", msg)
-		return nil
 	}
+	return reply
 }
 
 // nextCall returns the next method call the connection under test made to something other than the bus.
 func (b *fakeBus) nextCall() *Message {
 	b.t.Helper()
-	select {
-	case msg := <-b.calls:
-		return msg
-	case <-time.After(testTimeout):
+	msg, ok := awaitOne(b.calls)
+	if !ok {
 		b.t.Fatal("timed out waiting for a method call")
-		return nil
 	}
+	return msg
 }
 
 // nextSignal returns the next signal the connection under test emitted.
 func (b *fakeBus) nextSignal() *Message {
 	b.t.Helper()
-	select {
-	case msg := <-b.signals:
-		return msg
-	case <-time.After(testTimeout):
+	msg, ok := awaitOne(b.signals)
+	if !ok {
 		b.t.Fatal("timed out waiting for a signal")
-		return nil
 	}
+	return msg
 }
 
 // callResult is the outcome of a call made from another goroutine.
@@ -256,13 +272,11 @@ func callAsync(t *testing.T, client *Conn, msg *Message) func() (*Message, error
 	}()
 	return func() (*Message, error) {
 		t.Helper()
-		select {
-		case result := <-ch:
-			return result.reply, result.err
-		case <-time.After(testTimeout):
+		result, ok := awaitOne(ch)
+		if !ok {
 			t.Fatal("timed out waiting for a call to finish")
-			return nil, nil
 		}
+		return result.reply, result.err
 	}
 }
 
@@ -452,10 +466,8 @@ func TestConnDisconnectNotification(t *testing.T) {
 	lost := make(chan error, 1)
 	b.client.OnDisconnect(func(err error) { lost <- err })
 	xio.CloseIgnoringErrors(b.side)
-	var err error
-	select {
-	case err = <-lost:
-	case <-time.After(testTimeout):
+	err, ok := awaitOne(lost)
+	if !ok {
 		t.Fatal("timed out waiting for the disconnect notification")
 	}
 	c.HasError(err)
@@ -485,10 +497,9 @@ func TestConnCloseWithAPendingCall(t *testing.T) {
 	reply, err := wait()
 	c.Nil(reply)
 	c.True(errors.Is(err, ErrClosed))
-	select {
-	case err = <-lost:
-		c.True(errors.Is(err, ErrClosed))
-	case <-time.After(testTimeout):
+	if lostErr, ok := awaitOne(lost); ok {
+		c.True(errors.Is(lostErr, ErrClosed))
+	} else {
 		t.Fatal("timed out waiting for the disconnect notification")
 	}
 	<-b.gone // The fake bus sees the connection go away too
@@ -608,4 +619,41 @@ func TestDialFailures(t *testing.T) {
 	c.Nil(conn)
 	c.HasError(err)
 	c.Contains(err.Error(), "unable to connect")
+}
+
+func TestSubtreeExportsAreSafeWhileDispatching(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	obj := newTestObject()
+	const prefix = ObjectPath("/org/example/churn")
+	// The dispatcher reads the subtree list after releasing the lock, so a concurrent export or unexport that shifted
+	// the surviving entries down within the same backing array used to hand it a nil *subtree and panic in covers.
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+	for i := range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			path := prefix + ObjectPath("/"+strconv.Itoa(i))
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				if err := b.client.ExportSubtree(path, func(_ ObjectPath) Object { return obj }); err != nil {
+					t.Errorf("unable to export %s: %v", path, err)
+					return
+				}
+				b.client.Unexport(path)
+			}
+		}()
+	}
+	c.NoError(b.client.ExportSubtree(prefix, func(_ ObjectPath) Object { return obj }))
+	for range 50 {
+		c.Equal([]any{"hello churn"}, replyValues(t, b.call(prefix+"/0/leaf", testInterface, greetMember, "s", "churn")))
+	}
+	close(done)
+	wg.Wait()
 }

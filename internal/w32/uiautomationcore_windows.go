@@ -15,13 +15,19 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Bindings for the UI Automation provider API. Only UiaClientsAreListening, UiaDisconnectProvider and
-// UiaRaiseNotificationEvent test for their own presence, for two different reasons. UiaRaiseNotificationEvent arrived in
-// Windows 10 1709 and UiaDisconnectProvider is newer than the rest of the provider API, so either may genuinely be
-// missing; the others cannot be reached at all on a system without the API, because the only two entry points into the
-// provider are a WM_GETOBJECT asking for UiaRootObjectId, which nothing but UI Automation sends, and the event raising
-// that UiaClientsAreListening gates. A (*LazyProc).Call panics when the export cannot be found, so anything that might
-// legitimately be absent must be checked with Find first.
+// Bindings for the UI Automation provider API. A (*LazyProc).Call panics when the export cannot be found, so anything
+// that can be reached on a system without the API must check with Find first.
+//
+// UiaRaiseNotificationEvent arrived in Windows 10 1709 and UiaDisconnectProvider and UiaDisconnectAllProviders are
+// newer than the rest of the provider API, so any of those may genuinely be missing even where the DLL is present.
+// UiaClientsAreListening checks because it stands in for a presence test on the whole API: everything it gates is
+// reached only after it has answered true. UiaReturnRawElementProvider checks because the adapter calls it on the
+// teardown path — UIAWindow.Destroy withdraws the window's provider with it — and an adapter exists whenever
+// accessibility was switched on, which the root package does from the environment at startup rather than in answer to a
+// WM_GETOBJECT.
+//
+// The rest need no check: they are reachable only from inside a provider method, and the only way into a provider is a
+// WM_GETOBJECT asking for UiaRootObjectId, which nothing but UI Automation sends.
 var (
 	uiautomationcore                           = windows.NewLazySystemDLL("uiautomationcore.dll")
 	uiaClientsAreListeningProc                 = uiautomationcore.NewProc("UiaClientsAreListening")
@@ -66,8 +72,16 @@ type UiaPoint struct {
 // the documented way to tell UI Automation that a window's provider is going away, which a window does as it is
 // destroyed.
 //
+// That teardown call is why the export is looked up rather than called blind: it is made for any window whose adapter
+// exists, and an adapter exists whenever accessibility was switched on, with no WM_GETOBJECT necessarily behind it. On
+// a system without uiautomationcore.dll the result is zero, which is the LRESULT for "not handled" and the right answer
+// for a WM_GETOBJECT nothing can be provided for.
+//
 // https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcoreapi/nf-uiautomationcoreapi-uiareturnrawelementprovider
 func UiaReturnRawElementProvider(hwnd windows.HWND, wParam WPARAM, lParam LPARAM, provider unsafe.Pointer) LRESULT {
+	if uiaReturnRawElementProviderProc.Find() != nil {
+		return 0
+	}
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := uiaReturnRawElementProviderProc.Call(uintptr(hwnd), uintptr(wParam), uintptr(lParam), uintptr(provider))
 	return LRESULT(r)

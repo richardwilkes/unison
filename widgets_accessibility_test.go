@@ -51,10 +51,11 @@ func axRootChildCount(tree *accessibility.Tree) int {
 }
 
 // TestButtonAccessibility verifies what a button says about itself: its title is its name, an icon button falls back to
-// its tooltip, a button that stays in the state a click puts it in is a toggle button, and pressing it clicks it.
+// its tooltip, a button that stays drawn in the state a click puts it in is a toggle button, one that springs back is
+// not, however it is grouped, and pressing it clicks it.
 func TestButtonAccessibility(t *testing.T) {
 	c := check.New(t)
-	var plain, named, icon, first, second *unison.Button
+	var plain, named, icon, first, second, loose *unison.Button
 	var clicks int
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 500},
@@ -73,12 +74,20 @@ func TestButtonAccessibility(t *testing.T) {
 
 			first = unison.NewButton()
 			first.SetTitle("One")
+			first.Sticky = true
 			second = unison.NewButton()
 			second.SetTitle("Two")
+			second.Sticky = true
 			unison.NewGroup(first, second).Select(first)
 
+			// Grouped but not sticky: DefaultDraw draws it exactly like any other unpressed button, whether or not the
+			// group has it selected, so it must not be announced as a toggle button that is on.
+			loose = unison.NewButton()
+			loose.SetTitle("Loose")
+			unison.NewGroup(loose).Select(loose)
+
 			wnd = newHeadlessWindow(t, "buttons", geom.NewRect(10, 10, 400, 400),
-				axColumn(plain, named, icon, first, second))
+				axColumn(plain, named, icon, first, second, loose))
 		}))
 	c.NotNil(wnd)
 
@@ -103,9 +112,14 @@ func TestButtonAccessibility(t *testing.T) {
 	secondNode := screen.AccessibilityNodeFor(second)
 	c.True(firstNode != nil)
 	c.True(secondNode != nil)
-	c.Equal(role.ToggleButton, firstNode.Role, "a button in a group stays in the state a click puts it in")
+	c.Equal(role.ToggleButton, firstNode.Role, "a sticky button stays in the state a click puts it in")
 	c.True(firstNode.Pressed, "the selected button in the group is the pressed one")
 	c.False(secondNode.Pressed)
+
+	looseNode := screen.AccessibilityNodeFor(loose)
+	c.True(looseNode != nil)
+	c.Equal(role.Button, looseNode.Role, "a grouped button that is not sticky springs back, so it is a plain button")
+	c.False(looseNode.Pressed, "a button drawn unpressed must not be announced as an on toggle button")
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   plainNode.ID,
@@ -212,12 +226,14 @@ func TestRadioButtonAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestLabelAccessibility verifies the three shapes a label can take: text, a drawable with alternative text, and
-// nothing worth reporting at all.
+// TestLabelAccessibility verifies the shapes a label can take: text, a drawable with alternative text, a drawable
+// described only by its tooltip, and nothing worth reporting at all. A tag takes the same shapes, so it is checked
+// alongside: neither may leave a nameless image or an empty piece of static text in the tree, which is what a screen
+// reader would otherwise stop on and have nothing to say about.
 func TestLabelAccessibility(t *testing.T) {
 	c := check.New(t)
-	var text, image, unnamedImage, empty *unison.Label
-	var tag *unison.Tag
+	var text, image, unnamedImage, tippedImage, empty *unison.Label
+	var tag, drawableTag, tippedTag *unison.Tag
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 400},
 		unison.StartupFinishedCallback(func() {
@@ -231,13 +247,24 @@ func TestLabelAccessibility(t *testing.T) {
 			unnamedImage = unison.NewLabel()
 			unnamedImage.Drawable = axTestDrawable()
 
+			tippedImage = unison.NewLabel()
+			tippedImage.Drawable = axTestDrawable()
+			tippedImage.Tooltip = unison.NewTooltipWithText("Discard")
+
 			empty = unison.NewLabel()
 
 			tag = unison.NewTag()
 			tag.SetTitle("New")
 
+			drawableTag = unison.NewTag()
+			drawableTag.Drawable = axTestDrawable()
+
+			tippedTag = unison.NewTag()
+			tippedTag.Drawable = axTestDrawable()
+			tippedTag.Tooltip = unison.NewTooltipWithText("Deprecated")
+
 			wnd = newHeadlessWindow(t, "labels", geom.NewRect(10, 10, 300, 300),
-				axColumn(text, image, unnamedImage, empty, tag))
+				axColumn(text, image, unnamedImage, tippedImage, empty, tag, drawableTag, tippedTag))
 		}))
 	c.NotNil(wnd)
 
@@ -258,6 +285,14 @@ func TestLabelAccessibility(t *testing.T) {
 	c.True(unnamedNode != nil)
 	c.Equal(role.Image, unnamedNode.Role)
 	c.Equal("", unnamedNode.Name, "there is nothing in a drawable that says what it shows")
+	c.True(unnamedNode.Ignored, "an image nothing has described is skipped, exactly as a drawable panel's is")
+
+	tippedNode := screen.AccessibilityNodeFor(tippedImage)
+	c.True(tippedNode != nil)
+	c.Equal(role.Image, tippedNode.Role)
+	c.Equal("Discard", tippedNode.Name, "a tooltip is the only thing describing an otherwise nameless image")
+	c.False(tippedNode.Ignored, "an image its tooltip describes is worth announcing")
+	c.Equal("", tippedNode.Description, "the tooltip became the name, so it must not also be the description")
 
 	emptyNode := screen.AccessibilityNodeFor(empty)
 	c.True(emptyNode != nil)
@@ -267,6 +302,17 @@ func TestLabelAccessibility(t *testing.T) {
 	c.True(tagNode != nil)
 	c.Equal(role.Label, tagNode.Role, "a tag is the text inside its bubble")
 	c.Equal("New", tagNode.Name)
+
+	drawableTagNode := screen.AccessibilityNodeFor(drawableTag)
+	c.True(drawableTagNode != nil)
+	c.Equal(role.Image, drawableTagNode.Role, "a tag holding only a drawable is an image, not empty static text")
+	c.True(drawableTagNode.Ignored, "an image nothing has described is skipped")
+
+	tippedTagNode := screen.AccessibilityNodeFor(tippedTag)
+	c.True(tippedTagNode != nil)
+	c.Equal(role.Image, tippedTagNode.Role)
+	c.Equal("Deprecated", tippedTagNode.Name, "a tag's tooltip names the drawable it holds")
+	c.False(tippedTagNode.Ignored)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -304,10 +350,10 @@ func TestLinkAccessibility(t *testing.T) {
 }
 
 // TestDrawablePanelAndSeparatorAccessibility verifies that a drawable panel is an image only when something has said
-// what it shows, and that a separator says it is one.
+// what it shows — its tooltip counts, which is how markdown's alt text arrives — and that a separator says it is one.
 func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 	c := check.New(t)
-	var named, unnamed *unison.DrawablePanel
+	var named, unnamed, tipped *unison.DrawablePanel
 	var separator *unison.Separator
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
@@ -319,10 +365,14 @@ func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 			unnamed = unison.NewDrawablePanel()
 			unnamed.Drawable = axTestDrawable()
 
+			tipped = unison.NewDrawablePanel()
+			tipped.Drawable = axTestDrawable()
+			tipped.Tooltip = unison.NewTooltipWithText("A photograph of a cat")
+
 			separator = unison.NewSeparator()
 
 			wnd = newHeadlessWindow(t, "drawables", geom.NewRect(10, 10, 300, 200),
-				axColumn(named, unnamed, separator))
+				axColumn(named, unnamed, tipped, separator))
 		}))
 	c.NotNil(wnd)
 
@@ -337,6 +387,15 @@ func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 	c.True(unnamedNode != nil)
 	c.Equal(role.Image, unnamedNode.Role)
 	c.True(unnamedNode.Ignored, "an image nothing has described is skipped")
+
+	// The description a node takes from its tooltip is filled in after the widget has spoken, so an image left ignored
+	// here would never be reached to hear it. The tooltip has to become the name instead.
+	tippedNode := screen.AccessibilityNodeFor(tipped)
+	c.True(tippedNode != nil)
+	c.Equal(role.Image, tippedNode.Role)
+	c.Equal("A photograph of a cat", tippedNode.Name, "a tooltip is what describes an otherwise nameless image")
+	c.False(tippedNode.Ignored, "an image its tooltip describes must not be hidden")
+	c.Equal("", tippedNode.Description, "the tooltip became the name, so it must not also be the description")
 
 	separatorNode := screen.AccessibilityNodeFor(separator)
 	c.True(separatorNode != nil)

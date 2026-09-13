@@ -21,7 +21,8 @@ import (
 
 const (
 	// noBridgeEnvKey is the environment variable that has meant "do not talk to the accessibility bus" since the GTK
-	// AT-SPI bridge introduced it. Any non-zero value disables accessibility, which is how every toolkit reads it.
+	// AT-SPI bridge introduced it. Its value is read as a number, and any non-zero one disables accessibility, which is
+	// how every toolkit reads it; see [DisabledByEnvironment].
 	noBridgeEnvKey = "NO_AT_BRIDGE"
 	// busAddressEnvKey names the environment variable that, when set, is the address of the accessibility bus and ends
 	// the search for one.
@@ -45,9 +46,32 @@ const (
 
 // DisabledByEnvironment returns true if the environment forbids talking to the accessibility bus at all. Nothing else in
 // this package, and nothing in the root package, should reach the bus when it does.
+//
+// The value is read the way at-spi2-atk and GTK read it, which is with atoi: the leading integer, whatever follows it
+// ignored, and zero for anything that does not begin with one. NO_AT_BRIDGE=00, NO_AT_BRIDGE=false and any other value
+// a C library turns into zero therefore leave accessibility enabled here too, rather than being taken for instructions
+// to stay away that no other toolkit on the desktop would obey.
 func DisabledByEnvironment() bool {
-	value := strings.TrimSpace(os.Getenv(noBridgeEnvKey))
-	return value != "" && value != "0"
+	return leadingIntIsNonZero(strings.TrimSpace(os.Getenv(noBridgeEnvKey)))
+}
+
+// leadingIntIsNonZero reports whether C's atoi would make anything other than zero of a string: an optional sign
+// followed by decimal digits, with anything else — an empty string included — counting as zero. Only whether the answer
+// is zero matters, so the digits are looked at rather than accumulated, and no value can overflow.
+func leadingIntIsNonZero(value string) bool {
+	if value != "" && (value[0] == '+' || value[0] == '-') {
+		value = value[1:]
+	}
+	nonZero := false
+	for _, ch := range []byte(value) {
+		if ch < '0' || ch > '9' {
+			break
+		}
+		if ch != '0' {
+			nonZero = true
+		}
+	}
+	return nonZero
 }
 
 // Enabled reports whether an assistive technology is running, which is what the accessibility bus launcher's IsEnabled
@@ -77,14 +101,22 @@ func Enabled(session *dbus.Conn) bool {
 	return enabled
 }
 
-// WatchEnabled calls onChange whenever the answer [Enabled] would give changes, and returns a function that stops
-// watching. onChange runs on one of the session connection's goroutines, so it must not block; the root package hands
-// the answer to the user interface thread.
+// WatchEnabled reports the answer [Enabled] would give and calls onChange again whenever it changes, returning a
+// function that stops watching. onChange runs on one of the session connection's goroutines, so it must not block; the
+// root package hands the answer to the user interface thread.
 //
-// Two things are watched. The launcher's own PropertiesChanged signal reports IsEnabled being switched on or off while
-// it runs, which is what happens when the user starts or stops a screen reader. NameOwnerChanged for the launcher's name
-// reports the launcher itself coming or going, which is what happens on the desktops that only start it once something
-// needs it; a launcher that has just appeared is asked again, since its signal came too early for anyone to hear.
+// The first answer is read here, as soon as the bus has accepted the match rules below, rather than by the caller.
+// Asking for those rules is a call of its own, made on a goroutine of this function's own so that the caller is not
+// held up by it, which means the bus is not yet delivering anything when this function returns: a screen reader that
+// started in the gap between the two would produce no signal, and a property read taken before the rules landed would
+// not see it either. Reading it once the rules are in place is what closes that gap, and is why a caller must not read
+// the property itself.
+//
+// Two things are then watched. The launcher's own PropertiesChanged signal reports IsEnabled being switched on or off
+// while it runs, which is what happens when the user starts or stops a screen reader. NameOwnerChanged for the
+// launcher's name reports the launcher itself coming or going, which is what happens on the desktops that only start it
+// once something needs it; a launcher that has just appeared is asked again, since its signal came too early for anyone
+// to hear.
 func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func()) {
 	if session == nil || onChange == nil || DisabledByEnvironment() {
 		return func() {}
@@ -136,6 +168,14 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 				continue
 			}
 			rules = append(rules, rule)
+		}
+		// The bus is delivering now, so nothing that happens from here on can be missed, and the state that was in
+		// effect all along can safely be reported. A watch that has already been canceled reports nothing: the caller
+		// has stopped listening, and for the root package that means accessibility support has been refused outright.
+		select {
+		case <-done:
+		default:
+			onChange(Enabled(session))
 		}
 		<-done
 		for _, rule := range rules {

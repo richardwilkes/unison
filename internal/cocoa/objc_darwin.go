@@ -399,37 +399,6 @@ func NSDictionaryFromPairs(pairs ...objc.ID) objc.ID {
 		unsafe.Pointer(&objects[0]), unsafe.Pointer(&keys[0]), uint64(count))
 }
 
-// NSValueFromRect returns an autoreleased NSValue holding the given rect.
-func NSValueFromRect(r NSRect) objc.ID {
-	return objc.ID(Cls("NSValue")).Send(Sel("valueWithRect:"), r)
-}
-
-// NSValueFromRange returns an autoreleased NSValue holding the given range.
-func NSValueFromRange(r NSRange) objc.ID {
-	return objc.ID(Cls("NSValue")).Send(Sel("valueWithRange:"), r)
-}
-
-// NSValueFromPoint returns an autoreleased NSValue holding the given point.
-func NSValueFromPoint(pt NSPoint) objc.ID {
-	return objc.ID(Cls("NSValue")).Send(Sel("valueWithPoint:"), pt)
-}
-
-// RectFromNSValue returns the rect held by an NSValue. A nil NSValue yields the zero rect.
-func RectFromNSValue(value objc.ID) NSRect {
-	if value == 0 {
-		return NSRect{}
-	}
-	return objc.Send[NSRect](value, Sel("rectValue"))
-}
-
-// RangeFromNSValue returns the range held by an NSValue. A nil NSValue yields the zero range.
-func RangeFromNSValue(value objc.ID) NSRange {
-	if value == 0 {
-		return NSRange{}
-	}
-	return objc.Send[NSRange](value, Sel("rangeValue"))
-}
-
 // ensureAXNotifyFuncs binds the two NSAccessibility notification functions on first use, so a process that never
 // serves an assistive technology never resolves them.
 func ensureAXNotifyFuncs() {

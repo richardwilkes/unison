@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
 )
 
@@ -270,4 +271,181 @@ func TestAccessibilityDeactivationReleasesState(t *testing.T) {
 	})
 	screen.Do(func() { after = axSnapshotCount })
 	c.Equal(before, after, "no snapshot may be built while accessibility support is off")
+}
+
+// axNewClickable returns a panel that counts the clicks it is given, which is what an assistive technology's Press
+// synthesizes for a panel that has no other notion of being activated.
+func axNewClickable(presses *int) *Panel {
+	panel := NewPanel()
+	panel.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+		size := geom.NewSize(80, 24)
+		return size, size, size
+	})
+	panel.SetFocusable(true)
+	panel.Accessibility.Role = role.Button
+	panel.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+	panel.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+		*presses++
+		return true
+	}
+	return panel
+}
+
+// TestAccessibilityActionsRefusedWhileBlockedByAModal verifies that a window another window's modal is blocking refuses
+// requests from an assistive technology, as it refuses mouse events. Such a window is still described — only the top
+// modal window's root says it is modal — so without this an assistive technology could press buttons and move the focus
+// in a window the person cannot touch.
+func TestAccessibilityActionsRefusedWhileBlockedByAModal(t *testing.T) {
+	c := check.New(t)
+	var blockedPresses, modalPresses int
+	var blockedPanel, modalPanel *Panel
+	var blocked, modal *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 500, Height: 400},
+		StartupFinishedCallback(func() {
+			blockedPanel = axNewClickable(&blockedPresses)
+			blocked = axNewTestWindow(t, "blocked", geom.NewRect(10, 10, 240, 120), blockedPanel)
+			modalPanel = axNewClickable(&modalPresses)
+			modal = axNewTestWindow(t, "modal", geom.NewRect(60, 60, 200, 100), modalPanel)
+		}))
+	c.NotNil(blocked)
+	c.NotNil(modal)
+	t.Cleanup(func() { screen.Do(func() { modalStack = nil }) })
+
+	screen.AccessibilityTree(blocked)
+	screen.AccessibilityTree(modal)
+	blockedNode := screen.AccessibilityNodeFor(blockedPanel)
+	modalNode := screen.AccessibilityNodeFor(modalPanel)
+	c.True(blockedNode != nil)
+	c.True(modalNode != nil)
+	if blockedNode == nil || modalNode == nil {
+		return
+	}
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   blockedNode.ID,
+		Action: accessibility.Press,
+	}), "nothing is modal yet, so the window may be acted on")
+
+	// That press moved the focus onto the panel, as a person's click would have. It is taken away again so that the
+	// focus a refused request must not produce cannot be one the panel already had.
+	screen.Do(func() {
+		blocked.SetFocus(nil)
+		modalStack = append(modalStack, modal)
+	})
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   blockedNode.ID,
+		Action: accessibility.Press,
+	}), "a window blocked by a modal must refuse to be pressed")
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   blockedNode.ID,
+		Action: accessibility.Focus,
+	}), "a window blocked by a modal must refuse to move its focus")
+	var presses int
+	var focus *Panel
+	screen.Do(func() {
+		presses = blockedPresses
+		focus = blocked.CurrentFocus()
+	})
+	c.Equal(1, presses, "nothing in the blocked window may have run")
+	c.True(focus == nil || !focus.Is(blockedPanel), "the blocked window's focus must not have moved")
+
+	// The modal itself is still fully usable, and the blocked window is still described, since an assistive technology
+	// is shown what is on the screen.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   modalNode.ID,
+		Action: accessibility.Press,
+	}), "the top modal window accepts requests")
+	screen.Do(func() { presses = modalPresses })
+	c.Equal(1, presses)
+	c.True(screen.AccessibilityTree(blocked) != nil, "a blocked window is still described")
+
+	screen.Do(func() { modalStack = nil })
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   blockedNode.ID,
+		Action: accessibility.Press,
+	}), "the window may be acted on again once the modal has gone")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityInfoIdentityIsNotShared verifies what assigning AccessibilityInfo as a whole does. The identity a
+// panel carries in it — its node id and the ids it has handed out for its virtual children — belongs to the one panel
+// holding it, so copying one panel's information onto another must not leave two live panels describing themselves
+// under the same ids, which would overwrite one another in the tree and make each a child of two different parents.
+func TestAccessibilityInfoIdentityIsNotShared(t *testing.T) {
+	c := check.New(t)
+	const rows = 3
+	var first, second *axTestList
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 500},
+		StartupFinishedCallback(func() {
+			first = newAXTestList(rows)
+			second = newAXTestList(rows)
+			content := NewPanel()
+			content.SetLayout(&FlexLayout{Columns: 1, HSpacing: StdHSpacing, VSpacing: StdVSpacing})
+			content.AddChild(first)
+			content.AddChild(second)
+			wnd = axNewTestWindow(t, "identity", geom.NewRect(10, 10, 300, 480), content)
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	var firstID, secondID accessibility.NodeID
+	screen.Do(func() {
+		firstID = first.Accessibility.id
+		secondID = second.Accessibility.id
+		// What an application might write meaning only to copy the name across.
+		second.Accessibility = first.Accessibility
+	})
+	c.True(firstID != 0 && secondID != 0)
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	var firstAfter, secondAfter accessibility.NodeID
+	var sharedVirtual bool
+	screen.Do(func() {
+		firstAfter = first.Accessibility.id
+		secondAfter = second.Accessibility.id
+		sharedVirtual = len(first.Accessibility.virtual) != 0 &&
+			first.Accessibility.virtual[0].id == second.Accessibility.virtual[0].id
+	})
+	c.Equal(firstID, firstAfter, "the panel the identity belongs to keeps it")
+	c.True(secondAfter != 0 && secondAfter != firstAfter, "the panel it was copied onto must be given one of its own")
+	c.False(sharedVirtual, "the ids handed out for virtual children must not be shared either")
+
+	firstNode := tree.Node(firstAfter)
+	secondNode := tree.Node(secondAfter)
+	c.True(firstNode != nil, "the first list should still be in the tree")
+	c.True(secondNode != nil, "the second list should still be in the tree")
+	if firstNode == nil || secondNode == nil {
+		return
+	}
+	c.Equal(rows, len(firstNode.Children))
+	c.Equal(rows, len(secondNode.Children))
+	for i, id := range firstNode.Children {
+		c.True(id != secondNode.Children[i], "the two lists' rows must have ids of their own")
+	}
+	c.Equal(firstNode.Parent, secondNode.Parent)
+	parent := tree.Node(firstNode.Parent)
+	c.True(parent != nil)
+	if parent != nil {
+		c.Equal(2, len(parent.Children), "each list should appear once beneath the panel holding them")
+	}
+
+	// Assigning a fresh struct costs the panel its identity, which is what the documentation warns of, but must still
+	// leave a well-formed tree behind.
+	screen.Do(func() { second.Accessibility = AccessibilityInfo{Description: "Replaced"} })
+	tree = screen.AccessibilityTree(wnd)
+	var replacedID accessibility.NodeID
+	screen.Do(func() { replacedID = second.Accessibility.id })
+	c.True(replacedID != 0 && replacedID != secondAfter, "the panel should have been given a new identity")
+	replaced := tree.Node(replacedID)
+	c.True(replaced != nil, "the panel should still be described, under the identity it was given")
+	if replaced != nil {
+		c.Equal("Replaced", replaced.Description)
+		c.Equal(rows, len(replaced.Children), "its rows should have been given ids of their own too")
+	}
+	c.True(tree.Node(secondAfter) == nil, "the identity it gave up must not still be in the tree")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

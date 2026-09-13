@@ -2381,7 +2381,16 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect) {
 	selected := t.IsRowSelected(row)
 	expandable := entry.row.CanHaveChildren()
 	expanded := expandable && t.isRowDisclosed(entry.row)
-	name := entry.row.CellDataForSort(0)
+	// A hierarchical filter shows every container it kept as open, whatever the container's own open state, so the row
+	// is reported as expanded but is not offered for opening and closing, exactly as the disclosure triangle is drawn
+	// open but given no hit rect and the keys that would change the open states are left alone.
+	toggleable := expandable && !t.hierarchicalFilter
+	var name string
+	if len(t.Columns) != 0 {
+		// The name comes from the first column, so a table with no columns has nothing to ask the row for. Asking
+		// anyway would have the model produce the data of a column that does not exist.
+		name = entry.row.CellDataForSort(0)
+	}
 	rowID := b.AddVirtualChild(id, func(n *accessibility.Node) {
 		n.Role = role.Row
 		n.Name = name
@@ -2394,7 +2403,7 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect) {
 		n.Expanded = expanded
 		n.Actions = n.Actions.With(accessibility.Select, accessibility.AddToSelection,
 			accessibility.RemoveFromSelection, accessibility.ScrollIntoView)
-		if expandable {
+		if toggleable {
 			n.Actions = n.Actions.With(accessibility.Expand, accessibility.Collapse)
 		}
 	})
@@ -2639,8 +2648,15 @@ func (t *Table[T]) axRowIndexForID(id tid.TID) int {
 }
 
 // axSetRowOpen opens or closes a row on behalf of an assistive technology, bringing the table up to date with the
-// change exactly as clicking the row's disclosure triangle would. Reports false if the row cannot have children at all.
+// change exactly as clicking the row's disclosure triangle would. Reports false if the row cannot have children at all,
+// or if a hierarchical filter is applied: such a filter shows every container it kept as open, whatever the container's
+// own open state, so changing an open state beneath it would have nothing to show for it. Every other way of opening
+// and closing a row — the disclosure triangle, the left and right arrow keys, DiscloseRow — refuses for the same
+// reason, and letting an assistive technology through would silently contradict them.
 func (t *Table[T]) axSetRowOpen(row int, open bool) bool {
+	if t.hierarchicalFilter {
+		return false
+	}
 	data := t.rowCache[row].row
 	if !data.CanHaveChildren() {
 		return false

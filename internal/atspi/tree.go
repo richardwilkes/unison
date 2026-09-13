@@ -215,6 +215,34 @@ func (d *windowData) relationsOf(id accessibility.NodeID) []relation {
 	return d.relations[id]
 }
 
+// reachableBounds returns the part of a node that can actually be pointed at: its own Bounds confined to those of every
+// ancestor, which is the clipping [accessibility.Tree.HitTest] applies and the clipping the drawing applies. ok is
+// false when nothing of the node can be reached, either because it or an ancestor is scrolled or clipped entirely out
+// of view or because the clipping leaves no area at all.
+//
+// Node bounds alone will not do. A node's Bounds are the whole of it, unclipped, so that an assistive technology can
+// tell how far to scroll to reveal it, which means a row scrolled out of its table's view port still reports the area
+// it would occupy. Answering a question about a point from those bounds alone would have the row claim a point that
+// belongs to whatever is drawn over it.
+func (d *windowData) reachableBounds(n *accessibility.Node) (bounds geom.Rect, ok bool) {
+	path := d.tree.Path(n.ID)
+	if len(path) == 0 {
+		return geom.Rect{}, false
+	}
+	for i, id := range path {
+		ancestor := d.node(id)
+		if ancestor == nil || ancestor.Offscreen {
+			return geom.Rect{}, false
+		}
+		if i == 0 {
+			bounds = ancestor.Bounds
+			continue
+		}
+		bounds = bounds.Intersect(ancestor.Bounds)
+	}
+	return bounds, !bounds.Empty()
+}
+
 // Geometry conversion. A node's Bounds are window-local, top-left origin, logical units. AT-SPI works in physical
 // pixels, either relative to the screen, to the window's content area, or to the object's parent.
 
@@ -232,8 +260,8 @@ func (g Geometry) effectiveScale() geom.Point {
 }
 
 // originFor returns the point, in physical pixels, that a node's coordinates are relative to in the given coordinate
-// space, along with the space the caller should treat the request as. A node with no reported parent cannot answer in
-// parent coordinates, so it answers in screen coordinates instead: its parent is the desktop.
+// space. A node with no reported parent has nothing to be relative to in parent coordinates, so it is given the
+// screen's origin instead: its parent is the desktop, and the desktop's children are measured from the screen.
 func (d *windowData) originFor(n *accessibility.Node, coord CoordType) geom.Point {
 	switch coord {
 	case CoordWindow:

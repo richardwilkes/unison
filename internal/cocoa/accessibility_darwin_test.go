@@ -115,19 +115,38 @@ func newAXTestTree() *accessibility.Tree {
 // returned cleanup mirrors nativeDestroy: the adapter lets go of its elements before the view is released.
 func newAXTestAdapter(t *testing.T) (view View, adapter *AXAdapter, tree *accessibility.Tree, cleanup func()) {
 	t.Helper()
+	tree = newAXTestTree()
+	view, adapter, cleanup = newAXAdapterWithTree(t, tree)
+	return view, adapter, tree, cleanup
+}
+
+// newAXAdapterWithTree is newAXTestAdapter for a snapshot the caller built, which is how the tests that need a
+// particular shape — a table taller than its view port, a row whose parent is missing — get one.
+func newAXAdapterWithTree(t *testing.T, tree *accessibility.Tree) (view View, adapter *AXAdapter, cleanup func()) {
+	t.Helper()
 	w, v, closeWindow := newTestWindowAndView(t)
 	w.MakeKeyAndOrderFront()
 	a := NewAXAdapter(v)
 	if a == nil {
 		t.Error("NewAXAdapter returned nil")
-		return 0, nil, nil, closeWindow
+		return 0, nil, closeWindow
 	}
-	tree = newAXTestTree()
 	a.Publish(tree, accessibility.Diff(nil, tree))
-	return v, a, tree, func() {
+	return v, a, func() {
 		a.Shutdown()
 		closeWindow()
 	}
+}
+
+// axTestChildren returns the elements the content view reports as its children, failing the test if there is not the
+// expected number of them.
+func axTestChildren(t *testing.T, v View, want int) []objc.ID {
+	t.Helper()
+	children := IDsFromNSArray(objc.ID(v).Send(Sel("accessibilityChildren")))
+	if len(children) != want {
+		t.Fatalf("content view has %d children, want %d", len(children), want)
+	}
+	return children
 }
 
 // axTestScreenPoint returns the screen location of a window-local, top-left origin point, using the adapter's own
@@ -158,14 +177,18 @@ func TestAXAdapterHierarchy(t *testing.T) {
 			if len(children) != 3 {
 				t.Fatalf("content view has %d children, want 3 (the ignored group must be flattened)", len(children))
 			}
+			// Static text is the odd one out: its content is its name in the snapshot, because that is the accessible
+			// name every other platform wants, but on this platform it is reported as the element's value and not as
+			// its label, so that an assistive technology says it once rather than twice.
 			for i, c := range []struct {
 				label   string
+				value   string
 				role    string
 				subrole string
 			}{
 				{label: "OK", role: "AXButton"},
-				{label: "Name", role: "AXTextField"},
-				{label: "Ready", role: "AXStaticText"},
+				{label: "Name", value: axTestText, role: "AXTextField"},
+				{value: "Ready", role: "AXStaticText"},
 			} {
 				if got := GoStringFromNSString(children[i].Send(Sel("accessibilityRole"))); got != c.role {
 					t.Errorf("child %d role = %q, want %q", i, got, c.role)
@@ -175,6 +198,9 @@ func TestAXAdapterHierarchy(t *testing.T) {
 				}
 				if got := GoStringFromNSString(children[i].Send(Sel("accessibilityLabel"))); got != c.label {
 					t.Errorf("child %d label = %q, want %q", i, got, c.label)
+				}
+				if got := GoStringFromNSString(children[i].Send(Sel("accessibilityValue"))); got != c.value {
+					t.Errorf("child %d value = %q, want %q", i, got, c.value)
 				}
 				if !objc.Send[bool](children[i], Sel("isAccessibilityElement")) {
 					t.Errorf("child %d is not an accessibility element", i)
@@ -1075,6 +1101,373 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 			onSeparator := axTestScreenPoint(a, geom.NewPoint(100, 140))
 			if got := objc.ID(v).Send(Sel("accessibilityHitTest:"), onSeparator); got != objc.ID(v) {
 				t.Errorf("hit test on the separator = %#x, want the content view %#x", got, objc.ID(v))
+			}
+		})
+	})
+}
+
+// TestAXSpinButtonRole proves a spin button is presented with the stepper semantics it advertises. A NumericField
+// advertises Increment and Decrement and this element implements both, but told the element is a plain text field
+// VoiceOver describes it as one and never mentions that its value can be stepped. The incrementor role is what carries
+// that on this platform, and is the counterpart of the spinner control type Windows reports and the spin button role
+// AT-SPI reports; the text protocol still answers, so nothing about reading the content is given up for it.
+func TestAXSpinButtonRole(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 200 + iota
+			spinID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{spinID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				spinID: {
+					ID: spinID, Parent: rootID, Role: role.SpinButton, Name: "Count",
+					Bounds: geom.NewRect(10, 10, 80, 24), HasNumber: true, Number: 3, Min: 1, Max: 9, Step: 1,
+					Text:    &accessibility.TextInfo{Text: "3", SelStart: 1, SelEnd: 1},
+					Actions: accessibility.ActionSet(0).With(accessibility.Increment, accessibility.Decrement),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			spin := axTestChildren(t, v, 1)[0]
+			if got := GoStringFromNSString(spin.Send(Sel("accessibilityRole"))); got != "AXIncrementor" {
+				t.Errorf("spin button role = %q, want AXIncrementor", got)
+			}
+			// The role description is what an assistive technology actually says, so it must no longer be the one a
+			// text field gets.
+			textFieldDescription := GoStringFromNSString(axRoleDescriptionFor(AppKitString(axRoleTextField), 0))
+			if described := GoStringFromNSString(spin.Send(Sel("accessibilityRoleDescription"))); described == "" ||
+				described == textFieldDescription {
+				t.Errorf("spin button role description = %q, want the platform's own stepper description", described)
+			}
+			if got := GoStringFromNSString(spin.Send(Sel("accessibilityLabel"))); got != "Count" {
+				t.Errorf("spin button label = %q, want Count", got)
+			}
+			if got := objc.Send[int64](spin, Sel("accessibilityNumberOfCharacters")); got != 1 {
+				t.Errorf("spin button character count = %d, want 1", got)
+			}
+			if got := Float64FromNSNumber(spin.Send(Sel("accessibilityMaxValue"))); got != 9 {
+				t.Errorf("spin button max = %v, want 9", got)
+			}
+		})
+	})
+}
+
+// TestAXTableCounts proves a container reports how many rows and columns it holds rather than how many it happened to
+// describe. Only the rows that can be seen, plus the ones that are selected, are described, so counting the row
+// elements would tell an assistive technology a table is as tall as its view port while accessibilityIndex goes on
+// reporting the absolute row number — "row 4,101 of 2". A container that reported no counts falls back to what can be
+// counted, which is all a container of that kind has.
+func TestAXTableCounts(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 300 + iota
+			tableID
+			rowAID
+			rowBID
+			cellA1ID
+			cellA2ID
+			gridID
+			gridRowID
+			gridCellID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{tableID, gridID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				// A table of ten thousand rows showing two of them, which is what a scrolled table looks like.
+				tableID: {
+					ID: tableID, Parent: rootID, Children: []accessibility.NodeID{rowAID, rowBID}, Role: role.Table,
+					Name: "Big", Bounds: geom.NewRect(0, 0, 200, 40), RowCount: 10000, ColumnCount: 3,
+				},
+				rowAID: {
+					ID: rowAID, Parent: tableID, Children: []accessibility.NodeID{cellA1ID, cellA2ID}, Role: role.Row,
+					Bounds: geom.NewRect(0, 0, 200, 20), RowIndex: 4100, Level: 1,
+				},
+				cellA1ID: {
+					ID: cellA1ID, Parent: rowAID, Role: role.Cell, Bounds: geom.NewRect(0, 0, 100, 20),
+					RowIndex: 4100, ColumnIndex: 0,
+				},
+				cellA2ID: {
+					ID: cellA2ID, Parent: rowAID, Role: role.Cell, Bounds: geom.NewRect(100, 0, 100, 20),
+					RowIndex: 4100, ColumnIndex: 1,
+				},
+				rowBID: {
+					ID: rowBID, Parent: tableID, Role: role.Row, Bounds: geom.NewRect(0, 20, 200, 20),
+					RowIndex: 4101, Level: 1,
+				},
+				// A container that reported neither count: both are counted from what it holds.
+				gridID: {
+					ID: gridID, Parent: rootID, Children: []accessibility.NodeID{gridRowID}, Role: role.Table,
+					Name: "Small", Bounds: geom.NewRect(0, 40, 200, 20),
+				},
+				gridRowID: {
+					ID: gridRowID, Parent: gridID, Children: []accessibility.NodeID{gridCellID}, Role: role.Row,
+					Bounds: geom.NewRect(0, 40, 200, 20), RowIndex: 0, Level: 1,
+				},
+				gridCellID: {
+					ID: gridCellID, Parent: gridRowID, Role: role.Cell, Name: "Only",
+					Bounds: geom.NewRect(0, 40, 200, 20), RowIndex: 0, ColumnIndex: 0,
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 2)
+			table, grid := children[0], children[1]
+			if got := objc.Send[int64](table, Sel("accessibilityRowCount")); got != 10000 {
+				t.Errorf("table row count = %d, want 10000", got)
+			}
+			if got := objc.Send[int64](table, Sel("accessibilityColumnCount")); got != 3 {
+				t.Errorf("table column count = %d, want 3", got)
+			}
+			// The described subset is unchanged: the count is the whole point, since the rows are not all there.
+			if rows := IDsFromNSArray(table.Send(Sel("accessibilityRows"))); len(rows) != 2 {
+				t.Errorf("table reported %d rows, want the 2 that are described", len(rows))
+			}
+			// The index and the count have to be measured against the same thing for "row N of M" to make sense.
+			if got := objc.Send[int64](a.Element(rowAID), Sel("accessibilityIndex")); got != 4100 {
+				t.Errorf("first described row index = %d, want 4100", got)
+			}
+			if got := objc.Send[int64](grid, Sel("accessibilityRowCount")); got != 1 {
+				t.Errorf("uncounted container row count = %d, want the 1 row it holds", got)
+			}
+			if got := objc.Send[int64](grid, Sel("accessibilityColumnCount")); got != 1 {
+				t.Errorf("uncounted container column count = %d, want the 1 cell its row holds", got)
+			}
+			// Something that is not a container holds no rows and no columns.
+			if got := objc.Send[int64](a.Element(cellA1ID), Sel("accessibilityRowCount")); got != 0 {
+				t.Errorf("cell row count = %d, want 0", got)
+			}
+		})
+	})
+}
+
+// TestAXExpandedNotificationIsRowOnly proves only a row sends the outline-row expansion notifications. macOS has
+// nothing but NSAccessibilityRowExpanded/RowCollapsedNotification for a state change of this kind, and they say "an
+// outline row opened": a disclosure triangle, a pop-up button or a combo box opening must not claim to be one, the way
+// every other row-oriented path in the adapter already refuses to.
+func TestAXExpandedNotificationIsRowOnly(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 400 + iota
+			outlineID
+			rowID
+			popupID
+			discID
+		)
+		build := func(expanded bool) *accessibility.Tree {
+			return &accessibility.Tree{
+				Nodes: map[accessibility.NodeID]*accessibility.Node{
+					rootID: {
+						ID: rootID, Children: []accessibility.NodeID{outlineID, popupID, discID}, Role: role.Window,
+						Bounds: geom.NewRect(0, 0, 320, 240),
+					},
+					outlineID: {
+						ID: outlineID, Parent: rootID, Children: []accessibility.NodeID{rowID}, Role: role.Tree,
+						Name: "Items", Bounds: geom.NewRect(0, 0, 200, 20), RowCount: 1,
+					},
+					rowID: {
+						ID: rowID, Parent: outlineID, Role: role.Row, Name: "One",
+						Bounds: geom.NewRect(0, 0, 200, 20), RowIndex: 0, Level: 1, Expandable: true,
+						Expanded: expanded,
+					},
+					popupID: {
+						ID: popupID, Parent: rootID, Role: role.PopupButton, Name: "Choose",
+						Bounds: geom.NewRect(0, 20, 100, 20), Expandable: true, Expanded: expanded,
+					},
+					discID: {
+						ID: discID, Parent: rootID, Role: role.DisclosureTriangle,
+						Bounds: geom.NewRect(0, 40, 16, 16), Expandable: true, Expanded: expanded,
+					},
+				},
+				Root:       rootID,
+				Generation: 1,
+			}
+		}
+		closed := build(false)
+		v, a, cleanup := newAXAdapterWithTree(t, closed)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// Nothing is posted about an element nothing has asked about, so every element has to exist first.
+		WithPool(func() {
+			for _, child := range axTestChildren(t, v, 3) {
+				child.Send(Sel("accessibilityChildren"))
+			}
+		})
+		if a.Element(rowID) == 0 {
+			t.Fatal("the row's element was never created")
+		}
+		ensureAXNotifyFuncs()
+		realPost := axPostNotify
+		defer func() { axPostNotify = realPost }()
+		type posted struct {
+			name    string
+			element objc.ID
+		}
+		var notifications []posted
+		axPostNotify = func(element, notification objc.ID) {
+			notifications = append(notifications, posted{element: element, name: GoStringFromNSString(notification)})
+			realPost(element, notification)
+		}
+		opened := build(true)
+		opened.Generation = 2
+		a.Publish(opened, accessibility.Diff(closed, opened))
+		wantExpanded := GoStringFromNSString(AppKitString(axNotifyRowExpanded))
+		wantCollapsed := GoStringFromNSString(AppKitString(axNotifyRowCollapsed))
+		var expandedOn []objc.ID
+		for _, p := range notifications {
+			if p.name == wantExpanded || p.name == wantCollapsed {
+				expandedOn = append(expandedOn, p.element)
+			}
+		}
+		if len(expandedOn) != 1 || expandedOn[0] != a.Element(rowID) {
+			t.Errorf("row expansion was reported on %v, want just the row %#x", expandedOn, a.Element(rowID))
+		}
+		// Closing everything again is the same story from the other direction.
+		notifications = nil
+		reclosed := build(false)
+		reclosed.Generation = 3
+		a.Publish(reclosed, accessibility.Diff(opened, reclosed))
+		expandedOn = nil
+		for _, p := range notifications {
+			if p.name == wantExpanded || p.name == wantCollapsed {
+				expandedOn = append(expandedOn, p.element)
+			}
+		}
+		if len(expandedOn) != 1 || expandedOn[0] != a.Element(rowID) {
+			t.Errorf("row collapse was reported on %v, want just the row %#x", expandedOn, a.Element(rowID))
+		}
+	})
+}
+
+// TestAXRowWithoutParentNode proves the row helpers tolerate a row whose parent is not in the snapshot. Both
+// axDisclosedRowsOf and axDisclosingRowOf look their row's siblings up through the unignored parent, which is zero for
+// a row that is the root or whose ancestor chain holds nothing the snapshot knows; asking the snapshot for node zero
+// yields nil, and this runs inside an AppKit accessibility callback, where a nil dereference takes the process with it.
+func TestAXRowWithoutParentNode(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 500 + iota
+			orphanID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{orphanID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				// A row the snapshot reaches as a child of the root, but which names no parent of its own.
+				orphanID: {
+					ID: orphanID, Role: role.Row, Name: "Stray", Bounds: geom.NewRect(0, 0, 200, 20),
+					RowIndex: 0, Level: 2, Expandable: true, Expanded: true,
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		if got := tree.UnignoredParent(orphanID); got != 0 {
+			t.Fatalf("the orphaned row's unignored parent = %d, want 0 for this test to mean anything", got)
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			orphan := axTestChildren(t, v, 1)[0]
+			if got := NSArrayCount(orphan.Send(Sel("accessibilityDisclosedRows"))); got != 0 {
+				t.Errorf("the orphaned row discloses %d rows, want 0", got)
+			}
+			if got := orphan.Send(Sel("accessibilityDisclosedByRow")); got != 0 {
+				t.Errorf("the orphaned row is disclosed by %#x, want nothing", got)
+			}
+			if got := NSArrayCount(orphan.Send(Sel("accessibilityRows"))); got != 0 {
+				t.Errorf("the orphaned row reported %d rows of its own, want 0", got)
+			}
+		})
+	})
+}
+
+// TestAXInlineActionPublishDefersElementRelease proves the adapter survives being re-entered by the request it is
+// carrying out. The macOS binding runs the requests an assistive technology reads the result of immediately —
+// focusing, selecting, scrolling — which lays the window out and publishes a new snapshot before the adapter has
+// returned to AppKit, so Publish, postEvents and destroyElement all run inside the accessibility callback. The element
+// whose node that publish drops is the element AppKit is calling the method on: releasing it there would free it under
+// AppKit's feet, so it is held until the request is done and then autoreleased, which leaves it alive until the run
+// loop's own pool is drained.
+func TestAXInlineActionPublishDefersElementRelease(t *testing.T) {
+	defer func() { AccessibilityActionCallback = nil }()
+	runOnMain(func() {
+		v, a, tree, cleanup := newAXTestAdapter(t)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			button := axTestChildren(t, v, 3)[0]
+			if button != a.Element(axTestButton) {
+				t.Fatalf("the first child %#x is not the button's element %#x", button, a.Element(axTestButton))
+			}
+			// The button goes away as a result of being pressed, which is what a button that dismisses its own panel
+			// does, and the new snapshot is published from inside the callback the way performAccessibilityAction does.
+			next := newAXTestTree()
+			next.Generation = 2
+			delete(next.Nodes, axTestButton)
+			next.Nodes[axTestRoot].Children = []accessibility.NodeID{axTestField, axTestGroup}
+			var inflight int
+			var deferredDuring []objc.ID
+			AccessibilityActionCallback = func(_ Window, _ accessibility.ActionRequest) {
+				a.Publish(next, accessibility.Diff(tree, next))
+				inflight = a.inflight
+				deferredDuring = slices.Clone(a.deferred)
+			}
+			if !objc.Send[bool](button, Sel("accessibilityPerformPress")) {
+				t.Fatal("accessibilityPerformPress on the button = false, want true")
+			}
+			if inflight != 1 {
+				t.Errorf("the adapter counted %d requests in flight while carrying one out, want 1", inflight)
+			}
+			if len(deferredDuring) != 1 || deferredDuring[0] != button {
+				t.Errorf("the element dropped mid-request was %v, want it held back as just the button %#x",
+					deferredDuring, button)
+			}
+			if len(a.deferred) != 0 {
+				t.Errorf("%d elements were still held back after the request finished, want 0", len(a.deferred))
+			}
+			if a.inflight != 0 {
+				t.Errorf("the adapter still counts %d requests in flight, want 0", a.inflight)
+			}
+			if a.Element(axTestButton) != 0 {
+				t.Error("the adapter still hands out an element for the node that left the tree")
+			}
+			// The element AppKit was standing on is still answerable: it outlives the request and reports, safely, that
+			// it no longer speaks for anything.
+			if objc.Send[bool](button, Sel("isAccessibilityElement")) {
+				t.Error("the released element still reports itself as an accessibility element")
+			}
+			if got := button.Send(Sel("accessibilityParent")); got != 0 {
+				t.Errorf("the released element's parent = %#x, want nothing", got)
 			}
 		})
 	})

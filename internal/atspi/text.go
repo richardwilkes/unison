@@ -21,12 +21,11 @@ import (
 const bulletRune = '•'
 
 // textInterface returns the org.a11y.atspi.Text interface of a node that holds navigable text, which is how an assistive
-// technology reads a control a character, a line or a selection at a time rather than as one string.
+// technology reads a control a character, a word, a line or a selection at a time rather than as one string.
 //
-// This is the V1 subset. Every offset is a rune index, which is what AT-SPI calls a character, and the only granularity
-// that is worked out is LINE, from the lines the snapshot carries; the rest answer with the line as well. Nothing here
-// changes the control: moving the caret or the selection is handed to the user interface thread and answered
-// optimistically, exactly as the other interfaces do.
+// Every offset is a rune index, which is what AT-SPI calls a character. Nothing here changes the control: moving the
+// caret or the selection is handed to the user interface thread and answered optimistically, exactly as the other
+// interfaces do.
 //
 // Four of the interface's methods are left out, since nothing Unison reports could answer them with more than a
 // refusal: GetBoundedRanges, which asks which ranges of text lie within a rectangle; GetDefaultAttributeSet, which is
@@ -38,10 +37,10 @@ func (o *nodeObject) textInterface() *dbus.Interface {
 		Name: InterfaceText,
 		Methods: []*dbus.Method{
 			{Name: "GetText", In: "ii", Out: "s", Handle: o.getText},
-			{Name: "GetStringAtOffset", In: "iu", Out: textRangeSignature, Handle: o.getLineAtOffset},
-			{Name: "GetTextAtOffset", In: "iu", Out: textRangeSignature, Handle: o.getLineAtOffset},
-			{Name: "GetTextBeforeOffset", In: "iu", Out: textRangeSignature, Handle: o.getLineAtOffset},
-			{Name: "GetTextAfterOffset", In: "iu", Out: textRangeSignature, Handle: o.getLineAtOffset},
+			{Name: "GetStringAtOffset", In: "iu", Out: textRangeSignature, Handle: o.getStringAtOffset},
+			{Name: "GetTextAtOffset", In: "iu", Out: textRangeSignature, Handle: o.getTextAtOffset},
+			{Name: "GetTextBeforeOffset", In: "iu", Out: textRangeSignature, Handle: o.getTextBeforeOffset},
+			{Name: "GetTextAfterOffset", In: "iu", Out: textRangeSignature, Handle: o.getTextAfterOffset},
 			{Name: "GetCharacterAtOffset", In: "i", Out: "i", Handle: o.getCharacterAtOffset},
 			{Name: "SetCaretOffset", In: "i", Out: "b", Handle: o.setCaretOffset},
 			{Name: "GetNSelections", Out: "i", Handle: o.getNSelections},
@@ -112,6 +111,16 @@ func (o *nodeObject) lines(count int) []accessibility.Line {
 	}
 }
 
+// content returns the node's text as the questions about it need it: the characters it holds and the lines they are
+// laid out over, each worked out once. Both are built from scratch every time they are asked for — the runes are a
+// fresh conversion of the whole string, rewritten rune by rune for a protected node, and the line slice is synthesized
+// for any control that has not been measured — so anything that needs them more than once takes one of these along
+// rather than asking again.
+func (o *nodeObject) content() textContent {
+	runes := o.textRunes()
+	return textContent{runes: runes, lines: o.lines(len(runes))}
+}
+
 // lineAt returns the index of the line that holds an offset. An offset at the very end of the text belongs to the last
 // line, which is where the caret sits once everything has been typed.
 func lineAt(lines []accessibility.Line, offset int) int {
@@ -143,25 +152,45 @@ func (o *nodeObject) getText(call *dbus.Call) {
 	call.Reply(string(runes[start:end]))
 }
 
-// getLineAtOffset implements org.a11y.atspi.Text.GetStringAtOffset and GetTextAtOffset, along with GetTextBeforeOffset
-// and GetTextAfterOffset.
-//
-// V1 works in lines only: the granularity or boundary type the caller asked for is ignored and the line holding the
-// offset is what comes back, including the line feed that ends it, which is what AT-SPI's LINE_START boundary means.
-// Before and after answer with the same line rather than with the neighboring one, since a screen reader that wants to
-// move by line asks for the line at the offset it has moved to.
-func (o *nodeObject) getLineAtOffset(call *dbus.Call) {
+// rangePicker chooses the piece of a node's content that one of the four methods answering with a range hands back.
+type rangePicker func(content *textContent, unit textUnit, offset int) textRange
+
+// getStringAtOffset implements org.a11y.atspi.Text.GetStringAtOffset, whose second argument is an AtspiTextGranularity.
+// It is the newer of the two ways to ask the same question and the one a current assistive technology uses.
+func (o *nodeObject) getStringAtOffset(call *dbus.Call) {
+	o.replyWithRange(call, (*textContent).rangeAt, unitForGranularity)
+}
+
+// getTextAtOffset implements org.a11y.atspi.Text.GetTextAtOffset, whose second argument is an AtspiTextBoundaryType.
+func (o *nodeObject) getTextAtOffset(call *dbus.Call) {
+	o.replyWithRange(call, (*textContent).rangeAt, unitForBoundary)
+}
+
+// getTextBeforeOffset implements org.a11y.atspi.Text.GetTextBeforeOffset, which answers with the unit before the one
+// holding the offset rather than with that one, so that a client walking backwards through the content advances.
+func (o *nodeObject) getTextBeforeOffset(call *dbus.Call) {
+	o.replyWithRange(call, (*textContent).rangeBefore, unitForBoundary)
+}
+
+// getTextAfterOffset implements org.a11y.atspi.Text.GetTextAfterOffset, which answers with the unit after the one
+// holding the offset.
+func (o *nodeObject) getTextAfterOffset(call *dbus.Call) {
+	o.replyWithRange(call, (*textContent).rangeAfter, unitForBoundary)
+}
+
+// replyWithRange answers one of the four methods that hand back a piece of the text along with where it came from.
+// pick chooses the range from the content, the unit the caller asked for and the offset it asked about, and interpret
+// turns the caller's second argument into that unit, since the newest of the four methods numbers the units
+// differently from the three that predate it.
+func (o *nodeObject) replyWithRange(call *dbus.Call, pick rangePicker, interpret func(value uint32) textUnit) {
 	args, ok := callArgs(call)
 	if !ok {
 		return
 	}
-	runes := o.textRunes()
-	offset := clamp(int(int32Arg(args, 0)), 0, len(runes))
-	lines := o.lines(len(runes))
-	line := lines[lineAt(lines, offset)]
-	start := clamp(line.Start, 0, len(runes))
-	end := clamp(line.End, start, len(runes))
-	call.Reply(string(runes[start:end]), int32(start), int32(end))
+	content := o.content()
+	offset := clamp(int(int32Arg(args, 0)), 0, len(content.runes))
+	r := pick(&content, interpret(uint32Arg(args, 1)), offset)
+	call.Reply(string(content.runes[r.start:r.end]), int32(r.start), int32(r.end))
 }
 
 // getCharacterAtOffset implements org.a11y.atspi.Text.GetCharacterAtOffset, which reports the code point rather than a
@@ -283,33 +312,38 @@ func (o *nodeObject) getCharacterExtents(call *dbus.Call) {
 	if !ok {
 		return
 	}
-	r, ok := o.characterBounds(int(int32Arg(args, 0)))
-	if !ok {
+	content := o.content()
+	offset := int(int32Arg(args, 0))
+	if offset < 0 || offset >= len(content.runes) {
 		call.Reply(int32(0), int32(0), int32(0), int32(0))
 		return
 	}
-	x, y, w, h := o.data.rectExtents(o.node, r, coordArg(args, 1))
+	line := content.lines[lineAt(content.lines, offset)]
+	x, y, w, h := o.data.rectExtents(o.node, o.lineSpan(&line, offset, offset+1), coordArg(args, 1))
 	call.Reply(x, y, w, h)
 }
 
 // getRangeExtents implements org.a11y.atspi.Text.GetRangeExtents, which is the smallest rectangle that holds every
 // character of the range. A range that holds no characters has no area.
+//
+// The union is taken a line at a time rather than a character at a time. Asking for each character's own area in turn
+// would convert the whole string to runes and rebuild the line slice once per character, which made
+// GetRangeExtents(0, -1) — the call an assistive technology makes to find out where a whole document sits — quadratic
+// in the length of the content, on the one goroutine that answers every other question the bus asks.
 func (o *nodeObject) getRangeExtents(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
 		return
 	}
-	runes := o.textRunes()
-	start := clamp(int(int32Arg(args, 0)), 0, len(runes))
+	content := o.content()
+	start := clamp(int(int32Arg(args, 0)), 0, len(content.runes))
 	end := int(int32Arg(args, 1))
-	if end < 0 || end > len(runes) {
-		end = len(runes)
+	if end < 0 || end > len(content.runes) {
+		end = len(content.runes)
 	}
 	var union geom.Rect
-	for offset := start; offset < end; offset++ {
-		if r, exists := o.characterBounds(offset); exists {
-			union = union.Union(r)
-		}
+	for i := range content.lines {
+		union = union.Union(o.lineSpan(&content.lines[i], start, end))
 	}
 	if union.Empty() {
 		call.Reply(int32(0), int32(0), int32(0), int32(0))
@@ -319,22 +353,26 @@ func (o *nodeObject) getRangeExtents(call *dbus.Call) {
 	call.Reply(x, y, w, h)
 }
 
-// characterBounds returns the area of one character in the same window-local logical space as the node's own Bounds,
-// and whether there is a character there at all. A line's advances are measured from the line's own left edge, and the
-// line's bounds from the node's top left corner, so both have to be added to reach the space the bounds are in.
-func (o *nodeObject) characterBounds(offset int) (r geom.Rect, ok bool) {
-	runes := o.textRunes()
-	if offset < 0 || offset >= len(runes) {
-		return geom.Rect{}, false
+// lineSpan returns the area that the part of a rune range falling on one line occupies, in the same window-local
+// logical space as the node's own Bounds. It is empty when the range does not reach the line at all and when what it
+// covers there takes up no room, which a line feed does not. A line's advances are measured from the line's own left
+// edge, and the line's bounds from the node's top left corner, so both have to be added to reach the space the bounds
+// are in.
+func (o *nodeObject) lineSpan(line *accessibility.Line, start, end int) geom.Rect {
+	from := max(start, line.Start)
+	to := min(end, line.End)
+	if from >= to {
+		return geom.Rect{}
 	}
-	lines := o.lines(len(runes))
-	line := lines[lineAt(lines, offset)]
+	// The advances hold the offset of every rune boundary on the line, so the leading edge of the range's first
+	// character and the trailing edge of its last are two of them. A line that was never measured has none, and stands
+	// in for whatever is asked about with its whole width.
 	left, right := float32(0), line.Bounds.Width
-	if i := offset - line.Start; i >= 0 && i+1 < len(line.Advances) {
-		left, right = line.Advances[i], line.Advances[i+1]
+	if first, last := from-line.Start, to-line.Start; first >= 0 && last < len(line.Advances) {
+		left, right = line.Advances[first], line.Advances[last]
 	}
 	return geom.NewRect(o.node.Bounds.X+line.Bounds.X+left, o.node.Bounds.Y+line.Bounds.Y, right-left,
-		line.Bounds.Height), true
+		line.Bounds.Height)
 }
 
 // getOffsetAtPoint implements org.a11y.atspi.Text.GetOffsetAtPoint. A point that is not on a line of this node's text
@@ -353,14 +391,15 @@ func (o *nodeObject) getOffsetAtPoint(call *dbus.Call) {
 		call.Reply(int32(-1))
 		return
 	}
-	runes := o.textRunes()
-	for _, line := range o.lines(len(runes)) {
+	content := o.content()
+	for i := range content.lines {
+		line := &content.lines[i]
 		// Only the vertical span picks the line: a point to the right of the last character of a line is still on that
 		// line as far as an assistive technology hunting for the nearest character is concerned.
 		if pt.Y < line.Bounds.Y || pt.Y >= line.Bounds.Bottom() {
 			continue
 		}
-		call.Reply(int32(offsetOnLine(&line, pt.X-line.Bounds.X, len(runes))))
+		call.Reply(int32(offsetOnLine(line, pt.X-line.Bounds.X, len(content.runes))))
 		return
 	}
 	call.Reply(int32(-1))

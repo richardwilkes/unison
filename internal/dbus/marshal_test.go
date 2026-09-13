@@ -226,9 +226,10 @@ func TestMarshalArraySizeLimit(t *testing.T) {
 // The named types below exercise the reflection-based fallbacks, which is how the AT-SPI layer's own enumerated types
 // will arrive here.
 type (
-	myLevel int32
-	myFlags uint16
-	myText  string
+	myLevel   int32
+	myFlags   uint16
+	myText    string
+	myEnabled bool
 )
 
 func TestMarshalNamedTypes(t *testing.T) {
@@ -239,6 +240,7 @@ func TestMarshalNamedTypes(t *testing.T) {
 		plain any
 		sig   Signature
 	}{
+		{sig: "b", named: myEnabled(true), plain: true},
 		{sig: "i", named: myLevel(-5), plain: int32(-5)},
 		{sig: "q", named: myFlags(7), plain: uint16(7)},
 		{sig: "s", named: myText("x"), plain: "x"},
@@ -257,9 +259,14 @@ func TestMarshalNamedTypes(t *testing.T) {
 		c.NoError(err, one.sig)
 		c.Equal(plain, named, one.sig)
 	}
-	sig, err := SignatureOf(myLevel(1), myFlags(2), myText("3"), []myText{"4"})
+	sig, err := SignatureOf(myLevel(1), myFlags(2), myText("3"), []myText{"4"}, myEnabled(false))
 	c.NoError(err)
-	c.Equal(Signature("iqsas"), sig)
+	c.Equal(Signature("iqsasb"), sig)
+	// Whatever SignatureOf derives a signature for must also marshal with it, which a named bool did not always do.
+	_, err = Marshal(sig, myLevel(1), myFlags(2), myText("3"), []myText{"4"}, myEnabled(false))
+	c.NoError(err)
+	_, err = Marshal("b", "not a boolean")
+	c.HasError(err)
 	_, err = Marshal("y", myFlags(300))
 	c.HasError(err)
 	_, err = Marshal("d", "not a number")
@@ -301,6 +308,10 @@ func TestMarshalDictEntryForms(t *testing.T) {
 		[]any{Struct{"a"}},
 		[]any{[]any{"a", "b", "c"}},
 		[]any{"not an entry"},
+		// An explicitly typed array that contradicts the dictionary it is being marshaled into is refused, just as it
+		// is for any other array.
+		Array{Elem: "{si}", Values: []any{DictEntry{Key: "a", Value: "b"}}},
+		Array{Elem: "ss", Values: []any{DictEntry{Key: "a", Value: "b"}}},
 	} {
 		_, marshalErr := Marshal(stringDictSig, one)
 		c.HasError(marshalErr, "%T", one)

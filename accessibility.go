@@ -68,9 +68,11 @@ var (
 	// when the variable was absent or unparsable. Parsed once during start(), so it is written before anything can read
 	// it and never written again.
 	accessibilityEnv int8
-	// noAccessibility is set by the NoAccessibility startup option and refuses activation just as a false
-	// AccessibilityEnvKey does.
-	noAccessibility bool
+	// noAccessibility is set by the NoAccessibility startup option and by SetAccessibilityEnabled, and refuses
+	// activation just as a false AccessibilityEnvKey does. It is atomic because AccessibilityEnabled reports what it
+	// holds and, like the SetAccessibilityEnabled that writes it, may be called from any goroutine; only the UI thread
+	// ever writes it.
+	noAccessibility atomic.Bool
 	// axNextID is the process-wide source of node ids. Ids are handed out from one counter rather than one per window,
 	// so a NodeID identifies a node without needing to be qualified by the window it belongs to. UI thread only.
 	axNextID uint64
@@ -86,6 +88,16 @@ var (
 // It is held by value in Panel.Accessibility, so it is set in place rather than allocated:
 //
 //	p.Accessibility.Name = i18n.Text("Search")
+//
+// Set the fields one at a time, as above, rather than assigning the struct as a whole. Alongside what a panel says
+// about itself it carries that panel's identity — the node id an assistive technology knows the panel by, and the ids
+// of any virtual children it has handed out — and that identity belongs to the one panel holding it. Assigning a fresh
+// struct (p.Accessibility = AccessibilityInfo{Name: "x"}) throws the identity away, and the panel is described under a
+// new id, which an assistive technology reads as the old element having been removed and a new one put in its place:
+// whatever it was saying about the old one stops, and the focus it was tracking is lost. Copying one panel's
+// information onto another (q.Accessibility = p.Accessibility) would hand two live panels the same identity, which is
+// caught and repaired — the second panel to be described is given a fresh id — but the copy still gains nothing, since
+// the ids cannot be shared.
 //
 // The fields are ordered for a compact memory layout rather than by importance, since every panel in every window
 // carries one of these whether or not it ever has anything to say.
@@ -104,6 +116,9 @@ type AccessibilityInfo struct {
 	// one by. It is allocated on first use by AccessibilityBuilder.AddVirtualChild and swept when it outgrows what the
 	// panel is actually using, so a table whose rows churn cannot grow it without bound.
 	virtual map[any]axVirtualEntry
+	// owner is the panel id and virtual belong to, recorded when the id was handed out, so that identity copied onto
+	// another panel by assigning the struct as a whole is recognized as not being that panel's own. See axIDFor.
+	owner *Panel
 	// Name is what an assistive technology announces for this panel. It overrides whatever name would otherwise be
 	// derived, and is the one field most panels that need attention should set.
 	Name string
@@ -234,6 +249,16 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 		Parent: parent,
 	}
 	fill(node)
+	if !b.panel.Enabled() {
+		// A virtual child has no existence apart from the panel that described it, and every request aimed at one is
+		// carried out by that panel, so a disabled panel's children cannot be acted on either — the rows of a disabled
+		// table are no more selectable than the table is. Saying so here keeps what is offered in step with what
+		// axDispatchAction will actually do, without every collection widget having to remember it.
+		node.Disabled = true
+	}
+	if node.Disabled {
+		node.Actions &= axDisabledActions
+	}
 	raw := b.panel.RectToRoot(node.Bounds)
 	node.Bounds = raw
 	node.Offscreen = !raw.Intersects(b.clip) && !raw.Empty()
@@ -284,7 +309,7 @@ func (b *AccessibilityBuilder) virtualID(key any) accessibility.NodeID {
 // the refusal. It is the programmatic equivalent of setting AccessibilityEnvKey to a false value.
 func NoAccessibility() StartupOption {
 	return func(_ startupOption) error {
-		noAccessibility = true
+		noAccessibility.Store(true)
 		return nil
 	}
 }
@@ -304,10 +329,10 @@ func SetAccessibilityEnabled(enabled bool) {
 		InvokeTask(func() { SetAccessibilityEnabled(enabled) })
 		return
 	}
-	if noAccessibility == !enabled {
+	if noAccessibility.Load() == !enabled {
 		return
 	}
-	noAccessibility = !enabled
+	noAccessibility.Store(!enabled)
 	if !enabled {
 		deactivateAccessibility()
 	}
@@ -317,8 +342,10 @@ func SetAccessibilityEnabled(enabled bool) {
 // AccessibilityEnabled reports whether accessibility support is permitted: neither the NoAccessibility startup option,
 // SetAccessibilityEnabled(false) nor a false AccessibilityEnvKey has refused it. It says nothing about whether an
 // assistive technology is actually being served; IsAccessibilityActive does that.
+//
+// It is safe to call from any goroutine, as is SetAccessibilityEnabled.
 func AccessibilityEnabled() bool {
-	return !noAccessibility && accessibilityEnv >= 0
+	return !noAccessibility.Load() && accessibilityEnv >= 0
 }
 
 // IsAccessibilityActive returns true if an assistive technology is being served, which is when snapshots of each
@@ -372,7 +399,7 @@ func applyAccessibilityEnvRequest() {
 // sitting idle when an assistive technology starts up would not be described until something else happened to make it
 // redraw.
 func activateAccessibility() bool {
-	if noAccessibility || accessibilityEnv < 0 {
+	if noAccessibility.Load() || accessibilityEnv < 0 {
 		return false
 	}
 	if !accessibilityActive.Swap(true) {
@@ -400,12 +427,19 @@ func deactivateAccessibility() {
 
 // axIDFor returns the node id of a panel, assigning one if it does not have it yet. A panel keeps its id for life, so
 // an assistive technology's notion of an element survives the snapshots it appears in.
+//
+// An id that arrived by having another panel's AccessibilityInfo assigned onto this one is not this panel's to use, and
+// is replaced here along with the virtual-child ids that came with it. Two live panels sharing an id would otherwise
+// describe themselves into the same entry of the tree and appear as a child of two different parents, which is worse
+// than the lost identity the copy has already cost.
 func axIDFor(p *Panel) accessibility.NodeID {
 	if p == nil {
 		return 0
 	}
-	if p.Accessibility.id == 0 {
+	if p.Accessibility.id == 0 || p.Accessibility.owner != p {
 		p.Accessibility.id = axAllocID()
+		p.Accessibility.owner = p
+		p.Accessibility.virtual = nil
 	}
 	return p.Accessibility.id
 }

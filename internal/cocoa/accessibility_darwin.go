@@ -20,10 +20,20 @@ package cocoa
 // activate accessibility support (see view_darwin.go), and nothing runs afterwards except in answer to a query, a
 // published snapshot, or a window being torn down.
 //
-// Actions never wait. An assistive technology's request is handed to AccessibilityActionCallback, which posts it to the
-// UI thread's task queue and returns immediately, and the answer given to the assistive technology is optimistic: "yes,
-// this element advertises that action". Waiting would deadlock whenever the UI thread was itself inside a modal loop or
-// a drag.
+// An assistive technology's request is handed to AccessibilityActionCallback, and the answer given back is optimistic:
+// "yes, this element advertises that action" rather than "yes, that has been done". What happens next is the callback's
+// to decide. The root package queues anything that may run arbitrary application code — a press, which can open a modal
+// dialog — since an assistive technology must never be left waiting on that, but it carries out the requests that
+// merely move the focus, the selection or the view on the spot, because VoiceOver reads the result straight after
+// asking and would otherwise be handed the state from before its own request.
+//
+// So an inline request re-enters this file: the callback lays the window out and publishes a new snapshot before
+// returning, which runs Publish, and with it postEvents and destroyElement, from inside the AppKit callback the request
+// arrived through. Two things make that safe. The adapter holds no state across a callback that the publish could
+// invalidate — every answer is read from a.tree at the moment it is asked, and the elements an in-flight
+// setAccessibilitySelectedRows: is working through are retained by the NSArray AppKit passed in. And an element whose
+// node leaves the tree during such a publish is autoreleased rather than released outright (see releaseElement), so it
+// survives until AppKit drains the run loop's pool, well after the accessibility method it is standing in has returned.
 //
 // The window's root node is represented by the content view rather than by an element of its own: the content view
 // answers accessibilityChildren, accessibilityFocusedUIElement and accessibilityHitTest: for it, reports itself as an
@@ -72,6 +82,7 @@ const (
 	axRoleGroup              = "NSAccessibilityGroupRole"
 	axRoleHelpTag            = "NSAccessibilityHelpTagRole"
 	axRoleImage              = "NSAccessibilityImageRole"
+	axRoleIncrementor        = "NSAccessibilityIncrementorRole"
 	axRoleLink               = "NSAccessibilityLinkRole"
 	axRoleList               = "NSAccessibilityListRole"
 	axRoleMenu               = "NSAccessibilityMenuRole"
@@ -142,8 +153,15 @@ const axHeadingCandidateRole = "AXHeading"
 type AXAdapter struct {
 	tree     *accessibility.Tree
 	elements map[accessibility.NodeID]objc.ID
+	// deferred holds elements whose release is waiting for the accessibility callback that dropped them to return; see
+	// releaseElement.
+	deferred []objc.ID
 	view     View
 	wnd      Window
+	// inflight counts the requests being carried out inside an AppKit accessibility callback right now. It is more than
+	// zero only between handing a request to AccessibilityActionCallback and that callback returning, which on this
+	// platform is when a request may be carried out and a new snapshot published before AppKit is answered.
+	inflight int
 }
 
 // axAdapters holds the adapter for each content view that has one. It is an ordinary map rather than a synchronized
@@ -234,9 +252,48 @@ func (a *AXAdapter) Shutdown() {
 		// these must learn it is gone rather than go on asking it questions it can no longer answer.
 		delete(a.elements, id)
 		NSAccessibilityPostNotification(element, AppKitString(axNotifyUIElementDestroyed))
-		Release(element)
+		a.releaseElement(element)
 	}
 	a.tree = nil
+}
+
+// dispatch hands a request to the action callback with the adapter marked as having one in flight, and lets go of
+// whatever that request stranded once it is done.
+//
+// The mark matters because the callback may carry the request out immediately — that is what this platform does for the
+// requests VoiceOver reads the result of straight away — and so may publish a new snapshot, and drop elements, before
+// AppKit has been answered. See releaseElement and the file comment.
+func (a *AXAdapter) dispatch(req accessibility.ActionRequest) {
+	a.inflight++
+	defer func() {
+		a.inflight--
+		if a.inflight == 0 {
+			a.drainDeferred()
+		}
+	}()
+	AccessibilityActionCallback(a.wnd, req)
+}
+
+// releaseElement lets go of the adapter's reference to an element. While a request is in flight the release is deferred
+// instead: the element may be the very one AppKit is calling a method on, and releasing it there would free it under
+// AppKit's feet. See drainDeferred.
+func (a *AXAdapter) releaseElement(element objc.ID) {
+	if a.inflight != 0 {
+		a.deferred = append(a.deferred, element)
+		return
+	}
+	Release(element)
+}
+
+// drainDeferred lets go of the elements releaseElement held on to, by autoreleasing rather than releasing them. The
+// difference is the point of the exercise: autorelease hands them to the enclosing pool, which is AppKit's own run-loop
+// pool, so they are not freed until the accessibility method they were dropped underneath has returned and AppKit has
+// finished with it.
+func (a *AXAdapter) drainDeferred() {
+	for _, element := range a.deferred {
+		Autorelease(element)
+	}
+	a.deferred = nil
 }
 
 // Element returns the Objective-C element serving the given node, or 0 if nothing has asked about that node yet or it
@@ -300,7 +357,11 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 					}
 				}
 			case accessibility.StateExpanded:
-				if n := a.tree.Node(e.Node); n != nil {
+				// The two notifications macOS has for this are about outline rows, so only a row may send one. A
+				// disclosure triangle, a pop-up button or a combo box opening would otherwise report a row event on an
+				// element that is not a row; each of them reports its state as its value instead, which is what an
+				// assistive technology reads back when it asks.
+				if n := a.tree.Node(e.Node); n != nil && n.Role.IsRowLike() {
 					if n.Expanded {
 						a.post(e.Node, axNotifyRowExpanded)
 					} else {
@@ -370,7 +431,7 @@ func (a *AXAdapter) destroyElement(id accessibility.NodeID) {
 	}
 	delete(a.elements, id)
 	NSAccessibilityPostNotification(element, AppKitString(axNotifyUIElementDestroyed))
-	Release(element)
+	a.releaseElement(element)
 }
 
 // elementFor returns the element serving a node, creating it on first use. The adapter owns the reference it returns,
@@ -484,6 +545,17 @@ func axReportable(n *accessibility.Node) bool {
 	return !n.Ignored && n.Role != role.Separator
 }
 
+// axHasLabel reports whether a node's name should be given to the accessibility system as the element's label, which is
+// the AXDescription an assistive technology speaks alongside the value.
+//
+// Two roles say their name elsewhere and would otherwise be heard twice. Static text has no name of its own — the
+// snapshot puts its content in Name, since that is the accessible name every other platform wants — and reports that
+// content as its value instead (see axNodeValue), matching what an NSTextField set to display text does. A disclosure
+// triangle is named by its role on this platform, so a label as well would be said after it.
+func axHasLabel(n *accessibility.Node) bool {
+	return n.Role != role.Label && n.Role != role.DisclosureTriangle
+}
+
 // axRoleDescriptionFor returns AppKit's own description of a role and subrole pair, which is what an element that has
 // nothing more specific to say reports.
 func axRoleDescriptionFor(roleID, subroleID objc.ID) objc.ID {
@@ -553,7 +625,13 @@ func axRoleFor(t *accessibility.Tree, n *accessibility.Node) (roleID, subroleID 
 	case role.TextArea:
 		return AppKitString(axRoleTextArea), 0
 	case role.SpinButton:
-		return AppKitString(axRoleTextField), 0
+		// The incrementor role is what carries the stepper semantics on this platform: told a spin button is a text
+		// field, VoiceOver describes it as one and never mentions that its value can be stepped, even though the element
+		// implements accessibilityPerformIncrement and Decrement. The element still answers the whole text protocol, so
+		// the content is as readable as it was; this only adds what a plain text field cannot say. WebKit maps ARIA's
+		// spinbutton the same way, and it is the counterpart of the spinner control type Windows reports and the spin
+		// button role AT-SPI reports.
+		return AppKitString(axRoleIncrementor), 0
 	case role.ComboBox:
 		return AppKitString(axRoleComboBox), 0
 	case role.PopupButton:
@@ -664,7 +742,7 @@ func axPerform(self objc.ID, action accessibility.Action) bool {
 	if axTraceOn {
 		axTraceNode("action "+action.String(), n)
 	}
-	AccessibilityActionCallback(a.wnd, accessibility.ActionRequest{Node: n.ID, Action: action})
+	a.dispatch(accessibility.ActionRequest{Node: n.ID, Action: action})
 	if axTraceOn {
 		axTrace("  action %s done", action)
 	}
@@ -688,7 +766,7 @@ func axRequest(self objc.ID, req accessibility.ActionRequest) {
 		axTraceNode(fmt.Sprintf("request %s value=%q number=%v start=%d end=%d", req.Action, req.Value, req.Number,
 			req.Start, req.End), n)
 	}
-	AccessibilityActionCallback(a.wnd, req)
+	a.dispatch(req)
 	if axTraceOn {
 		axTrace("  request %s done", req.Action)
 	}
@@ -742,8 +820,13 @@ func axBoolValue(on bool) int64 {
 	return 0
 }
 
-// axRowsOf returns the row-like children of a node, optionally only the selected ones.
+// axRowsOf returns the row-like children of a node, optionally only the selected ones. A nil node has none, which is
+// what a row whose parent is not in the snapshot — the root itself, or a chain of ignored ancestors reaching it —
+// resolves to; this runs inside an AppKit callback, where a panic is not survivable.
 func axRowsOf(t *accessibility.Tree, n *accessibility.Node, selectedOnly bool) []accessibility.NodeID {
+	if n == nil {
+		return nil
+	}
 	var rows []accessibility.NodeID
 	for _, id := range t.UnignoredChildren(n.ID) {
 		child := t.Node(id)
@@ -756,6 +839,34 @@ func axRowsOf(t *accessibility.Tree, n *accessibility.Node, selectedOnly bool) [
 		rows = append(rows, id)
 	}
 	return rows
+}
+
+// axRowCountOf returns how many rows a node holds. What the widget said is preferred over what can be counted, and this
+// is why both are worth having: only the rows that can be seen, plus the ones that are selected, are described, so a
+// table taller than its view port holds a handful of row nodes and knows perfectly well that it has ten thousand rows.
+// Counting the nodes instead would tell an assistive technology the table is as tall as its view port, while
+// accessibilityIndex goes on reporting the absolute row number — "row 4,102 of 12" — so the count has to come from the
+// same place the index does. Counting is the fallback for a container that reported nothing.
+func axRowCountOf(t *accessibility.Tree, n *accessibility.Node) int {
+	if n.RowCount > 0 {
+		return n.RowCount
+	}
+	return len(axRowsOf(t, n, false))
+}
+
+// axColumnCountOf returns how many columns a node holds, preferring what the widget said for the same reason
+// axRowCountOf does. The fallback counts the cells of the first row it has, which is the width of a row-based container
+// that did not say.
+func axColumnCountOf(t *accessibility.Tree, n *accessibility.Node) int {
+	if n.ColumnCount > 0 {
+		return n.ColumnCount
+	}
+	if rows := axRowsOf(t, n, false); len(rows) != 0 {
+		if row := t.Node(rows[0]); row != nil {
+			return len(axChildrenWithRole(t, row, role.Cell))
+		}
+	}
+	return 0
 }
 
 // axStandIn returns the node that is presented in a node's place: for a table cell holding exactly one thing, that
@@ -903,7 +1014,9 @@ func axIndexOfID(ids []accessibility.NodeID, id accessibility.NodeID) int {
 // schema has no request that replaces a selection wholesale, so the first row is selected outright, which clears the
 // rest, and each further row is added to it; the requests are carried out later, in that order, on the UI thread.
 // Elements that are not rows of this container, or that came from some other window, are ignored, as is an empty
-// array, since nothing here can clear a selection.
+// array, since nothing here can clear a selection. Each row is resolved against the snapshot as its turn comes, since
+// selecting one may be carried out on the spot and publish a new one; the rows themselves are held alive by the NSArray
+// AppKit passed in.
 func axSelectRows(self, rows objc.ID) {
 	a, n := axElementTarget(self, 0)
 	if a == nil || n == nil || rows == 0 || AccessibilityActionCallback == nil {
@@ -925,7 +1038,7 @@ func axSelectRows(self, rows objc.ID) {
 		if axTraceOn {
 			axTraceNode("  "+action.String(), row)
 		}
-		AccessibilityActionCallback(a.wnd, accessibility.ActionRequest{Node: row.ID, Action: action})
+		a.dispatch(accessibility.ActionRequest{Node: row.ID, Action: action})
 		if !n.Multiselectable {
 			return
 		}
@@ -1021,8 +1134,7 @@ func axElementAttributeMethods() []objc.MethodDef {
 		{
 			Cmd: Sel("accessibilityLabel"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
-				// A disclosure triangle is named by its role on this platform; a label as well would be said twice.
-				if _, n := axElementTarget(self, cmd); n != nil && n.Name != "" && n.Role != role.DisclosureTriangle {
+				if _, n := axElementTarget(self, cmd); n != nil && n.Name != "" && axHasLabel(n) {
 					return NSStringFromGo(n.Name)
 				}
 				return 0
@@ -1134,6 +1246,29 @@ func axElementAttributeMethods() []objc.MethodDef {
 					return NSArrayFromIDs()
 				}
 				return a.elementsFor(axRowsOf(a.tree, n, false))
+			},
+		},
+		{
+			// The size of a table is asked for separately from its rows, and has to be answered separately: the rows
+			// hold only what can be seen plus what is selected, while this is how many there are altogether. Without it
+			// VoiceOver counts the rows it was handed and announces "row 4,102 of 12".
+			Cmd: Sel("accessibilityRowCount"),
+			Fn: func(self objc.ID, cmd objc.SEL) int64 {
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
+					return 0
+				}
+				return int64(axRowCountOf(a.tree, n))
+			},
+		},
+		{
+			Cmd: Sel("accessibilityColumnCount"),
+			Fn: func(self objc.ID, cmd objc.SEL) int64 {
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
+					return 0
+				}
+				return int64(axColumnCountOf(a.tree, n))
 			},
 		},
 		{

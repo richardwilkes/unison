@@ -43,11 +43,17 @@ func (d *DrawablePanel) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize
 }
 
 // ProvideAccessibility describes the panel to assistive technologies. There is nothing in a drawable that says what it
-// shows, so a panel that has not been given a name is skipped rather than announced as an image of nothing.
+// shows, so a panel that nothing has described is skipped rather than announced as an image of nothing. A tooltip is
+// the usual way such a panel is described — markdown hangs an image's alt text there — so it becomes the name. That has
+// to happen here rather than being left to the description the snapshot would otherwise take from the tooltip, since a
+// node marked ignored is never reached to hear it.
 func (d *DrawablePanel) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	if node.Role == role.Auto {
 		node.Role = role.Image
+	}
+	if node.Name == "" {
+		node.Name = axTooltipText(d.AsPanel())
 	}
 	if node.Name == "" && xreflect.IsNil(d.Accessibility.LabeledBy) {
 		node.Ignored = true

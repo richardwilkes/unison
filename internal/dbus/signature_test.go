@@ -212,3 +212,39 @@ func TestSignatureOfRejects(t *testing.T) {
 		})
 	}
 }
+
+func TestSignatureDepthLimitsAreIndependent(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// The specification allows 32 nested arrays and 32 nested structures, and the two limits do not share a budget, so
+	// 32 array and structure pairs are valid even though they open 64 containers between them.
+	pairs := Signature(strings.Repeat("a(", MaxDepth) + "y" + strings.Repeat(")", MaxDepth))
+	c.NoError(pairs.Validate(), "%q should be valid", pairs)
+	c.NoError(pairs.ValidateSingle(), "%q should be valid", pairs)
+	// Dict entries count towards the structure limit, since that is what they are on the wire, so a dictionary nested
+	// 32 deep uses 32 of each and is valid too.
+	dicts := Signature(strings.Repeat("a{s", MaxDepth) + "y" + strings.Repeat("}", MaxDepth))
+	c.NoError(dicts.Validate(), "%q should be valid", dicts)
+	// Each limit is still enforced on its own.
+	c.HasError(Signature(strings.Repeat("a", MaxDepth+1) + "y").Validate())
+	c.HasError(Signature(strings.Repeat("(", MaxDepth+1) + "y" + strings.Repeat(")", MaxDepth+1)).Validate())
+	// A sibling's depth does not count against its neighbors, since each branch is measured on its own.
+	c.NoError(Signature(strings.Repeat("a", MaxDepth) + "y" + strings.Repeat("a", MaxDepth) + "y").Validate())
+}
+
+func TestDepthLimitsAreIndependentWhenMarshaling(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	sig := Signature(strings.Repeat("a(", MaxDepth) + "y" + strings.Repeat(")", MaxDepth))
+	value := any(byte(1))
+	for range MaxDepth {
+		value = []any{Struct{value}}
+	}
+	data, err := Marshal(sig, value)
+	c.NoError(err)
+	values, err := Unmarshal(sig, data)
+	c.NoError(err)
+	again, err := Marshal(sig, values...)
+	c.NoError(err)
+	c.Equal(data, again)
+}

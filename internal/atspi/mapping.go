@@ -24,12 +24,18 @@ import (
 // worth doing once the table is large.
 const manageDescendantsRowThreshold = 500
 
-// The names of the object attributes that [Attributes] reports.
+// The names of the object attributes that [Attributes] reports. The four that describe a position within a set are
+// spelled and numbered the way the ARIA attributes of the same names are, which is what every assistive technology
+// already reads them as: one-based, and counting the whole set rather than the part of it that happens to be described.
 const (
 	toolkitAttribute         = "toolkit"
 	levelAttribute           = "level"
 	sortAttribute            = "sort"
 	placeholderTextAttribute = "placeholder-text"
+	rowIndexAttribute        = "rowindex"
+	columnIndexAttribute     = "colindex"
+	positionInSetAttribute   = "posinset"
+	setSizeAttribute         = "setsize"
 )
 
 // MapRole returns the AT-SPI role that represents the node. A role that has no AT-SPI equivalent, which includes the
@@ -184,7 +190,7 @@ func RoleName(r Role) string {
 // org.a11y.atspi.Accessible.GetInterfaces reports them. Accessible and Component are always there, since every node has
 // a name, a role and a place on the screen.
 func Interfaces(n *accessibility.Node) []string {
-	list := make([]string, 0, 5)
+	list := make([]string, 0, 7)
 	list = append(list, InterfaceAccessible)
 	if hasActions(n) {
 		list = append(list, InterfaceAction)
@@ -192,6 +198,12 @@ func Interfaces(n *accessibility.Node) []string {
 	list = append(list, InterfaceComponent)
 	if supportsSelection(n.Role) {
 		list = append(list, InterfaceSelection)
+	}
+	if supportsTable(n.Role) {
+		list = append(list, InterfaceTable)
+	}
+	if supportsTableCell(n.Role) {
+		list = append(list, InterfaceTableCell)
 	}
 	if n.Text != nil {
 		list = append(list, InterfaceText)
@@ -211,6 +223,25 @@ func supportsSelection(r role.Enum) bool {
 	default:
 		return false
 	}
+}
+
+// supportsTable returns true if a role is laid out as a grid of cells, which is what org.a11y.atspi.Table describes and
+// what an assistive technology's table navigation commands work over. A list is not one: AT-SPI has a list box for a
+// single column of items, and its rows are reached by walking the children.
+func supportsTable(r role.Enum) bool {
+	switch r {
+	case role.Table, role.Tree:
+		return true
+	default:
+		return false
+	}
+}
+
+// supportsTableCell returns true if a role is one cell of such a grid, which is what org.a11y.atspi.TableCell
+// describes. Only a cell is one: a row is the container the cells sit in, and says where it is through the rowindex
+// and posinset attributes rather than through an interface.
+func supportsTableCell(r role.Enum) bool {
+	return r == role.Cell
 }
 
 // States returns the states of the node. windowActive reports whether the window the node belongs to is the active one,
@@ -281,7 +312,11 @@ func roleStates(n *accessibility.Node) []StateBit {
 	states := make([]StateBit, 0, 4)
 	switch n.Role {
 	case role.Window, role.Dialog:
-		states = append(states, StateResizable)
+		if n.Resizable {
+			// A window created with NotResizableWindowOption cannot be resized, and telling an assistive technology
+			// that a fixed-size dialog can be would have it offer the user a way to do something that does nothing.
+			states = append(states, StateResizable)
+		}
 		if n.Focused {
 			states = append(states, StateActive)
 		}
@@ -290,11 +325,10 @@ func roleStates(n *accessibility.Node) []StateBit {
 		if n.Pressed {
 			states = append(states, StateChecked, StatePressed)
 		}
-	case role.Table, role.Tree:
-		if n.RowCount > manageDescendantsRowThreshold {
-			states = append(states, StateManagesDescendants)
-		}
 	default:
+	}
+	if ManagesDescendants(n) {
+		states = append(states, StateManagesDescendants)
 	}
 	states = append(states, textStates(n)...)
 	if n.Role == role.ComboBox || n.Role == role.PopupButton {
@@ -308,6 +342,19 @@ func roleStates(n *accessibility.Node) []StateBit {
 	case accessibility.OrientationNone:
 	}
 	return states
+}
+
+// ManagesDescendants reports whether a node claims ATSPI_STATE_MANAGES_DESCENDANTS, which is a promise as much as a
+// hint: the container is telling its client not to walk or cache what is inside it, and undertaking in exchange to say
+// which descendant is the current one through object:active-descendant-changed. Only a table or a tree with more rows
+// than [manageDescendantsRowThreshold] makes that promise, and [Adapter.emitActiveDescendantChanged] keeps it.
+func ManagesDescendants(n *accessibility.Node) bool {
+	switch n.Role {
+	case role.Table, role.Tree:
+		return n.RowCount > manageDescendantsRowThreshold
+	default:
+		return false
+	}
 }
 
 // textStates returns the states that describe a node's text content, for the roles that have some.
@@ -333,8 +380,12 @@ func textStates(n *accessibility.Node) []StateBit {
 
 // Attributes returns the node's AT-SPI object attributes, which are the pieces of information that have no interface of
 // their own. Every object reports the toolkit it came from; the rest appear only when they apply.
-func Attributes(n *accessibility.Node) dbus.Dict {
-	attributes := make(dbus.Dict, 0, 4)
+//
+// container is the node's reported parent, or nil when it has none. It is what the size of the set a row belongs to is
+// read from: a snapshot describes only the rows that can be seen, plus the selection, so the container is the only
+// place that knows how many rows there are altogether, and "row 4 of 6" would otherwise become "row 4 of 6000".
+func Attributes(n, container *accessibility.Node) dbus.Dict {
+	attributes := make(dbus.Dict, 0, 6)
 	attributes = append(attributes, dbus.DictEntry{Key: toolkitAttribute, Value: toolkitName})
 	if n.Level > 0 {
 		attributes = append(attributes, dbus.DictEntry{
@@ -352,7 +403,68 @@ func Attributes(n *accessibility.Node) dbus.Dict {
 	if n.Placeholder != "" {
 		attributes = append(attributes, dbus.DictEntry{Key: placeholderTextAttribute, Value: n.Placeholder})
 	}
+	return appendPositionAttributes(attributes, n, container)
+}
+
+// appendPositionAttributes appends the attributes that say where a node sits within the grid or the list it belongs to.
+// AT-SPI carries this as object attributes rather than through an interface for everything but a table cell, and even a
+// cell's are worth reporting, since an assistive technology that has not asked for org.a11y.atspi.TableCell still reads
+// them.
+func appendPositionAttributes(attributes dbus.Dict, n, container *accessibility.Node) dbus.Dict {
+	if hasRowPosition(n.Role) {
+		attributes = append(attributes, dbus.DictEntry{Key: rowIndexAttribute, Value: strconv.Itoa(n.RowIndex + 1)})
+	}
+	if hasColumnPosition(n.Role) {
+		attributes = append(attributes, dbus.DictEntry{
+			Key:   columnIndexAttribute,
+			Value: strconv.Itoa(n.ColumnIndex + 1),
+		})
+	}
+	if !isSetMember(n.Role) {
+		return attributes
+	}
+	attributes = append(attributes, dbus.DictEntry{
+		Key:   positionInSetAttribute,
+		Value: strconv.Itoa(n.RowIndex + 1),
+	})
+	if container != nil && container.RowCount > 0 {
+		attributes = append(attributes, dbus.DictEntry{
+			Key:   setSizeAttribute,
+			Value: strconv.Itoa(container.RowCount),
+		})
+	}
 	return attributes
+}
+
+// hasRowPosition returns true if a role's RowIndex says which row of its container the node occupies.
+func hasRowPosition(r role.Enum) bool {
+	switch r {
+	case role.Row, role.Cell, role.ListItem:
+		return true
+	default:
+		return false
+	}
+}
+
+// hasColumnPosition returns true if a role's ColumnIndex says which column of its container the node occupies.
+func hasColumnPosition(r role.Enum) bool {
+	switch r {
+	case role.Cell, role.ColumnHeader:
+		return true
+	default:
+		return false
+	}
+}
+
+// isSetMember returns true if a role is one of a numbered run of siblings, which is what posinset and setsize describe.
+// Only the rows are: a cell is placed by its row and column rather than by a position in a run.
+func isSetMember(r role.Enum) bool {
+	switch r {
+	case role.Row, role.ListItem:
+		return true
+	default:
+		return false
+	}
 }
 
 // layerFor returns the layer a node is in: a top-level window is in the window layer, and everything inside one is in

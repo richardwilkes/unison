@@ -244,6 +244,21 @@ func (p *UIAProvider) retire() {
 	p.release()
 }
 
+// retireRoot retires the fragment root: it marks the provider stale and releases the reference the window's provider
+// map held, without asking UI Automation to drop its own references.
+//
+// The disconnect is deliberately skipped rather than forgotten. UiaDisconnectProvider finds the references it is to
+// drop by asking the provider for its runtime identifier, and a fragment root has none to give — it answers
+// GetRuntimeId with a NULL array so that UI Automation identifies it by the window handle instead, which is what the
+// interface requires of a fragment root; see uiaFragmentGetRuntimeID. The call can therefore only fail, while still
+// calling back into a provider that is being torn down. What actually withdraws the root is UiaReturnRawElementProvider
+// with a NULL provider, which UIAWindow.Destroy makes before it reaches here, and a client still holding the root
+// element is answered UIA_E_ELEMENTNOTAVAILABLE from the stale flag.
+func (p *UIAProvider) retireRoot() {
+	p.stale.Store(true)
+	p.release()
+}
+
 // isRoot reports whether this provider is the window's fragment root, which is the only one that implements the
 // fragment root, advise-events and window interfaces.
 func (p *UIAProvider) isRoot() bool {
@@ -264,24 +279,35 @@ func (p *UIAProvider) current() (tree *accessibility.Tree, node *accessibility.N
 	return tree, node, true
 }
 
-// supports reports whether this provider hands out one of the interfaces, which is what both QueryInterface and
-// GetPatternProvider answer from. Every element implements the two provider interfaces; the fragment root alone
-// implements the three window-level ones; and a pattern interface exists only when UIAPatterns says the node supports
-// that pattern.
+// supports reports whether this provider hands out one of the interfaces, which is what QueryInterface,
+// GetPatternProvider and every control-pattern method answer from. Every element implements the two provider interfaces; the fragment root
+// alone implements the three window-level ones; and a pattern interface exists only when UIAPatterns says the node
+// supports that pattern.
+//
+// IWindowProvider is both a pattern interface and a window-level one, and the root-only half is what decides: a nested
+// node that reports role.Dialog — a dialog-shaped panel inside a window — is not a window of its own, and answering
+// get_CanMaximize, get_WindowVisualState or get_IsTopmost for it would be describing the containing window through an
+// element that is not it. UIAPatterns cannot make that distinction, since it knows a node and not which one is the
+// root, so it is made here and everything that hands out an interface goes through this.
 func (p *UIAProvider) supports(iface uiaIface) bool {
 	switch iface {
 	case uiaIfaceSimple, uiaIfaceFragment:
 		return true
 	case uiaIfaceFragmentRoot, uiaIfaceAdviseEvents:
 		return p.isRoot()
+	case uiaIfaceWindow:
+		return p.isRoot() && p.hasPattern(PatternWindow)
 	default:
 		pattern := uiaPatternForIface(iface)
-		if pattern == 0 {
-			return false
-		}
-		_, node, ok := p.current()
-		return ok && UIAPatterns(node).Has(pattern)
+		return pattern != 0 && p.hasPattern(pattern)
 	}
+}
+
+// hasPattern reports whether the node this provider describes supports a pattern as of the current snapshot. A stale
+// provider, and one whose node has left the tree, support nothing.
+func (p *UIAProvider) hasPattern(pattern PatternSet) bool {
+	_, node, ok := p.current()
+	return ok && UIAPatterns(node).Has(pattern)
 }
 
 // uiaProviderFromThis recovers the provider a COM method was called on. this is the address of the interface's virtual
@@ -341,6 +367,9 @@ func uiaSimpleProviderOptions(_, out uintptr) uint64 {
 // uiaSimpleGetPatternProvider implements IRawElementProviderSimple::GetPatternProvider. A pattern the element does not
 // support is answered with a NULL interface and S_OK, which is how a client is told the element simply does not do
 // that; an error would say the provider is broken.
+//
+// Which patterns the element has is decided by supports, the same way QueryInterface decides it, so that a client that
+// reaches a pattern by identifier and one that asks for its interface directly cannot be given different answers.
 func uiaSimpleGetPatternProvider(this, patternID, out uintptr) uint64 {
 	if out == 0 {
 		return COM_E_POINTER
@@ -348,16 +377,15 @@ func uiaSimpleGetPatternProvider(this, patternID, out uintptr) uint64 {
 	target := xruntime.PtrFromUintptr[uintptr](out)
 	*target = 0
 	p := uiaProviderFromThis(this, uiaIfaceSimple)
-	_, node, ok := p.current()
-	if !ok {
+	if _, _, ok := p.current(); !ok {
 		return UIA_E_ELEMENTNOTAVAILABLE
 	}
 	pattern := PatternSetForID(PatternID(int32(uint32(patternID))))
-	if pattern == 0 || !UIAPatterns(node).Has(pattern) {
+	if pattern == 0 {
 		return COM_S_OK
 	}
 	iface, ok := uiaIfaceForPattern(pattern)
-	if !ok {
+	if !ok || !p.supports(iface) {
 		return COM_S_OK
 	}
 	p.addRef()
@@ -481,11 +509,11 @@ func uiaRootFocused(tree *accessibility.Tree) bool {
 }
 
 // setProvider stores the first of the given nodes that has a provider as an interface pointer, which is the shape the
-// LabeledBy property takes. The reference stored belongs to the VARIANT, and through it to UI Automation Core.
+// LabeledBy property takes. The reference Provider handed over becomes the VARIANT's, and through it UI Automation
+// Core's.
 func (p *UIAProvider) setProvider(value *VARIANT, ids []accessibility.NodeID) {
 	for _, id := range ids {
 		if other := p.window.Provider(id); other != nil {
-			other.addRef()
 			value.SetUnknown(other.Unknown())
 			return
 		}
@@ -493,15 +521,22 @@ func (p *UIAProvider) setProvider(value *VARIANT, ids []accessibility.NodeID) {
 }
 
 // setProviderArray stores the given nodes' providers as a SAFEARRAY of interface pointers, which is the shape the
-// DescribedBy and ControllerFor properties take. Storing an element into the array adds its own reference, so the
-// array ends up owning one per element and nothing here has to be released.
+// DescribedBy and ControllerFor properties take. Storing an element into the array adds a reference of its own, so the
+// array ends up owning one per element and the references Provider handed over are given back once it is built.
 func (p *UIAProvider) setProviderArray(value *VARIANT, ids []accessibility.NodeID) {
 	if len(ids) == 0 {
 		return
 	}
+	others := make([]*UIAProvider, 0, len(ids))
+	defer func() {
+		for _, other := range others {
+			other.release()
+		}
+	}()
 	pointers := make([]unsafe.Pointer, 0, len(ids))
 	for _, id := range ids {
 		if other := p.window.Provider(id); other != nil {
+			others = append(others, other)
 			pointers = append(pointers, other.Unknown())
 		}
 	}
@@ -560,7 +595,7 @@ func uiaFragmentNavigate(this, direction, out uintptr) uint64 {
 	if other == nil {
 		return COM_S_OK
 	}
-	other.addRef()
+	// The reference Provider handed over becomes the caller's, which is what an interface out-parameter means.
 	*target = other.ifacePtr(uiaIfaceFragment)
 	return COM_S_OK
 }
@@ -655,7 +690,7 @@ func uiaFragmentFragmentRoot(this, out uintptr) uint64 {
 	if root == nil {
 		return UIA_E_ELEMENTNOTAVAILABLE
 	}
-	root.addRef()
+	// The reference Root handed over becomes the caller's, which is what an interface out-parameter means.
 	*target = root.ifacePtr(uiaIfaceFragmentRoot)
 	return COM_S_OK
 }
@@ -687,7 +722,7 @@ func uiaFragmentRootElementProviderFromPoint(this, xBits, yBits, out uintptr) ui
 	if hit == nil {
 		return COM_S_OK
 	}
-	hit.addRef()
+	// The reference Provider handed over becomes the caller's, which is what an interface out-parameter means.
 	*target = hit.ifacePtr(uiaIfaceFragment)
 	return COM_S_OK
 }
@@ -713,7 +748,7 @@ func uiaFragmentRootGetFocus(this, out uintptr) uint64 {
 	if focus == nil {
 		return COM_S_OK
 	}
-	focus.addRef()
+	// The reference Provider handed over becomes the caller's, which is what an interface out-parameter means.
 	*target = focus.ifacePtr(uiaIfaceFragment)
 	return COM_S_OK
 }
@@ -773,18 +808,11 @@ func uiaWindowCanMinimize(_, out uintptr) uint64 {
 }
 
 // uiaWindowIsModal implements IWindowProvider::get_IsModal, which is how a client knows to keep the user inside this
-// window until it is dealt with.
+// window until it is dealt with. Like every other control-pattern method it goes through uiaPatternNode, so that an
+// element that no longer has the pattern — or never should have had it — says so rather than answering for a window
+// that is not it.
 func uiaWindowIsModal(this, out uintptr) uint64 {
-	if out == 0 {
-		return COM_E_POINTER
-	}
-	uiaSetBOOL(out, false)
-	_, node, ok := uiaProviderFromThis(this, uiaIfaceWindow).current()
-	if !ok {
-		return UIA_E_ELEMENTNOTAVAILABLE
-	}
-	uiaSetBOOL(out, node.Modal)
-	return COM_S_OK
+	return uiaPatternBOOL(this, uiaIfaceWindow, out, func(n *accessibility.Node) bool { return n.Modal })
 }
 
 // uiaWindowVisualState implements IWindowProvider::get_WindowVisualState. The snapshot does not record whether a window
@@ -806,9 +834,9 @@ func uiaWindowInteractionStateValue(this, out uintptr) uint64 {
 		return COM_E_POINTER
 	}
 	*xruntime.PtrFromUintptr[WindowInteractionState](out) = WindowInteractionState_ReadyForUserInteraction
-	_, node, ok := uiaProviderFromThis(this, uiaIfaceWindow).current()
-	if !ok {
-		return UIA_E_ELEMENTNOTAVAILABLE
+	_, _, node, hr := uiaPatternNode(this, uiaIfaceWindow)
+	if hr != COM_S_OK {
+		return hr
 	}
 	*xruntime.PtrFromUintptr[WindowInteractionState](out) = UIAWindowInteractionState(node)
 	return COM_S_OK

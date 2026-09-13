@@ -50,14 +50,19 @@ func replyFalse(call *dbus.Call) {
 	call.Reply(false)
 }
 
-// contains implements org.a11y.atspi.Component.Contains.
+// contains implements org.a11y.atspi.Component.Contains, which has to agree with what [nodeObject.getAccessibleAtPoint]
+// says about the same point: an assistive technology doing mouse review asks the parent what is under the pointer and
+// then asks that object whether it really is, and two different answers leave it with nowhere to go. Both therefore use
+// the clipped area (see [windowData.reachableBounds]) rather than the node's own unclipped Bounds, so a row scrolled
+// out of its table's view port does not claim a point that belongs to whatever is drawn over it.
 func (o *nodeObject) contains(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
 		return
 	}
 	pt := o.data.logicalPoint(o.node, int32Arg(args, 0), int32Arg(args, 1), coordArg(args, 2))
-	call.Reply(pt.In(o.node.Bounds))
+	bounds, reachable := o.data.reachableBounds(o.node)
+	call.Reply(reachable && pt.In(bounds))
 }
 
 // getAccessibleAtPoint implements org.a11y.atspi.Component.GetAccessibleAtPoint. The answer is the deepest reported

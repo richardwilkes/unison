@@ -112,3 +112,23 @@ func TestUnmarshalLargeArrayDeclarationIsCheap(t *testing.T) {
 		})
 	}
 }
+
+func TestUnmarshalRejectsPaddingThatIsNotNUL(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// libdbus rejects this as DBUS_INVALID_ALIGNMENT_PADDING_NOT_NUL, and so do we: the bytes between the values are
+	// not ours to interpret, so a peer that writes anything there is not speaking the protocol.
+	_, err := Unmarshal("yi", []byte{1, 0xFF, 0xFF, 0xFF, 2, 0, 0, 0})
+	c.HasError(err)
+	c.Contains(err.Error(), "padding")
+	values, err := Unmarshal("yi", []byte{1, 0, 0, 0, 2, 0, 0, 0})
+	c.NoError(err)
+	c.Equal([]any{byte(1), int32(2)}, values)
+	// The padding that precedes the first element of an array is checked as well, even when the array is empty and so
+	// has no elements for the padding to align.
+	for _, sig := range []Signature{"at", "a(ii)", propertiesSig} {
+		_, err = Unmarshal(sig, concat(u32At(0), []byte{1, 2, 3, 4}))
+		c.HasError(err, sig)
+		c.Contains(err.Error(), "padding", sig)
+	}
+}

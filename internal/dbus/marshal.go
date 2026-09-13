@@ -43,8 +43,8 @@ func Marshal(sig Signature, values ...any) ([]byte, error) {
 
 // encoder accumulates the marshaled form of a series of values. Alignment is relative to the start of buf.
 type encoder struct {
-	buf   []byte
-	depth int
+	buf []byte
+	depths
 }
 
 func (e *encoder) align(n int) {
@@ -94,9 +94,9 @@ func (e *encoder) value(sig Signature, v any) error {
 		}
 		e.putByte(byte(b))
 	case 'b':
-		b, ok := v.(bool)
-		if !ok {
-			return typeError(sig, v)
+		b, err := asBool(v, sig)
+		if err != nil {
+			return err
 		}
 		var n uint32
 		if b {
@@ -198,14 +198,12 @@ func (e *encoder) variant(v any) error {
 		}
 		sig = derived
 	}
-	if e.depth >= MaxDepth {
-		return errTooDeep
+	if err := e.enter('v'); err != nil {
+		return err
 	}
-	e.depth++
+	defer e.leave('v')
 	e.putSignature(sig)
-	err := e.value(sig, val)
-	e.depth--
-	return err
+	return e.value(sig, val)
 }
 
 // startArray writes the placeholder for an array's length and returns the position of that placeholder along with the
@@ -229,11 +227,10 @@ func (e *encoder) finishArray(lengthPos, start int) error {
 }
 
 func (e *encoder) array(elem Signature, v any) error {
-	if e.depth >= MaxDepth {
-		return errTooDeep
+	if err := e.enter('a'); err != nil {
+		return err
 	}
-	e.depth++
-	defer func() { e.depth-- }()
+	defer e.leave('a')
 	lengthPos, start := e.startArray(alignmentOf(elem[0]))
 	if err := e.arrayElements(elem, v); err != nil {
 		return err
@@ -324,17 +321,16 @@ func (e *encoder) arrayElements(elem Signature, v any) error {
 
 // dict marshals an array of dict entries. sig is the dict entry type, including its braces.
 func (e *encoder) dict(sig Signature, v any) error {
-	if e.depth >= MaxDepth {
-		return errTooDeep
+	if err := e.enter('a'); err != nil {
+		return err
 	}
-	keyEnd, err := scanType(sig, 1, 0)
+	defer e.leave('a')
+	keyEnd, err := scanType(sig, 1, depths{})
 	if err != nil {
 		return err
 	}
 	keySig := sig[1:keyEnd]
 	valSig := sig[keyEnd : len(sig)-1]
-	e.depth++
-	defer func() { e.depth-- }()
 	lengthPos, start := e.startArray(8)
 	switch tv := v.(type) {
 	case Dict:
@@ -348,6 +344,11 @@ func (e *encoder) dict(sig Signature, v any) error {
 			}
 		}
 	case Array:
+		// An explicitly typed array has to agree with the dictionary it is being marshaled into, just as it does for
+		// any other array; see arrayElements.
+		if tv.Elem != "" && tv.Elem != sig {
+			return fmt.Errorf("dbus: array of %q cannot hold elements of type %q", sig, tv.Elem)
+		}
 		for _, one := range tv.Values {
 			if err = e.dictEntry(keySig, valSig, one); err != nil {
 				break
@@ -392,11 +393,10 @@ func (e *encoder) dictEntry(keySig, valSig Signature, v any) error {
 }
 
 func (e *encoder) pair(keySig, valSig Signature, key, value any) error {
-	if e.depth >= MaxDepth {
-		return errTooDeep
+	if err := e.enter('{'); err != nil {
+		return err
 	}
-	e.depth++
-	defer func() { e.depth-- }()
+	defer e.leave('{')
 	e.align(8)
 	if err := e.value(keySig, key); err != nil {
 		return err
@@ -445,9 +445,10 @@ func compareMapKeys(a, b reflect.Value) int {
 
 // structure marshals a structure. sig is the structure type, including its parentheses.
 func (e *encoder) structure(sig Signature, v any) error {
-	if e.depth >= MaxDepth {
-		return errTooDeep
+	if err := e.enter('('); err != nil {
+		return err
 	}
+	defer e.leave('(')
 	var fields []any
 	switch tv := v.(type) {
 	case Struct:
@@ -471,8 +472,6 @@ func (e *encoder) structure(sig Signature, v any) error {
 	if len(types) != len(fields) {
 		return fmt.Errorf("dbus: structure %q requires %d fields, but %d were given", sig, len(types), len(fields))
 	}
-	e.depth++
-	defer func() { e.depth-- }()
 	e.align(8)
 	for i, one := range types {
 		if err = e.value(one, fields[i]); err != nil {
@@ -550,6 +549,19 @@ func asUint(v any, maximum uint64, sig Signature) (uint64, error) {
 		return 0, rangeError(v, sig)
 	}
 	return n, nil
+}
+
+// asBool accepts a bool or any named type whose underlying type is bool, so that a caller whose signature [SignatureOf]
+// derived as "b" can always marshal the value it derived it from.
+func asBool(v any, sig Signature) (bool, error) {
+	if b, ok := v.(bool); ok {
+		return b, nil
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Bool {
+		return false, typeError(sig, v)
+	}
+	return rv.Bool(), nil
 }
 
 func asFloat(v any, sig Signature) (float64, error) {

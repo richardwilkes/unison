@@ -49,7 +49,7 @@ func (a *Adapter) resolve(path dbus.ObjectPath) dbus.Object {
 // Interfaces implements [dbus.Object]. Both the membership of the list and its order match what
 // org.a11y.atspi.Accessible.GetInterfaces reports, which [Interfaces] decides.
 func (o *nodeObject) Interfaces() []*dbus.Interface {
-	list := make([]*dbus.Interface, 0, 5)
+	list := make([]*dbus.Interface, 0, 7)
 	list = append(list, o.accessibleInterface())
 	if actions := nodeActions(o.node); len(actions) != 0 {
 		list = append(list, o.actionInterface(actions))
@@ -57,6 +57,12 @@ func (o *nodeObject) Interfaces() []*dbus.Interface {
 	list = append(list, o.componentInterface())
 	if supportsSelection(o.node.Role) {
 		list = append(list, o.selectionInterface())
+	}
+	if supportsTable(o.node.Role) {
+		list = append(list, o.tableInterface())
+	}
+	if supportsTableCell(o.node.Role) {
+		list = append(list, o.tableCellInterface())
 	}
 	if o.node.Text != nil {
 		list = append(list, o.textInterface())
@@ -130,14 +136,21 @@ func int32Arg(args []any, i int) int32 {
 	return value
 }
 
-// coordArg returns one argument of a call as a coordinate type.
-func coordArg(args []any, i int) CoordType {
+// uint32Arg returns one argument of a call as a uint32. Zero stands in for an argument that is not there or is not the
+// type the method's signature promised, neither of which the connection lets through.
+func uint32Arg(args []any, i int) uint32 {
 	if i >= len(args) {
-		return CoordScreen
+		return 0
 	}
 	value, ok := args[i].(uint32)
 	if !ok {
-		return CoordScreen
+		return 0
 	}
-	return CoordType(value)
+	return value
+}
+
+// coordArg returns one argument of a call as a coordinate type. An argument that is not there is read as CoordScreen,
+// which is zero.
+func coordArg(args []any, i int) CoordType {
+	return CoordType(uint32Arg(args, i))
 }

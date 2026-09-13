@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
@@ -50,4 +51,51 @@ func TestMacAccessibilityCallbacksInstalled(t *testing.T) {
 	// An action for a window that does not exist is dropped rather than queued.
 	resetTaskQueue()
 	cocoa.AccessibilityActionCallback(macUnknownWindow, accessibility.ActionRequest{Action: accessibility.Press})
+}
+
+// TestMacAxActionRunsInline proves which requests are carried out while the assistive technology that made them waits,
+// which is what makes this platform re-enter its own adapter: only a request that moves the focus, the selection or the
+// view, plus setting or stepping a scroll bar, since VoiceOver reads the result of those straight after asking.
+// Anything else may run application code — a press can open a modal dialog — and so is queued instead. This test
+// mutates no global state, but it is the contract the adapter's deferred element release exists for.
+func TestMacAxActionRunsInline(t *testing.T) {
+	c := check.New(t)
+	const (
+		scrollBarID accessibility.NodeID = 1
+		buttonID    accessibility.NodeID = 2
+	)
+	w := &Window{ax: &windowAccessibility{last: &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			scrollBarID: {ID: scrollBarID, Role: role.ScrollBar},
+			buttonID:    {ID: buttonID, Role: role.Button},
+		},
+		Root: buttonID,
+	}}}
+	for _, action := range []accessibility.Action{
+		accessibility.Focus, accessibility.ScrollIntoView, accessibility.Select, accessibility.AddToSelection,
+		accessibility.RemoveFromSelection, accessibility.Expand, accessibility.Collapse, accessibility.SetTextSelection,
+	} {
+		c.True(axActionIsNavigation(action), action)
+		c.True(w.axActionRunsInline(accessibility.ActionRequest{Node: buttonID, Action: action}), action)
+	}
+	// Stepping or setting a value is inline for a scroll bar, which is how VoiceOver brings something into view before
+	// reading where it is, and queued for everything else, since setting a value runs application code.
+	for _, action := range []accessibility.Action{
+		accessibility.SetValue, accessibility.Increment, accessibility.Decrement,
+	} {
+		c.False(axActionIsNavigation(action), action)
+		c.True(w.axActionRunsInline(accessibility.ActionRequest{Node: scrollBarID, Action: action}), action)
+		c.False(w.axActionRunsInline(accessibility.ActionRequest{Node: buttonID, Action: action}), action)
+	}
+	for _, action := range []accessibility.Action{
+		accessibility.Press, accessibility.Toggle, accessibility.ShowContextMenu, accessibility.ReplaceText,
+	} {
+		c.False(axActionIsNavigation(action), action)
+		c.False(w.axActionRunsInline(accessibility.ActionRequest{Node: scrollBarID, Action: action}), action)
+	}
+	// A window that has published nothing yet has no node to judge a scroll bar by, so nothing runs inline but the
+	// navigation requests.
+	bare := &Window{}
+	c.False(bare.axActionRunsInline(accessibility.ActionRequest{Node: scrollBarID, Action: accessibility.SetValue}))
+	c.True(bare.axActionRunsInline(accessibility.ActionRequest{Node: scrollBarID, Action: accessibility.Focus}))
 }

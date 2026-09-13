@@ -122,8 +122,8 @@ func TestDecodeReadsOnlyOneMessage(t *testing.T) {
 func TestDecodeErrors(t *testing.T) {
 	t.Parallel()
 	_, hello := helloMessage()
-	bigEndian := concat(hello)
-	bigEndian[0] = 'B'
+	mislabeledEndian := concat(hello) // Little-endian bytes that claim to be big-endian
+	mislabeledEndian[0] = 'B'
 	badEndian := concat(hello)
 	badEndian[0] = '?'
 	badVersion := concat(hello)
@@ -147,7 +147,7 @@ func TestDecodeErrors(t *testing.T) {
 		{name: "empty", data: nil},
 		{name: "short header", data: hello[:15]},
 		{name: "truncated header fields", data: hello[:64]},
-		{name: "big-endian", data: bigEndian},
+		{name: "endianness flag that contradicts the bytes", data: mislabeledEndian},
 		{name: "invalid endianness", data: badEndian},
 		{name: "unsupported protocol version", data: badVersion},
 		{name: "zero serial", data: zeroSerial},
@@ -470,4 +470,68 @@ func TestDecodeDistinguishesEndOfStreamFromTruncation(t *testing.T) {
 	c.True(errors.Is(err, io.ErrUnexpectedEOF))
 	_, err = Decode(bytes.NewReader(hello[:100]))
 	c.True(errors.Is(err, io.ErrUnexpectedEOF))
+}
+
+func TestDecodeBigEndianHeader(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	want, littleEndian := helloMessage()
+	data := helloMessageBigEndian()
+	c.Equal(128, len(data))
+	c.Equal(data, toBigEndian(littleEndian, ""))
+	m, err := Decode(bytes.NewReader(data))
+	c.NoError(err)
+	c.Equal(want, m)
+	// Re-encoding a message that arrived big-endian produces the little-endian form, since that is the only encoding
+	// this package emits.
+	encoded, err := m.Encode()
+	c.NoError(err)
+	c.Equal(littleEndian, encoded)
+}
+
+func TestDecodeBigEndianBody(t *testing.T) {
+	t.Parallel()
+	for _, one := range goldenCases() {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+			c := check.New(t)
+			m := NewSignal(ObjectPath(atspiRoot), eventInterface, "BigEndian")
+			m.Serial = 7
+			m.Sender = testSender
+			c.NoError(m.SetBodyWithSignature(one.sig, one.in...))
+			littleEndian, err := m.Encode()
+			c.NoError(err)
+			decoded, err := Decode(bytes.NewReader(toBigEndian(littleEndian, one.sig)))
+			c.NoError(err)
+			// The body is converted as it is decoded, so nothing downstream can tell where the message came from.
+			c.Equal(m, decoded)
+			args, err := decoded.Args()
+			c.NoError(err)
+			want := one.out
+			if want == nil {
+				want = one.in
+			}
+			c.Equal(want, args)
+			encoded, err := decoded.Encode()
+			c.NoError(err)
+			c.Equal(littleEndian, encoded)
+		})
+	}
+}
+
+func TestDecodeBigEndianRejectsTheSameThingsAsLittleEndian(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	_, hello := helloMessage()
+	truncated := toBigEndian(hello, "")
+	_, err := Decode(bytes.NewReader(truncated[:100]))
+	c.True(errors.Is(err, io.ErrUnexpectedEOF))
+	badVersion := toBigEndian(hello, "")
+	badVersion[3] = 2
+	_, err = Decode(bytes.NewReader(badVersion))
+	c.HasError(err)
+	oversizedFields := toBigEndian(hello, "")
+	copy(oversizedFields[12:16], []byte{0xFF, 0xFF, 0xFF, 0xFF})
+	_, err = Decode(bytes.NewReader(oversizedFields))
+	c.HasError(err)
 }

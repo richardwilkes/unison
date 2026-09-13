@@ -11,6 +11,7 @@ package unison
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 
@@ -119,7 +120,9 @@ func (f *NumericField[T]) tooltipTextForValidation() string {
 }
 
 // ProvideAccessibility describes the field to assistive technologies. It is a text field that holds a number, so
-// everything the field itself has to say is said first and the numeric range it is confined to is added to it.
+// everything the field itself has to say is said first and the numeric range it is confined to is added to it. A field
+// that obscures what it shows is a password, and the field withholds its text for one; the number it was parsed from is
+// withheld along with it, since handing that over would give away exactly what the bullets were hiding.
 func (f *NumericField[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	// Whether the role was left for the widget to decide has to be noticed before the field decides it is a text field.
@@ -127,6 +130,9 @@ func (f *NumericField[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	f.Field.ProvideAccessibility(b)
 	if derived {
 		node.Role = role.SpinButton
+	}
+	if node.Protected {
+		return
 	}
 	node.HasNumber = true
 	node.Number = float64(f.Value())
@@ -137,7 +143,8 @@ func (f *NumericField[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Stepping the value moves it by one,
-// within the range the field allows; everything else is left to the field.
+// within the range the field allows, and replacing the value takes a number as readily as it takes text; everything
+// else is left to the field.
 func (f *NumericField[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Increment:
@@ -146,9 +153,30 @@ func (f *NumericField[T]) PerformAccessibilityAction(req accessibility.ActionReq
 	case accessibility.Decrement:
 		f.axStepValue(false)
 		return true
+	case accessibility.SetValue:
+		return f.axSetValue(req)
 	default:
 		return f.Field.PerformAccessibilityAction(req)
 	}
+}
+
+// axSetValue replaces the value on behalf of an assistive technology. Anything that treats the field as the spin button
+// it says it is sends the new value as a number and leaves the text empty — the Windows UI Automation range value
+// pattern and the AT-SPI value interface have nowhere else to put it — so handing such a request straight to the field,
+// which knows only about text, would blank the field rather than set it. Text is still what is used whenever it was
+// supplied, since it carries whatever formatting the field presents its values in; macOS sends both, and its text is
+// simply the number written out.
+func (f *NumericField[T]) axSetValue(req accessibility.ActionRequest) bool {
+	if req.Value != "" {
+		return f.Field.PerformAccessibilityAction(req)
+	}
+	if math.IsNaN(req.Number) {
+		return false
+	}
+	// Brought into range before it is converted, both because a value out of range is no more acceptable here than one
+	// that was typed and because converting a float far outside an integer type's range is not defined.
+	f.SetValue(T(min(max(req.Number, float64(f.minimum)), float64(f.maximum))))
+	return true
 }
 
 // axStepValue moves the value one step up or down, stopping at the end of the range rather than passing it. Value

@@ -22,6 +22,8 @@ const (
 	brokenInterface = "org.example.Broken"
 	greetMember     = "Greet"
 	getMember       = "Get"
+	getAllMember    = "GetAll"
+	setMember       = "Set"
 	nameProperty    = "Name"
 	countProperty   = "Count"
 	missingMember   = "Missing"
@@ -277,7 +279,7 @@ func TestProperties(t *testing.T) {
 	values := replyValues(t, b.call(testPath, propertiesInterface, getMember, "ss", testInterface, nameProperty))
 	c.Equal([]any{Variant{Sig: "s", Value: "original"}}, values)
 
-	reply := b.call(testPath, propertiesInterface, "Set", "ssv", testInterface, nameProperty,
+	reply := b.call(testPath, propertiesInterface, setMember, "ssv", testInterface, nameProperty,
 		Variant{Sig: "s", Value: changedName})
 	c.Equal(TypeMethodReturn, reply.Type)
 	name, err := obj.getName()
@@ -286,15 +288,30 @@ func TestProperties(t *testing.T) {
 	values = replyValues(t, b.call(testPath, propertiesInterface, getMember, "ss", testInterface, nameProperty))
 	c.Equal([]any{Variant{Sig: "s", Value: changedName}}, values)
 
-	values = replyValues(t, b.call(testPath, propertiesInterface, "GetAll", "s", testInterface))
+	values = replyValues(t, b.call(testPath, propertiesInterface, getAllMember, "s", testInterface))
 	c.Equal([]any{Dict{
 		{Key: nameProperty, Value: Variant{Sig: "s", Value: changedName}},
 		{Key: countProperty, Value: Variant{Sig: "i", Value: int32(7)}},
 	}}, values)
 
-	// An interface with no properties still answers with an empty dictionary.
-	values = replyValues(t, b.call(testPath, propertiesInterface, "GetAll", "s", "org.example.Nothing"))
+	// An interface that the object does implement, but which has no properties, answers with an empty dictionary,
+	// while one it does not implement is an error, just as it is for Get and Set.
+	values = replyValues(t, b.call(testPath, propertiesInterface, getAllMember, "s", peerInterface))
 	c.Equal([]any{Dict{}}, values)
+	c.Equal(UnknownInterface, b.call(testPath, propertiesInterface, getAllMember, "s", "org.example.Nothing").ErrorName)
+
+	// An empty interface name asks for the properties of every interface, and reports a property that no interface has
+	// as unknown rather than blaming the interface that was not named.
+	values = replyValues(t, b.call(testPath, propertiesInterface, getAllMember, "s", ""))
+	c.Equal([]any{Dict{
+		{Key: nameProperty, Value: Variant{Sig: "s", Value: changedName}},
+		{Key: countProperty, Value: Variant{Sig: "i", Value: int32(7)}},
+	}}, values)
+	reply = b.call(testPath, propertiesInterface, getMember, "ss", "", missingMember)
+	c.Equal(UnknownProperty, reply.ErrorName)
+	c.Equal(string(testPath)+" has no "+missingMember+" property", reply.AsError().Message)
+	reply = b.call(testPath, propertiesInterface, setMember, "ssv", "", missingMember, Variant{Sig: "s", Value: "x"})
+	c.Equal(UnknownProperty, reply.ErrorName)
 }
 
 func TestPropertyErrors(t *testing.T) {
@@ -313,19 +330,19 @@ func TestPropertyErrors(t *testing.T) {
 		{member: getMember, sig: "ss", want: Failed, args: []any{brokenInterface, "Broken"}},
 		{member: getMember, sig: "ss", want: NotSupported, args: []any{brokenInterface, "Refused"}},
 		{
-			member: "Set",
+			member: setMember,
 			sig:    "ssv",
 			want:   PropertyReadOnly,
 			args:   []any{testInterface, countProperty, Variant{Sig: "i", Value: int32(1)}},
 		},
 		{
-			member: "Set",
+			member: setMember,
 			sig:    "ssv",
 			want:   InvalidArgs,
 			args:   []any{testInterface, nameProperty, Variant{Sig: "i", Value: int32(1)}},
 		},
 		{
-			member: "Set",
+			member: setMember,
 			sig:    "ssv",
 			want:   UnknownProperty,
 			args:   []any{testInterface, missingMember, Variant{Sig: "s", Value: "x"}},
@@ -470,4 +487,48 @@ func TestIntrospect(t *testing.T) {
 	xml, ok := values[0].(string)
 	c.True(ok)
 	c.Equal(smallIntrospection, xml)
+}
+
+// partialPropertiesObject declares just one member of a standard interface, which is all the specification requires an
+// object to do in order to answer that member itself.
+type partialPropertiesObject struct{}
+
+func (partialPropertiesObject) Interfaces() []*Interface {
+	return []*Interface{
+		{
+			Name: propertiesInterface,
+			Methods: []*Method{
+				{Name: getMember, In: "ss", Out: "v", Handle: func(call *Call) {
+					call.Reply(Variant{Sig: "s", Value: "mine"})
+				}},
+			},
+		},
+	}
+}
+
+func TestPartiallyDeclaredStandardInterface(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	const path = ObjectPath("/org/example/partial")
+	c.NoError(b.client.Export(path, partialPropertiesObject{}))
+
+	// The declared member wins over the built-in one...
+	values := replyValues(t, b.call(path, propertiesInterface, getMember, "ss", testInterface, nameProperty))
+	c.Equal([]any{Variant{Sig: "s", Value: "mine"}}, values)
+	// ...while the members it left out are still answered by the built-in implementation.
+	c.Equal(TypeMethodReturn, b.call(path, propertiesInterface, getAllMember, "s", "").Type)
+	c.Equal(TypeError, b.call(path, propertiesInterface, setMember, "ssv", testInterface, nameProperty,
+		Variant{Sig: "s", Value: "x"}).Type)
+
+	// Introspection has to describe what dispatch actually does, so the members that fell through to the built-in
+	// implementation appear alongside the declared one rather than being left out.
+	values = replyValues(t, b.call(path, introspectableInterface, "Introspect", ""))
+	xml, ok := values[0].(string)
+	c.True(ok)
+	c.Equal(1, strings.Count(xml, `<interface name="`+propertiesInterface+`">`))
+	for _, member := range []string{getMember, getAllMember, setMember} {
+		c.Contains(xml, `<method name="`+member+`">`, member)
+	}
+	c.Contains(xml, `<signal name="PropertiesChanged">`)
 }

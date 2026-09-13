@@ -24,9 +24,9 @@ import (
 	"github.com/richardwilkes/unison/internal/dbus"
 )
 
-// mainWindowSignals is how many signals the first publish of the main window sends: the window's Create, the
-// application root gaining a child, one cache item for each of the eight reported nodes, and then the four signals that
-// say the window is active and where its focus is.
+// mainWindowSignals is how many signals the first publish of the main window sends: one cache item for each of the
+// eight reported nodes, the window's Create, the application root gaining a child, and then the four signals that say
+// the window is active and where its focus is.
 const mainWindowSignals = 14
 
 // falseValue is what a boolean state change that has been turned off carries, which is what strconv.FormatBool writes.
@@ -184,20 +184,21 @@ func TestFirstPublishAnnouncesTheWholeWindow(t *testing.T) {
 	c := ta.c
 	signals := ta.peer.nextSignals(mainWindowSignals)
 
-	// The window itself, then its place among the application's children.
-	c.Equal(windowEvent(1, signalCreate, "Test Window"), signals[0])
-	c.Equal(rootChildrenEvent(detailAdd, 0, 1), signals[1])
-
-	// One cache item per reported node, in the order a walk of the tree reaches them.
+	// One cache item per reported node, in the order a walk of the tree reaches them. They come before anything points
+	// at the window, so that an assistive technology already knows what it is being shown.
 	for i, id := range mainWindowNodes {
-		c.Equal(nodeRef(id), ta.cachedID(signals[2+i]), "cache item %d", i)
+		c.Equal(nodeRef(id), ta.cachedID(signals[i]), "cache item %d", i)
 	}
 	c.Equal([]any{dbus.Struct{
 		nodeRef(1), rootRef(), rootRef(), int32(0), int32(5),
 		[]string{InterfaceAccessible, InterfaceComponent},
 		"Test Window", uint32(RoleFrame), "",
 		States(mainTree().Node(1), true).Words(),
-	}}, signals[2].args, "the window's cache item says everything the cache would")
+	}}, signals[0].args, "the window's cache item says everything the cache would")
+
+	// The window itself, then its place among the application's children.
+	c.Equal(windowEvent(1, signalCreate, "Test Window"), signals[8])
+	c.Equal(rootChildrenEvent(detailAdd, 0, 1), signals[9])
 
 	// The window is the active one, so it says so, and says where its focus is.
 	c.Equal(windowEvent(1, signalActivate, "Test Window"), signals[10])
@@ -275,11 +276,11 @@ func TestWindowActivationAndDeactivation(t *testing.T) {
 	geometry := Geometry{Scale: geom.NewPoint(1, 1)}
 	ta.Publish(otherWindow, inactive, nil, geometry)
 	signals := ta.peer.nextSignals(5)
-	c.Equal(windowEvent(20, signalCreate, "Pick One"), signals[0])
-	c.Equal(rootChildrenEvent(detailAdd, 1, 20), signals[1])
 	for i, id := range []accessibility.NodeID{20, 21, 22} {
-		c.Equal(nodeRef(id), ta.cachedID(signals[2+i]), "cache item %d", i)
+		c.Equal(nodeRef(id), ta.cachedID(signals[i]), "cache item %d", i)
 	}
+	c.Equal(windowEvent(20, signalCreate, "Pick One"), signals[3])
+	c.Equal(rootChildrenEvent(detailAdd, 1, 20), signals[4])
 
 	activated := otherTree()
 	activated.Node(20).Focused = true
@@ -351,6 +352,253 @@ func TestNodesComingAndGoing(t *testing.T) {
 	c.Equal(objectEvent(5, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(10))), signals[3])
 }
 
+// TestSeveralChildrenOfOneParentLeavingAtOnce covers the numbering of children-changed:remove. A client applies each
+// signal as it arrives, so the indexes of a run of removals from the same parent cannot all be read from the snapshot
+// they came from: by the time the second is sent, the list it is numbered against is one shorter.
+func TestSeveralChildrenOfOneParentLeavingAtOnce(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	// The list gains a third row, so that there are three to take two away from.
+	three := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(5).Children = []accessibility.NodeID{6, 7, 10}
+		tree.Nodes[10] = &accessibility.Node{
+			ID: 10, Parent: 5, Role: role.ListItem, Name: "Three", Selectable: true,
+			Bounds: geom.NewRect(0, 100, 200, 20),
+		}
+	})
+	ta.Publish(mainWindow, three, accessibility.Diff(mainTree(), three), sampleGeometry())
+	ta.peer.nextSignals(2) // The cache item for the new row and where it went
+
+	one := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(5).Children = []accessibility.NodeID{6}
+		delete(tree.Nodes, 7)
+	})
+	events := accessibility.Diff(three, one)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NodeRemoved, Node: 7},
+		{Kind: accessibility.NodeRemoved, Node: 10},
+		{Kind: accessibility.ChildrenChanged, Node: 5},
+	}, events)
+	ta.Publish(mainWindow, one, events, sampleGeometry())
+	// The second row to go was at index 2 of the list the snapshots hold, but the first removal has already taken
+	// index 1 away, so index 1 is where it is by the time the client hears about it.
+	c.Equal([]signalRecord{
+		objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(7))),
+		cacheRemoval(7),
+		objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(10))),
+		cacheRemoval(10),
+	}, ta.peer.nextSignals(4))
+}
+
+// TestANodeThatStopsBeingIgnored covers a node joining the reported hierarchy without being added to the tree, which is
+// what a scroll bar does when there is finally something to scroll and what a group does when it is given a name.
+// accessibility.Diff calls that a state change, since the node was in the tree all along, but an ignored node has no
+// object at all, so to an assistive technology it is an addition.
+func TestANodeThatStopsBeingIgnored(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	named := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(2).Ignored = false
+		tree.Node(2).Name = "Identity"
+	})
+	events := accessibility.Diff(mainTree(), named)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NameChanged, Node: 2, New: "Identity"},
+		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateIgnored, Old: trueValue, New: falseValue},
+	}, events, "the group is still in the tree, so nothing was added or removed there")
+	ta.Publish(mainWindow, named, events, sampleGeometry())
+
+	signals := ta.peer.nextSignals(7)
+	c.Equal(objectEvent(2, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("Identity")), signals[0])
+	// The group joins the window's children, and the two nodes that used to stand in for it become its own.
+	c.Equal(nodeRef(2), ta.cachedID(signals[1]))
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(2))), signals[2])
+	c.Equal(nodeRef(3), ta.cachedID(signals[3]))
+	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(3))), signals[4])
+	c.Equal(nodeRef(4), ta.cachedID(signals[5]))
+	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(4))), signals[6])
+	c.Equal([]dbus.ObjectRef{nodeRef(2), nodeRef(5), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""),
+		"what was announced has to be what the window now reports")
+}
+
+// TestANodeThatBecomesIgnored covers the other direction: a node leaving the reported hierarchy while staying in the
+// tree, with its children left to the ancestor that holds them now.
+func TestANodeThatBecomesIgnored(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	hidden := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(5).Ignored = true
+		tree.Node(5).Name = ""
+	})
+	events := accessibility.Diff(mainTree(), hidden)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NameChanged, Node: 5, Old: "Items"},
+		{Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateIgnored, Old: falseValue, New: trueValue},
+	}, events)
+	ta.Publish(mainWindow, hidden, events, sampleGeometry())
+
+	// The name change says nothing: a node with no object has no property for anything to have changed on. The list was
+	// the window's third reported child, and its two rows take its place there.
+	signals := ta.peer.nextSignals(6)
+	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 2, 0, variantRef(nodeRef(5))), signals[0])
+	c.Equal(cacheRemoval(5), signals[1])
+	c.Equal(nodeRef(6), ta.cachedID(signals[2]))
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 2, 0, variantRef(nodeRef(6))), signals[3])
+	c.Equal(nodeRef(7), ta.cachedID(signals[4]))
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 3, 0, variantRef(nodeRef(7))), signals[5])
+	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(6), nodeRef(7), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""))
+}
+
+// TestActivationAndAFocusMoveInOneSnapshot covers the pair of events that clicking a control in a window that was not
+// the active one produces. Both name the focus, and it has to be announced once: a client that is told twice says the
+// same thing twice, and would be handed the old node's focused 0 after the new node's focused 1.
+func TestActivationAndAFocusMoveInOneSnapshot(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	inactive := mainTree()
+	inactive.Node(1).Focused = false
+	ta.Publish(mainWindow, inactive, accessibility.Diff(mainTree(), inactive), sampleGeometry())
+	ta.peer.nextSignals(3) // The window is no longer the active one, and its focus is no longer the focus
+
+	reactivated := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Focused = false
+		tree.Node(8).Focused = true
+		tree.Focus = 8
+	})
+	events := accessibility.Diff(inactive, reactivated)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.WindowActivated, Node: 1},
+		{Kind: accessibility.FocusChanged, Node: 8},
+	}, events)
+	ta.Publish(mainWindow, reactivated, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		windowEvent(1, signalActivate, "Test Window"),
+		stateEvent(1, stateNameActive, true),
+		stateEvent(4, stateNameFocused, false),
+		stateEvent(8, stateNameFocused, true),
+		focusEvent(8),
+	}, ta.peer.nextSignals(5))
+	ta.Announce("Nothing more about the focus")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestDeactivationAndAFocusMoveInOneSnapshot covers the mirror image: the node that has to be told it no longer holds
+// the focus is the one that held it while the window was still active, not whichever node the new snapshot points at.
+func TestDeactivationAndAFocusMoveInOneSnapshot(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	away := mainTree()
+	away.Node(1).Focused = false
+	away.Node(4).Focused = false
+	away.Node(8).Focused = true
+	away.Focus = 8
+	events := accessibility.Diff(mainTree(), away)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.WindowDeactivated, Node: 1},
+		{Kind: accessibility.FocusChanged, Node: 8},
+	}, events)
+	ta.Publish(mainWindow, away, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		windowEvent(1, signalDeactivate, "Test Window"),
+		stateEvent(1, stateNameActive, false),
+		stateEvent(4, stateNameFocused, false),
+	}, ta.peer.nextSignals(3), "the field that held the focus is the one that loses it")
+	ta.Announce("Nothing about the slider")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// bigTableTree is a window holding a table with more rows than it is worth walking, which is what makes it claim
+// ATSPI_STATE_MANAGES_DESCENDANTS, along with the two of those rows it is showing:
+//
+//	50 window "Ledger"                (0,0 200x100)  active
+//	└─ 51 table "Entries"             (0,0 200x100)  600 rows, 2 columns, multi-select
+//	   ├─ 52 row "Opening"            (0,0 200x20)   row 10, selected
+//	   └─ 53 row "Closing"            (0,20 200x20)  row 11
+func bigTableTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 50, Role: role.Window, Name: "Ledger", Focused: true, Bounds: geom.NewRect(0, 0, 200, 100),
+			Children: []accessibility.NodeID{51},
+		},
+		&accessibility.Node{
+			ID: 51, Parent: 50, Role: role.Table, Name: "Entries", Multiselectable: true,
+			RowCount: manageDescendantsRowThreshold + 100, ColumnCount: 2, Bounds: geom.NewRect(0, 0, 200, 100),
+			Children: []accessibility.NodeID{52, 53},
+		},
+		&accessibility.Node{
+			ID: 52, Parent: 51, Role: role.Row, Name: "Opening", RowIndex: 10, Selectable: true, Selected: true,
+			Bounds: geom.NewRect(0, 0, 200, 20), Actions: selectionActions(),
+		},
+		&accessibility.Node{
+			ID: 53, Parent: 51, Role: role.Row, Name: "Closing", RowIndex: 11, Selectable: true,
+			Bounds: geom.NewRect(0, 20, 200, 20), Actions: selectionActions(),
+		},
+	)
+}
+
+// TestTheCurrentRowOfATableThatManagesItsDescendants covers the promise a container makes by claiming
+// ATSPI_STATE_MANAGES_DESCENDANTS: it has told its client not to walk or cache what is inside it, so the only way the
+// client can follow the user through it is object:active-descendant-changed.
+func TestTheCurrentRowOfATableThatManagesItsDescendants(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	ledger := bigTableTree()
+	ta.Publish(tableWindow, ledger, nil, sampleGeometry())
+	ta.peer.nextSignals(8) // Four cache items, the window's Create and place, and the two that say it is active
+	c.True(States(ledger.Node(51), true).Has(StateManagesDescendants))
+
+	moved := bigTableTree()
+	moved.Generation++
+	moved.Node(52).Selected = false
+	moved.Node(53).Selected = true
+	events := accessibility.Diff(ledger, moved)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.StateChanged, Node: 52, State: accessibility.StateSelected, Old: trueValue, New: falseValue},
+		{Kind: accessibility.StateChanged, Node: 53, State: accessibility.StateSelected, Old: falseValue, New: trueValue},
+	}, events)
+	ta.Publish(tableWindow, moved, events, sampleGeometry())
+	// The table is told which of its rows is current, after the rows themselves have said what happened to them.
+	c.Equal([]signalRecord{
+		stateEvent(52, stateNameSelected, false),
+		stateEvent(53, stateNameSelected, true),
+		objectEvent(51, signalActiveDescendantChanged, "", 1, 0, variantRef(nodeRef(53))),
+	}, ta.peer.nextSignals(3))
+}
+
+// TestASmallTableSaysNothingAboutItsCurrentRow covers the other side of the same contract: a table a client is expected
+// to walk reports its rows one by one and has no current descendant to announce.
+func TestASmallTableSaysNothingAboutItsCurrentRow(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	small := bigTableTree()
+	small.Node(51).RowCount = manageDescendantsRowThreshold
+	ta.Publish(tableWindow, small, nil, sampleGeometry())
+	ta.peer.nextSignals(8)
+	c.False(States(small.Node(51), true).Has(StateManagesDescendants))
+
+	moved := bigTableTree()
+	moved.Node(51).RowCount = manageDescendantsRowThreshold
+	moved.Generation++
+	moved.Node(52).Selected = false
+	moved.Node(53).Selected = true
+	ta.Publish(tableWindow, moved, accessibility.Diff(small, moved), sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(52, stateNameSelected, false),
+		stateEvent(53, stateNameSelected, true),
+	}, ta.peer.nextSignals(2))
+	ta.Announce("Nothing about the table")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
 func TestPropertyAndAttributeChanges(t *testing.T) {
 	t.Parallel()
 	ta := newEventAdapter(t)
@@ -362,14 +610,30 @@ func TestPropertyAndAttributeChanges(t *testing.T) {
 		tree.Node(8).Number = 7
 		tree.Node(9).Sort = accessibility.SortAscending
 	})
-	ta.Publish(mainWindow, changed, accessibility.Diff(mainTree(), changed), sampleGeometry())
+	events := accessibility.Diff(mainTree(), changed)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NameChanged, Node: 3, Old: "Name:", New: "Full name:"},
+		{Kind: accessibility.DescriptionChanged, Node: 5, New: "The things"},
+		{Kind: accessibility.ValueChanged, Node: 8, Old: "4", New: "7"},
+		{Kind: accessibility.NumberChanged, Node: 8, Old: "4", New: "7"},
+		{Kind: accessibility.SortChanged, Node: 9, Old: "unsorted", New: "ascending"},
+	}, events, "one change to the slider arrives as both of the value events")
+	ta.Publish(mainWindow, changed, events, sampleGeometry())
+	// AT-SPI has one accessible-value property, and ATK defines it as a number, so the two value events become one
+	// signal carrying a double rather than two carrying different types under the same property name.
 	c.Equal([]signalRecord{
 		objectEvent(3, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("Full name:")),
 		objectEvent(5, signalPropertyChange, propertyAccessibleDescription, 0, 0, variantString("The things")),
-		objectEvent(8, signalPropertyChange, propertyAccessibleValue, 0, 0, variantString("7")),
 		objectEvent(8, signalPropertyChange, propertyAccessibleValue, 0, 0, variantDouble(7)),
 		objectEvent(9, signalAttributesChanged, "", 0, 0, variantInt32(0)),
-	}, ta.peer.nextSignals(5))
+	}, ta.peer.nextSignals(4))
+
+	// A control with a textual value and no number behind it has no org.a11y.atspi.Value interface to read one back
+	// from, so there is no accessible-value to report about it.
+	textual := activeMainTree(func(tree *accessibility.Tree) { tree.Node(4).Value = "Barney" })
+	ta.Publish(mainWindow, textual, accessibility.Diff(mainTree(), textual), sampleGeometry())
+	ta.Announce("Nothing about the field")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
 func TestBoundsChangesAreOnlyReportedForWindows(t *testing.T) {

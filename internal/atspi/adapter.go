@@ -43,6 +43,12 @@ type Config struct {
 	// Action is called with every request an assistive technology makes. It is called on the connection's dispatcher
 	// goroutine and must not block: the root package hands the request to the user interface thread and returns.
 	Action func(req accessibility.ActionRequest)
+	// Lost is called, at most once, when the connection to the accessibility bus ends without [Adapter.Stop] having
+	// asked for it, which is what happens when the accessibility bus itself goes away. Nothing published on the adapter
+	// reaches anyone afterwards, so the root package throws it away and, if the desktop still wants to be served,
+	// starts a fresh one. It is called on one of the connection's own goroutines and must not block. It may be nil, in
+	// which case [Adapter.Err] is the only way the loss can be learned of.
+	Lost func(err error)
 	// conn is the connection to use instead of dialing the accessibility bus. It is unexported, so only this package
 	// can supply one, which is what the tests do: they hand [Start] a connection to a fake registry over a net.Pipe.
 	// It must already be authenticated and have said Hello, as a connection from [dbus.Dial] has, since the unique
@@ -62,11 +68,13 @@ type Adapter struct {
 	conn       *dbus.Conn
 	windows    map[WindowKey]*windowState
 	nodeWindow map[accessibility.NodeID]*windowState
+	err        error
 	cfg        Config
 	desktop    dbus.ObjectRef
 	name       string
 	order      []*windowState
 	appID      atomic.Int32
+	stopping   atomic.Bool
 	lock       sync.RWMutex
 }
 
@@ -108,7 +116,35 @@ func Start(cfg Config) (*Adapter, error) {
 		conn.Close()
 		return nil, err
 	}
+	// Learning that the connection has ended matters as much as anything published over it: an accessibility bus that
+	// is restarted behind a launcher that keeps its name produces no other sign that it has gone, and everything
+	// written to a connection that has ended is silently dropped. This is registered last, so that a connection lost
+	// while the application was still being exported and embedded is reported by the error returned above instead.
+	conn.OnDisconnect(a.connectionLost)
 	return a, nil
+}
+
+// Err returns the error that ended the connection to the accessibility bus, or nil while the adapter is still usable.
+// A non-nil answer means nothing published since is reaching anyone: the adapter has to be thrown away, and a fresh one
+// started if the desktop still wants to be served. [Adapter.Stop] makes it non-nil too.
+func (a *Adapter) Err() error {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a.err
+}
+
+// connectionLost records why the connection to the accessibility bus ended and, unless it ended because [Adapter.Stop]
+// closed it on purpose, tells whoever asked to be told. It runs on one of the connection's own goroutines.
+func (a *Adapter) connectionLost(err error) {
+	a.lock.Lock()
+	if a.err == nil {
+		a.err = err
+	}
+	a.lock.Unlock()
+	if a.stopping.Load() || a.cfg.Lost == nil {
+		return
+	}
+	a.cfg.Lost(err)
 }
 
 // export publishes the three kinds of object the adapter answers for: the application root, the cache, and one object
@@ -153,7 +189,11 @@ func (a *Adapter) embed() error {
 
 // Stop tells the registry the application is leaving the accessibility tree and closes the connection. Every object
 // goes away with it, and the adapter must not be used afterwards.
+//
+// The [Config.Lost] callback is not called for a connection that ends this way: the caller is the one that ended it, so
+// there is nothing to report.
 func (a *Adapter) Stop() {
+	a.stopping.Store(true)
 	a.unembed()
 	a.conn.Close()
 }
@@ -161,6 +201,11 @@ func (a *Adapter) Stop() {
 // unembed tells the registry the application is leaving. No reply is asked for: the registry has nothing to say, and
 // waiting for it would hold up a shutdown that may be happening because the bus has already gone.
 func (a *Adapter) unembed() {
+	if a.Err() != nil {
+		// The connection has already ended, so there is nobody left to tell and nothing to report but the death that
+		// has been reported once already.
+		return
+	}
 	msg := dbus.NewMethodCall(RegistryDestination, RootPath, InterfaceSocket, "Unembed")
 	if err := msg.SetBodyWithSignature(objectRefSignature, a.rootReference()); err != nil {
 		errs.Log(err)

@@ -243,8 +243,6 @@ func UIAPatterns(n *accessibility.Node) PatternSet {
 		return patterns
 	case role.Cell:
 		return PatternGridItem | PatternTableItem
-	case role.Menu:
-		return PatternExpandCollapse
 	case role.MenuItem:
 		patterns := PatternInvoke
 		if n.HasCheck {
@@ -255,8 +253,13 @@ func UIAPatterns(n *accessibility.Node) PatternSet {
 		}
 		return patterns
 	default:
-		// Group, TabPanel, ScrollArea, TableHeader, Label, Heading, Image, Separator, MenuBar, Tooltip and Toolbar all
-		// present themselves through their properties and their children alone.
+		// Group, TabPanel, ScrollArea, TableHeader, Label, Heading, Image, Separator, MenuBar, Menu, Tooltip and
+		// Toolbar all present themselves through their properties and their children alone.
+		//
+		// A Menu is the one of those that looks as though it should expand: the role belongs to the panel of an open
+		// menu, which nothing ever collapses and which never reports Expandable, so ExpandCollapse would be a pattern
+		// whose state is permanently LeafNode and whose two methods report success without doing anything. The menu
+		// item that opened it carries the pattern instead, which is where a client looks for it.
 		return 0
 	}
 }
@@ -426,7 +429,9 @@ func UIARuntimeID(id accessibility.NodeID) []int32 {
 // Navigation runs over the unignored tree, so the layout panels the snapshot marks Ignored are invisible here: their
 // children take their place as children of the nearest unignored ancestor. The fragment root has no parent and no
 // siblings, so those three directions report nothing for it, and an Ignored node — which has no provider to navigate
-// from in the first place — reports nothing for any direction but its children.
+// from in the first place — reports nothing for either sibling direction, since it is not among the unignored children
+// of its own unignored parent. Its children and its parent are still answered, from the unignored tree like everything
+// else, so a caller that asks anyway is told something consistent rather than nothing.
 func UIANavigate(t *accessibility.Tree, id accessibility.NodeID, direction NavigateDirection) accessibility.NodeID {
 	if t == nil || t.Node(id) == nil {
 		return 0
@@ -650,8 +655,13 @@ func (r UIARaise) String() string {
 //   - A removal whose parent also left the tree reports no structure change either, since there is no provider left to
 //     raise it on, but it still reports the disconnect that releases the removed node's provider.
 //   - Nodes the snapshot marks Ignored never appear: they have no provider, so there is nothing to raise an event on.
-//   - Duplicates are dropped. A text edit produces both a text-changed event and a value property change, and the value
-//     property change also arrives on its own, so without this a client would hear about one edit twice.
+//   - UI Automation's two text events are never raised. Both belong to the Text control pattern, which this package
+//     does not implement and which every element here answers NULL for, so a client that responded to one by asking for
+//     ITextProvider would have nothing to read. An edit reports the Value pattern's property instead, which is where
+//     the text a client reads comes from.
+//   - Duplicates are dropped. One text edit arrives as a value change and as the deletion and the insertion that made
+//     it, and all three ask for the same value property, so without this a client would hear about one edit three
+//     times.
 //
 // The first publish of a window is the one case that produces a call with no event behind it: a dialog announces
 // itself with Window_WindowOpened, which is how a screen reader knows to read the whole dialog out. Diff reports
@@ -750,10 +760,12 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 	case accessibility.StateChanged:
 		d.state(event)
 	case accessibility.TextInserted, accessibility.TextDeleted:
-		d.event(event.Node, UIA_Text_TextChangedEventId)
+		// UIA_Text_TextChangedEventId belongs to the Text pattern, which nothing here implements, so the edit is
+		// reported through the value property alone. See the rule in the doc comment on UIADecideRaises.
 		d.valueProperty(event.Node)
 	case accessibility.TextSelectionChanged:
-		d.event(event.Node, UIA_Text_TextSelectionChangedEventId)
+		// Nothing. UIA_Text_TextSelectionChangedEventId is the other half of the Text pattern, and a caret move changes
+		// no property this package answers, so there is nothing a client could read even if it were told.
 	case accessibility.ChildrenChanged:
 		d.add(UIARaise{
 			Kind:   UIARaiseStructure,
@@ -858,8 +870,22 @@ func (d *uiaDecider) state(event accessibility.Event) {
 		if patterns.Has(PatternExpandCollapse) {
 			d.property(n.ID, UIA_ExpandCollapseExpandCollapseStatePropertyId)
 		}
+	case accessibility.StateProtected:
+		// A field that became, or stopped being, a password field changes what every client may read from it, and the
+		// provider answers the property for every element, so it is reported for every element too.
+		d.property(n.ID, UIA_IsPasswordPropertyId)
+	case accessibility.StateModal:
+		// Modality is the Window pattern's to report, and the fragment root is the only element that hands that pattern
+		// out — a nested node with a window-like role is a panel rather than a window of its own, as
+		// UIAProvider.supports explains. A client watches the property to know whether to keep the user inside this
+		// window until it is dealt with.
+		if n.ID == d.cur.Root && patterns.Has(PatternWindow) {
+			d.property(n.ID, UIA_WindowIsModalPropertyId)
+		}
 	default:
-		// Selectable, Multiselectable, Modal, Busy, Ignored and Protected have no property a client watches for.
+		// Selectable, Multiselectable, Busy and Ignored have no property a client watches for. A node that has become
+		// Ignored has nothing to raise anything on, either: the publish retires its provider, and add drops every call
+		// that names it.
 	}
 }
 
@@ -867,9 +893,14 @@ func (d *uiaDecider) state(event accessibility.Event) {
 // on the container: one that allows several selections at once reports each element joining and leaving the selection,
 // while one that does not reports only the element that became the selection, since that implicitly deselects the
 // previous one.
+//
+// The container is the one the provider reports through ISelectionItemProvider::get_SelectionContainer — the nearest
+// ancestor supporting the Selection pattern — rather than the immediate parent, which in a hierarchical table is
+// another Row. A row is never multiselectable, so asking the parent would report a child row joining a multiple
+// selection with ElementSelected, which tells the client everything else was just deselected.
 func (d *uiaDecider) selectionItem(n *accessibility.Node, selected bool) {
 	d.property(n.ID, UIA_SelectionItemIsSelectedPropertyId)
-	container := d.cur.Node(d.cur.UnignoredParent(n.ID))
+	container := d.cur.Node(UIASelectionContainer(d.cur, n.ID))
 	if container != nil && container.Multiselectable {
 		if selected {
 			d.event(n.ID, UIA_SelectionItem_ElementAddedToSelectionEventId)

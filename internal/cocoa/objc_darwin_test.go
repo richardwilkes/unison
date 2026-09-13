@@ -131,37 +131,6 @@ func TestNSNumberRoundTrip(t *testing.T) {
 	})
 }
 
-// TestNSValueRoundTrip proves the NSValue helpers the accessibility adapter hands rects, ranges and points to AppKit
-// with, including the nil-tolerance of the readers.
-func TestNSValueRoundTrip(t *testing.T) {
-	WithPool(func() {
-		for _, r := range []NSRect{
-			{},
-			{Origin: NSPoint{X: 1.5, Y: -2.25}, Size: NSSize{Width: 320, Height: 240}},
-			{Origin: NSPoint{X: -1e6, Y: 1e6}, Size: NSSize{Width: 0.5, Height: 0.25}},
-		} {
-			if got := RectFromNSValue(NSValueFromRect(r)); got != r {
-				t.Errorf("rect round trip of %+v produced %+v", r, got)
-			}
-		}
-		for _, r := range []NSRange{{}, {Location: 6, Length: 5}, {Location: nsNotFound, Length: 0}} {
-			if got := RangeFromNSValue(NSValueFromRange(r)); got != r {
-				t.Errorf("range round trip of %+v produced %+v", r, got)
-			}
-		}
-		pt := NSPoint{X: 3.5, Y: -4.5}
-		if got := objc.Send[NSPoint](NSValueFromPoint(pt), Sel("pointValue")); got != pt {
-			t.Errorf("point round trip of %+v produced %+v", pt, got)
-		}
-		if got := RectFromNSValue(0); got != (NSRect{}) {
-			t.Errorf("RectFromNSValue(0) = %+v, want the zero rect", got)
-		}
-		if got := RangeFromNSValue(0); got != (NSRange{}) {
-			t.Errorf("RangeFromNSValue(0) = %+v, want the zero range", got)
-		}
-	})
-}
-
 // TestNSDictionaryFromPairs proves the userInfo builder: alternating keys and values, an empty dictionary rather than
 // nil for no pairs, and a dangling key dropped rather than paired with nil.
 func TestNSDictionaryFromPairs(t *testing.T) {

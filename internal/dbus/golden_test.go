@@ -12,6 +12,7 @@ package dbus
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 )
 
 // The helpers below assemble expected byte sequences by hand so that the golden tests do not lean on any of the code
@@ -260,6 +261,129 @@ func goldenCases() []goldenCase {
 	}
 }
 
+// swapper rewrites the little-endian encoding of a value sequence as the big-endian one, in place. It walks the
+// signature itself rather than leaning on the decoder, so that the big-endian tests do not check the code under test
+// against itself. Only values that [Marshal] produced are handed to it, so anything malformed is a bug in the test and
+// is reported by panicking.
+type swapper struct {
+	data []byte
+	pos  int
+}
+
+// swapEndianness returns a copy of the marshaled form of sig with every multi-byte field written the other way round.
+func swapEndianness(sig Signature, data []byte) []byte {
+	s := &swapper{data: slices.Clone(data)}
+	types, err := sig.Types()
+	if err != nil {
+		panic(err)
+	}
+	for _, one := range types {
+		s.value(one)
+	}
+	if s.pos != len(s.data) {
+		panic("the swapper did not consume everything")
+	}
+	return s.data
+}
+
+// align skips the padding that precedes a value of the given alignment, which is already NUL and so needs no swapping.
+func (s *swapper) align(n int) {
+	for s.pos%n != 0 {
+		s.pos++
+	}
+}
+
+// fixed swaps the n byte value at the current position, having first skipped its padding.
+func (s *swapper) fixed(n int) {
+	s.align(n)
+	slices.Reverse(s.data[s.pos : s.pos+n])
+	s.pos += n
+}
+
+// length swaps the 4 byte length at the current position and returns the value it had.
+func (s *swapper) length() int {
+	s.align(4)
+	n := binary.LittleEndian.Uint32(s.data[s.pos:])
+	binary.BigEndian.PutUint32(s.data[s.pos:], n)
+	s.pos += 4
+	return int(n)
+}
+
+// value swaps one value, whose type is the single complete type sig.
+func (s *swapper) value(sig Signature) {
+	switch sig[0] {
+	case 'y':
+		s.pos++
+	case 'n', 'q':
+		s.fixed(2)
+	case 'b', 'i', 'u':
+		s.fixed(4)
+	case 'x', 't', 'd':
+		s.fixed(8)
+	case 's', 'o':
+		s.pos += s.length() + 1 // The bytes and the NUL that follows them are untouched
+	case 'g':
+		s.pos += int(s.data[s.pos]) + 2 // The length is a single byte, so only the NUL is added to it
+	case 'v':
+		n := int(s.data[s.pos])
+		nested := Signature(s.data[s.pos+1 : s.pos+1+n])
+		s.pos += n + 2
+		s.value(nested)
+	case 'a':
+		s.array(sig[1:])
+	case '(':
+		s.structure(sig)
+	default:
+		panic("cannot swap the type " + string(sig))
+	}
+}
+
+// array swaps every element of an array whose element type is elem, which is a dict entry when it starts with a brace.
+func (s *swapper) array(elem Signature) {
+	n := s.length()
+	s.align(alignmentOf(elem[0]))
+	end := s.pos + n
+	for s.pos < end {
+		if elem[0] == '{' {
+			s.structure(elem)
+			continue
+		}
+		s.value(elem)
+	}
+	if s.pos != end {
+		panic("an array element overran the end of its array")
+	}
+}
+
+// structure swaps every field of a structure or dict entry, whose type sig includes its parentheses or braces.
+func (s *swapper) structure(sig Signature) {
+	types, err := sig[1 : len(sig)-1].Types()
+	if err != nil {
+		panic(err)
+	}
+	s.align(8)
+	for _, one := range types {
+		s.value(one)
+	}
+}
+
+// toBigEndian returns the big-endian form of a complete message that was encoded little-endian. bodySig is the
+// signature of the body, which may be empty when there is none. The serial and the header field array are swapped
+// together, starting from an offset that is a multiple of 8, so that the alignment inside the array is measured from
+// the same place the encoder measured it from.
+func toBigEndian(data []byte, bodySig Signature) []byte {
+	result := slices.Clone(data)
+	fieldsLength := int(binary.LittleEndian.Uint32(result[12:fixedHeaderSize]))
+	copy(result[8:], swapEndianness("ua(yv)", result[8:fixedHeaderSize+fieldsLength]))
+	if bodySig != "" {
+		bodyStart := fixedHeaderSize + (fieldsLength+7)&^7
+		copy(result[bodyStart:], swapEndianness(bodySig, result[bodyStart:]))
+	}
+	slices.Reverse(result[4:8]) // The body length
+	result[0] = 'B'
+	return result
+}
+
 // helloMessage returns the canonical Hello method call that every client sends to the bus as its first message, along
 // with the 128 bytes libdbus produces for it.
 func helloMessage() (m *Message, data []byte) {
@@ -285,6 +409,40 @@ func helloMessage() (m *Message, data []byte) {
 		[]byte{3},            // 112     MEMBER
 		sigAt("s"),           // 113-115
 		strAt("Hello"),       // 116-125
+		pad(2),               // 126-127 the header is padded to 8 before the body
+	)
+}
+
+// helloMessageBigEndian returns the same Hello method call that [helloMessage] does, in the encoding a peer on a
+// big-endian machine would send. It is assembled by hand, byte for byte, rather than by swapping the little-endian
+// bytes, so that it also checks the swapper that [toBigEndian] uses for the cases that are too large to spell out.
+func helloMessageBigEndian() []byte {
+	u32 := func(v uint32) []byte {
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, v)
+		return b
+	}
+	str := func(s string) []byte { return append(append(u32(uint32(len(s))), s...), 0) }
+	return concat(
+		[]byte{'B', 1, 0, 1}, // 0-3     big-endian, method call, no flags, protocol version 1
+		u32(0),               // 4-7     body length
+		u32(1),               // 8-11    serial
+		u32(110),             // 12-15   header field array length in bytes
+		[]byte{1},            // 16      PATH
+		sigAt("o"),           // 17-19
+		str(busPath),         // 20-45
+		pad(2),               // 46-47   align the next field to 8
+		[]byte{6},            // 48      DESTINATION
+		sigAt("s"),           // 49-51
+		str(busName),         // 52-76
+		pad(3),               // 77-79
+		[]byte{2},            // 80      INTERFACE
+		sigAt("s"),           // 81-83
+		str(busName),         // 84-108
+		pad(3),               // 109-111
+		[]byte{3},            // 112     MEMBER
+		sigAt("s"),           // 113-115
+		str("Hello"),         // 116-125
 		pad(2),               // 126-127 the header is padded to 8 before the body
 	)
 }

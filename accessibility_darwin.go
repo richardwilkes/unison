@@ -70,6 +70,12 @@ func axActionIsNavigation(action accessibility.Action) bool {
 // for the answer: the navigation requests (see axActionIsNavigation), and setting or stepping a scroll bar, which is
 // how VoiceOver scrolls something into view before it reads where that something is. Everything else may run arbitrary
 // application code and is queued instead.
+//
+// Carrying a request out on the spot lays the window out again and publishes a fresh snapshot before the adapter has
+// returned to AppKit, so the adapter is re-entered from inside its own accessibility callback. That is deliberate — it
+// is the only way the answer VoiceOver reads back describes the state its request produced — and internal/cocoa is
+// written for it: an element whose node leaves the tree during such a publish is autoreleased rather than released
+// outright, so it outlives the AppKit call that is standing on it.
 func (w *Window) axActionRunsInline(req accessibility.ActionRequest) bool {
 	if axActionIsNavigation(req.Action) {
 		return true
@@ -130,12 +136,12 @@ func (w *Window) nativeAccessibilityShutdown() {
 	}
 }
 
-// nativeAccessibilityAnnounce asks the platform's assistive technology to speak text.
 // nativeAccessibilityEnabledChanged has nothing to do on this platform: support starts on the next query the content
 // view receives, which activation refuses or allows as it stands at the time, and stopping has already shut every
 // adapter down.
 func nativeAccessibilityEnabledChanged(_ bool) {}
 
+// nativeAccessibilityAnnounce asks the platform's assistive technology to speak text.
 func nativeAccessibilityAnnounce(text string) {
 	cocoa.AXAnnounce(text)
 }

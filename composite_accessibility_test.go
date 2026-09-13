@@ -495,6 +495,102 @@ func TestTableAccessibilityHierarchy(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestTableAccessibilityHierarchicalFilterRefusesOpenStateChanges verifies that an assistive technology is given no way
+// to open or close a row while a hierarchical filter is applied. Such a filter shows every container it kept as open,
+// whatever the container's own open state, so the disclosure triangle is drawn without a hit rect, the left and right
+// arrow keys do nothing and DiscloseRow reports that it changed nothing; letting a request through here would have
+// flipped open states the filter hides, with nothing on the screen to show for it.
+func TestTableAccessibilityHierarchicalFilterRefusesOpenStateChanges(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var parent *tableTestRow
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			parent = newTableTestRow("parent")
+			parent.SetChildren([]*tableTestRow{newTableTestRow("child0"), newTableTestRow("child1")})
+			table = axNewTable(parent)
+			// The filter keeps the rows it returns false for, so only child0 passes; parent is shown as the context it
+			// sits in, open despite never having been opened.
+			table.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "child0" })
+			wnd = newHeadlessWindow(t, "filtered tree", geom.NewRect(10, 10, 400, 400), axColumn(table))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(table)
+	c.True(node != nil)
+	c.Equal(2, node.RowCount, "the filter shows the row that passed and the container holding it")
+	parentNode := axTableRows(tree, node)["parent"]
+	c.True(parentNode != nil)
+	c.True(parentNode.Expandable)
+	c.True(parentNode.Expanded, "a hierarchical filter shows every container it kept as open")
+	c.False(parentNode.Actions.Has(accessibility.Expand), "the open state cannot be changed behind the filter")
+	c.False(parentNode.Actions.Has(accessibility.Collapse), "the open state cannot be changed behind the filter")
+	for _, child := range axChildNodes(tree, parentNode) {
+		c.NotEqual(role.DisclosureTriangle, child.Role,
+			"the triangle the filter draws is not something that can be pressed")
+	}
+
+	// Even a request that names the row directly, as one built from an older description would, is refused.
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   parentNode.ID,
+		Action: accessibility.Expand,
+	}))
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   parentNode.ID,
+		Action: accessibility.Collapse,
+	}))
+	var open bool
+	screen.Do(func() { open = parent.IsOpen() })
+	c.False(open, "the row's own open state must have been left alone")
+	node = screen.AccessibilityNodeFor(table)
+	c.Equal(2, node.RowCount, "the rows the filter shows must not have changed")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityWithNoColumns verifies that a table holding rows but no columns never asks a row for the data of
+// a column that does not exist. Every other caller of CellDataForSort is driven by a real column index, so a model is
+// entitled to reach straight for the column it was handed.
+func TestTableAccessibilityWithNoColumns(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	var asked []int
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			row := newTableTestRow("only")
+			row.cellData = func(col int) string {
+				asked = append(asked, col)
+				return "data"
+			}
+			model := &unison.SimpleTableModel[*tableTestRow]{}
+			model.SetRootRows([]*tableTestRow{row})
+			table = unison.NewTable[*tableTestRow](model)
+			table.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Fill, HGrab: true})
+			table.SyncToModel()
+			wnd = newHeadlessWindow(t, "columnless table", geom.NewRect(10, 10, 300, 200), axColumn(table))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(table)
+	c.True(node != nil)
+	c.Equal(1, node.RowCount)
+	c.Equal(0, node.ColumnCount)
+	rows := axChildNodes(tree, node)
+	c.Equal(1, len(rows), "the row is still described, even with no columns to describe within it")
+	if len(rows) == 1 {
+		c.Equal(role.Row, rows[0].Role)
+		c.Equal("", rows[0].Name, "there is no column for a name to come from")
+		c.Equal(0, len(rows[0].Children), "a row with no columns holds no cells")
+	}
+	var calls []int
+	screen.Do(func() { calls = asked })
+	c.Equal(0, len(calls), "no cell data should have been asked for, but columns %v were", calls)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestTableAccessibilityBoundsSelectionAndFocus verifies that a table far taller than its view port describes the rows
 // that can be seen, caps how many it describes solely because they are selected, and always describes the row holding
 // the cell that has the keyboard focus, however far out of view it has been scrolled.

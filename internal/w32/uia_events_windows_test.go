@@ -86,6 +86,10 @@ type uiaRecordedRaise struct {
 // It needs no lock: a publish, an announcement and a destroy all happen on the goroutine that asked for them, which in
 // a test is the test's own.
 type uiaRecorder struct {
+	// onEvent, when set, is called from within UiaRaiseAutomationEvent's stand-in, before the call is recorded. It is
+	// how a test looks at the adapter's state at the moment it is talking to a client, which is the only way to check
+	// the order the parts of a teardown happen in.
+	onEvent   func(id EventID)
 	raises    []uiaRecordedRaise
 	listening bool
 }
@@ -131,6 +135,9 @@ func (r *uiaRecorder) clientsAreListening() bool {
 
 // automationEvent stands in for UiaRaiseAutomationEvent.
 func (r *uiaRecorder) automationEvent(provider unsafe.Pointer, id EventID) uintptr {
+	if r.onEvent != nil {
+		r.onEvent(id)
+	}
 	r.raises = append(r.raises, uiaRecordedRaise{Kind: UIARaiseEvent, Provider: provider, Event: id})
 	return uintptr(COM_S_OK)
 }
@@ -237,7 +244,7 @@ func newRecordingUIAWindow(t *testing.T, tree *accessibility.Tree, listening boo
 func TestUIARaiseNothingWhenNobodyListens(t *testing.T) {
 	c := check.New(t)
 	w, r := newRecordingUIAWindow(t, eventTree(), false)
-	button := w.Provider(10)
+	button := w.providerFor(10)
 	c.NotNil(button)
 
 	cur := eventTree()
@@ -273,7 +280,7 @@ func TestUIARaiseNameChange(t *testing.T) {
 
 	c.Equal(1, r.count())
 	c.Equal(UIARaiseProperty, r.at(0).Kind)
-	c.Equal(w.Provider(3).Unknown(), r.at(0).Provider)
+	c.Equal(w.providerFor(3).Unknown(), r.at(0).Provider)
 	c.Equal(UIA_NamePropertyId, r.at(0).Property)
 	c.Equal(PropertyID(30005), r.at(0).Property)
 	c.Equal(VT_BSTR, r.at(0).Old.VT)
@@ -296,7 +303,7 @@ func TestUIARaiseToggleState(t *testing.T) {
 
 	c.Equal(1, r.count())
 	c.Equal(UIARaiseProperty, r.at(0).Kind)
-	c.Equal(w.Provider(3).Unknown(), r.at(0).Provider)
+	c.Equal(w.providerFor(3).Unknown(), r.at(0).Provider)
 	c.Equal(PropertyID(30086), r.at(0).Property)
 	c.Equal(VT_I4, r.at(0).Old.VT)
 	c.Equal(int32(ToggleState_On), r.at(0).Old.Int32())
@@ -304,8 +311,10 @@ func TestUIARaiseToggleState(t *testing.T) {
 	c.Equal(int32(ToggleState_Off), r.at(0).New.Int32())
 }
 
-// TestUIARaiseTextEdit verifies what an edit to a text field says: the text changed, the value it changed to, and where
-// the caret ended up. The value is reported as the Value pattern's property, since that is where a client reads it.
+// TestUIARaiseTextEdit verifies what an edit to a text field says: the value it changed to, reported as the Value
+// pattern's property, since that is where a client reads the text from, and nothing else. Neither of UI Automation's
+// text events is raised — they belong to the Text pattern, which this package does not implement and which every
+// element answers NULL for — and the caret moving reports nothing at all.
 func TestUIARaiseTextEdit(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
@@ -317,20 +326,14 @@ func TestUIARaiseTextEdit(t *testing.T) {
 	cur.Generation = 2
 	w.Publish(cur, accessibility.Diff(old, cur))
 
-	field := w.Provider(2).Unknown()
-	c.Equal(3, r.count())
+	field := w.providerFor(2).Unknown()
+	c.Equal(1, r.count())
 	c.Equal(UIARaiseProperty, r.at(0).Kind)
 	c.Equal(field, r.at(0).Provider)
 	c.Equal(PropertyID(30045), r.at(0).Property)
 	c.Equal(VT_BSTR, r.at(0).Old.VT)
 	c.Equal("hello", r.at(0).Old.Str)
 	c.Equal("help", r.at(0).New.Str)
-	c.Equal(UIARaiseEvent, r.at(1).Kind)
-	c.Equal(field, r.at(1).Provider)
-	c.Equal(UIA_Text_TextChangedEventId, r.at(1).Event)
-	c.Equal(UIARaiseEvent, r.at(2).Kind)
-	c.Equal(field, r.at(2).Provider)
-	c.Equal(UIA_Text_TextSelectionChangedEventId, r.at(2).Event)
 }
 
 // TestUIARaiseFocus verifies that the focus moving inside a window is reported on the element that took it, and only
@@ -349,7 +352,7 @@ func TestUIARaiseFocus(t *testing.T) {
 	w.Publish(cur, accessibility.Diff(old, cur))
 	c.Equal(1, r.count())
 	c.Equal(UIARaiseEvent, r.at(0).Kind)
-	c.Equal(w.Provider(10).Unknown(), r.at(0).Provider)
+	c.Equal(w.providerFor(10).Unknown(), r.at(0).Provider)
 	c.Equal(UIA_AutomationFocusChangedEventId, r.at(0).Event)
 
 	// The same move within a window that is not active says nothing.
@@ -368,7 +371,7 @@ func TestUIARaiseFocus(t *testing.T) {
 	foreground.Generation = 4
 	w.Publish(foreground, accessibility.Diff(background, foreground))
 	c.Equal(1, r.count())
-	c.Equal(w.Provider(2).Unknown(), r.at(0).Provider)
+	c.Equal(w.providerFor(2).Unknown(), r.at(0).Provider)
 	c.Equal(UIA_AutomationFocusChangedEventId, r.at(0).Event)
 }
 
@@ -388,7 +391,7 @@ func TestUIARaiseStructureAdded(t *testing.T) {
 	c.Equal(1, r.count())
 	c.Equal(UIARaiseStructure, r.at(0).Kind)
 	c.Equal(StructureChangeType_ChildAdded, r.at(0).Change)
-	c.Equal(w.Provider(11).Unknown(), r.at(0).Provider)
+	c.Equal(w.providerFor(11).Unknown(), r.at(0).Provider)
 	c.Equal([]int32{UiaAppendRuntimeId, 11, 0}, r.at(0).RuntimeID)
 
 	// The whole diff reports the invalidation on the parent instead, with no runtime identifier at all, and the child
@@ -398,7 +401,7 @@ func TestUIARaiseStructureAdded(t *testing.T) {
 	c.Equal(1, r.count())
 	c.Equal(UIARaiseStructure, r.at(0).Kind)
 	c.Equal(StructureChangeType_ChildrenInvalidated, r.at(0).Change)
-	c.Equal(w.Provider(4).Unknown(), r.at(0).Provider)
+	c.Equal(w.providerFor(4).Unknown(), r.at(0).Provider)
 	c.Equal(0, len(r.at(0).RuntimeID))
 }
 
@@ -409,7 +412,7 @@ func TestUIARaiseStructureRemoved(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
 	w, r := newRecordingUIAWindow(t, old, true)
-	item := w.Provider(6)
+	item := w.providerFor(6)
 	c.NotNil(item)
 	itemUnknown := item.Unknown()
 
@@ -422,13 +425,13 @@ func TestUIARaiseStructureRemoved(t *testing.T) {
 	c.Equal(2, r.count())
 	c.Equal(UIARaiseStructure, r.at(0).Kind)
 	c.Equal(StructureChangeType_ChildRemoved, r.at(0).Change)
-	c.Equal(w.Provider(4).Unknown(), r.at(0).Provider, "a removal is reported on the parent the child left")
+	c.Equal(w.providerFor(4).Unknown(), r.at(0).Provider, "a removal is reported on the parent the child left")
 	c.Equal([]int32{UiaAppendRuntimeId, 6, 0}, r.at(0).RuntimeID)
 	c.Equal(UIARaiseDisconnect, r.at(1).Kind)
 	c.Equal(itemUnknown, r.at(1).Provider)
 
 	c.True(item.Stale())
-	c.Nil(w.Provider(6))
+	c.Nil(w.providerFor(6))
 }
 
 // TestUIARaiseSelection verifies the two halves of a selection change in a container that holds one selection at a
@@ -449,18 +452,18 @@ func TestUIARaiseSelection(t *testing.T) {
 
 	c.Equal(3, r.count())
 	c.Equal(UIARaiseProperty, r.at(0).Kind)
-	c.Equal(w.Provider(5).Unknown(), r.at(0).Provider)
+	c.Equal(w.providerFor(5).Unknown(), r.at(0).Provider)
 	c.Equal(PropertyID(30079), r.at(0).Property)
 	c.Equal(VT_BOOL, r.at(0).Old.VT)
 	c.True(r.at(0).Old.Bool())
 	c.False(r.at(0).New.Bool())
 	c.Equal(UIARaiseProperty, r.at(1).Kind)
-	c.Equal(w.Provider(6).Unknown(), r.at(1).Provider)
+	c.Equal(w.providerFor(6).Unknown(), r.at(1).Provider)
 	c.Equal(PropertyID(30079), r.at(1).Property)
 	c.False(r.at(1).Old.Bool())
 	c.True(r.at(1).New.Bool())
 	c.Equal(UIARaiseEvent, r.at(2).Kind)
-	c.Equal(w.Provider(6).Unknown(), r.at(2).Provider)
+	c.Equal(w.providerFor(6).Unknown(), r.at(2).Provider)
 	c.Equal(UIA_SelectionItem_ElementSelectedEventId, r.at(2).Event)
 }
 
@@ -533,43 +536,69 @@ func TestUIARaiseWindowOpened(t *testing.T) {
 }
 
 // TestUIADestroyRaises verifies the sequence a window's destruction produces: the window reports that it closed while
-// its fragment root is still connected, the window's provider is then withdrawn so that a late WM_GETOBJECT is not
-// answered with a fragment being torn down, and every provider is disconnected, retired and forgotten. Calling it again
-// says nothing further.
+// its fragment root is still connected and its providers still answer, the window's provider is then withdrawn so that
+// a late WM_GETOBJECT is not answered with a fragment being torn down, and every provider is disconnected, retired and
+// forgotten. Calling it again says nothing further.
+//
+// The fragment root is the one provider not disconnected, and deliberately: UiaDisconnectProvider finds what to drop by
+// asking for a runtime identifier, which a fragment root has none of, so the call could only fail. Withdrawing the
+// window's provider is what takes the root away, and the stale flag answers anything a client still holds.
 func TestUIADestroyRaises(t *testing.T) {
 	c := check.New(t)
 	w, r := newRecordingUIAWindow(t, eventTree(), true)
-	root := w.Root()
+	root := w.rootProvider()
 	c.NotNil(root)
 	rootUnknown := root.Unknown()
-	field := w.Provider(2)
+	field := w.providerFor(2)
 	c.NotNil(field)
 	fieldUnknown := field.Unknown()
 
 	w.Destroy()
 
-	c.Equal(4, r.count())
+	c.Equal(3, r.count())
 	c.Equal(UIARaiseEvent, r.at(0).Kind)
 	c.Equal(rootUnknown, r.at(0).Provider)
 	c.Equal(UIA_Window_WindowClosedEventId, r.at(0).Event)
 	c.Equal(uiaRecordedReturnKind, r.at(1).Kind)
 	c.Equal(uiaTestHWND, r.at(1).HWND)
 	c.Nil(r.at(1).Provider)
-	disconnected := map[unsafe.Pointer]bool{r.at(2).Provider: true, r.at(3).Provider: true}
 	c.Equal(UIARaiseDisconnect, r.at(2).Kind)
-	c.Equal(UIARaiseDisconnect, r.at(3).Kind)
-	c.True(disconnected[rootUnknown], "the fragment root must be disconnected")
-	c.True(disconnected[fieldUnknown], "every provider must be disconnected")
+	c.Equal(fieldUnknown, r.at(2).Provider, "every provider but the fragment root must be disconnected")
 
 	c.True(root.Stale())
 	c.True(field.Stale())
-	c.Nil(w.Root())
+	c.Nil(w.rootProvider())
 	c.Nil(w.RootUnknown())
-	c.Nil(w.Provider(2))
+	c.Nil(w.providerFor(2))
 
 	r.reset()
 	w.Destroy()
 	c.Equal(0, r.count(), "a second destroy has nothing left to say")
+}
+
+// TestUIADestroyDescribesTheWindowOneLastTime verifies that the window's content is still there to be walked while
+// Window_WindowClosed goes out. A client answers that event by asking about the window it names, so a fragment whose
+// children had already been given up would make the window look empty at the one moment it is described for the last
+// time.
+func TestUIADestroyDescribesTheWindowOneLastTime(t *testing.T) {
+	c := check.New(t)
+	w, r := newRecordingUIAWindow(t, eventTree(), true)
+	field := w.providerFor(2)
+	c.NotNil(field)
+	var duringClose, rootDuringClose *UIAProvider
+	r.onEvent = func(id EventID) {
+		if id == UIA_Window_WindowClosedEventId {
+			duringClose = w.providerFor(2)
+			rootDuringClose = w.rootProvider()
+		}
+	}
+
+	w.Destroy()
+
+	c.Equal(field, duringClose, "the window's providers must still answer while it reports that it closed")
+	c.NotNil(rootDuringClose, "and so must the fragment root the event names")
+	c.Nil(w.providerFor(2), "every provider is given up once the event has gone out")
+	c.Nil(w.rootProvider())
 }
 
 // TestUIARaisedPropertyVariantTypes verifies the type each property a change can be reported for is carried in. A
@@ -652,7 +681,7 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 	} {
 		var pin runtime.Pinner
 		value, _ := uiaOut[VARIANT](&pin)
-		w.Provider(one.node).raisedPropertyValue(tree, one.property, value)
+		w.providerFor(one.node).raisedPropertyValue(tree, one.property, value)
 		c.Equal(one.expected, value.VT, "case %d (property %d)", i, one.property)
 		if one.check != nil {
 			one.check(value)
@@ -666,8 +695,8 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 	var pin runtime.Pinner
 	defer pin.Unpin()
 	value, _ := uiaOut[VARIANT](&pin)
-	w.Provider(2).raisedPropertyValue(nil, UIA_NamePropertyId, value)
+	w.providerFor(2).raisedPropertyValue(nil, UIA_NamePropertyId, value)
 	c.Equal(VT_EMPTY, value.VT)
-	w.Provider(2).raisedPropertyValue(tree, UIA_LocalizedControlTypePropertyId, value)
+	w.providerFor(2).raisedPropertyValue(tree, UIA_LocalizedControlTypePropertyId, value)
 	c.Equal(VT_EMPTY, value.VT)
 }

@@ -25,6 +25,10 @@ func clearAccessibilityEnvironment(t *testing.T) {
 	t.Setenv(busAddressEnvKey, "")
 }
 
+// TestDisabledByEnvironment covers the values NO_AT_BRIDGE is set to in the wild. The rule is the one the C toolkits
+// apply, which is atoi: a leading integer, whatever follows it ignored, and zero for anything that does not start with
+// one. A value this read as an instruction to stay away while at-spi2-atk and GTK read it as zero would leave an
+// application silent on a desktop where every other one still talks.
 func TestDisabledByEnvironment(t *testing.T) {
 	for _, one := range []struct {
 		value    string
@@ -32,9 +36,21 @@ func TestDisabledByEnvironment(t *testing.T) {
 	}{
 		{value: "", disabled: false},
 		{value: "0", disabled: false},
+		{value: "00", disabled: false},
+		{value: "-0", disabled: false},
 		{value: "1", disabled: true},
 		{value: "2", disabled: true},
 		{value: " 1 ", disabled: true},
+		{value: "01", disabled: true},
+		{value: "-1", disabled: true},
+		{value: "+1", disabled: true},
+		// atoi stops at the first thing that is not a digit, so these are the numbers 1 and 0 respectively.
+		{value: "1x", disabled: true},
+		{value: "0x1", disabled: false},
+		// Nothing that does not begin with a number is one, however much it looks like an answer.
+		{value: "false", disabled: false},
+		{value: "yes", disabled: false},
+		{value: "true", disabled: false},
 	} {
 		t.Setenv(noBridgeEnvKey, one.value)
 		check.New(t).Equal(one.disabled, DisabledByEnvironment(), "%s=%q", noBridgeEnvKey, one.value)
@@ -85,6 +101,10 @@ func TestWatchEnabled(t *testing.T) {
 	p := newTestPeer(t, statusAnswers)
 	changes := make(chan bool, 8)
 	cancel := WatchEnabled(p.client, func(enabled bool) { changes <- enabled })
+
+	// The state the watch started in is reported first, and every signal below is emitted after it has arrived, so
+	// nothing that follows can be confused with it.
+	c.False(nextChange(t, changes), "the state the watch started in is reported")
 	rules := waitForRules(t, p, 2)
 	c.Equal([]string{statusMatchRule, ownerMatchRule}, rules)
 
@@ -114,12 +134,30 @@ func TestWatchEnabled(t *testing.T) {
 	c.Equal(0, len(p.matchRules()))
 }
 
+// TestWatchEnabledReportsWhatItStartedWith covers the gap a watch would otherwise leave: the match rules it needs are
+// asked for with calls of their own, so the bus is not yet delivering anything when WatchEnabled returns. Reading the
+// property before that point could miss a screen reader that started in between, and the signal that would have
+// reported it would have gone nowhere, so the first answer has to be read by the watch itself, once the rules are in
+// place.
+func TestWatchEnabledReportsWhatItStartedWith(t *testing.T) {
+	clearAccessibilityEnvironment(t)
+	c := check.New(t)
+	p := newTestPeer(t, statusAnswers)
+	p.enabled.Store(true)
+	changes := make(chan bool, 8)
+	defer WatchEnabled(p.client, func(enabled bool) { changes <- enabled })()
+	c.True(nextChange(t, changes), "a launcher that was already saying yes is reported without waiting for a signal")
+	c.Equal([]string{statusMatchRule, ownerMatchRule}, p.matchRules(),
+		"and only once the bus has agreed to deliver the signals that would report a later change")
+}
+
 func TestWatchEnabledIgnoresWhatIsNotItsBusiness(t *testing.T) {
 	clearAccessibilityEnvironment(t)
 	c := check.New(t)
 	p := newTestPeer(t, statusAnswers)
 	changes := make(chan bool, 8)
 	defer WatchEnabled(p.client, func(enabled bool) { changes <- enabled })()
+	c.False(nextChange(t, changes), "the state the watch started in is reported before anything else")
 	waitForRules(t, p, 2)
 	p.emit(BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", "org.example.Other",
 		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})

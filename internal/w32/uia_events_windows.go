@@ -81,6 +81,7 @@ func (w *UIAWindow) raiseOne(old, cur *accessibility.Tree, raise UIARaise) {
 	if p == nil {
 		return
 	}
+	defer p.release()
 	switch raise.Kind {
 	case UIARaiseEvent:
 		uiaRaiseAutomationEvent(p.Unknown(), raise.Event)
@@ -106,6 +107,7 @@ func (w *UIAWindow) Announce(text string) {
 		return
 	}
 	if root := w.Root(); root != nil {
+		defer root.release()
 		root.raiseNotification(text)
 	}
 }
@@ -162,6 +164,10 @@ func (p *UIAProvider) raisedPropertyValue(tree *accessibility.Tree, propertyID P
 		value.SetI4(int32(UIAExpandCollapseState(node)))
 	case UIA_SelectionItemIsSelectedPropertyId:
 		value.SetBool(UIAIsSelected(node))
+	case UIA_WindowIsModalPropertyId:
+		// The Window pattern's, so it is answered here rather than by propertyValue, which a client never reads it
+		// through: it asks IWindowProvider::get_IsModal instead.
+		value.SetBool(node.Modal)
 	case UIA_BoundingRectanglePropertyId:
 		p.setBoundingRectangle(value, node)
 	default:

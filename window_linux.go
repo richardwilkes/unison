@@ -957,12 +957,11 @@ func (w *Window) nativeUpdateRegisteredDragTypes(types []*uti.DataType) {
 }
 
 func (w *Window) nativeDestroy() {
-	if w.ax != nil {
-		// The window is identified on the accessibility bus by its X11 window id, so it has to be taken out of the
-		// accessibility tree while that id is still valid. Window.destroy has normally done this already; a window torn
-		// down by any other path has not, and doing it twice does nothing.
-		w.apiAccessibilityShutdown()
-	}
+	// The window is identified on the accessibility bus by its X11 window id, so it has to be taken out of the
+	// accessibility tree while that id is still valid, which is here rather than after the id has been given back to
+	// the X server below. Window.destroy has already done it for every path that reaches this function today, and doing
+	// it again is a map lookup that finds nothing, so this is what keeps that true of any path added later.
+	w.nativeAccessibilityShutdown()
 	w.glCtx.nativeDestroy()
 	if w.wnd.gc != 0 {
 		x11Conn.FreeGC(w.wnd.gc)
@@ -1153,8 +1152,10 @@ func x11ProcessEvent(e x11.Event) {
 				w.wnd.lastY = float32(y)
 				w.moved()
 			}
-			// A window that has moved or been resized reports its contents somewhere else on the screen, and a resize
-			// does not always come with a redraw to publish a fresh snapshot from.
+			// A window that has moved or been resized reports its contents somewhere else on the screen. A resize is
+			// marked for redraw above, so the next snapshot would carry the new geometry with it, but a move goes
+			// through w.moved() and never marks anything, so nothing else would tell the adapter that every node in the
+			// window is now somewhere else.
 			w.x11RefreshAccessibilityGeometry()
 		}
 	case *x11.ClientMessageEvent:

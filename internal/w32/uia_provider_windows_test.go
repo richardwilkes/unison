@@ -21,6 +21,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
 	"golang.org/x/sys/windows"
 )
 
@@ -63,6 +64,28 @@ func (w *uiaTestWindow) recorded() []accessibility.ActionRequest {
 	w.requestLock.Lock()
 	defer w.requestLock.Unlock()
 	return append([]accessibility.ActionRequest(nil), w.requests...)
+}
+
+// providerFor returns the provider for one node, handing back the reference Provider took on the caller's behalf.
+// Provider is what a UI Automation thread calls, so it must return an owned reference; a test holds the window itself
+// and never retires a provider behind its own back, so the provider map's reference is enough to keep the pointer good
+// for as long as the test needs it. Every test that cares about the counts themselves calls Provider directly.
+func (w *UIAWindow) providerFor(id accessibility.NodeID) *UIAProvider {
+	p := w.Provider(id)
+	if p != nil {
+		p.release()
+	}
+	return p
+}
+
+// rootProvider returns the window's fragment root, handing back the reference Root took, for the reason providerFor
+// gives.
+func (w *UIAWindow) rootProvider() *UIAProvider {
+	root := w.Root()
+	if root != nil {
+		root.release()
+	}
+	return root
 }
 
 // uiaOut allocates an out-parameter for a COM call and returns it along with its address. The allocation is pinned, so
@@ -116,7 +139,7 @@ func TestUIAVtbls(t *testing.T) {
 func TestUIAProviderThisPointers(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(sampleTree())
-	p := w.Provider(4)
+	p := w.providerFor(4)
 	c.NotNil(p)
 	c.Equal(uintptr(unsafe.Pointer(p)), uintptr(p.Unknown()))
 	for iface := uiaIfaceSimple; iface < uiaIfaceCount; iface++ {
@@ -134,9 +157,9 @@ func TestUIAQueryInterface(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	w := newTestUIAWindow(sampleTree())
-	root := w.Root()
+	root := w.rootProvider()
 	c.NotNil(root)
-	button := w.Provider(4)
+	button := w.providerFor(4)
 	c.NotNil(button)
 
 	query := func(p *UIAProvider, through, wanted uiaIface) uint64 {
@@ -191,7 +214,7 @@ func TestUIAProviderReferenceCountLifetime(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	w := newTestUIAWindow(sampleTree())
-	p := w.Provider(4)
+	p := w.providerFor(4)
 	c.NotNil(p)
 	c.Equal(int32(1), atomic.LoadInt32(&p.refCount))
 
@@ -212,7 +235,7 @@ func TestUIAProviderReferenceCountLifetime(t *testing.T) {
 	c.Equal(uintptr(0), uiaProviderFromThis(*out, uiaIfaceFragment).release())
 
 	// AddRef and Release must report the counts IUnknown promises, whichever interface they arrive through.
-	p = w.Provider(5)
+	p = w.providerFor(5)
 	c.NotNil(p)
 	c.Equal(uintptr(2), uiaProviderFromThis(p.ifacePtr(uiaIfaceFragment), uiaIfaceFragment).addRef())
 	c.Equal(uintptr(1), uiaProviderFromThis(p.ifacePtr(uiaIfaceSimple), uiaIfaceSimple).release())
@@ -227,7 +250,7 @@ func TestUIAProviderOptions(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[ProviderOptions](&pin)
 	w := newTestUIAWindow(sampleTree())
-	c.Equal(COM_S_OK, uiaSimpleProviderOptions(w.Root().ifacePtr(uiaIfaceSimple), outAddress))
+	c.Equal(COM_S_OK, uiaSimpleProviderOptions(w.rootProvider().ifacePtr(uiaIfaceSimple), outAddress))
 	c.Equal(ProviderOptions_ServerSideProvider, *out)
 	c.Equal(COM_E_POINTER, uiaSimpleProviderOptions(0, 0))
 }
@@ -242,13 +265,13 @@ func TestUIAFragmentNavigate(t *testing.T) {
 	w := newTestUIAWindow(sampleTree())
 
 	navigate := func(node accessibility.NodeID, direction NavigateDirection) uintptr {
-		p := w.Provider(node)
+		p := w.providerFor(node)
 		c.NotNil(p)
 		c.Equal(COM_S_OK, uiaFragmentNavigate(p.ifacePtr(uiaIfaceFragment), uintptr(direction), outAddress))
 		return *out
 	}
 	fragment := func(node accessibility.NodeID) uintptr {
-		p := w.Provider(node)
+		p := w.providerFor(node)
 		c.NotNil(p)
 		return p.ifacePtr(uiaIfaceFragment)
 	}
@@ -274,10 +297,10 @@ func TestUIAFragmentNavigate(t *testing.T) {
 
 	// Every interface pointer handed out is AddRef'd, so the counts have to come back down.
 	for _, node := range []accessibility.NodeID{1, 4, 5, 6, 7} {
-		p := w.Provider(node)
+		p := w.providerFor(node)
 		c.True(atomic.LoadInt32(&p.refCount) >= 1)
 	}
-	c.Equal(COM_E_POINTER, uiaFragmentNavigate(w.Root().ifacePtr(uiaIfaceFragment), 0, 0))
+	c.Equal(COM_E_POINTER, uiaFragmentNavigate(w.rootProvider().ifacePtr(uiaIfaceFragment), 0, 0))
 }
 
 // TestUIAGetRuntimeID verifies the runtime identifiers. The fragment root reports none, so that UI Automation
@@ -290,14 +313,14 @@ func TestUIAGetRuntimeID(t *testing.T) {
 	out, outAddress := uiaOut[SAFEARRAY](&pin)
 	w := newTestUIAWindow(sampleTree())
 
-	c.Equal(COM_S_OK, uiaFragmentGetRuntimeID(w.Root().ifacePtr(uiaIfaceFragment), outAddress))
+	c.Equal(COM_S_OK, uiaFragmentGetRuntimeID(w.rootProvider().ifacePtr(uiaIfaceFragment), outAddress))
 	c.Equal(SAFEARRAY(0), *out)
 
-	c.Equal(COM_S_OK, uiaFragmentGetRuntimeID(w.Provider(4).ifacePtr(uiaIfaceFragment), outAddress))
+	c.Equal(COM_S_OK, uiaFragmentGetRuntimeID(w.providerFor(4).ifacePtr(uiaIfaceFragment), outAddress))
 	c.True(*out != 0)
 	c.Equal([]int32{UiaAppendRuntimeId, 4, 0}, SafeArrayToInt32(*out))
 	out.Destroy()
-	c.Equal(COM_E_POINTER, uiaFragmentGetRuntimeID(w.Root().ifacePtr(uiaIfaceFragment), 0))
+	c.Equal(COM_E_POINTER, uiaFragmentGetRuntimeID(w.rootProvider().ifacePtr(uiaIfaceFragment), 0))
 }
 
 // TestUIABoundingRectangle verifies the conversion from a node's window-local logical bounds to the screen rectangle
@@ -313,18 +336,18 @@ func TestUIABoundingRectangle(t *testing.T) {
 
 	// Node 5 is at (50,0 50x20) in the window, and the window's content area starts at (100,50) with two pixels per
 	// logical unit.
-	c.Equal(COM_S_OK, uiaFragmentBoundingRectangle(w.Provider(5).ifacePtr(uiaIfaceFragment), outAddress))
+	c.Equal(COM_S_OK, uiaFragmentBoundingRectangle(w.providerFor(5).ifacePtr(uiaIfaceFragment), outAddress))
 	c.Equal(UiaRect{Left: 200, Top: 50, Width: 100, Height: 40}, *out)
 
 	// Moving the window must move the rectangle without a new snapshot.
 	w.SetGeometry(UIAGeometry{Origin: geom.NewPoint(0, 0), Scale: geom.NewPoint(1, 1)})
-	c.Equal(COM_S_OK, uiaFragmentBoundingRectangle(w.Provider(5).ifacePtr(uiaIfaceFragment), outAddress))
+	c.Equal(COM_S_OK, uiaFragmentBoundingRectangle(w.providerFor(5).ifacePtr(uiaIfaceFragment), outAddress))
 	c.Equal(UiaRect{Left: 50, Top: 0, Width: 50, Height: 20}, *out)
 
 	tree.Nodes[5].Offscreen = true
-	c.Equal(COM_S_OK, uiaFragmentBoundingRectangle(w.Provider(5).ifacePtr(uiaIfaceFragment), outAddress))
+	c.Equal(COM_S_OK, uiaFragmentBoundingRectangle(w.providerFor(5).ifacePtr(uiaIfaceFragment), outAddress))
 	c.Equal(UiaRect{}, *out)
-	c.Equal(COM_E_POINTER, uiaFragmentBoundingRectangle(w.Provider(5).ifacePtr(uiaIfaceFragment), 0))
+	c.Equal(COM_E_POINTER, uiaFragmentBoundingRectangle(w.providerFor(5).ifacePtr(uiaIfaceFragment), 0))
 }
 
 // TestUIAFragmentRootAndEmbedded verifies that every element reports the same fragment root and that nothing claims an
@@ -335,10 +358,10 @@ func TestUIAFragmentRootAndEmbedded(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	w := newTestUIAWindow(sampleTree())
-	root := w.Root()
+	root := w.rootProvider()
 
 	for _, node := range []accessibility.NodeID{1, 4, 7} {
-		p := w.Provider(node)
+		p := w.providerFor(node)
 		c.Equal(COM_S_OK, uiaFragmentFragmentRoot(p.ifacePtr(uiaIfaceFragment), outAddress))
 		c.Equal(root.ifacePtr(uiaIfaceFragmentRoot), *out)
 		c.Equal(uintptr(1), root.release())
@@ -353,19 +376,19 @@ func TestUIASetFocus(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(sampleTree())
 
-	c.Equal(COM_S_OK, uiaFragmentSetFocus(w.Provider(4).ifacePtr(uiaIfaceFragment)))
+	c.Equal(COM_S_OK, uiaFragmentSetFocus(w.providerFor(4).ifacePtr(uiaIfaceFragment)))
 	requests := w.recorded()
 	c.Equal(1, len(requests))
 	c.Equal(accessibility.NodeID(4), requests[0].Node)
 	c.Equal(accessibility.Focus, requests[0].Action)
 
 	// Node 5 is a button that cannot take the focus.
-	c.Equal(UIA_E_INVALIDOPERATION, uiaFragmentSetFocus(w.Provider(5).ifacePtr(uiaIfaceFragment)))
+	c.Equal(UIA_E_INVALIDOPERATION, uiaFragmentSetFocus(w.providerFor(5).ifacePtr(uiaIfaceFragment)))
 	c.Equal(1, len(w.recorded()))
 
 	// A window with nowhere to send actions must refuse rather than report success.
 	plain := NewUIAWindow(UIAConfig{}, sampleTree(), UIAGeometry{})
-	c.Equal(UIA_E_INVALIDOPERATION, uiaFragmentSetFocus(plain.Provider(4).ifacePtr(uiaIfaceFragment)))
+	c.Equal(UIA_E_INVALIDOPERATION, uiaFragmentSetFocus(plain.providerFor(4).ifacePtr(uiaIfaceFragment)))
 }
 
 // TestUIAElementProviderFromPoint verifies the hit test a screen reader's mouse tracking goes through, including the
@@ -376,7 +399,7 @@ func TestUIAElementProviderFromPoint(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	w := newTestUIAWindow(sampleTree())
-	this := w.Root().ifacePtr(uiaIfaceFragmentRoot)
+	this := w.rootProvider().ifacePtr(uiaIfaceFragmentRoot)
 
 	fromPoint := func(x, y float64) uintptr {
 		c.Equal(COM_S_OK, uiaFragmentRootElementProviderFromPoint(this, uintptr(math.Float64bits(x)),
@@ -385,17 +408,17 @@ func TestUIAElementProviderFromPoint(t *testing.T) {
 	}
 
 	// Window point (60,10) is inside node 5, and lands at screen (220,70) with this window's geometry.
-	c.Equal(w.Provider(5).ifacePtr(uiaIfaceFragment), fromPoint(220, 70))
-	c.Equal(uintptr(1), w.Provider(5).release())
+	c.Equal(w.providerFor(5).ifacePtr(uiaIfaceFragment), fromPoint(220, 70))
+	c.Equal(uintptr(1), w.providerFor(5).release())
 
 	// Window point (10,10) is inside node 4, which sits under two ignored groups; a hit on an ignored node is reported
 	// as a hit on the nearest unignored ancestor, so nothing ignored can ever come back.
-	c.Equal(w.Provider(4).ifacePtr(uiaIfaceFragment), fromPoint(120, 70))
-	c.Equal(uintptr(1), w.Provider(4).release())
+	c.Equal(w.providerFor(4).ifacePtr(uiaIfaceFragment), fromPoint(120, 70))
+	c.Equal(uintptr(1), w.providerFor(4).release())
 
 	// Nodes 8 and 9 occupy the same area, with 8 first, so the topmost wins.
-	c.Equal(w.Provider(8).ifacePtr(uiaIfaceFragment), fromPoint(140, 270))
-	c.Equal(uintptr(1), w.Provider(8).release())
+	c.Equal(w.providerFor(8).ifacePtr(uiaIfaceFragment), fromPoint(140, 270))
+	c.Equal(uintptr(1), w.providerFor(8).release())
 
 	// Outside the window there is nothing to report, which lets UI Automation fall back to the window itself.
 	c.Equal(uintptr(0), fromPoint(0, 0))
@@ -412,11 +435,11 @@ func TestUIAGetFocus(t *testing.T) {
 	out, outAddress := uiaOut[uintptr](&pin)
 	tree := sampleTree()
 	w := newTestUIAWindow(tree)
-	this := w.Root().ifacePtr(uiaIfaceFragmentRoot)
+	this := w.rootProvider().ifacePtr(uiaIfaceFragmentRoot)
 
 	c.Equal(COM_S_OK, uiaFragmentRootGetFocus(this, outAddress))
-	c.Equal(w.Provider(4).ifacePtr(uiaIfaceFragment), *out)
-	c.Equal(uintptr(1), w.Provider(4).release())
+	c.Equal(w.providerFor(4).ifacePtr(uiaIfaceFragment), *out)
+	c.Equal(uintptr(1), w.providerFor(4).release())
 
 	// The window is no longer the active one.
 	inactive := sampleTree()
@@ -441,7 +464,7 @@ func TestUIAGetFocus(t *testing.T) {
 func TestUIAAdviseEvents(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(sampleTree())
-	this := w.Root().ifacePtr(uiaIfaceAdviseEvents)
+	this := w.rootProvider().ifacePtr(uiaIfaceAdviseEvents)
 	c.Equal(int32(0), w.Listeners())
 	c.Equal(COM_S_OK, uiaAdviseEventAdded(this, uintptr(UIA_AutomationFocusChangedEventId), 0))
 	c.Equal(COM_S_OK, uiaAdviseEventAdded(this, uintptr(UIA_AutomationPropertyChangedEventId), 0))
@@ -460,7 +483,7 @@ func TestUIAWindowPattern(t *testing.T) {
 	interaction, interactionAddress := uiaOut[WindowInteractionState](&pin)
 	tree := sampleTree()
 	w := newTestUIAWindow(tree)
-	this := w.Root().ifacePtr(uiaIfaceWindow)
+	this := w.rootProvider().ifacePtr(uiaIfaceWindow)
 
 	c.Equal(COM_S_OK, uiaWindowCanMaximize(this, booleanAddress))
 	c.Equal(int32(1), *boolean)
@@ -501,7 +524,7 @@ func TestUIAGetPatternProvider(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	w := newTestUIAWindow(sampleTree())
-	button := w.Provider(4)
+	button := w.providerFor(4)
 
 	c.Equal(COM_S_OK, uiaSimpleGetPatternProvider(button.ifacePtr(uiaIfaceSimple),
 		uintptr(UIA_InvokePatternId), outAddress))
@@ -524,10 +547,10 @@ func TestUIAGetPatternProvider(t *testing.T) {
 	c.Equal(uintptr(0), *out)
 
 	// The root is the only element with the Window pattern.
-	c.Equal(COM_S_OK, uiaSimpleGetPatternProvider(w.Root().ifacePtr(uiaIfaceSimple),
+	c.Equal(COM_S_OK, uiaSimpleGetPatternProvider(w.rootProvider().ifacePtr(uiaIfaceSimple),
 		uintptr(UIA_WindowPatternId), outAddress))
-	c.Equal(w.Root().ifacePtr(uiaIfaceWindow), *out)
-	c.Equal(uintptr(1), w.Root().release())
+	c.Equal(w.rootProvider().ifacePtr(uiaIfaceWindow), *out)
+	c.Equal(uintptr(1), w.rootProvider().release())
 	c.Equal(COM_E_POINTER, uiaSimpleGetPatternProvider(button.ifacePtr(uiaIfaceSimple), 0, 0))
 }
 
@@ -539,9 +562,9 @@ func TestUIAHostRawElementProvider(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	w := newTestUIAWindow(sampleTree())
-	c.Equal(COM_S_OK, uiaSimpleHostRawElementProvider(w.Provider(4).ifacePtr(uiaIfaceSimple), outAddress))
+	c.Equal(COM_S_OK, uiaSimpleHostRawElementProvider(w.providerFor(4).ifacePtr(uiaIfaceSimple), outAddress))
 	c.Equal(uintptr(0), *out)
-	c.Equal(COM_E_POINTER, uiaSimpleHostRawElementProvider(w.Provider(4).ifacePtr(uiaIfaceSimple), 0))
+	c.Equal(COM_E_POINTER, uiaSimpleHostRawElementProvider(w.providerFor(4).ifacePtr(uiaIfaceSimple), 0))
 }
 
 // uiaVariantString returns the contents of a VT_BSTR VARIANT.
@@ -573,7 +596,7 @@ func TestUIAGetPropertyValue(t *testing.T) {
 	w := newTestUIAWindow(tree)
 
 	property := func(node accessibility.NodeID, id PropertyID) *VARIANT {
-		p := w.Provider(node)
+		p := w.providerFor(node)
 		c.NotNil(p)
 		c.Equal(COM_S_OK, uiaSimpleGetPropertyValue(p.ifacePtr(uiaIfaceSimple), uintptr(id), valueAddress))
 		return value
@@ -637,7 +660,7 @@ func TestUIAGetPropertyValue(t *testing.T) {
 
 	// LabeledBy is one element; DescribedBy is an array of them. Both add a reference per element handed out, which
 	// clearing the VARIANT gives back.
-	label := w.Provider(6)
+	label := w.providerFor(6)
 	c.Equal(VT_UNKNOWN, property(4, UIA_LabeledByPropertyId).VT)
 	c.Equal(uintptr(label.Unknown()), uintptr(value.Val))
 	c.Equal(int32(2), atomic.LoadInt32(&label.refCount))
@@ -678,7 +701,7 @@ func TestUIAGetPropertyValue(t *testing.T) {
 	c.Equal(int32(HeadingLevel_None), uiaVariantInt32(value))
 	value.Clear()
 
-	c.Equal(COM_E_POINTER, uiaSimpleGetPropertyValue(w.Provider(5).ifacePtr(uiaIfaceSimple), 0, 0))
+	c.Equal(COM_E_POINTER, uiaSimpleGetPropertyValue(w.providerFor(5).ifacePtr(uiaIfaceSimple), 0, 0))
 }
 
 // TestUIAStaleProvider verifies what a client holding an element for something that has been destroyed is told. Every
@@ -693,7 +716,7 @@ func TestUIAStaleProvider(t *testing.T) {
 	rect, rectAddress := uiaOut[UiaRect](&pin)
 	array, arrayAddress := uiaOut[SAFEARRAY](&pin)
 	w := newTestUIAWindow(sampleTree())
-	p := w.Provider(5)
+	p := w.providerFor(5)
 	c.NotNil(p)
 	p.addRef() // Stand in for the reference a client would be holding.
 
@@ -706,7 +729,7 @@ func TestUIAStaleProvider(t *testing.T) {
 
 	c.True(p.Stale())
 	c.Equal(int32(1), atomic.LoadInt32(&p.refCount))
-	c.Nil(w.Provider(5))
+	c.Nil(w.providerFor(5))
 
 	simple := p.ifacePtr(uiaIfaceSimple)
 	fragment := p.ifacePtr(uiaIfaceFragment)
@@ -736,10 +759,10 @@ func TestUIAStaleProvider(t *testing.T) {
 	c.Equal(uintptr(1), p.release())
 
 	// Nodes that are still in the tree are untouched, and the fragment root is never retired by a publish.
-	c.NotNil(w.Provider(4))
-	c.False(w.Provider(4).Stale())
-	c.NotNil(w.Root())
-	c.False(w.Root().Stale())
+	c.NotNil(w.providerFor(4))
+	c.False(w.providerFor(4).Stale())
+	c.NotNil(w.rootProvider())
+	c.False(w.rootProvider().Stale())
 }
 
 // TestUIAProviderLookup verifies which nodes have providers at all. An ignored node is spliced out of the tree a client
@@ -747,14 +770,14 @@ func TestUIAStaleProvider(t *testing.T) {
 func TestUIAProviderLookup(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(sampleTree())
-	c.Nil(w.Provider(0))
-	c.Nil(w.Provider(2), "an ignored node has no provider")
-	c.Nil(w.Provider(3), "an ignored node has no provider")
-	c.Nil(w.Provider(999), "a node that is not in the tree has no provider")
-	c.NotNil(w.Provider(1))
-	c.Equal(w.Provider(4), w.Provider(4), "a second lookup returns the same provider")
-	c.Equal(w.Root(), w.Provider(1))
-	c.Equal(unsafe.Pointer(&w.Root().vtbls[uiaIfaceSimple]), w.RootUnknown())
+	c.Nil(w.providerFor(0))
+	c.Nil(w.providerFor(2), "an ignored node has no provider")
+	c.Nil(w.providerFor(3), "an ignored node has no provider")
+	c.Nil(w.providerFor(999), "a node that is not in the tree has no provider")
+	c.NotNil(w.providerFor(1))
+	c.Equal(w.providerFor(4), w.providerFor(4), "a second lookup returns the same provider")
+	c.Equal(w.rootProvider(), w.providerFor(1))
+	c.Equal(unsafe.Pointer(&w.rootProvider().vtbls[uiaIfaceSimple]), w.RootUnknown())
 }
 
 // TestUIADestroy verifies that the adapter gives up every provider as its window is destroyed, and that a client still
@@ -762,14 +785,14 @@ func TestUIAProviderLookup(t *testing.T) {
 func TestUIADestroy(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(sampleTree())
-	root := w.Root()
-	button := w.Provider(4)
+	root := w.rootProvider()
+	button := w.providerFor(4)
 	button.addRef() // Stand in for the reference a client would be holding.
 
 	w.Destroy()
-	c.Nil(w.Root())
+	c.Nil(w.rootProvider())
 	c.Nil(w.RootUnknown())
-	c.Nil(w.Provider(4))
+	c.Nil(w.providerFor(4))
 	c.True(root.Stale())
 	c.True(button.Stale())
 	c.Equal(int32(1), atomic.LoadInt32(&button.refCount))
@@ -779,7 +802,93 @@ func TestUIADestroy(t *testing.T) {
 	// A destroyed adapter must not answer with providers it no longer has, and must not blow up if it is told about
 	// another snapshot.
 	w.Publish(sampleTree(), nil)
+	c.Nil(w.providerFor(4))
+}
+
+// TestUIAProviderHandsOutOwnedReferences verifies that Provider and Root take a reference on the caller's behalf, while
+// the provider map still holds one of its own.
+//
+// A caller on a UI Automation thread would otherwise be racing the publish that retires the provider: the retirement
+// takes the count to zero and unpins the object, and the caller's own AddRef — made after the window's lock was dropped
+// — would resurrect memory Go no longer keeps alive and hand it to UI Automation, which dereferences it later.
+func TestUIAProviderHandsOutOwnedReferences(t *testing.T) {
+	c := check.New(t)
+	w := newTestUIAWindow(sampleTree())
+
+	p := w.Provider(5)
+	c.NotNil(p)
+	c.Equal(int32(2), atomic.LoadInt32(&p.refCount), "the provider map's reference plus the caller's")
+
+	// Node 5 leaves the tree while the caller is still holding what Provider handed it.
+	without := sampleTree()
+	delete(without.Nodes, 5)
+	without.Nodes[3].Children = []accessibility.NodeID{4}
+	without.Generation = 2
+	w.Publish(without, nil)
+	c.True(p.Stale())
+	c.Equal(int32(1), atomic.LoadInt32(&p.refCount), "the caller's reference outlives the provider map's")
+	c.Equal(uintptr(0), p.release())
+
+	root := w.Root()
+	c.NotNil(root)
+	c.Equal(int32(2), atomic.LoadInt32(&root.refCount))
+	c.Equal(uintptr(1), root.release())
+
+	// Destroying the window gives up the last reference to the fragment root, and hands out nothing further.
+	w.Destroy()
+	c.Equal(int32(0), atomic.LoadInt32(&root.refCount))
+	c.Nil(w.Root())
 	c.Nil(w.Provider(4))
+}
+
+// TestUIAWindowPatternIsRootOnly verifies that only the fragment root hands out IWindowProvider, however a client asks
+// for it.
+//
+// A nested node that reports role.Dialog is a dialog-shaped panel rather than a window of its own, so answering
+// get_CanMaximize, get_WindowVisualState or get_IsTopmost for it would be describing the window that contains it
+// through an element that is not it. QueryInterface, GetPatternProvider and the pattern's own methods all have to agree
+// about that: a client that reaches a pattern one way and not the other treats the element as broken.
+func TestUIAWindowPatternIsRootOnly(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out, outAddress := uiaOut[uintptr](&pin)
+	value, valueAddress := uiaOut[VARIANT](&pin)
+	boolean, booleanAddress := uiaOut[int32](&pin)
+	tree := sampleTree()
+	tree.Nodes[7].Role = role.Dialog
+	w := newTestUIAWindow(tree)
+	nested := w.providerFor(7)
+	c.NotNil(nested)
+	guid := uiaIfaceIIDs[uiaIfaceWindow]
+	pin.Pin(&guid)
+
+	c.Equal(COM_E_NOINTERFACE, uiaQueryInterface(uiaIfaceSimple, nested.ifacePtr(uiaIfaceSimple),
+		uintptr(unsafe.Pointer(&guid)), outAddress))
+	c.Equal(uintptr(0), *out)
+	c.Equal(COM_S_OK, uiaSimpleGetPatternProvider(nested.ifacePtr(uiaIfaceSimple),
+		uintptr(UIA_WindowPatternId), outAddress))
+	c.Equal(uintptr(0), *out, "GetPatternProvider must agree with QueryInterface")
+	c.Equal(UIA_E_NOTSUPPORTED, uiaWindowIsModal(nested.ifacePtr(uiaIfaceWindow), booleanAddress))
+	c.Equal(UIA_E_NOTSUPPORTED, uiaWindowInteractionStateValue(nested.ifacePtr(uiaIfaceWindow), booleanAddress))
+
+	// IsDialog is a window-level property, and is answered by the same element that answers the pattern.
+	c.Equal(COM_S_OK, uiaSimpleGetPropertyValue(nested.ifacePtr(uiaIfaceSimple),
+		uintptr(UIA_IsDialogPropertyId), valueAddress))
+	c.Equal(VT_EMPTY, value.VT)
+
+	// The root has the pattern both ways, and every interface it hands out is AddRef'd.
+	root := w.rootProvider()
+	c.Equal(COM_S_OK, uiaQueryInterface(uiaIfaceSimple, root.ifacePtr(uiaIfaceSimple),
+		uintptr(unsafe.Pointer(&guid)), outAddress))
+	c.Equal(root.ifacePtr(uiaIfaceWindow), *out)
+	c.Equal(uintptr(1), root.release())
+	c.Equal(COM_S_OK, uiaSimpleGetPatternProvider(root.ifacePtr(uiaIfaceSimple),
+		uintptr(UIA_WindowPatternId), outAddress))
+	c.Equal(root.ifacePtr(uiaIfaceWindow), *out)
+	c.Equal(uintptr(1), root.release())
+	c.Equal(COM_S_OK, uiaWindowIsModal(root.ifacePtr(uiaIfaceWindow), booleanAddress))
+	c.Equal(int32(0), *boolean)
 }
 
 // TestUIAPublishKeepsProviders verifies that a publish that changes nothing structural leaves the providers alone: a
@@ -788,7 +897,7 @@ func TestUIADestroy(t *testing.T) {
 func TestUIAPublishKeepsProviders(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(sampleTree())
-	before := w.Provider(4)
+	before := w.providerFor(4)
 	c.NotNil(before)
 
 	next := sampleTree()
@@ -796,7 +905,7 @@ func TestUIAPublishKeepsProviders(t *testing.T) {
 	next.Generation = 2
 	w.Publish(next, nil)
 
-	c.Equal(before, w.Provider(4))
+	c.Equal(before, w.providerFor(4))
 	c.False(before.Stale())
 	c.Equal(next, w.Tree())
 

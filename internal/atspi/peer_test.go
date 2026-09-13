@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	// testTimeout is how long a test waits for something that should happen at once.
-	testTimeout = 2 * time.Second
+	// testTimeout is how long a test waits for something that should happen at once. It only bounds how long a failure
+	// takes to report, so it is generous enough to ride out the multi-second stalls a loaded CI runner can suffer.
+	testTimeout = 10 * time.Second
 	// testBusName is the unique name the fake bus hands out in reply to Hello, which is the name that appears in every
 	// object reference the adapter builds.
 	testBusName = ":1.42"

@@ -20,6 +20,15 @@ import (
 // adapter hands the request to the root package, which marshals it onto the UI thread — the adapters never wait for a
 // result, since the UI thread may be inside a modal loop or a drag — and it arrives here.
 
+// axDisabledActions is every action a disabled node may still be asked to perform. Only scrolling into view survives:
+// it acts on the node's ancestors rather than on the node, and an assistive technology moving through a window has to
+// be able to bring what it is describing into view whether or not the control there can be used. Everything else is
+// refused, exactly as the mouse and key paths refuse a disabled panel — Window.mouseDown, Window.mouseUp and
+// Window.keyDown all gate on Panel.Enabled — so that an assistive technology cannot activate, change or type into what
+// a person cannot. The snapshot builder narrows a disabled node's advertised actions to this same set, so that nothing
+// is offered that would then be refused.
+var axDisabledActions = accessibility.ActionSet(0).With(accessibility.ScrollIntoView)
+
 // performAccessibilityAction carries out a request from an assistive technology. UI thread only.
 //
 // The node is resolved through the registry the most recently published tree was built with, so a request naming a node
@@ -48,8 +57,21 @@ func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bo
 	if !w.IsValid() || w.ax == nil {
 		return false
 	}
+	if !w.okToProcess() {
+		// A window another window's modal is blocking refuses requests, as Window.mouseDown and Window.mouseUp refuse
+		// mouse events. It is still described — an assistive technology is shown what is on the screen, and only the
+		// top modal window's root says it is modal — but pressing something or moving the focus in a window the person
+		// cannot touch would run application callbacks that are entitled to assume the modal is still in front.
+		return false
+	}
 	target, ok := w.ax.targets[req.Node]
 	if !ok || target.panel == nil || target.panel.Window() != w {
+		return false
+	}
+	if node := w.ax.last.Node(req.Node); node != nil && node.Disabled && !axDisabledActions.Has(req.Action) {
+		// The node was published as disabled, which for a virtual child such as a row of a table, or for a panel that
+		// reports a state of its own through Accessibility.Callback, is the only place that is known: the panel those
+		// belong to may itself be perfectly enabled. See axDisabledActions.
 		return false
 	}
 	// The widget is told which of its virtual children the request is aimed at, which is the only way it can tell one
@@ -62,6 +84,12 @@ func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bo
 // AccessibilityActor, and then — unless the request is aimed at one of the panel's virtual children, which the defaults
 // cannot act on since a virtual child is not a panel — through the default behavior for the action.
 func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) bool {
+	if !p.Enabled() && !axDisabledActions.Has(req.Action) {
+		// Gated here rather than in each widget so that it holds for every Accessibility.ActionCallback, every
+		// AccessibilityActor implementation and every default behavior alike, including the requests aimed at a
+		// virtual child of a disabled panel, which only this panel could have carried out. See axDisabledActions.
+		return false
+	}
 	handled := false
 	if p.Accessibility.ActionCallback != nil {
 		SafeCall(func() { handled = p.Accessibility.ActionCallback(req) })
@@ -80,7 +108,18 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 	}
 	switch req.Action {
 	case accessibility.Focus:
+		// Window.SetFocus does not refuse a target that cannot hold the focus: it hands the focus to that target's
+		// first focusable child instead, or clears it entirely. Either would leave the focus somewhere other than the
+		// node the request named while reporting that the request was carried out, so a panel that cannot take the
+		// focus is refused outright, and what actually happened is checked afterwards in case the window declined it
+		// for some other reason.
+		if !p.Focusable() {
+			return false
+		}
 		p.RequestFocus()
+		if wnd := p.Window(); wnd == nil || !p.Is(wnd.CurrentFocus()) {
+			return false
+		}
 		p.ScrollIntoView()
 		return true
 	case accessibility.ScrollIntoView:
@@ -118,8 +157,12 @@ func axPanelAtPath(root *Panel, path string) *Panel {
 // axSynthesizeClick presses and releases the mouse at the center of the panel, which is how a panel that has no notion
 // of being activated other than being clicked on is activated. The focus moves first, if the panel can hold it, so that
 // the sequence is the one a person's click would have produced. Reports false if the panel has no click to synthesize.
+//
+// A disabled panel has none: Window.mouseDown and Window.mouseUp pass over a panel that is not enabled, so synthesizing
+// a click here would do what a real one could not. axDispatchAction has already refused such a request, but the check
+// is repeated here because this is what actually calls the callbacks.
 func (p *Panel) axSynthesizeClick() bool {
-	if p.MouseDownCallback == nil || p.MouseUpCallback == nil {
+	if p.MouseDownCallback == nil || p.MouseUpCallback == nil || !p.Enabled() {
 		return false
 	}
 	if p.Focusable() {

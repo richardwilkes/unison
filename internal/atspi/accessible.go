@@ -108,9 +108,10 @@ func (o *nodeObject) getState(call *dbus.Call) {
 	call.Reply(o.states().Words())
 }
 
-// getAttributes implements org.a11y.atspi.Accessible.GetAttributes.
+// getAttributes implements org.a11y.atspi.Accessible.GetAttributes. The reported parent goes along with the node, since
+// how big the set a row belongs to is only known to the container it sits in.
 func (o *nodeObject) getAttributes(call *dbus.Call) {
-	call.Reply(Attributes(o.node))
+	call.Reply(Attributes(o.node, o.data.node(o.data.parent(o.node.ID))))
 }
 
 // getApplication implements org.a11y.atspi.Accessible.GetApplication.

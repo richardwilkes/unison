@@ -16,6 +16,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/role"
@@ -489,11 +490,12 @@ func TestValueInterface(t *testing.T) {
 	c.Equal(4.0, ta.peer.getProperty(NodePath(8), InterfaceValue, "CurrentValue"),
 		"the published value only changes when the next snapshot arrives")
 
-	// A progress bar has a value, but nothing can be done about it.
+	// A progress bar has a value, but nothing can be done about it, which it says by having no setter at all rather
+	// than by taking the write and then refusing it.
 	c.Equal(0.5, ta.peer.getProperty(NodePath(9), InterfaceValue, "CurrentValue"))
 	reply = ta.peer.setProperty(NodePath(9), InterfaceValue, "CurrentValue", dbus.Variant{Sig: "d", Value: 0.9})
 	c.Equal(dbus.TypeError, reply.Type, "unexpected reply: %s", reply)
-	c.Equal(dbus.NotSupported, reply.ErrorName)
+	c.Equal(dbus.PropertyReadOnly, reply.ErrorName)
 	ta.noRequest(t)
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(3), dbusPropertiesInterface, "Get", "ss", InterfaceValue,
 		"CurrentValue"), "a label has no value at all")
@@ -712,4 +714,69 @@ func TestStartWithoutAnAddress(t *testing.T) {
 	a, err := Start(Config{})
 	c.HasError(err, "there is nowhere to connect to")
 	c.Nil(a)
+}
+
+// TestTheConnectionDyingIsReported covers the one failure nothing else on the desktop announces: the accessibility bus
+// going away while the launcher keeps its name on the session bus, which produces no signal for the status watch to
+// hear. Everything published afterwards is dropped by the connection without a word, so the adapter has to say that it
+// has become useless, or accessibility stays dead for the rest of the process.
+func TestTheConnectionDyingIsReported(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	p := newTestPeer(t, registryAnswers)
+	lost := make(chan error, 1)
+	a, err := Start(Config{
+		ToolkitVersion: testToolkitVersion,
+		Lost:           func(reason error) { lost <- reason },
+		conn:           p.client,
+	})
+	c.NoError(err)
+	c.NoError(a.Err(), "an adapter whose connection is alive has nothing to report")
+
+	xio.CloseIgnoringErrors(p.side) // The accessibility bus goes away
+	select {
+	case reason := <-lost:
+		c.HasError(reason, "the loss is reported with the reason the connection ended")
+	case <-time.After(testTimeout):
+		t.Fatal("timed out waiting for the connection loss to be reported")
+	}
+	c.HasError(a.Err(), "and can be asked about afterwards by anyone that did not want a callback")
+
+	// Everything the root package would go on calling has to remain harmless on an adapter that can no longer reach
+	// anyone, since it only learns of the loss when the user interface thread next runs.
+	a.Publish(mainWindow, mainTree(), nil, sampleGeometry())
+	a.SetGeometry(mainWindow, Geometry{Scale: geom.NewPoint(1, 1)})
+	a.Announce("nobody is listening")
+	a.RemoveWindow(mainWindow)
+	a.Stop()
+}
+
+// TestStopIsNotReportedAsALoss verifies that the adapter's own shutdown does not look like the bus dying: the root
+// package would otherwise tear down and rebuild an adapter every time a screen reader was switched off.
+func TestStopIsNotReportedAsALoss(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	p := newTestPeer(t, registryAnswers)
+	lost := make(chan error, 1)
+	a, err := Start(Config{
+		ToolkitVersion: testToolkitVersion,
+		Lost:           func(reason error) { lost <- reason },
+		conn:           p.client,
+	})
+	c.NoError(err)
+
+	a.Stop()
+	// The connection's callbacks run on a goroutine of its own, so the one that records why it ended is waited for
+	// before insisting that the one that reports a loss was never called.
+	for deadline := time.Now().Add(testTimeout); a.Err() == nil; {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the connection to end")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case reason := <-lost:
+		t.Fatalf("a connection closed by Stop must not be reported as lost, but %v was", reason)
+	default:
+	}
 }

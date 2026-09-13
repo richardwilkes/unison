@@ -257,21 +257,24 @@ func (b *Button) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	return PointingCursor()
 }
 
-// ProvideAccessibility describes the button to assistive technologies. A button that belongs to a group, or that is
-// sticky, stays in the state a click puts it in rather than springing back, so it is reported as a toggle button and
-// its state is reported along with it. The name is the button's own text; an icon button has none, so it falls back to
-// whatever name has been set for it and then to its tooltip, which is the only thing such a button usually has to say
-// what it does.
+// ProvideAccessibility describes the button to assistive technologies. A sticky button stays drawn in the state a click
+// puts it in rather than springing back, so it is reported as a toggle button and its state is reported along with it;
+// a button that merely belongs to a group is not, since DefaultDraw only keeps a sticky button latched and announcing
+// an unsticky one as an on toggle would describe something the person cannot see. The name is the button's own text; an
+// icon button has none, so it falls back to whatever name has been set for it and then to its tooltip, which is the
+// only thing such a button usually has to say what it does.
 func (b *Button) ProvideAccessibility(builder *AccessibilityBuilder) {
 	node := builder.Node()
 	if node.Role == role.Auto {
-		if b.Sticky || b.group != nil {
+		if b.Sticky {
 			node.Role = role.ToggleButton
 		} else {
 			node.Role = role.Button
 		}
 	}
-	node.Pressed = b.Pressed || (node.Role == role.ToggleButton && b.group.Selected(b))
+	// The same condition DefaultDraw uses to decide whether to draw the button in its selected state, so that what an
+	// assistive technology is told matches what is on the screen.
+	node.Pressed = b.Pressed || (b.Sticky && b.group.Selected(b))
 	if node.Name == "" {
 		node.Name = b.Text.String()
 	}

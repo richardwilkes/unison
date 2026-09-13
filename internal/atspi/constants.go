@@ -172,6 +172,35 @@ const (
 	CoordParent CoordType = 2
 )
 
+// Granularity is the unit that org.a11y.atspi.Text.GetStringAtOffset works in, from AtspiTextGranularity.
+type Granularity uint32
+
+// The granularities AT-SPI defines. All of them are answered; see [textUnitForGranularity].
+const (
+	GranularityChar      Granularity = 0 // ATSPI_TEXT_GRANULARITY_CHAR
+	GranularityWord      Granularity = 1 // ATSPI_TEXT_GRANULARITY_WORD
+	GranularitySentence  Granularity = 2 // ATSPI_TEXT_GRANULARITY_SENTENCE
+	GranularityLine      Granularity = 3 // ATSPI_TEXT_GRANULARITY_LINE
+	GranularityParagraph Granularity = 4 // ATSPI_TEXT_GRANULARITY_PARAGRAPH
+)
+
+// Boundary is the unit that org.a11y.atspi.Text.GetTextAtOffset, GetTextBeforeOffset and GetTextAfterOffset work in,
+// from AtspiTextBoundaryType. It is a separate enumeration from [Granularity], with different numbers for the same
+// units, because the three methods that take it predate GetStringAtOffset.
+type Boundary uint32
+
+// The boundary types AT-SPI defines. Each unit comes in a START and an END form, which differ in where the range a
+// method answers with begins and ends relative to the unit; see [textUnitForBoundary].
+const (
+	BoundaryChar          Boundary = 0 // ATSPI_TEXT_BOUNDARY_CHAR
+	BoundaryWordStart     Boundary = 1 // ATSPI_TEXT_BOUNDARY_WORD_START
+	BoundaryWordEnd       Boundary = 2 // ATSPI_TEXT_BOUNDARY_WORD_END
+	BoundarySentenceStart Boundary = 3 // ATSPI_TEXT_BOUNDARY_SENTENCE_START
+	BoundarySentenceEnd   Boundary = 4 // ATSPI_TEXT_BOUNDARY_SENTENCE_END
+	BoundaryLineStart     Boundary = 5 // ATSPI_TEXT_BOUNDARY_LINE_START
+	BoundaryLineEnd       Boundary = 6 // ATSPI_TEXT_BOUNDARY_LINE_END
+)
+
 // Layer is the number that org.a11y.atspi.Component.GetLayer reports, from AtspiComponentLayer.
 type Layer uint32
 
@@ -199,6 +228,11 @@ const (
 	InterfaceSelection = "org.a11y.atspi.Selection"
 	// InterfaceSocket is what the registry implements, and is only ever called rather than answered.
 	InterfaceSocket = "org.a11y.atspi.Socket"
+	// InterfaceTable is implemented by the containers laid out as a grid of cells, which is what an assistive
+	// technology's table navigation commands work over.
+	InterfaceTable = "org.a11y.atspi.Table"
+	// InterfaceTableCell is implemented by the cells of such a container, and is how one says where in the grid it sits.
+	InterfaceTableCell = "org.a11y.atspi.TableCell"
 	// InterfaceText is implemented by the objects that hold navigable text.
 	InterfaceText = "org.a11y.atspi.Text"
 	// InterfaceValue is implemented by the objects that hold a numeric value.
@@ -263,6 +297,14 @@ const (
 	textRangeSignature       dbus.Signature = "sii"
 	textExtentsSignature     dbus.Signature = "iiii"
 	textAttributesSignature  dbus.Signature = "a{ss}ii"
+	intPairSignature         dbus.Signature = "(ii)"
+	int32ArraySignature      dbus.Signature = "ai"
+	// rowColumnExtentsSignature is the reply of org.a11y.atspi.Table.GetRowColumnExtentsAtIndex: whether there is a
+	// cell there at all, its row and column, how many of each it spans, and whether it is selected.
+	rowColumnExtentsSignature dbus.Signature = "biiiib"
+	// rowColumnSpanSignature is the reply of org.a11y.atspi.TableCell.GetRowColumnSpan, which is the same without the
+	// selection.
+	rowColumnSpanSignature dbus.Signature = "biiii"
 	// eventSignature is the body of every AT-SPI event: the detail string, the two integers whose meaning depends on
 	// the event, the value it carries, and the properties of the object it came from. libatspi refuses an event with
 	// any other signature, so this is the one place it is spelled out.

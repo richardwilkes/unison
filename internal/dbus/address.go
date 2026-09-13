@@ -28,14 +28,18 @@ type transport struct {
 // parseAddress parses a D-Bus server address, which is a ";" separated list of alternatives that should be tried in
 // order, each of the form "transport:key=value,key=value". Only the "unix" transport is supported, via its "path",
 // "abstract" and "runtime" keys; unsupported alternatives are skipped, and an error that explains why is returned only
-// if nothing usable is left. Unknown keys are ignored, as the specification requires.
+// if nothing usable is left. Unknown keys are ignored, as the specification requires. Surrounding whitespace is
+// stripped from each alternative, since an address that reaches us from the environment often has a space after a
+// separator or a newline at the end, and carrying either into the parse turns a usable alternative into an unknown
+// transport or a socket path into one that no socket could have.
 func parseAddress(addr string) ([]transport, error) {
 	var (
 		list    []transport
 		skipped []error
 	)
 	for entry := range strings.SplitSeq(addr, ";") {
-		if strings.TrimSpace(entry) == "" {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
 			continue
 		}
 		t, err := parseAddressEntry(entry)

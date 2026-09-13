@@ -26,7 +26,8 @@ const (
 	MaxSignatureLength = 255
 	// MaxNameLength is the largest permitted length, in bytes, of a bus, interface, member or error name.
 	MaxNameLength = 255
-	// MaxDepth is the deepest permitted nesting of containers.
+	// MaxDepth is the deepest permitted nesting of containers. It applies separately to arrays, to structures and to
+	// variants; see [depths].
 	MaxDepth = 32
 )
 
@@ -52,8 +53,9 @@ type DictEntry struct {
 // which matters both for reproducible encoding and for the peers that care about the order they published.
 type Dict []DictEntry
 
-// Struct is a D-Bus structure. A plain []any is accepted anywhere a Struct is when marshaling, but unmarshaling
-// always produces a Struct, so that a structure can be told apart from an array.
+// Struct is a D-Bus structure. A plain []any is accepted anywhere a Struct is when marshaling, and unmarshaling
+// produces a Struct rather than a []any, so that a structure can be told apart from an array. The one exception is the
+// (so) structure that AT-SPI uses everywhere, which unmarshals to an [ObjectRef].
 type Struct []any
 
 // Array is a D-Bus array with an explicit element type. It is only needed when the element type cannot be derived from
@@ -78,7 +80,9 @@ var (
 	errEmptySignature     = errors.New("dbus: empty signature")
 	errIncompleteType     = errors.New("dbus: incomplete type in signature")
 	errUnixFDUnsupported  = errors.New("dbus: unix file descriptors (h) are not supported")
-	errTooDeep            = fmt.Errorf("dbus: containers nested more than %d deep", MaxDepth)
+	errTooManyArrays      = fmt.Errorf("dbus: arrays nested more than %d deep", MaxDepth)
+	errTooManyStructures  = fmt.Errorf("dbus: structures nested more than %d deep", MaxDepth)
+	errTooManyVariants    = fmt.Errorf("dbus: variants nested more than %d deep", MaxDepth)
 	errDictEntryPlacement = errors.New("dbus: a dict entry may only be used as the element type of an array")
 	errEmptyArrayNoType   = errors.New("dbus: cannot derive the element type of an empty array; use dbus.Array")
 	errEmptyDictNoType    = errors.New("dbus: cannot derive the key and value types of an empty dictionary")
@@ -87,6 +91,54 @@ var (
 // basicTypes holds the type codes of the basic (non-container) types, which are the only types permitted as the key of
 // a dict entry. Note that 'v' is not basic and that 'h' is deliberately absent, since it is not supported.
 const basicTypes = "ybnqiuxtdsog"
+
+// depths counts how deeply the containers being scanned, encoded or decoded are nested. The specification allows 32
+// nested arrays and 32 nested structures, and the two limits are independent of each other, so a signature such as
+// "a(a(…a(y)…))" with 17 array and structure pairs is within both even though it opens 34 containers in all. Variants
+// are counted on their own as well: nothing in the specification bounds them, but a variant carries its own type on the
+// wire rather than in the enclosing signature, so the recursion a nest of them causes has to be bounded by something.
+type depths struct {
+	arrays     int
+	structures int
+	variants   int
+}
+
+// enter records that a container whose type code is c is being entered, returning an error if that would nest more
+// deeply than the specification permits. A dict entry counts as a structure, which is what it is on the wire. Every
+// successful call must be matched with a call to [depths.leave], except while scanning a signature, where the depths
+// are passed by value and unwind on their own.
+func (d *depths) enter(c byte) error {
+	switch c {
+	case 'a':
+		if d.arrays >= MaxDepth {
+			return errTooManyArrays
+		}
+		d.arrays++
+	case '(', '{':
+		if d.structures >= MaxDepth {
+			return errTooManyStructures
+		}
+		d.structures++
+	default: // 'v'
+		if d.variants >= MaxDepth {
+			return errTooManyVariants
+		}
+		d.variants++
+	}
+	return nil
+}
+
+// leave undoes one call to [depths.enter].
+func (d *depths) leave(c byte) {
+	switch c {
+	case 'a':
+		d.arrays--
+	case '(', '{':
+		d.structures--
+	default: // 'v'
+		d.variants--
+	}
+}
 
 // String returns the path as a string.
 func (p ObjectPath) String() string { return string(p) }
@@ -126,7 +178,7 @@ func (s Signature) Validate() error {
 		return fmt.Errorf("dbus: signature is longer than %d bytes", MaxSignatureLength)
 	}
 	for i := 0; i < len(s); {
-		next, err := scanType(s, i, 0)
+		next, err := scanType(s, i, depths{})
 		if err != nil {
 			return err
 		}
@@ -143,7 +195,7 @@ func (s Signature) ValidateSingle() error {
 	if s == "" {
 		return errEmptySignature
 	}
-	next, err := scanType(s, 0, 0)
+	next, err := scanType(s, 0, depths{})
 	if err != nil {
 		return err
 	}
@@ -160,7 +212,7 @@ func (s Signature) Types() ([]Signature, error) {
 	}
 	var types []Signature
 	for i := 0; i < len(s); {
-		next, err := scanType(s, i, 0)
+		next, err := scanType(s, i, depths{})
 		if err != nil {
 			return nil, err
 		}
@@ -170,11 +222,9 @@ func (s Signature) Types() ([]Signature, error) {
 	return types, nil
 }
 
-// scanType validates the complete type that starts at index i and returns the index just past it.
-func scanType(s Signature, i, depth int) (next int, err error) {
-	if depth > MaxDepth {
-		return 0, errTooDeep
-	}
+// scanType validates the complete type that starts at index i and returns the index just past it. d is passed by value,
+// so each branch of the type tree is measured on its own rather than against whatever a sibling reached.
+func scanType(s Signature, i int, d depths) (next int, err error) {
 	if i >= len(s) {
 		return 0, errIncompleteType
 	}
@@ -184,14 +234,20 @@ func scanType(s Signature, i, depth int) (next int, err error) {
 	case 'h':
 		return 0, errUnixFDUnsupported
 	case 'a':
-		if i+1 < len(s) && s[i+1] == '{' {
-			return scanDictEntry(s, i+1, depth+1)
+		if err = d.enter('a'); err != nil {
+			return 0, err
 		}
-		return scanType(s, i+1, depth+1)
+		if i+1 < len(s) && s[i+1] == '{' {
+			return scanDictEntry(s, i+1, d)
+		}
+		return scanType(s, i+1, d)
 	case '(':
+		if err = d.enter('('); err != nil {
+			return 0, err
+		}
 		j := i + 1
 		for j < len(s) && s[j] != ')' {
-			if j, err = scanType(s, j, depth+1); err != nil {
+			if j, err = scanType(s, j, d); err != nil {
 				return 0, err
 			}
 		}
@@ -212,9 +268,9 @@ func scanType(s Signature, i, depth int) (next int, err error) {
 }
 
 // scanDictEntry validates the dict entry that starts at index i and returns the index just past it.
-func scanDictEntry(s Signature, i, depth int) (next int, err error) {
-	if depth > MaxDepth {
-		return 0, errTooDeep
+func scanDictEntry(s Signature, i int, d depths) (next int, err error) {
+	if err = d.enter('{'); err != nil {
+		return 0, err
 	}
 	if i+1 >= len(s) {
 		return 0, errIncompleteType
@@ -222,7 +278,7 @@ func scanDictEntry(s Signature, i, depth int) (next int, err error) {
 	if !strings.ContainsRune(basicTypes, rune(s[i+1])) {
 		return 0, fmt.Errorf("dbus: dict entry key type %q is not a basic type", string(s[i+1]))
 	}
-	if next, err = scanType(s, i+2, depth+1); err != nil {
+	if next, err = scanType(s, i+2, d); err != nil {
 		return 0, err
 	}
 	if next >= len(s) || s[next] != '}' {

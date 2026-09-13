@@ -11,6 +11,7 @@ package w32
 
 import (
 	"math"
+	"strconv"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/xruntime"
@@ -123,8 +124,25 @@ func uiaInvokeInvoke(this uintptr) uint64 {
 // uiaToggleToggle implements IToggleProvider::Toggle, which moves a checkable element to its next state. Which state
 // that is belongs to the widget: a two-state check box has one answer and a three-state check box another, and neither
 // is decided here.
+//
+// Not everything that reports the Toggle pattern offers the Toggle action. A sticky or grouped button is reported as a
+// toggle button, because the state a click leaves it in is what a client has to hear, but the only thing it does is be
+// pressed. Toggle is the sole way a client can operate such an element on Windows — the role carries no Invoke pattern
+// — so a node that does not offer Toggle but does offer Press is pressed instead. Dispatching an action the widget
+// ignores would answer S_OK while the button never changed.
 func uiaToggleToggle(this uintptr) uint64 {
-	return uiaPatternAction(this, uiaIfaceToggle, accessibility.Toggle)
+	p, _, node, hr := uiaPatternNode(this, uiaIfaceToggle)
+	if hr != COM_S_OK {
+		return hr
+	}
+	if node.Disabled {
+		return UIA_E_ELEMENTNOTENABLED
+	}
+	action := accessibility.Toggle
+	if !node.Actions.Has(accessibility.Toggle) && node.Actions.Has(accessibility.Press) {
+		action = accessibility.Press
+	}
+	return uiaDispatch(p, accessibility.ActionRequest{Action: action})
 }
 
 // uiaToggleState implements IToggleProvider::get_ToggleState.
@@ -186,6 +204,10 @@ func uiaValueIsReadOnly(this, out uintptr) uint64 {
 // arrives as the raw bits of the double rather than as a double; see uia_thunk_windows.go. A value outside the
 // element's own range, or one that is not a number at all, is refused here rather than clamped by the widget, so that a
 // client is told its request was wrong instead of silently getting something else.
+//
+// The request carries the number both ways: as Number, and as the text the same number reads as. A widget that takes
+// its value as text — a numeric field is a text field underneath, and answers SetValue by replacing its text — would
+// otherwise be handed an empty string and blank itself. The Cocoa adapter fills in both for the same reason.
 func uiaRangeValueSetValue(this, valueBits uintptr) uint64 {
 	p, _, node, hr := uiaPatternNode(this, uiaIfaceRangeValue)
 	if hr != COM_S_OK {
@@ -201,7 +223,11 @@ func uiaRangeValueSetValue(this, valueBits uintptr) uint64 {
 	if math.IsNaN(number) || (node.HasNumber && node.Max > node.Min && (number < node.Min || number > node.Max)) {
 		return COM_E_INVALIDARG
 	}
-	return uiaDispatch(p, accessibility.ActionRequest{Action: accessibility.SetValue, Number: number})
+	return uiaDispatch(p, accessibility.ActionRequest{
+		Action: accessibility.SetValue,
+		Number: number,
+		Value:  strconv.FormatFloat(number, 'g', -1, 64),
+	})
 }
 
 // uiaRangeValueValue implements IRangeValueProvider::get_Value.
@@ -352,7 +378,7 @@ func uiaGridGetItem(this, row, column, out uintptr) uint64 {
 		return COM_E_INVALIDARG
 	}
 	if cell := p.window.Provider(UIAGridItem(tree, p.node, wantRow, wantColumn)); cell != nil {
-		cell.addRef()
+		// The reference Provider handed over becomes the caller's, which is what an interface out-parameter means.
 		*xruntime.PtrFromUintptr[uintptr](out) = cell.ifacePtr(uiaIfaceSimple)
 	}
 	return COM_S_OK
@@ -454,7 +480,8 @@ func uiaNoNodes(_ *accessibility.Tree, _ *accessibility.Node) []accessibility.No
 //
 // The pattern is checked on every call rather than trusted from the QueryInterface that handed out the interface: the
 // snapshot the element supported the pattern in may have been replaced since, and a method whose node no longer has
-// anything to say about a pattern must say so rather than invent an answer from a node of a different role.
+// anything to say about a pattern must say so rather than invent an answer from a node of a different role. It is
+// checked through the same supports the two ways of handing out an interface use, so the three cannot disagree.
 func uiaPatternNode(this uintptr, iface uiaIface) (p *UIAProvider, tree *accessibility.Tree,
 	node *accessibility.Node, hr uint64,
 ) {
@@ -463,7 +490,7 @@ func uiaPatternNode(this uintptr, iface uiaIface) (p *UIAProvider, tree *accessi
 	if tree, node, ok = p.current(); !ok {
 		return p, nil, nil, UIA_E_ELEMENTNOTAVAILABLE
 	}
-	if !UIAPatterns(node).Has(uiaPatternForIface(iface)) {
+	if !p.supports(iface) {
 		return p, nil, nil, UIA_E_NOTSUPPORTED
 	}
 	return p, tree, node, COM_S_OK
@@ -555,7 +582,7 @@ func uiaPatternProvider(this uintptr, iface uiaIface, out uintptr,
 		return hr
 	}
 	if other := p.window.Provider(pick(tree, node)); other != nil {
-		other.addRef()
+		// The reference Provider handed over becomes the caller's, which is what an interface out-parameter means.
 		*xruntime.PtrFromUintptr[uintptr](out) = other.ifacePtr(uiaIfaceSimple)
 	}
 	return COM_S_OK
@@ -587,12 +614,20 @@ func uiaPatternProviderArray(this uintptr, iface uiaIface, out uintptr,
 // node with no provider is left out rather than reported as a NULL element, which a client walking the array would
 // have to guard against. An empty set yields a valid empty array, not a zero one.
 //
-// Storing an element into a VT_UNKNOWN array adds a reference to it, so nothing here has to add one: what the array
-// ends up holding is exactly the one reference per element that UI Automation Core will release.
+// Storing an element into a VT_UNKNOWN array adds a reference of its own, so what the array ends up holding is exactly
+// the one reference per element that UI Automation Core will release; the references Provider handed over are given
+// back once the array has been built.
 func uiaProviderArray(w *UIAWindow, ids []accessibility.NodeID) SAFEARRAY {
+	providers := make([]*UIAProvider, 0, len(ids))
+	defer func() {
+		for _, p := range providers {
+			p.release()
+		}
+	}()
 	pointers := make([]unsafe.Pointer, 0, len(ids))
 	for _, id := range ids {
 		if p := w.Provider(id); p != nil {
+			providers = append(providers, p)
 			pointers = append(pointers, p.Unknown())
 		}
 	}

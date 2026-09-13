@@ -50,20 +50,24 @@ const dbusPropertiesInterface = "org.freedesktop.DBus.Properties"
 // them may call t.Parallel, since all of that state is shared.
 func saveA11yState(t *testing.T) {
 	t.Helper()
-	priorNo, priorEnv := noAccessibility, accessibilityEnv
+	priorNo, priorEnv := noAccessibility.Load(), accessibilityEnv
 	priorAdapter, priorCancel := linuxA11y, linuxA11yCancelWatch
+	priorRejoin := linuxA11yRejoinAttempted
 	hadWatch := priorCancel != nil
 	t.Cleanup(func() {
 		if !hadWatch && linuxA11yCancelWatch != nil {
 			linuxA11yCancelWatch()
 		}
-		noAccessibility, accessibilityEnv = priorNo, priorEnv
+		noAccessibility.Store(priorNo)
+		accessibilityEnv = priorEnv
 		linuxA11y, linuxA11yCancelWatch = priorAdapter, priorCancel
+		linuxA11yRejoinAttempted = priorRejoin
 	})
-	noAccessibility = false
+	noAccessibility.Store(false)
 	accessibilityEnv = 0
 	linuxA11y = nil
 	linuxA11yCancelWatch = nil
+	linuxA11yRejoinAttempted = false
 	t.Setenv("NO_AT_BRIDGE", "")
 }
 
@@ -83,14 +87,17 @@ func TestLinuxA11yMode(t *testing.T) {
 		{env: -1, expected: linuxA11yRefused},
 		{refused: true, expected: linuxA11yRefused},
 		{noBridge: "1", expected: linuxA11yRefused},
-		{noBridge: "yes", expected: linuxA11yRefused},
-		// NO_AT_BRIDGE=0 is not an instruction to stay away, and neither is an unset one.
+		{noBridge: "2", expected: linuxA11yRefused},
+		// NO_AT_BRIDGE is a number, read the way the C toolkits read it, so anything that is not one, or is zero, is
+		// not an instruction to stay away; neither is an unset one.
 		{noBridge: "0", expected: linuxA11yAsk},
+		{noBridge: "00", expected: linuxA11yAsk},
+		{noBridge: "yes", expected: linuxA11yAsk},
 		// The desktop's instruction wins over this application's request for support.
 		{noBridge: "1", env: 1, expected: linuxA11yRefused},
 	} {
 		accessibilityEnv = d.env
-		noAccessibility = d.refused
+		noAccessibility.Store(d.refused)
 		t.Setenv("NO_AT_BRIDGE", d.noBridge)
 		c.Equal(d.expected, linuxA11yMode(), "case %d", i)
 	}
@@ -119,7 +126,7 @@ func TestLinuxA11yStatusInitIsRefusedByEnvironment(t *testing.T) {
 	for name, refuse := range map[string]func(t *testing.T){
 		"NO_AT_BRIDGE":         func(t *testing.T) { t.Helper(); t.Setenv("NO_AT_BRIDGE", "1") },
 		"UNISON_ACCESSIBILITY": func(_ *testing.T) { accessibilityEnv = -1 },
-		"NoAccessibility":      func(_ *testing.T) { noAccessibility = true },
+		"NoAccessibility":      func(_ *testing.T) { noAccessibility.Store(true) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := check.New(t)
@@ -147,10 +154,6 @@ func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 
 	linuxA11yStatusInit()
 
-	c.Equal(1, bus.isEnabledReads(), "the launcher's IsEnabled property should have been read exactly once")
-	c.Nil(linuxA11y, "nothing is listening, so no adapter should have been created")
-	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
-	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
 	c.NotNil(linuxA11yCancelWatch, "the launcher should be being watched")
 	rules := bus.waitForRules(2)
 	c.True(slices.ContainsFunc(rules, func(rule string) bool {
@@ -159,6 +162,13 @@ func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 	c.True(slices.ContainsFunc(rules, func(rule string) bool {
 		return strings.Contains(rule, "member='NameOwnerChanged'") && strings.Contains(rule, "arg0='org.a11y.Bus'")
 	}), "the launcher appearing should be watched, since some desktops only start it on demand: %v", rules)
+
+	// The property is read by the watch, once those rules are in place, so that a screen reader starting up in between
+	// cannot be missed; it is still read only the once, and the answer — nothing is listening — starts nothing.
+	c.Equal(1, bus.waitForReads(1), "the launcher's IsEnabled property should have been read exactly once")
+	c.Nil(linuxA11y, "nothing is listening, so no adapter should have been created")
+	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
+	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
 
 	// Nothing is left on the bus once the watch is dropped.
 	linuxA11yCancelWatch()
@@ -182,19 +192,52 @@ func TestLinuxA11yHooksAreInertWithoutAnAdapter(t *testing.T) {
 	c.Nil(linuxA11y)
 }
 
-// TestLinuxA11yGeometryFor verifies the geometry a window hands the adapter. Unlike Windows, where the origin of a
-// window rect is already in the raw global pixel space, an X11 window's position is divided by the backing scale on the
-// way out of nativeContentRect, so Window.accessibilityGeometry multiplying it back is what recovers the device pixels
-// the X server, and therefore AT-SPI, works in.
+// TestLinuxA11yConnectionLostIgnoresAnAdapterThatIsGone covers the check that makes the report of an accessibility bus
+// connection dying safe to act on: it arrives on that connection's own goroutines and is handed to the user interface
+// thread, by which time the adapter it is about may have been stopped and replaced by one with a live connection of its
+// own, which must not be torn down in its place.
+func TestLinuxA11yConnectionLostIgnoresAnAdapterThatIsGone(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	current := &atspi.Adapter{}
+	linuxA11y = current
+	linuxA11yConnectionLost(nil, errors.New("a connection that never produced an adapter"))
+	linuxA11yConnectionLost(&atspi.Adapter{}, errors.New("a connection whose adapter has already been replaced"))
+	c.True(linuxA11y == current, "an adapter that is no longer the current one must not take the current one down")
+	c.False(linuxA11yRejoinAttempted, "nor use up the one rebuild a real loss is allowed")
+}
+
+// TestLinuxA11yGeometry verifies the geometry a window actually hands the adapter, which is what
+// Window.accessibilityGeometry produces rather than anything this test works out for itself. Unlike Windows, where the
+// origin of a window rect is already in the raw global pixel space, an X11 window's position is divided by the backing
+// scale on the way out of nativeContentRect, so multiplying it back is what recovers the device pixels the X server,
+// and therefore AT-SPI, works in: a window whose content area is at (100,50) on a 2x display sits at (200,100) as far
+// as an assistive technology is concerned.
+func TestLinuxA11yGeometry(t *testing.T) {
+	c := check.New(t)
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 800, Height: 600, Scale: 2},
+		StartupFinishedCallback(func() {
+			wnd = axNewTestWindow(t, "geometry", geom.NewRect(100, 50, 200, 150), NewPanel())
+		}))
+	c.NotNil(wnd)
+	var geometry atspi.Geometry
+	var contentOrigin geom.Point
+	screen.Do(func() {
+		geometry = wnd.linuxA11yGeometry()
+		contentOrigin = wnd.ContentRect().Point
+	})
+	c.Equal(geom.NewPoint(100, 50), contentOrigin, "the content area is where it was put, in logical units")
+	c.Equal(geom.NewPoint(200, 100), geometry.Origin, "and is reported to AT-SPI in the X server's pixels")
+	c.Equal(geom.NewPoint(2, 2), geometry.Scale, "along with the scale node bounds have to be multiplied by")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestLinuxA11yGeometryFor covers the conversion itself for the cases a window cannot be put in, such as a display to
+// the left of the primary one, whose negative origin must survive.
 func TestLinuxA11yGeometryFor(t *testing.T) {
 	c := check.New(t)
-	// A window whose content area the X server puts at (200,100) on a 2x display: its logical content origin is
-	// (100,50), and the origin reported to AT-SPI has to be the device pixels again.
-	geometry := linuxA11yGeometryFor(geom.NewPoint(100, 50).MulPt(geom.NewPoint(2, 2)), geom.NewPoint(2, 2))
-	c.Equal(geom.NewPoint(200, 100), geometry.Origin)
-	c.Equal(geom.NewPoint(2, 2), geometry.Scale)
-	// A window on a display to the left of the primary one has a negative origin, which must survive the conversion.
-	geometry = linuxA11yGeometryFor(geom.NewPoint(-1920, 0), geom.NewPoint(1, 1))
+	geometry := linuxA11yGeometryFor(geom.NewPoint(-1920, 0), geom.NewPoint(1, 1))
 	c.Equal(geom.NewPoint(-1920, 0), geometry.Origin)
 	c.Equal(geom.NewPoint(1, 1), geometry.Scale)
 }
@@ -327,6 +370,22 @@ func (b *fakeSessionBus) isEnabledReads() int {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	return b.reads
+}
+
+// waitForReads returns the number of times the launcher's IsEnabled property has been read once it has been read the
+// expected number of times, or whatever it has reached when waiting has gone on too long. The property is read from a
+// goroutine of the watch's own, once the bus has taken the match rules, so it has not necessarily been read by the time
+// the call that started the watch has returned.
+func (b *fakeSessionBus) waitForReads(expected int) int {
+	b.t.Helper()
+	deadline := time.Now().Add(a11yTestTimeout)
+	for {
+		reads := b.isEnabledReads()
+		if reads >= expected || time.Now().After(deadline) {
+			return reads
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // waitForRules returns the match rules in place once there are the expected number of them, or whatever there is when

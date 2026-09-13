@@ -32,20 +32,21 @@ import (
 // on D-Bus becomes interface:member:detail, so these are the major parts, in the CamelCase that D-Bus requires of a
 // signal name and that an assistive technology converts back to the hyphenated form it matches its listeners against.
 const (
-	signalActivate             = "Activate"
-	signalAnnouncement         = "Announcement"
-	signalAttributesChanged    = "AttributesChanged"
-	signalBoundsChanged        = "BoundsChanged"
-	signalChildrenChanged      = "ChildrenChanged"
-	signalCreate               = "Create"
-	signalDeactivate           = "Deactivate"
-	signalDestroy              = "Destroy"
-	signalFocus                = "Focus"
-	signalPropertyChange       = "PropertyChange"
-	signalStateChanged         = "StateChanged"
-	signalTextCaretMoved       = "TextCaretMoved"
-	signalTextChanged          = "TextChanged"
-	signalTextSelectionChanged = "TextSelectionChanged"
+	signalActivate                = "Activate"
+	signalActiveDescendantChanged = "ActiveDescendantChanged"
+	signalAnnouncement            = "Announcement"
+	signalAttributesChanged       = "AttributesChanged"
+	signalBoundsChanged           = "BoundsChanged"
+	signalChildrenChanged         = "ChildrenChanged"
+	signalCreate                  = "Create"
+	signalDeactivate              = "Deactivate"
+	signalDestroy                 = "Destroy"
+	signalFocus                   = "Focus"
+	signalPropertyChange          = "PropertyChange"
+	signalStateChanged            = "StateChanged"
+	signalTextCaretMoved          = "TextCaretMoved"
+	signalTextChanged             = "TextChanged"
+	signalTextSelectionChanged    = "TextSelectionChanged"
 )
 
 // The members of the cache object's signals, which are not events and carry a cache item rather than the usual event
@@ -104,6 +105,77 @@ const livePolite = 1
 // trueValue is what a boolean state change holds in the event's New and Old, which is what strconv.FormatBool writes.
 const trueValue = "true"
 
+// publication is one publish's worth of context: the snapshot the window had before it, the snapshot it has now, and
+// what the signals sent so far have already said.
+//
+// The events of a publish are not independent, which is why they cannot each be turned into signals on their own. A
+// window that becomes active and moves its focus in the same publish produces both a WindowActivated and a
+// FocusChanged naming the same node, and the focus has to be announced once rather than twice. One logical value
+// change arrives as both a ValueChanged and a NumberChanged, and AT-SPI has one property for the two. And a client
+// applies each children-changed as it arrives, so the second removal from one parent has to be numbered against the
+// list the first one left behind rather than against the snapshot both came from.
+type publication struct {
+	prior *windowData
+	data  *windowData
+	// removed holds, per parent, the indexes within the prior snapshot of the children already announced as removed.
+	removed map[accessibility.NodeID][]int
+	// valueAnnounced holds the nodes whose value has already been announced.
+	valueAnnounced map[accessibility.NodeID]bool
+	// active holds the containers that manage their own descendants along with which descendant has become the
+	// current one, which is sent once per container after every other signal of the publish.
+	active []activeDescendant
+	// focusAnnounced reports that where the focus has gone has already been said.
+	focusAnnounced bool
+}
+
+// activeDescendant is one container that manages its own descendants together with the descendant within it that has
+// become the current one.
+type activeDescendant struct {
+	container  accessibility.NodeID
+	descendant accessibility.NodeID
+}
+
+// priorFocus returns the node that held the keyboard focus before this publish, or zero if none did or there is no
+// snapshot before this one.
+func (p *publication) priorFocus() accessibility.NodeID {
+	if p.prior == nil {
+		return 0
+	}
+	return p.prior.tree.Focus
+}
+
+// removalIndex returns the index a children-changed:remove has to carry for a child of the given parent, which is
+// where the child sits in the list the client has now rather than where it sat in the snapshot before this publish.
+// index is the latter. One publish can take several children away from the same parent, and a client applies each
+// signal as it arrives, so every removal after the first has to be numbered against what the earlier ones left.
+func (p *publication) removalIndex(parent accessibility.NodeID, index int) int {
+	adjusted := index
+	for _, done := range p.removed[parent] {
+		if done < index {
+			adjusted--
+		}
+	}
+	if p.removed == nil {
+		p.removed = make(map[accessibility.NodeID][]int)
+	}
+	p.removed[parent] = append(p.removed[parent], index)
+	return adjusted
+}
+
+// noteActiveDescendant records which descendant of a container that manages its own descendants is now the current one,
+// replacing whatever was recorded for that container before while keeping the order the containers were first noted
+// in, so that a publish that says several things about the same container still sends one signal and a publish that
+// touches several containers sends them in a fixed order.
+func (p *publication) noteActiveDescendant(container, descendant accessibility.NodeID) {
+	for i := range p.active {
+		if p.active[i].container == container {
+			p.active[i].descendant = descendant
+			return
+		}
+	}
+	p.active = append(p.active, activeDescendant{container: container, descendant: descendant})
+}
+
 // emitEvents turns the events that came with a published tree into the AT-SPI signals on the nodes they concern. It is
 // called after [Adapter.Publish] has released the lock, and never blocks: every signal is queued rather than written.
 //
@@ -114,35 +186,33 @@ func (a *Adapter) emitEvents(ws *windowState, prior, data *windowData, events []
 	if data == nil {
 		return
 	}
+	pub := &publication{prior: prior, data: data}
 	if prior == nil {
 		// A window nobody has been told about yet needs its whole hierarchy announced, which covers everything the
 		// events could say: the only event a first snapshot produces is the focus it already has.
-		a.emitWindowAdded(ws, data)
-		return
+		a.emitWindowAdded(ws, pub)
+	} else {
+		for i := range events {
+			a.emitEvent(pub, &events[i])
+		}
 	}
-	for i := range events {
-		a.emitEvent(prior, data, &events[i])
-	}
+	a.emitActiveDescendants(pub)
 }
 
 // emitEvent sends the signals for one event.
-func (a *Adapter) emitEvent(prior, data *windowData, ev *accessibility.Event) {
+func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
+	data := pub.data
 	switch ev.Kind {
 	case accessibility.FocusChanged:
-		a.emitFocusChanged(prior, data, ev)
+		a.emitFocusChanged(pub, ev)
 	case accessibility.NameChanged:
 		a.emitPropertyChange(data, ev.Node, propertyAccessibleName, variantString(ev.New))
 	case accessibility.DescriptionChanged:
 		a.emitPropertyChange(data, ev.Node, propertyAccessibleDescription, variantString(ev.New))
-	case accessibility.ValueChanged:
-		// The textual value is what the widget itself shows, which is what an assistive technology says out loud.
-		a.emitPropertyChange(data, ev.Node, propertyAccessibleValue, variantString(ev.New))
-	case accessibility.NumberChanged:
-		if n := reportedNode(data, ev.Node); n != nil {
-			a.emitPropertyChange(data, ev.Node, propertyAccessibleValue, variantDouble(n.Number))
-		}
+	case accessibility.ValueChanged, accessibility.NumberChanged:
+		a.emitValueChanged(pub, ev.Node)
 	case accessibility.StateChanged:
-		a.emitStateChanged(data, ev)
+		a.emitStateChanged(pub, ev)
 	case accessibility.TextInserted:
 		a.emitTextChanged(data, ev, detailInsert, ev.New)
 	case accessibility.TextDeleted:
@@ -152,7 +222,7 @@ func (a *Adapter) emitEvent(prior, data *windowData, ev *accessibility.Event) {
 	case accessibility.NodeAdded:
 		a.emitNodeAdded(data, ev.Node)
 	case accessibility.NodeRemoved:
-		a.emitNodeRemoved(prior, ev.Node)
+		a.emitNodeRemoved(pub, ev.Node)
 	case accessibility.BoundsChanged:
 		a.emitBoundsChanged(data, ev.Node)
 	case accessibility.SortChanged:
@@ -162,9 +232,9 @@ func (a *Adapter) emitEvent(prior, data *windowData, ev *accessibility.Event) {
 			a.emit(NodePath(ev.Node), InterfaceEventObject, signalAttributesChanged, "", 0, 0, variantInt32(0))
 		}
 	case accessibility.WindowActivated:
-		a.emitWindowActivated(data)
+		a.emitWindowActivated(pub)
 	case accessibility.WindowDeactivated:
-		a.emitWindowDeactivated(data)
+		a.emitWindowDeactivated(pub)
 	case accessibility.Announcement:
 		a.emitAnnouncement(ev.New)
 	case accessibility.ChildrenChanged:
@@ -175,18 +245,38 @@ func (a *Adapter) emitEvent(prior, data *windowData, ev *accessibility.Event) {
 	}
 }
 
-// emitWindowAdded announces a window that has just joined the accessibility tree: the window's own Create signal, the
-// application root's ChildrenChanged, one cache item per reported node, and then, if the window is already the active
+// emitValueChanged announces that a node's value has changed. Unison reports one such change twice — as the textual
+// value the widget shows and as the number behind it — but AT-SPI has a single accessible-value property for both, and
+// ATK, which every assistive technology was written against, defines it as a number. So the number is what is sent,
+// once per node however many of the two events arrived, and a node that has no number sends nothing: it has no
+// org.a11y.atspi.Value interface for a client to read a value back from, and what such a control shows is its name or
+// its text instead.
+func (a *Adapter) emitValueChanged(pub *publication, id accessibility.NodeID) {
+	n := reportedNode(pub.data, id)
+	if n == nil || !n.HasNumber || pub.valueAnnounced[id] {
+		return
+	}
+	if pub.valueAnnounced == nil {
+		pub.valueAnnounced = make(map[accessibility.NodeID]bool)
+	}
+	pub.valueAnnounced[id] = true
+	a.emitPropertyChange(pub.data, id, propertyAccessibleValue, variantDouble(n.Number))
+}
+
+// emitWindowAdded announces a window that has just joined the accessibility tree: one cache item per reported node, the
+// window's own Create signal, the application root's ChildrenChanged, and then, if the window is already the active
 // one, everything that says so.
-func (a *Adapter) emitWindowAdded(ws *windowState, data *windowData) {
+//
+// The cache items come first for the same reason [Adapter.emitNodeAdded] sends a node's ahead of where it went: an
+// assistive technology should already know what an object is by the time it is pointed at it. A window:create naming a
+// window the client has never heard of leaves it to ask, over the bus, everything it was about to be told.
+func (a *Adapter) emitWindowAdded(ws *windowState, pub *publication) {
+	data := pub.data
 	root := data.root()
 	if root == nil {
 		return
 	}
 	index := a.windowIndex(ws)
-	a.emit(NodePath(root.ID), InterfaceEventWindow, signalCreate, "", 0, 0, variantString(root.Name))
-	a.emit(RootPath, InterfaceEventObject, signalChildrenChanged, detailAdd, int32(index), 0,
-		variantRef(a.reference(root.ID)))
 	data.tree.Walk(func(n *accessibility.Node) bool {
 		if n.Ignored {
 			return true
@@ -198,8 +288,11 @@ func (a *Adapter) emitWindowAdded(ws *windowState, data *windowData) {
 		a.emitCacheAdd((&nodeObject{a: a, data: data, node: n}).cacheItem(at))
 		return true
 	})
+	a.emit(NodePath(root.ID), InterfaceEventWindow, signalCreate, "", 0, 0, variantString(root.Name))
+	a.emit(RootPath, InterfaceEventObject, signalChildrenChanged, detailAdd, int32(index), 0,
+		variantRef(a.reference(root.ID)))
 	if data.active() {
-		a.emitWindowActivated(data)
+		a.emitWindowActivated(pub)
 	}
 }
 
@@ -238,26 +331,32 @@ func (a *Adapter) emitAnnouncement(text string) {
 
 // emitWindowActivated announces that a window has become the active one, which is also when the node inside it that
 // holds the keyboard focus becomes the focus an assistive technology follows.
-func (a *Adapter) emitWindowActivated(data *windowData) {
-	root := data.root()
+func (a *Adapter) emitWindowActivated(pub *publication) {
+	root := pub.data.root()
 	if root == nil {
 		return
 	}
 	a.emit(NodePath(root.ID), InterfaceEventWindow, signalActivate, "", 0, 0, variantString(root.Name))
 	a.emit(NodePath(root.ID), InterfaceEventObject, signalStateChanged, stateNameActive, 1, 0, variantInt32(0))
-	a.emitFocusGained(data, data.tree.Focus)
+	a.emitFocusMoved(pub, pub.data.tree.Focus)
 }
 
 // emitWindowDeactivated announces that a window has stopped being the active one, and that its focus is therefore no
 // longer the focus.
-func (a *Adapter) emitWindowDeactivated(data *windowData) {
-	root := data.root()
+//
+// Which node loses the state is read from the snapshot before this one. A window very often loses the focus and moves
+// it in the same publish — clicking a control in another window does both — and it is the node that actually held the
+// focus while the window was active that has to be told it no longer does. The focus is announced here rather than by
+// the FocusChanged of the same publish, which says nothing at all about a window that is no longer active.
+func (a *Adapter) emitWindowDeactivated(pub *publication) {
+	root := pub.data.root()
 	if root == nil {
 		return
 	}
 	a.emit(NodePath(root.ID), InterfaceEventWindow, signalDeactivate, "", 0, 0, variantString(root.Name))
 	a.emit(NodePath(root.ID), InterfaceEventObject, signalStateChanged, stateNameActive, 0, 0, variantInt32(0))
-	a.emitFocusLost(data, data.tree.Focus)
+	pub.focusAnnounced = true
+	a.emitFocusLost(pub.data, pub.priorFocus())
 }
 
 // emitFocusChanged announces that the keyboard focus has moved within a window, which is the pair of signals an
@@ -266,18 +365,28 @@ func (a *Adapter) emitWindowDeactivated(data *windowData) {
 //
 // Nothing is sent while the window is not the active one. AT-SPI's FOCUSED state belongs to the active window's focus
 // alone, and an assistive technology that is told about a focus move in a window the user is not looking at follows it
-// there.
-func (a *Adapter) emitFocusChanged(prior, data *windowData, ev *accessibility.Event) {
-	if !data.active() {
+// there. Nothing is sent either when the window became active in this same publish, since activating it has already
+// said where its focus is; announcing it twice has a client hear the same object named twice and, worse, receive the
+// old node's focused 0 after the new one's focused 1.
+func (a *Adapter) emitFocusChanged(pub *publication, ev *accessibility.Event) {
+	if !pub.data.active() || pub.focusAnnounced {
 		return
 	}
+	a.emitFocusMoved(pub, ev.Node)
+}
+
+// emitFocusMoved announces that a node has taken the keyboard focus from whichever node held it before this publish,
+// and records that the publish has now said where the focus is.
+func (a *Adapter) emitFocusMoved(pub *publication, id accessibility.NodeID) {
+	pub.focusAnnounced = true
 	// Which node had the focus is only in the snapshot before this one, but whether it is still worth telling anyone
 	// about depends on the new one: a node that has left the tree has already been reported as gone, and saying that
 	// something that no longer exists has lost the focus would only send an assistive technology looking for it.
-	if old := prior.tree.Focus; old != 0 && old != ev.Node {
-		a.emitFocusLost(data, old)
+	if old := pub.priorFocus(); old != 0 && old != id {
+		a.emitFocusLost(pub.data, old)
 	}
-	a.emitFocusGained(data, ev.Node)
+	a.emitFocusGained(pub.data, id)
+	a.noteActiveDescendant(pub, id)
 }
 
 // emitFocusGained sends the two signals that say a node has taken the keyboard focus: the state change, and the legacy
@@ -308,10 +417,20 @@ func (a *Adapter) emitPropertyChange(data *windowData, id accessibility.NodeID, 
 }
 
 // emitStateChanged announces that one of a node's states has changed. A single change in the schema can be more than
-// one AT-SPI state, since AT-SPI splits some of what Unison holds in one flag.
-func (a *Adapter) emitStateChanged(data *windowData, ev *accessibility.Event) {
-	if reportedNode(data, ev.Node) == nil {
+// one AT-SPI state, since AT-SPI splits some of what Unison holds in one flag, and two of them are not states to an
+// assistive technology at all but changes to the shape of the hierarchy or to where the user is within it.
+func (a *Adapter) emitStateChanged(pub *publication, ev *accessibility.Event) {
+	if ev.State == accessibility.StateIgnored {
+		a.emitIgnoredChanged(pub, ev)
 		return
+	}
+	if reportedNode(pub.data, ev.Node) == nil {
+		return
+	}
+	if ev.State == accessibility.StateSelected && ev.New == trueValue {
+		// Selecting a row is how the current one moves in a table that manages its own descendants, which is the one
+		// thing a client that honors that state has no other way of learning.
+		a.noteActiveDescendant(pub, ev.Node)
 	}
 	for _, one := range stateChanges(ev) {
 		var detail1 int32
@@ -319,6 +438,70 @@ func (a *Adapter) emitStateChanged(data *windowData, ev *accessibility.Event) {
 			detail1 = 1
 		}
 		a.emit(NodePath(ev.Node), InterfaceEventObject, signalStateChanged, one.name, detail1, 0, variantInt32(0))
+	}
+}
+
+// emitIgnoredChanged announces a node whose Ignored flag has flipped. [accessibility.Diff] reports that as nothing but
+// a state change, since an ignored node stays in the tree so that hit testing and coordinate clipping go on working,
+// but to an assistive technology an ignored node has no object at all: the flip is exactly a node joining or leaving
+// the reported hierarchy, and it reaches one in normal use, as a scroll bar appears and disappears or a group is given
+// a name. Reporting nothing leaves the client's cached hierarchy permanently at odds with what GetChildren answers.
+//
+// The node's own reported children move with it, from the nearest reported ancestor onto the node or the other way
+// about, and are told where they are now. Nothing deeper has to be: only the direct children change parents.
+func (a *Adapter) emitIgnoredChanged(pub *publication, ev *accessibility.Event) {
+	if ev.New == trueValue {
+		// The node has left the reported hierarchy, so its children are placed under the ancestor that holds them now
+		// after it has gone, rather than being left pointing at an object the client has just been told to forget.
+		a.emitNodeRemoved(pub, ev.Node)
+		for _, id := range pub.prior.unignoredChildren(ev.Node) {
+			a.emitNodeAdded(pub.data, id)
+		}
+		return
+	}
+	a.emitNodeAdded(pub.data, ev.Node)
+	for _, id := range pub.data.unignoredChildren(ev.Node) {
+		a.emitNodeAdded(pub.data, id)
+	}
+}
+
+// noteActiveDescendant records that a node has become the current one within the nearest container above it that
+// claims ATSPI_STATE_MANAGES_DESCENDANTS, if there is one. Nothing is sent yet: a publish can say several things about
+// the same container, and only the last of them is the answer.
+func (a *Adapter) noteActiveDescendant(pub *publication, id accessibility.NodeID) {
+	if container := managesDescendantsAncestor(pub.data, id); container != 0 {
+		pub.noteActiveDescendant(container, id)
+	}
+}
+
+// managesDescendantsAncestor returns the nearest reported ancestor of a node that claims
+// ATSPI_STATE_MANAGES_DESCENDANTS, or zero when none does.
+func managesDescendantsAncestor(data *windowData, id accessibility.NodeID) accessibility.NodeID {
+	for parent := data.parent(id); parent != 0; parent = data.parent(parent) {
+		n := data.node(parent)
+		if n == nil {
+			return 0
+		}
+		if ManagesDescendants(n) {
+			return parent
+		}
+	}
+	return 0
+}
+
+// emitActiveDescendants announces, for each container that manages its own descendants and whose current descendant
+// moved during this publish, which one it is now. A container claiming ATSPI_STATE_MANAGES_DESCENDANTS has told its
+// client not to walk or cache what is inside it, so this signal is the only way the client can follow the user through
+// it; without it, exactly the large tables that state exists to make usable would be the ones a client could learn
+// nothing about. It carries the descendant's place among its parent's children and a reference to it, which is what
+// ATK's own bridge sends.
+//
+// These go out after everything else the publish has to say, so that the row an assistive technology is sent to has
+// already been described and placed.
+func (a *Adapter) emitActiveDescendants(pub *publication) {
+	for _, one := range pub.active {
+		a.emit(NodePath(one.container), InterfaceEventObject, signalActiveDescendantChanged, "",
+			int32(pub.data.indexInParent(one.descendant)), 0, variantRef(a.reference(one.descendant)))
 	}
 }
 
@@ -365,9 +548,10 @@ func stateChanges(ev *accessibility.Event) []stateChange {
 	case accessibility.StateChecked:
 		return checkedStateChanges(ev)
 	case accessibility.StateIgnored, accessibility.StateProtected, accessibility.StateNone:
-		// A node becoming ignored, or stopping being ignored, joins or leaves the reported hierarchy, which arrives as
-		// a node added or removed rather than as a state change, and AT-SPI has no state for a password field: it has
-		// the PASSWORD_TEXT role instead, which is part of the cache item rather than of the state set.
+		// A node becoming ignored, or stopping being ignored, joins or leaves the reported hierarchy rather than
+		// changing a state, and is turned into the signals that say so by [Adapter.emitIgnoredChanged] before it ever
+		// gets here. AT-SPI has no state for a password field: it has the PASSWORD_TEXT role instead, which is part of
+		// the cache item rather than of the state set.
 		return nil
 	default:
 		return nil
@@ -430,14 +614,18 @@ func (a *Adapter) emitNodeAdded(data *windowData, id accessibility.NodeID) {
 }
 
 // emitNodeRemoved announces a node that has left a published window. Everything it says has to come from the snapshot
-// the node was last in, since the new one no longer holds it: where it was, and which node it was under.
-func (a *Adapter) emitNodeRemoved(prior *windowData, id accessibility.NodeID) {
+// the node was last in, since the new one no longer holds it: where it was, and which node it was under. The index is
+// then corrected for the removals this publish has already announced from the same parent — see
+// [publication.removalIndex] — because a client applies each one as it arrives and the second of three children to go
+// is no longer where the old snapshot had it by the time it is told about.
+func (a *Adapter) emitNodeRemoved(pub *publication, id accessibility.NodeID) {
+	prior := pub.prior
 	if reportedNode(prior, id) == nil {
 		return
 	}
 	if parent := prior.parent(id); parent != 0 {
 		a.emit(NodePath(parent), InterfaceEventObject, signalChildrenChanged, detailRemove,
-			int32(prior.indexInParent(id)), 0, variantRef(a.reference(id)))
+			int32(pub.removalIndex(parent, prior.indexInParent(id))), 0, variantRef(a.reference(id)))
 	}
 	a.emitCacheRemove(a.reference(id))
 }

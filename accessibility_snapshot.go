@@ -169,6 +169,7 @@ func (s *axSnapshot) buildRoot() {
 		Focused: w.Focused(),
 		Modal:   len(modalStack) != 0 && modalStack[len(modalStack)-1] == w,
 	}
+	node.Resizable = w.Resizable()
 	if w.kind == WindowKindDialog || w.data[DialogClientDataKey] != nil {
 		node.Role = role.Dialog
 	}
@@ -186,6 +187,24 @@ func (s *axSnapshot) buildRoot() {
 	s.visit(root.contentPanel, node.ID, clip)
 	if id := s.openMenuFocus(); id != 0 {
 		s.focus = id
+		s.clearDisplacedFocus(id)
+	}
+}
+
+// clearDisplacedFocus clears Focused on the panel that still holds the keyboard focus when an open menu has taken the
+// effective focus away from it, leaving keep as the only node in the window that reports being focused.
+//
+// A tree that says two of its nodes are focused is a tree an assistive technology cannot make sense of: AT-SPI maps
+// Node.Focused straight onto ATSPI_STATE_FOCUSED, so Orca would find two focused objects in one window and announce
+// whichever it came across, and only one of them is what the person is actually choosing from. The keyboard focus does
+// stay where it was while a menu is open — the menu simply handles keys ahead of it — but that is an implementation
+// detail of how menus work, not something to describe.
+func (s *axSnapshot) clearDisplacedFocus(keep accessibility.NodeID) {
+	if s.focusPanel == nil {
+		return
+	}
+	if node := s.tree.Nodes[s.focusPanel.Accessibility.id]; node != nil && node.ID != keep {
+		node.Focused = false
 	}
 }
 
@@ -285,6 +304,13 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	}
 	if p.Accessibility.Callback != nil {
 		SafeCall(func() { p.Accessibility.Callback(node) })
+	}
+	if node.Disabled {
+		// Every request that would act on a disabled node is refused, so advertising one would offer an assistive
+		// technology something it cannot have, and a screen reader that says a greyed-out control can be pressed is
+		// worse than one that does not mention it. Applied after the widget and the callback have had their say, since
+		// either may be the only one that knows the node is disabled. See axDisabledActions.
+		node.Actions &= axDisabledActions
 	}
 	if node.Focused && s.focus == 0 {
 		s.focus = node.ID

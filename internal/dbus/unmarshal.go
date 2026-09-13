@@ -16,17 +16,26 @@ import (
 	"math"
 )
 
-var errTruncated = errors.New("dbus: truncated value")
+var (
+	errTruncated     = errors.New("dbus: truncated value")
+	errPaddingNotNUL = errors.New("dbus: alignment padding is not NUL")
+)
 
 // Unmarshal unmarshals the values described by sig from data, which must contain exactly those values and nothing else.
 // Alignment is relative to the start of data, which is what a message body requires, since a body always starts on an 8
-// byte boundary.
+// byte boundary. The little-endian encoding is assumed, since that is the only one [Message.Encode] produces and the
+// only one a [Message] ever holds; see [Decode] for what happens to a message from a big-endian peer.
 func Unmarshal(sig Signature, data []byte) ([]any, error) {
+	return unmarshal(sig, data, false)
+}
+
+// unmarshal is [Unmarshal] with the byte order of the peer that produced the data.
+func unmarshal(sig Signature, data []byte, bigEndian bool) ([]any, error) {
 	types, err := sig.Types()
 	if err != nil {
 		return nil, err
 	}
-	d := decoder{data: data}
+	d := decoder{data: data, bigEndian: bigEndian}
 	values := make([]any, 0, len(types))
 	for _, one := range types {
 		var v any
@@ -41,17 +50,26 @@ func Unmarshal(sig Signature, data []byte) ([]any, error) {
 	return values, nil
 }
 
-// decoder reads values from the D-Bus wire format. Alignment is relative to the start of data.
+// decoder reads values from the D-Bus wire format. Alignment is relative to the start of data. bigEndian selects the
+// byte order that the peer chose for the message being decoded; the zero value is little-endian, which is what every
+// peer Unison has ever met uses and what [Marshal] produces.
 type decoder struct {
-	data  []byte
-	pos   int
-	depth int
+	data      []byte
+	pos       int
+	bigEndian bool
+	depths
 }
 
+// align skips forward to the next multiple of n. The specification requires the padding it skips to be NUL, and
+// libdbus rejects a message whose padding is not (DBUS_INVALID_ALIGNMENT_PADDING_NOT_NUL), so it is checked here too:
+// anything else is a peer that is making things up, and the bytes it writes there are not ours to interpret.
 func (d *decoder) align(n int) error {
 	for d.pos%n != 0 {
 		if d.pos >= len(d.data) {
 			return errTruncated
+		}
+		if d.data[d.pos] != 0 {
+			return errPaddingNotNUL
 		}
 		d.pos++
 	}
@@ -83,6 +101,9 @@ func (d *decoder) getUint16() (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
+	if d.bigEndian {
+		return binary.BigEndian.Uint16(b), nil
+	}
 	return binary.LittleEndian.Uint16(b), nil
 }
 
@@ -94,6 +115,9 @@ func (d *decoder) getUint32() (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	if d.bigEndian {
+		return binary.BigEndian.Uint32(b), nil
+	}
 	return binary.LittleEndian.Uint32(b), nil
 }
 
@@ -104,6 +128,9 @@ func (d *decoder) getUint64() (uint64, error) {
 	b, err := d.take(8)
 	if err != nil {
 		return 0, err
+	}
+	if d.bigEndian {
+		return binary.BigEndian.Uint64(b), nil
 	}
 	return binary.LittleEndian.Uint64(b), nil
 }
@@ -234,11 +261,10 @@ func (d *decoder) variant() (any, error) {
 	if err = sig.ValidateSingle(); err != nil {
 		return nil, err
 	}
-	if d.depth >= MaxDepth {
-		return nil, errTooDeep
+	if err = d.enter('v'); err != nil {
+		return nil, err
 	}
-	d.depth++
-	defer func() { d.depth-- }()
+	defer d.leave('v')
 	v, err := d.value(sig)
 	if err != nil {
 		return nil, err
@@ -246,11 +272,9 @@ func (d *decoder) variant() (any, error) {
 	return Variant{Sig: sig, Value: v}, nil
 }
 
-// startContainer reads the length of an array and returns the position just past its last element.
+// startContainer reads the length of an array and returns the position just past its last element. The caller has
+// already entered the array, so that a length that cannot possibly be read is not read at all.
 func (d *decoder) startContainer(elemAlign int) (end int, err error) {
-	if d.depth >= MaxDepth {
-		return 0, errTooDeep
-	}
 	n, err := d.getUint32()
 	if err != nil {
 		return 0, err
@@ -268,12 +292,14 @@ func (d *decoder) startContainer(elemAlign int) (end int, err error) {
 }
 
 func (d *decoder) array(elem Signature) (any, error) {
+	if err := d.enter('a'); err != nil {
+		return nil, err
+	}
+	defer d.leave('a')
 	end, err := d.startContainer(alignmentOf(elem[0]))
 	if err != nil {
 		return nil, err
 	}
-	d.depth++
-	defer func() { d.depth-- }()
 	switch elem {
 	case "y":
 		b, takeErr := d.take(end - d.pos)
@@ -356,7 +382,15 @@ func (d *decoder) array(elem Signature) (any, error) {
 
 // dict reads an array of dict entries. sig is the dict entry type, including its braces.
 func (d *decoder) dict(sig Signature) (any, error) {
-	keyEnd, err := scanType(sig, 1, 0)
+	if err := d.enter('a'); err != nil { // One level for the array...
+		return nil, err
+	}
+	defer d.leave('a')
+	if err := d.enter('{'); err != nil { // ...and one for the entries it holds, which are all at the same level
+		return nil, err
+	}
+	defer d.leave('{')
+	keyEnd, err := scanType(sig, 1, depths{})
 	if err != nil {
 		return nil, err
 	}
@@ -366,11 +400,6 @@ func (d *decoder) dict(sig Signature) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if d.depth+1 >= MaxDepth {
-		return nil, errTooDeep
-	}
-	d.depth += 2 // One level for the array and one for its entries
-	defer func() { d.depth -= 2 }()
 	result := make(Dict, 0, 8)
 	for d.pos < end {
 		if err = d.align(8); err != nil {
@@ -390,9 +419,10 @@ func (d *decoder) dict(sig Signature) (any, error) {
 
 // structure reads a structure. sig is the structure type, including its parentheses.
 func (d *decoder) structure(sig Signature) (any, error) {
-	if d.depth >= MaxDepth {
-		return nil, errTooDeep
+	if err := d.enter('('); err != nil {
+		return nil, err
 	}
+	defer d.leave('(')
 	types, err := sig[1 : len(sig)-1].Types()
 	if err != nil {
 		return nil, err
@@ -400,8 +430,6 @@ func (d *decoder) structure(sig Signature) (any, error) {
 	if err = d.align(8); err != nil {
 		return nil, err
 	}
-	d.depth++
-	defer func() { d.depth-- }()
 	fields := make(Struct, 0, len(types))
 	for _, one := range types {
 		var v any

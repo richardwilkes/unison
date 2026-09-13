@@ -28,11 +28,22 @@ func (o *nodeObject) valueInterface() *dbus.Interface {
 				Name: "CurrentValue",
 				Sig:  "d",
 				Get:  func() (any, error) { return o.node.Number, nil },
-				Set:  o.setCurrentValue,
+				Set:  o.currentValueSetter(),
 			},
 			{Name: "Text", Sig: "s", Get: func() (any, error) { return o.node.Value, nil }},
 		},
 	}
+}
+
+// currentValueSetter returns the handler that takes a new value, or nil for a control whose value cannot be changed,
+// such as a progress bar. The difference is visible before anything is written: a property with no setter is
+// introspected as read-only rather than as readwrite, so a client that trusts what the object says about itself never
+// attempts the write, instead of discovering only from the refusal that the value was never going to be taken.
+func (o *nodeObject) currentValueSetter() func(any) error {
+	if !o.node.Actions.Has(accessibility.SetValue) {
+		return nil
+	}
+	return o.setCurrentValue
 }
 
 // setCurrentValue asks the widget to take a new numeric value. It returns as soon as the request has been handed to the
@@ -42,9 +53,6 @@ func (o *nodeObject) setCurrentValue(v any) error {
 	value, ok := v.(float64)
 	if !ok {
 		return dbus.Errorf(dbus.InvalidArgs, "a double is required")
-	}
-	if !o.node.Actions.Has(accessibility.SetValue) {
-		return dbus.Errorf(dbus.NotSupported, "%s cannot be changed", RoleName(MapRole(o.node)))
 	}
 	if !o.a.dispatch(accessibility.ActionRequest{
 		Node:   o.node.ID,

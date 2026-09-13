@@ -15,9 +15,11 @@
 //
 // # Wire format
 //
-// Only the little-endian encoding is produced, and only the little-endian encoding is accepted, since every platform
-// Unison runs on is little-endian. Unix file descriptor passing (type code 'h') is not supported and is rejected as an
-// error wherever it appears.
+// Only the little-endian encoding is produced, since every platform Unison runs on is little-endian, but either
+// encoding is accepted: the specification lets each peer choose, so a big-endian peer may turn up on any bus. A
+// big-endian message is converted as it is decoded, which means a [Message] always holds the little-endian encoding of
+// its body no matter where it came from. Unix file descriptor passing (type code 'h') is not supported and is rejected
+// as an error wherever it appears.
 //
 // The mapping between D-Bus types and Go types is:
 //
@@ -48,8 +50,10 @@
 // # Limits
 //
 // The specification's limits are enforced: a message may not exceed [MaxMessageSize] bytes, the marshaled body of an
-// array may not exceed [MaxArraySize] bytes, a signature may not exceed [MaxSignatureLength] bytes, and containers may
-// not nest more than [MaxDepth] deep.
+// array may not exceed [MaxArraySize] bytes, a signature may not exceed [MaxSignatureLength] bytes, and arrays,
+// structures and variants may not each nest more than [MaxDepth] deep. Decoding is strict about the rest of the format
+// as well: alignment padding must be NUL, strings must be valid UTF-8 and NUL terminated, an array's elements must end
+// exactly where its length says they do, and a header field may not appear twice.
 //
 // # Connections
 //

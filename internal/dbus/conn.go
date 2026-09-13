@@ -108,8 +108,10 @@ func (o *outgoing) finish(err error) {
 // serial they answer or hands them to the dispatcher, so nothing a handler does can stall it. The dispatcher runs the
 // signal and method call handlers, one at a time and in the order the messages arrived, which means a handler that
 // blocks delays every later message: handlers should do their work and return, replying to a method call later from
-// another goroutine if they must. The writer, which is started only when there is something to write, drains an
-// unbounded queue, so emitting a signal never blocks on the peer.
+// another goroutine if they must. The writer, which is started only when there is something to write, drains a queue
+// that the producer never waits on, so emitting a signal never blocks on the peer; the queue is deep rather than
+// unbounded, so a peer that has stopped reading eventually costs messages instead of memory (see [Conn.Enqueue] and
+// [Conn.Dropped]).
 type Conn struct {
 	rwc          io.ReadWriteCloser
 	in           *bufio.Reader
@@ -424,7 +426,9 @@ func (c *Conn) ExportSubtree(prefix ObjectPath, resolve func(path ObjectPath) Ob
 		return errors.New("dbus: no resolver was supplied to export a subtree")
 	}
 	c.mu.Lock()
-	c.subtrees = append(slices.DeleteFunc(c.subtrees, func(s *subtree) bool { return s.prefix == prefix }),
+	// The dispatcher reads the slice without the lock, so it is never modified in place: deleting from a clone leaves
+	// whatever objectAt is part way through iterating untouched.
+	c.subtrees = append(slices.DeleteFunc(slices.Clone(c.subtrees), func(s *subtree) bool { return s.prefix == prefix }),
 		&subtree{resolve: resolve, prefix: prefix})
 	c.mu.Unlock()
 	return nil
@@ -434,7 +438,8 @@ func (c *Conn) ExportSubtree(prefix ObjectPath, resolve func(path ObjectPath) Ob
 func (c *Conn) Unexport(path ObjectPath) {
 	c.mu.Lock()
 	delete(c.objects, path)
-	c.subtrees = slices.DeleteFunc(c.subtrees, func(s *subtree) bool { return s.prefix == path })
+	// As in ExportSubtree, the slice the dispatcher may still be iterating is never modified in place.
+	c.subtrees = slices.DeleteFunc(slices.Clone(c.subtrees), func(s *subtree) bool { return s.prefix == path })
 	c.mu.Unlock()
 }
 
@@ -654,7 +659,7 @@ func (c *Conn) dispatchMethodCall(msg *Message) {
 func (c *Conn) objectAt(path ObjectPath) Object {
 	c.mu.Lock()
 	obj, exists := c.objects[path]
-	subtrees := c.subtrees
+	subtrees := c.subtrees // Never modified in place, so it is safe to use after the lock is released
 	c.mu.Unlock()
 	if exists {
 		return obj
@@ -723,8 +728,9 @@ func (c *Conn) fail(err error) {
 	}
 }
 
-// queue is an unbounded first in, first out queue that a producer may add to without blocking and that one consumer
-// drains in batches.
+// queue is a first in, first out queue that a producer may add to without ever blocking and that one consumer drains in
+// batches. It is bounded by the limit passed to [queue.push], which drops whatever arrives once the queue is that
+// full rather than making the producer wait.
 type queue[T any] struct {
 	cond      *sync.Cond
 	items     []T
