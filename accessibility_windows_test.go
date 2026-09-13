@@ -30,7 +30,9 @@ func TestW32HandleGetObjectIgnoresOtherObjectIDs(t *testing.T) {
 	c := check.New(t)
 	wasActive := IsAccessibilityActive()
 	snapshots := axSnapshotCount
-	w := &Window{}
+	// Built the way every window is, with its platform state present but no native window behind it, since the handler
+	// reaches through w.wnd on its way to deciding there is nothing to describe.
+	w := &Window{wnd: &apiWindow{}}
 	for i, objectID := range []int32{
 		0,  // OBJID_WINDOW: the window frame
 		-4, // OBJID_CLIENT: the client area, which is what MSAA clients ask for

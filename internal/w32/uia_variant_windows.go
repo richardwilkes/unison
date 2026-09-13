@@ -48,10 +48,16 @@ type VARIANT struct {
 	_   uint64 // The rest of the union, which nothing stored here uses
 }
 
-// Clear releases whatever the VARIANT owns and resets it to VT_EMPTY. It is safe to call more than once and on a
+// Clear releases whatever the VARIANT owns and resets it to the zero value. It is safe to call more than once and on a
 // VARIANT that was never filled in, so it can be deferred as soon as the variable is declared.
+//
+// VariantClear alone is not enough: it releases what the VARIANT owns and rewrites the type tag, but leaves the union
+// holding whatever was there, which for a BSTR or a SAFEARRAY is a pointer to memory it has just freed. Zeroing the
+// whole VARIANT afterwards makes a cleared one indistinguishable from one that was never filled in, so nothing can be
+// misled by a stale pointer sitting behind a VT_EMPTY tag.
 func (v *VARIANT) Clear() {
 	VariantClear(v)
+	*v = VARIANT{}
 }
 
 // SetI4 stores a 32-bit signed integer. It is the right type for every UI Automation property documented as an int,
