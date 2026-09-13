@@ -188,7 +188,29 @@ var (
 	axHeadingOnce             sync.Once
 	axHeadingRoleValue        objc.ID
 	axHeadingNeedsDescription bool
+
+	axActionNamesOnce       sync.Once
+	axActionNameIDs         []objc.ID
+	axActionDescriptionFunc func(name objc.ID) objc.ID
 )
+
+// axActionNames pairs each action name the legacy action protocol deals in with the accessibility.Action it stands
+// for, in the order an element advertises them. Press appears twice because VoiceOver sends AXPress for VO-Space and
+// AXConfirm for the Return key, and both are a press for everything unison has. The strings are the documented values
+// of the NSAccessibility*Action constants, unchanged since 10.1; they are spelled out rather than resolved through
+// AppKitString because the symbol for NSAccessibilityScrollToVisibleAction was only exported by the macOS 26 SDK,
+// though the action it names is as old as the others and every version of VoiceOver performs it.
+var axActionNames = []struct {
+	name   string
+	action accessibility.Action
+}{
+	{name: "AXPress", action: accessibility.Press},
+	{name: "AXConfirm", action: accessibility.Press},
+	{name: "AXIncrement", action: accessibility.Increment},
+	{name: "AXDecrement", action: accessibility.Decrement},
+	{name: "AXShowMenu", action: accessibility.ShowContextMenu},
+	{name: "AXScrollToVisible", action: accessibility.ScrollIntoView},
+}
 
 // NewAXAdapter returns the adapter for a content view, creating it if it does not have one yet. It returns nil for a
 // nil view. Main thread only.
@@ -1927,7 +1949,74 @@ func axElementStateMethods() []objc.MethodDef {
 				axRequest(self, req)
 			},
 		},
+		// The legacy action protocol, alongside the accessibilityPerform* methods above. AppKit derives an element's
+		// actions from which of those methods its class implements, and there is no such method for AXScrollToVisible:
+		// the action VoiceOver performs on each element its cursor lands on, and the only means it has of bringing
+		// that element into view, so without it moving through a list with VO-Down never scrolls the list. When an
+		// element answers these three selectors as well, AppKit adds the names they give to the ones it derived — it
+		// does not replace them, so every element of this class still says it can be incremented whether or not its
+		// node can — and delivers an action named this way through accessibilityPerformAction:. They are answered from
+		// the node's own action set, so that scrolling into view is offered by exactly the nodes that can do it, which
+		// is every one the root package describes.
+		{
+			Cmd: Sel("accessibilityActionNames"),
+			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
+				_, n := axElementTarget(self, cmd)
+				if n == nil {
+					return NSArrayFromIDs()
+				}
+				var names []objc.ID
+				for i, entry := range axActionNames {
+					if n.Actions.Has(entry.action) {
+						names = append(names, axActionNameStrings()[i])
+					}
+				}
+				return NSArrayFromIDs(names...)
+			},
+		},
+		{
+			Cmd: Sel("accessibilityActionDescription:"),
+			Fn: func(_ objc.ID, _ objc.SEL, name objc.ID) objc.ID {
+				axActionNameStrings()
+				return axActionDescriptionFunc(name)
+			},
+		},
+		{
+			Cmd: Sel("accessibilityPerformAction:"),
+			Fn: func(self objc.ID, _ objc.SEL, name objc.ID) {
+				if action, ok := axActionForName(GoStringFromNSString(name)); ok {
+					axPerform(self, action)
+				} else if axTraceOn {
+					axTrace("action %s unknown", GoStringFromNSString(name))
+				}
+			},
+		},
 	}
+}
+
+// axActionNameStrings returns the NSString for each entry of axActionNames, in the same order. They are created once
+// and never released, since they are handed out on every accessibilityActionNames query, and the function that
+// describes an action is resolved along with them.
+func axActionNameStrings() []objc.ID {
+	axActionNamesOnce.Do(func() {
+		axActionNameIDs = make([]objc.ID, len(axActionNames))
+		for i, entry := range axActionNames {
+			axActionNameIDs[i] = NewNSString(entry.name)
+		}
+		purego.RegisterLibFunc(&axActionDescriptionFunc, LoadFramework("AppKit"), "NSAccessibilityActionDescription")
+	})
+	return axActionNameIDs
+}
+
+// axActionForName returns the accessibility.Action an action name of the legacy protocol stands for, and false for a
+// name this adapter does not deal in.
+func axActionForName(name string) (accessibility.Action, bool) {
+	for _, entry := range axActionNames {
+		if entry.name == name {
+			return entry.action, true
+		}
+	}
+	return 0, false
 }
 
 // axElementTextMethods returns the overrides that make a text control's content, caret, selection and line structure

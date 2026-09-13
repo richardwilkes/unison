@@ -346,6 +346,74 @@ func TestAXAdapterActions(t *testing.T) {
 	})
 }
 
+// TestAXAdapterLegacyActions proves the legacy action protocol, which is the only way an element can offer
+// AXScrollToVisible: the names an element advertises come from its node's action set, a name performed through
+// accessibilityPerformAction: reaches the action callback as the action it stands for, a name the node does not
+// advertise or the adapter does not deal in is ignored, and every name has a description.
+func TestAXAdapterLegacyActions(t *testing.T) {
+	defer func() { AccessibilityActionCallback = nil }()
+	runOnMain(func() {
+		tree := newAXTestTree()
+		tree.Node(axTestButton).Actions = tree.Node(axTestButton).Actions.With(accessibility.ScrollIntoView)
+		tree.Node(axTestLabel).Actions = accessibility.ActionSet(0).With(accessibility.ScrollIntoView,
+			accessibility.Increment)
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var requests []accessibility.ActionRequest
+		AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
+			requests = append(requests, req)
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 3)
+			button, field, label := children[0], children[1], children[2]
+			names := func(el objc.ID) []string {
+				ids := IDsFromNSArray(el.Send(Sel("accessibilityActionNames")))
+				out := make([]string, 0, len(ids))
+				for _, id := range ids {
+					out = append(out, GoStringFromNSString(id))
+				}
+				return out
+			}
+			want := []string{"AXPress", "AXConfirm", "AXScrollToVisible"}
+			if got := names(button); !slices.Equal(got, want) {
+				t.Errorf("button action names = %v, want %v", got, want)
+			}
+			want = []string{"AXIncrement", "AXScrollToVisible"}
+			if got := names(label); !slices.Equal(got, want) {
+				t.Errorf("label action names = %v, want %v", got, want)
+			}
+			// The field advertises none of the actions the legacy protocol deals in: focus and the value setters are
+			// attributes, not actions, on this platform.
+			if got := names(field); len(got) != 0 {
+				t.Errorf("field action names = %v, want none", got)
+			}
+			for _, name := range []string{"AXPress", "AXScrollToVisible"} {
+				if desc := GoStringFromNSString(button.Send(Sel("accessibilityActionDescription:"),
+					NSStringFromGo(name))); desc == "" {
+					t.Errorf("accessibilityActionDescription: for %s is empty", name)
+				}
+			}
+			button.Send(Sel("accessibilityPerformAction:"), NSStringFromGo("AXScrollToVisible"))
+			button.Send(Sel("accessibilityPerformAction:"), NSStringFromGo("AXConfirm"))
+			label.Send(Sel("accessibilityPerformAction:"), NSStringFromGo("AXIncrement"))
+			// Neither is dispatched: the label does not advertise a press, and nothing deals in AXRaise.
+			label.Send(Sel("accessibilityPerformAction:"), NSStringFromGo("AXPress"))
+			button.Send(Sel("accessibilityPerformAction:"), NSStringFromGo("AXRaise"))
+			wantRequests := []accessibility.ActionRequest{
+				{Node: axTestButton, Action: accessibility.ScrollIntoView},
+				{Node: axTestButton, Action: accessibility.Press},
+				{Node: axTestLabel, Action: accessibility.Increment},
+			}
+			if !slices.Equal(requests, wantRequests) {
+				t.Errorf("requests = %+v, want %+v", requests, wantRequests)
+			}
+		})
+	})
+}
+
 // TestAXAdapterText proves the text protocol, which is where the rune-to-UTF-16 conversion lives: character counts,
 // selection, line boundaries and the frame of a range all have to be expressed in UTF-16 code units even though the
 // snapshot counts runes.
