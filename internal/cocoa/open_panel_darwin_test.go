@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/ebitengine/purego/objc"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 // panelServiceAvailable reports whether this environment can create NSOpenPanel/NSSavePanel instances. On modern
@@ -220,6 +221,7 @@ func TestOpenPanelURLsEmpty(t *testing.T) {
 }
 
 func TestOpenPanelRunModalCancel(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {

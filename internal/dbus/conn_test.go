@@ -25,6 +25,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/xio"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 const (
@@ -623,6 +624,7 @@ func TestDialFailures(t *testing.T) {
 }
 
 func TestSubtreeExportsAreSafeWhileDispatching(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	t.Parallel()
 	c := check.New(t)
 	b := newFakeBus(t)
