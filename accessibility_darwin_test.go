@@ -51,6 +51,8 @@ func TestMacAccessibilityCallbacksInstalled(t *testing.T) {
 	// An action for a window that does not exist is dropped rather than queued.
 	resetTaskQueue()
 	cocoa.AccessibilityActionCallback(macUnknownWindow, accessibility.ActionRequest{Action: accessibility.Press})
+	length, _ := taskQueueState()
+	c.Equal(0, length, "a request naming a window that does not exist must not have been queued")
 }
 
 // TestMacAxActionRunsInline proves which requests are carried out while the assistive technology that made them waits,

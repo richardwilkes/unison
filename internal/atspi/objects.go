@@ -111,9 +111,9 @@ func (o *nodeObject) states() StateSet {
 	return States(o.node, o.data.active())
 }
 
-// callArgs unmarshals the arguments of a call, answering it with an InvalidArgs error and returning false if they cannot
-// be read. The arguments have already been checked against the method's declared signature, so this only fails if a
-// message claimed a signature its body does not hold.
+// callArgs unmarshals the arguments of a call, answering it with an InvalidArgs error and returning false if they
+// cannot be read. The arguments have already been checked against the method's declared signature, so this only fails
+// if a message claimed a signature its body does not hold.
 func callArgs(call *dbus.Call) ([]any, bool) {
 	args, err := call.Args()
 	if err != nil {

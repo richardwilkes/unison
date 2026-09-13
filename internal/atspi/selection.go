@@ -15,8 +15,8 @@ import (
 )
 
 // selectionInterface returns the org.a11y.atspi.Selection interface of a container whose children are selected, such as
-// a list, a table or a tab list. Every index is over the reported children, so an ignored grouping panel in the middle of
-// a list does not shift the numbering.
+// a list, a table or a tab list. Every index is over the reported children, so an ignored grouping panel in the middle
+// of a list does not shift the numbering.
 //
 // SelectAll and ClearSelection always report that they did nothing: the schema has no request that means "select
 // everything", and turning one into a request per child would send a storm of them at the user interface thread for a

@@ -398,6 +398,26 @@ func TestAXAdapterText(t *testing.T) {
 					t.Errorf("accessibilityStringForRange:%+v = %q, want %q", c.given, got, c.want)
 				}
 			}
+			// The attributed form of a range must answer the same content as the plain one. NSAccessibilityElement
+			// responds to the selector and answers nil, so without this the element advertises AXAttributedStringForRange
+			// and then reports every range as empty while AXStringForRange reports it correctly.
+			attributed := field.Send(Sel("accessibilityAttributedStringForRange:"), NSRange{Location: 9, Length: 5})
+			if attributed == 0 {
+				t.Error("accessibilityAttributedStringForRange: = nil, want an attributed string")
+			} else {
+				if !objc.Send[bool](attributed, Sel("isKindOfClass:"), Cls("NSAttributedString")) {
+					t.Error("accessibilityAttributedStringForRange: did not answer an NSAttributedString")
+				}
+				if got := GoStringFromNSString(attributed.Send(Sel("string"))); got != "wörld" {
+					t.Errorf("accessibilityAttributedStringForRange:{9,5} = %q, want %q", got, "wörld")
+				}
+			}
+			// A node holding no text at all answers nothing rather than an empty attributed string, which is what it
+			// answers for the plain form too.
+			if got := label.Send(Sel("accessibilityAttributedStringForRange:"),
+				NSRange{Location: 0, Length: 1}); got != 0 {
+				t.Errorf("label accessibilityAttributedStringForRange: = %#x, want nil", got)
+			}
 			// The first line owns its trailing line feed, so it runs to UTF-16 offset 9: "héllo " is 6 units, the emoji
 			// is 2 and the line feed is 1.
 			for _, c := range []struct {
@@ -718,9 +738,11 @@ func TestAXAdapterNotifications(t *testing.T) {
 		defer func() { axPostNotifyInfo = realPostInfo }()
 		// The user info is autoreleased, so what it names is read out while it is still alive.
 		type posted struct {
-			name     string
-			elements []objc.ID
-			element  objc.ID
+			name         string
+			announcement string
+			elements     []objc.ID
+			element      objc.ID
+			priority     int64
 		}
 		var postedInfo []posted
 		axPostNotifyInfo = func(element, notification, userInfo objc.ID) {
@@ -728,6 +750,9 @@ func TestAXAdapterNotifications(t *testing.T) {
 				element:  element,
 				name:     GoStringFromNSString(notification),
 				elements: IDsFromNSArray(userInfo.Send(Sel("objectForKey:"), AppKitString(axKeyUIElements))),
+				announcement: GoStringFromNSString(userInfo.Send(Sel("objectForKey:"),
+					AppKitString(axKeyAnnouncement))),
+				priority: Int64FromNSNumber(userInfo.Send(Sel("objectForKey:"), AppKitString(axKeyPriority))),
 			})
 			realPostInfo(element, notification, userInfo)
 		}
@@ -777,6 +802,32 @@ func TestAXAdapterNotifications(t *testing.T) {
 		a.Publish(next, []accessibility.Event{{Kind: accessibility.Announcement, New: "all done"}})
 		AXAnnounce("spoken directly")
 		AXAnnounce("") // must be a no-op rather than an exception
+		// An announcement is the one notification whose whole content is in the user info: the text to speak and the
+		// priority that decides whether it interrupts what is being said. It is posted against the application rather
+		// than against any window or element, since that is where AppKit looks for announcements.
+		var announcements []posted
+		wantAnnouncement := GoStringFromNSString(AppKitString(axNotifyAnnouncementRequested))
+		for _, p := range postedInfo {
+			if p.name == wantAnnouncement {
+				announcements = append(announcements, p)
+			}
+		}
+		if len(announcements) != 2 {
+			t.Fatalf("%d announcements were posted, want 2 (the empty one must post nothing at all)",
+				len(announcements))
+		}
+		for i, want := range []string{"all done", "spoken directly"} {
+			if announcements[i].announcement != want {
+				t.Errorf("announcement %d spoke %q, want %q", i, announcements[i].announcement, want)
+			}
+			if announcements[i].priority != axPriorityHigh {
+				t.Errorf("announcement %d priority = %d, want %d", i, announcements[i].priority, axPriorityHigh)
+			}
+			if announcements[i].element != sharedApp() {
+				t.Errorf("announcement %d was posted on %#x, want the application %#x", i, announcements[i].element,
+					sharedApp())
+			}
+		}
 	})
 }
 
@@ -815,12 +866,13 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 			labelAID
 			labelBID
 			discID
+			panelID
 		)
 		nodes := map[accessibility.NodeID]*accessibility.Node{
 			rootID: {
 				ID: rootID,
 				Children: []accessibility.NodeID{
-					checkID, sliderID, treeID, tabListID, headerID, separatorID, scrollID,
+					checkID, sliderID, treeID, tabListID, headerID, separatorID, scrollID, panelID,
 				},
 				Role:   role.Window,
 				Bounds: geom.NewRect(0, 0, 320, 240),
@@ -843,7 +895,8 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 				ID: row1ID, Parent: treeID, Children: []accessibility.NodeID{discID, cellAID, cellBID}, Role: role.Row,
 				Name: "One", Bounds: geom.NewRect(0, 40, 200, 20), RowIndex: 0, Level: 1, Selectable: true,
 				Expandable: true, Expanded: true,
-				Actions: accessibility.ActionSet(0).With(accessibility.Select, accessibility.AddToSelection),
+				Actions: accessibility.ActionSet(0).With(accessibility.Select, accessibility.AddToSelection,
+					accessibility.Expand, accessibility.ShowContextMenu),
 			},
 			discID: {
 				ID: discID, Parent: row1ID, Role: role.DisclosureTriangle, Name: "Disclosure Triangle",
@@ -874,7 +927,7 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 				ID: row2ID, Parent: treeID, Role: role.Row, Name: "Two", Bounds: geom.NewRect(0, 60, 200, 20),
 				RowIndex: 1, Level: 2, Selectable: true, Selected: true, Expandable: true, Expanded: true,
 				Actions: accessibility.ActionSet(0).With(accessibility.Collapse, accessibility.Select,
-					accessibility.AddToSelection),
+					accessibility.AddToSelection, accessibility.RemoveFromSelection),
 			},
 			tabListID: {
 				ID: tabListID, Parent: rootID, Children: []accessibility.NodeID{tabID}, Role: role.TabList,
@@ -882,7 +935,13 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 			},
 			tabID: {
 				ID: tabID, Parent: tabListID, Role: role.Tab, Name: "First", Bounds: geom.NewRect(0, 100, 60, 20),
-				Selected: true,
+				Selected: true, Controls: []accessibility.NodeID{panelID},
+			},
+			// The panel a tab shows, named by the tab rather than by any text of its own, which is what AXTitleUIElement
+			// reports, and what the tab's AXLinkedUIElements points at from the other end.
+			panelID: {
+				ID: panelID, Parent: rootID, Role: role.TabPanel, Bounds: geom.NewRect(0, 120, 200, 20),
+				LabeledBy: []accessibility.NodeID{tabID},
 			},
 			headerID: {
 				ID: headerID, Parent: rootID, Role: role.ColumnHeader, Name: "Size",
@@ -919,11 +978,12 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 		}
 		WithPool(func() {
 			children := IDsFromNSArray(objc.ID(v).Send(Sel("accessibilityChildren")))
-			if len(children) != 7 {
-				t.Fatalf("content view has %d children, want 7", len(children))
+			if len(children) != 8 {
+				t.Fatalf("content view has %d children, want 8", len(children))
 			}
 			checkBox, slider, outline := children[0], children[1], children[2]
 			tabList, header, separator, scrollArea := children[3], children[4], children[5], children[6]
+			panel := children[7]
 			if got := Int64FromNSNumber(checkBox.Send(Sel("accessibilityValue"))); got != 2 {
 				t.Errorf("mixed check box value = %d, want 2", got)
 			}
@@ -1096,6 +1156,69 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 			}}
 			if !slices.Equal(requests, wantRequests) {
 				t.Errorf("setting the scroll bar's value asked for %v, want %v", requests, wantRequests)
+			}
+			// A tab panel is named by its tab, which is what AXTitleUIElement reports, and the tab points back at what
+			// it controls through AXLinkedUIElements. An element with neither relationship reports neither.
+			if got := panel.Send(Sel("accessibilityTitleUIElement")); got != tabs[0] {
+				t.Errorf("the panel's title element = %#x, want the tab %#x", got, tabs[0])
+			}
+			if got := checkBox.Send(Sel("accessibilityTitleUIElement")); got != 0 {
+				t.Errorf("the check box's title element = %#x, want nothing", got)
+			}
+			if linked := IDsFromNSArray(tabs[0].Send(Sel("accessibilityLinkedUIElements"))); len(linked) != 1 ||
+				linked[0] != panel {
+				t.Errorf("the tab is linked to %v, want just the panel %#x", linked, panel)
+			}
+			if got := NSArrayCount(checkBox.Send(Sel("accessibilityLinkedUIElements"))); got != 0 {
+				t.Errorf("the check box is linked to %d elements, want 0", got)
+			}
+			// Expanding and collapsing by setting the state: each direction maps onto the action the node advertises,
+			// and onto nothing at all when it advertises none.
+			requests = nil
+			rows[0].Send(Sel("setAccessibilityExpanded:"), true)
+			rows[1].Send(Sel("setAccessibilityExpanded:"), false)
+			rows[1].Send(Sel("setAccessibilityExpanded:"), true) // the second row advertises no Expand
+			wantRequests = []accessibility.ActionRequest{
+				{Node: row1ID, Action: accessibility.Expand},
+				{Node: row2ID, Action: accessibility.Collapse},
+			}
+			if !slices.Equal(requests, wantRequests) {
+				t.Errorf("setting the expanded state asked for %v, want %v", requests, wantRequests)
+			}
+			// Selecting one element at a time is the other half of setAccessibilitySelectedRows:, and deselecting is a
+			// request of its own rather than the absence of one.
+			requests = nil
+			rows[0].Send(Sel("setAccessibilitySelected:"), true)
+			rows[1].Send(Sel("setAccessibilitySelected:"), false)
+			rows[0].Send(Sel("setAccessibilitySelected:"), false) // the first row advertises no RemoveFromSelection
+			wantRequests = []accessibility.ActionRequest{
+				{Node: row1ID, Action: accessibility.Select},
+				{Node: row2ID, Action: accessibility.RemoveFromSelection},
+			}
+			if !slices.Equal(requests, wantRequests) {
+				t.Errorf("setting the selected state asked for %v, want %v", requests, wantRequests)
+			}
+			// The two remaining performers: showing a context menu, and the return key, which for everything unison has
+			// is the same thing as a press.
+			requests = nil
+			if !objc.Send[bool](rows[0], Sel("accessibilityPerformShowMenu")) {
+				t.Error("accessibilityPerformShowMenu on the first row = false, want true")
+			}
+			if objc.Send[bool](rows[1], Sel("accessibilityPerformShowMenu")) {
+				t.Error("accessibilityPerformShowMenu on the second row = true, want false")
+			}
+			if !objc.Send[bool](box, Sel("accessibilityPerformConfirm")) {
+				t.Error("accessibilityPerformConfirm on the check box = false, want true")
+			}
+			if objc.Send[bool](tabs[0], Sel("accessibilityPerformConfirm")) {
+				t.Error("accessibilityPerformConfirm on the tab = true, want false")
+			}
+			wantRequests = []accessibility.ActionRequest{
+				{Node: row1ID, Action: accessibility.ShowContextMenu},
+				{Node: boxID, Action: accessibility.Press},
+			}
+			if !slices.Equal(requests, wantRequests) {
+				t.Errorf("the performers asked for %v, want %v", requests, wantRequests)
 			}
 			// A hit test landing on the separator must resolve past it, to the content view standing in for the root.
 			onSeparator := axTestScreenPoint(a, geom.NewPoint(100, 140))
@@ -1470,5 +1593,393 @@ func TestAXInlineActionPublishDefersElementRelease(t *testing.T) {
 				t.Errorf("the released element's parent = %#x, want nothing", got)
 			}
 		})
+	})
+}
+
+// TestAXTableColumnHeaders proves a table hands an assistive technology the header describing its columns, and a cell
+// the header of the column it sits in, which is what VoiceOver speaks alongside the cell's contents. A unison table and
+// its header are separate panels — the header goes into the column-header slot of the scroll panel whose content is the
+// table — so neither is inside the other and the snapshot records no link between them: the header has to be searched
+// for, by the explicit link a widget recorded or by proximity, exactly as the Windows adapter searches for it.
+func TestAXTableColumnHeaders(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 700 + iota
+			scrollID
+			headerID
+			col0ID
+			col1ID
+			tableID
+			rowID
+			cell0ID
+			cell1ID
+			labelID
+			strayHeaderID
+			strayColID
+			strayTableID
+			lonelyTableID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID:       rootID,
+					Children: []accessibility.NodeID{scrollID, strayHeaderID, strayTableID, lonelyTableID},
+					Role:     role.Window,
+					Bounds:   geom.NewRect(0, 0, 320, 240),
+				},
+				// The scroll panel, holding the header above and the table below, neither inside the other.
+				scrollID: {
+					ID: scrollID, Parent: rootID, Children: []accessibility.NodeID{headerID, tableID},
+					Role: role.Group, Bounds: geom.NewRect(0, 0, 200, 60),
+				},
+				headerID: {
+					ID: headerID, Parent: scrollID, Children: []accessibility.NodeID{col0ID, col1ID},
+					Role: role.TableHeader, Bounds: geom.NewRect(0, 0, 200, 20), ColumnCount: 2,
+				},
+				col0ID: {
+					ID: col0ID, Parent: headerID, Role: role.ColumnHeader, Name: "Name",
+					Bounds: geom.NewRect(0, 0, 100, 20), ColumnIndex: 0,
+				},
+				col1ID: {
+					ID: col1ID, Parent: headerID, Role: role.ColumnHeader, Name: "Size",
+					Bounds: geom.NewRect(100, 0, 100, 20), ColumnIndex: 1,
+				},
+				tableID: {
+					ID: tableID, Parent: scrollID, Children: []accessibility.NodeID{rowID}, Role: role.Table,
+					Name: "Files", Bounds: geom.NewRect(0, 20, 200, 40), RowCount: 1, ColumnCount: 2,
+				},
+				rowID: {
+					ID: rowID, Parent: tableID, Children: []accessibility.NodeID{cell0ID, cell1ID}, Role: role.Row,
+					Bounds: geom.NewRect(0, 20, 200, 20), RowIndex: 0, Level: 1,
+				},
+				cell0ID: {
+					ID: cell0ID, Parent: rowID, Role: role.Cell, Name: "notes.txt",
+					Bounds: geom.NewRect(0, 20, 100, 20), RowIndex: 0, ColumnIndex: 0, Selectable: true, Selected: true,
+				},
+				// A cell holding one thing is presented as that thing, which has to answer for the cell's column too.
+				cell1ID: {
+					ID: cell1ID, Parent: rowID, Children: []accessibility.NodeID{labelID}, Role: role.Cell,
+					Bounds: geom.NewRect(100, 20, 100, 20), RowIndex: 0, ColumnIndex: 1,
+				},
+				labelID: {
+					ID: labelID, Parent: cell1ID, Role: role.Label, Name: "12 KB",
+					Bounds: geom.NewRect(100, 20, 100, 20),
+				},
+				// A header that says which table it describes, for a table it sits nowhere near.
+				strayHeaderID: {
+					ID: strayHeaderID, Parent: rootID, Children: []accessibility.NodeID{strayColID},
+					Role: role.TableHeader, Bounds: geom.NewRect(0, 60, 200, 20),
+					Controls: []accessibility.NodeID{strayTableID},
+				},
+				strayColID: {
+					ID: strayColID, Parent: strayHeaderID, Role: role.ColumnHeader, Name: "Only",
+					Bounds: geom.NewRect(0, 60, 200, 20), ColumnIndex: 0,
+				},
+				strayTableID: {
+					ID: strayTableID, Parent: rootID, Role: role.Table, Name: "Elsewhere",
+					Bounds: geom.NewRect(0, 80, 200, 20),
+				},
+				// A table with neither a link nor an ancestor holding it alone: the window holds three tables, so there
+				// is nothing to pair it with that is not a guess.
+				lonelyTableID: {
+					ID: lonelyTableID, Parent: rootID, Role: role.Table, Name: "Nobody's",
+					Bounds: geom.NewRect(0, 100, 200, 20),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 4)
+			scrollChildren := IDsFromNSArray(children[0].Send(Sel("accessibilityChildren")))
+			if len(scrollChildren) != 2 {
+				t.Fatalf("the scroll panel has %d children, want 2", len(scrollChildren))
+			}
+			header, table := scrollChildren[0], scrollChildren[1]
+			if got := table.Send(Sel("accessibilityHeader")); got != header {
+				t.Errorf("the table's header = %#x, want the header group %#x", got, header)
+			}
+			columnHeaders := IDsFromNSArray(table.Send(Sel("accessibilityColumnHeaderUIElements")))
+			if len(columnHeaders) != 2 || columnHeaders[0] != a.Element(col0ID) ||
+				columnHeaders[1] != a.Element(col1ID) {
+				t.Errorf("the table's column headers = %v, want %#x and %#x", columnHeaders, a.Element(col0ID),
+					a.Element(col1ID))
+			}
+			rows := IDsFromNSArray(table.Send(Sel("accessibilityRows")))
+			if len(rows) != 1 {
+				t.Fatalf("the table reported %d rows, want 1", len(rows))
+			}
+			cells := IDsFromNSArray(rows[0].Send(Sel("accessibilityChildren")))
+			if len(cells) != 2 {
+				t.Fatalf("the row has %d children, want 2", len(cells))
+			}
+			if cells[1] != a.Element(labelID) {
+				t.Errorf("the second cell is presented as %#x, want the label %#x standing in for it", cells[1],
+					a.Element(labelID))
+			}
+			// Each cell names the header of its own column, the label standing in for the second cell included.
+			for i, c := range []struct {
+				want    accessibility.NodeID
+				element objc.ID
+			}{
+				{element: cells[0], want: col0ID},
+				{element: cells[1], want: col1ID},
+			} {
+				got := IDsFromNSArray(c.element.Send(Sel("accessibilityColumnHeaderUIElements")))
+				if len(got) != 1 || got[0] != a.Element(c.want) {
+					t.Errorf("cell %d named %v as its column header, want just %#x", i, got, a.Element(c.want))
+				}
+			}
+			if selected := IDsFromNSArray(table.Send(Sel("accessibilitySelectedCells"))); len(selected) != 1 ||
+				selected[0] != cells[0] {
+				t.Errorf("the table's selected cells = %v, want just the first cell %#x", selected, cells[0])
+			}
+			// A header that says which table it describes is found even though it is nowhere near it, and a table with
+			// neither a link nor an ancestor of its own is left without one rather than paired with a guess.
+			if got := children[2].Send(Sel("accessibilityHeader")); got != a.Element(strayHeaderID) {
+				t.Errorf("the stray table's header = %#x, want the header naming it %#x", got,
+					a.Element(strayHeaderID))
+			}
+			if got := children[3].Send(Sel("accessibilityHeader")); got != 0 {
+				t.Errorf("the unpaired table's header = %#x, want nothing", got)
+			}
+			// Something that is not a table has neither a header nor columns of its own.
+			if got := header.Send(Sel("accessibilityHeader")); got != 0 {
+				t.Errorf("the header group's own header = %#x, want nothing", got)
+			}
+			if got := NSArrayCount(children[0].Send(Sel("accessibilityColumnHeaderUIElements"))); got != 0 {
+				t.Errorf("the scroll panel named %d column headers, want 0", got)
+			}
+		})
+	})
+}
+
+// TestAXSelectionNotifications proves every kind of selection change is reported rather than only a row's. A tab
+// reports whether it is selected as its value, a cell's selection belongs to the table holding it, and anything else
+// selectable belongs to its container: before this, selecting a tab or a cell posted nothing at all, leaving an
+// assistive technology with the state from before the change until something else made it ask again.
+func TestAXSelectionNotifications(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 800 + iota
+			tabListID
+			tabAID
+			tabBID
+			tableID
+			rowID
+			cellAID
+			cellBID
+			listID
+			itemID
+			menuID
+			menuItemID
+		)
+		// moved reports the tree after the selection has moved on in every container at once.
+		build := func(moved bool) *accessibility.Tree {
+			return &accessibility.Tree{
+				Nodes: map[accessibility.NodeID]*accessibility.Node{
+					rootID: {
+						ID: rootID, Children: []accessibility.NodeID{tabListID, tableID, listID, menuID},
+						Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
+					},
+					tabListID: {
+						ID: tabListID, Parent: rootID, Children: []accessibility.NodeID{tabAID, tabBID},
+						Role: role.TabList, Bounds: geom.NewRect(0, 0, 200, 20),
+					},
+					tabAID: {
+						ID: tabAID, Parent: tabListID, Role: role.Tab, Name: "First",
+						Bounds: geom.NewRect(0, 0, 100, 20), Selectable: true, Selected: !moved,
+					},
+					tabBID: {
+						ID: tabBID, Parent: tabListID, Role: role.Tab, Name: "Second",
+						Bounds: geom.NewRect(100, 0, 100, 20), Selectable: true, Selected: moved,
+					},
+					tableID: {
+						ID: tableID, Parent: rootID, Children: []accessibility.NodeID{rowID}, Role: role.Table,
+						Name: "Grid", Bounds: geom.NewRect(0, 20, 200, 20), RowCount: 1, ColumnCount: 2,
+					},
+					rowID: {
+						ID: rowID, Parent: tableID, Children: []accessibility.NodeID{cellAID, cellBID}, Role: role.Row,
+						Bounds: geom.NewRect(0, 20, 200, 20), RowIndex: 0, Level: 1,
+					},
+					// Both cells change together, which has to produce one notification rather than two.
+					cellAID: {
+						ID: cellAID, Parent: rowID, Role: role.Cell, Name: "Left",
+						Bounds: geom.NewRect(0, 20, 100, 20), RowIndex: 0, ColumnIndex: 0, Selectable: true,
+						Selected: moved,
+					},
+					cellBID: {
+						ID: cellBID, Parent: rowID, Role: role.Cell, Name: "Right",
+						Bounds: geom.NewRect(100, 20, 100, 20), RowIndex: 0, ColumnIndex: 1, Selectable: true,
+						Selected: moved,
+					},
+					listID: {
+						ID: listID, Parent: rootID, Children: []accessibility.NodeID{itemID}, Role: role.List,
+						Name: "Items", Bounds: geom.NewRect(0, 40, 200, 20), RowCount: 1,
+					},
+					itemID: {
+						ID: itemID, Parent: listID, Role: role.ListItem, Name: "Only",
+						Bounds: geom.NewRect(0, 40, 200, 20), RowIndex: 0, Level: 1, Selectable: true, Selected: moved,
+					},
+					menuID: {
+						ID: menuID, Parent: rootID, Children: []accessibility.NodeID{menuItemID}, Role: role.Menu,
+						Name: "File", Bounds: geom.NewRect(0, 60, 200, 20),
+					},
+					menuItemID: {
+						ID: menuItemID, Parent: menuID, Role: role.MenuItem, Name: "Open",
+						Bounds: geom.NewRect(0, 60, 200, 20), Selectable: true, Selected: moved,
+					},
+				},
+				Root:       rootID,
+				Generation: 1,
+			}
+		}
+		before := build(false)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// Nothing is posted about an element nothing has asked about, so every element has to exist first.
+		WithPool(func() {
+			for _, child := range axTestChildren(t, v, 4) {
+				for _, grandchild := range IDsFromNSArray(child.Send(Sel("accessibilityChildren"))) {
+					grandchild.Send(Sel("accessibilityChildren"))
+				}
+			}
+		})
+		ensureAXNotifyFuncs()
+		realPost := axPostNotify
+		defer func() { axPostNotify = realPost }()
+		type posted struct {
+			name    string
+			element objc.ID
+		}
+		var notifications []posted
+		axPostNotify = func(element, notification objc.ID) {
+			notifications = append(notifications, posted{element: element, name: GoStringFromNSString(notification)})
+			realPost(element, notification)
+		}
+		after := build(true)
+		after.Generation = 2
+		a.Publish(after, accessibility.Diff(before, after))
+		want := []posted{
+			// A tab's value is whether it is selected, so both the tab that lost the selection and the one that gained
+			// it report a changed value.
+			{element: a.Element(tabAID), name: GoStringFromNSString(AppKitString(axNotifyValueChanged))},
+			{element: a.Element(tabBID), name: GoStringFromNSString(AppKitString(axNotifyValueChanged))},
+			// Two cells, one notification, against the table rather than the row.
+			{element: a.Element(tableID), name: GoStringFromNSString(AppKitString(axNotifySelectedCellsChanged))},
+			{element: a.Element(listID), name: GoStringFromNSString(AppKitString(axNotifySelectedRowsChanged))},
+			{element: a.Element(menuID), name: GoStringFromNSString(AppKitString(axNotifySelectedChildrenChanged))},
+		}
+		if !slices.Equal(notifications, want) {
+			t.Errorf("the selection change posted %v, want %v", notifications, want)
+		}
+	})
+}
+
+// TestAXRoleChange proves a node that changes role is reported, which macOS has no notification for. A live node really
+// can change role — a label becomes an image when its text is swapped for a drawable, a button becomes a toggle button
+// when it is made sticky — and the element answering for it goes on answering, since it holds nothing but the node id
+// and reads the role from the current snapshot every time it is asked. What has to happen is that the assistive
+// technology is told to look again, which is the layout-changed notification against the node's container.
+func TestAXRoleChange(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 900 + iota
+			groupID
+			buttonID
+		)
+		build := func(r role.Enum) *accessibility.Tree {
+			return &accessibility.Tree{
+				Nodes: map[accessibility.NodeID]*accessibility.Node{
+					rootID: {
+						ID: rootID, Children: []accessibility.NodeID{groupID}, Role: role.Window,
+						Bounds: geom.NewRect(0, 0, 320, 240),
+					},
+					groupID: {
+						ID: groupID, Parent: rootID, Children: []accessibility.NodeID{buttonID}, Role: role.Group,
+						Name: "Box", Bounds: geom.NewRect(0, 0, 200, 40),
+					},
+					buttonID: {
+						ID: buttonID, Parent: groupID, Role: r, Name: "Sticky", Bounds: geom.NewRect(0, 0, 80, 24),
+						Pressed: true, Actions: accessibility.ActionSet(0).With(accessibility.Press),
+					},
+				},
+				Root:       rootID,
+				Generation: 1,
+			}
+		}
+		before := build(role.Button)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			axTestChildren(t, v, 1)[0].Send(Sel("accessibilityChildren"))
+		})
+		button := a.Element(buttonID)
+		if button == 0 {
+			t.Fatal("the button's element was never created")
+		}
+		ensureAXNotifyFuncs()
+		realPostInfo := axPostNotifyInfo
+		defer func() { axPostNotifyInfo = realPostInfo }()
+		type posted struct {
+			name     string
+			elements []objc.ID
+			element  objc.ID
+		}
+		var postedInfo []posted
+		axPostNotifyInfo = func(element, notification, userInfo objc.ID) {
+			postedInfo = append(postedInfo, posted{
+				element:  element,
+				name:     GoStringFromNSString(notification),
+				elements: IDsFromNSArray(userInfo.Send(Sel("objectForKey:"), AppKitString(axKeyUIElements))),
+			})
+			realPostInfo(element, notification, userInfo)
+		}
+		after := build(role.ToggleButton)
+		after.Generation = 2
+		events := accessibility.Diff(before, after)
+		if len(events) == 0 || events[0].Kind != accessibility.RoleChanged || events[0].Node != buttonID {
+			t.Fatalf("the diff produced %v, want a role-changed event for the button first", events)
+		}
+		a.Publish(after, events)
+		// The element is kept rather than destroyed: it caches nothing about the role, and destroying it would pull the
+		// VoiceOver cursor out of whatever it was reading.
+		if got := a.Element(buttonID); got != button {
+			t.Errorf("the button's element after the role change = %#x, want the one it had %#x", got, button)
+		}
+		WithPool(func() {
+			if got := GoStringFromNSString(button.Send(Sel("accessibilityRole"))); got != "AXCheckBox" {
+				t.Errorf("the button's role after the change = %q, want AXCheckBox", got)
+			}
+			if got := GoStringFromNSString(button.Send(Sel("accessibilitySubrole"))); got != "AXToggle" {
+				t.Errorf("the button's subrole after the change = %q, want AXToggle", got)
+			}
+		})
+		layoutChanged := 0
+		wantName := GoStringFromNSString(AppKitString(axNotifyLayoutChanged))
+		for _, p := range postedInfo {
+			if p.element != objc.ID(v) || p.name != wantName {
+				continue
+			}
+			layoutChanged++
+			if len(p.elements) != 1 || p.elements[0] != a.Element(groupID) {
+				t.Errorf("the layout-changed notification named %v, want just the group %#x", p.elements,
+					a.Element(groupID))
+			}
+		}
+		if layoutChanged != 1 {
+			t.Errorf("%d layout-changed notifications were posted for the role change, want 1", layoutChanged)
+		}
 	})
 }

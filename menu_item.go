@@ -191,9 +191,10 @@ func (mi *menuItem) newPanel() *Panel {
 	return mi.panel
 }
 
-// describeForAccessibility fills in what an assistive technology is told about the item. The item the menu has
-// highlighted is reported as the focused one: while a menu is open the keyboard focus stays wherever it was, since the
-// menu handles keys ahead of it, so what a person is choosing from is what the menu is pointing at.
+// describeForAccessibility fills in what an assistive technology is told about the item. Whether this is the item a
+// person is choosing from is not settled here: an item is highlighted by the pointer merely passing over it, which on
+// the menu bar happens with no menu open at all, so the snapshot picks the one item that stands for the focus and marks
+// it, along with the focusable that has to accompany it. See axSnapshot.openMenuFocus.
 //
 // A check state is reported only for an item that has one, which is an item drawing a check mark or a dash. Nothing
 // distinguishes an unchecked checkable item from an ordinary one, here or in the drawing, so neither is announced as
@@ -201,7 +202,6 @@ func (mi *menuItem) newPanel() *Panel {
 func (mi *menuItem) describeForAccessibility(node *accessibility.Node) {
 	node.Name = mi.title
 	node.Disabled = !mi.enabled
-	node.Focused = mi.over
 	node.Actions = node.Actions.With(accessibility.Press)
 	if mi.keyBinding.KeyCode != 0 {
 		node.Shortcut = mi.keyBinding.String()

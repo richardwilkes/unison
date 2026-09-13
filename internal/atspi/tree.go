@@ -305,10 +305,11 @@ func pixels(v float32) int32 {
 	return int32(math.Round(float64(v)))
 }
 
-// windowState is one window's slot in an [Adapter]. The identity of the slot is what matters — it is what the index from
-// node to window points at, and its position in the adapter's order is the window's position among the application's
-// children — so the only thing in it is the snapshot. That pointer is swapped rather than modified, so a query being
-// answered while the user interface thread publishes the next snapshot goes on reading the one it started with.
+// windowState is one window's slot in an [Adapter]. The identity of the slot is what matters — it is what the index
+// from node to window points at, and its position in the adapter's order is the window's position among the
+// application's children — so the only thing in it is the snapshot. That pointer is swapped rather than modified, so a
+// query being answered while the user interface thread publishes the next snapshot goes on reading the one it started
+// with.
 type windowState struct {
 	data atomic.Pointer[windowData]
 }

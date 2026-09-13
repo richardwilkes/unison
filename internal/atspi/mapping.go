@@ -294,8 +294,10 @@ func States(n *accessibility.Node, windowActive bool) StateSet {
 			set = set.With(StateCollapsed)
 		}
 	}
-	if n.HasCheck {
+	if checkable(n) {
 		set = set.With(StateCheckable)
+	}
+	if n.HasCheck {
 		switch n.Checked {
 		case check.On:
 			set = set.With(StateChecked)
@@ -321,7 +323,8 @@ func roleStates(n *accessibility.Node) []StateBit {
 			states = append(states, StateActive)
 		}
 	case role.ToggleButton, role.DisclosureTriangle:
-		states = append(states, StateCheckable)
+		// CHECKABLE comes from [checkable], which the whole package reads a node's checkability from; what is left
+		// here is the pressed-ness that is this role's check.
 		if n.Pressed {
 			states = append(states, StateChecked, StatePressed)
 		}
@@ -347,7 +350,7 @@ func roleStates(n *accessibility.Node) []StateBit {
 // ManagesDescendants reports whether a node claims ATSPI_STATE_MANAGES_DESCENDANTS, which is a promise as much as a
 // hint: the container is telling its client not to walk or cache what is inside it, and undertaking in exchange to say
 // which descendant is the current one through object:active-descendant-changed. Only a table or a tree with more rows
-// than [manageDescendantsRowThreshold] makes that promise, and [Adapter.emitActiveDescendantChanged] keeps it.
+// than [manageDescendantsRowThreshold] makes that promise, and [Adapter.emitActiveDescendants] keeps it.
 func ManagesDescendants(n *accessibility.Node) bool {
 	switch n.Role {
 	case role.Table, role.Tree:
@@ -357,8 +360,50 @@ func ManagesDescendants(n *accessibility.Node) bool {
 	}
 }
 
-// textStates returns the states that describe a node's text content, for the roles that have some.
+// checkable reports whether a node's state set holds ATSPI_STATE_CHECKABLE. A node is checkable either because it
+// carries a check of its own or because its role is one whose pressed-ness AT-SPI reports as a check; see
+// [pressedIsChecked]. This is the one place the answer is worked out, so that [States] and the state changes
+// [Adapter.emitStateChanged] sends cannot drift apart.
+func checkable(n *accessibility.Node) bool {
+	return n != nil && (n.HasCheck || pressedIsChecked(n))
+}
+
+// pressedIsChecked reports whether [roleStates] derives ATSPI_STATE_CHECKED from a node's Pressed flag, which is how
+// AT-SPI reports the two roles it turns into ATSPI_ROLE_TOGGLE_BUTTON: a toggle that is down is a control that is
+// checked, so the two states have to move together.
+func pressedIsChecked(n *accessibility.Node) bool {
+	switch n.Role {
+	case role.ToggleButton, role.DisclosureTriangle:
+		return true
+	default:
+		return false
+	}
+}
+
+// editableText reports whether a node's state set can hold ATSPI_STATE_EDITABLE once the node is not read-only, which
+// only the text-bearing roles a person types into can, and only while they actually carry the text an assistive
+// technology would edit. [Adapter.emitStateChanged] needs the answer so that a control becoming read-only does not
+// retract a state it never had.
+func editableText(n *accessibility.Node) bool {
+	if n.Text == nil {
+		return false
+	}
+	switch n.Role {
+	case role.TextField, role.SpinButton, role.ComboBox, role.TextArea:
+		return true
+	default:
+		return false
+	}
+}
+
+// textStates returns the states that describe a node's text content, for the roles that have some. A node whose Text is
+// nil gets none of them, however text-like its role: [Interfaces] leaves org.a11y.atspi.Text off such a node, and a
+// state set promising text that the object has no interface to hand over would send an assistive technology asking
+// questions it cannot answer. A password field is exactly that, since a protected node never carries its text.
 func textStates(n *accessibility.Node) []StateBit {
+	if n.Text == nil {
+		return nil
+	}
 	var states []StateBit
 	switch n.Role {
 	case role.TextField, role.SpinButton, role.ComboBox:
@@ -372,7 +417,7 @@ func textStates(n *accessibility.Node) []StateBit {
 	default:
 		return nil
 	}
-	if !n.ReadOnly {
+	if editableText(n) && !n.ReadOnly {
 		states = append(states, StateEditable)
 	}
 	return states

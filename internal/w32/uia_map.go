@@ -650,11 +650,15 @@ func (r UIARaise) String() string {
 //     through the RangeValue pattern and a text field through the Value pattern, so the same ValueChanged event becomes
 //     a different property on each, and becomes nothing at all on an element with neither pattern.
 //   - When a node's children changed, the client is told once, with ChildrenInvalidated, and the individual additions
-//     and removals under that node are dropped. A client responds to ChildrenInvalidated by reading the children again,
-//     so the per-child events would only make it do the same work repeatedly.
+//     and removals anywhere beneath that node are dropped. A client responds to ChildrenInvalidated by reading the
+//     children again, so the per-child events would only make it do the same work repeatedly — and a whole subtree
+//     appearing at once would otherwise report every element in it.
 //   - A removal whose parent also left the tree reports no structure change either, since there is no provider left to
 //     raise it on, but it still reports the disconnect that releases the removed node's provider.
 //   - Nodes the snapshot marks Ignored never appear: they have no provider, so there is nothing to raise an event on.
+//     The exception is the moment the flag itself flips, which is the node joining or leaving the tree a client sees
+//     while nobody's list of children changed — a scroll bar appearing as its content outgrows its view port is exactly
+//     this — so the nearest unignored parent is told to read its children again.
 //   - UI Automation's two text events are never raised. Both belong to the Text control pattern, which this package
 //     does not implement and which every element here answers NULL for, so a client that responded to one by asking for
 //     ITextProvider would have nothing to read. An edit reports the Value pattern's property instead, which is where
@@ -684,10 +688,8 @@ func UIADecideRaises(old, cur *accessibility.Tree, events []accessibility.Event)
 		}
 	}
 	for _, event := range events {
-		if event.Kind == accessibility.ChildrenChanged {
-			if target := d.target(cur, event.Node); target != 0 {
-				d.invalidated[target] = true
-			}
+		if target := d.invalidationTarget(event); target != 0 {
+			d.invalidated[target] = true
 		}
 	}
 	for _, event := range events {
@@ -727,6 +729,21 @@ func (d *uiaDecider) add(raise UIARaise) {
 		d.seen[raise] = true
 	}
 	d.raises = append(d.raises, raise)
+}
+
+// invalidationTarget returns the node a client must be told to read the children of again because of one event, or
+// zero when the event asks for no such thing. Two kinds do: a node whose list of children changed, and a node whose
+// Ignored flag flipped, which joins it to or removes it from the tree a client sees without any list of children
+// having changed at all.
+func (d *uiaDecider) invalidationTarget(event accessibility.Event) accessibility.NodeID {
+	switch {
+	case event.Kind == accessibility.ChildrenChanged:
+		return d.target(d.cur, event.Node)
+	case event.Kind == accessibility.StateChanged && event.State == accessibility.StateIgnored:
+		return d.cur.UnignoredParent(event.Node)
+	default:
+		return 0
+	}
 }
 
 // target returns the node an event about the given id should be raised on: the node itself when it has a provider, or
@@ -782,6 +799,12 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 		}
 	case accessibility.SortChanged:
 		d.property(event.Node, UIA_ItemStatusPropertyId)
+	case accessibility.RoleChanged:
+		// A role change is a control-type change: UIAControlType is a pure function of the role, and the control type
+		// is what a client derives the spoken name of the element and the patterns it bothers looking for from. The
+		// localized control type is not raised alongside it, since this package never answers that property — UI
+		// Automation derives it from the control type, which it has just been told about.
+		d.property(event.Node, UIA_ControlTypePropertyId)
 	case accessibility.WindowActivated:
 		d.focus(d.cur.Focus)
 	case accessibility.Announcement:
@@ -882,10 +905,22 @@ func (d *uiaDecider) state(event accessibility.Event) {
 		if n.ID == d.cur.Root && patterns.Has(PatternWindow) {
 			d.property(n.ID, UIA_WindowIsModalPropertyId)
 		}
+	case accessibility.StateIgnored:
+		// An ignored node has no provider, so there is no property to report and nothing to report it on. What has
+		// happened is structural: the node joined or left the tree a client sees, and no node's list of children
+		// changed to say so, since an ignored node stays in the snapshot for hit testing and coordinate clipping. The
+		// nearest unignored parent is therefore told to read its children again, which is the only thing that brings a
+		// client's cached hierarchy back in line with what UIANavigate answers. It reaches a real window often:
+		// ScrollBar.ProvideAccessibility ignores a scroll bar with nothing to scroll, so one appears and disappears as
+		// its content grows and shrinks. The Linux adapter reports the same flip the same way; see emitIgnoredChanged
+		// in internal/atspi/events.go.
+		d.add(UIARaise{
+			Kind:   UIARaiseStructure,
+			Node:   d.invalidationTarget(event),
+			Change: StructureChangeType_ChildrenInvalidated,
+		})
 	default:
-		// Selectable, Multiselectable, Busy and Ignored have no property a client watches for. A node that has become
-		// Ignored has nothing to raise anything on, either: the publish retires its provider, and add drops every call
-		// that names it.
+		// Selectable, Multiselectable and Busy have no property a client watches for.
 	}
 }
 
@@ -914,14 +949,19 @@ func (d *uiaDecider) selectionItem(n *accessibility.Node, selected bool) {
 	}
 }
 
-// added records the structure change a new node asks for, unless its parent has already been reported as having all of
-// its children invalidated.
+// added records the structure change a new node asks for, unless something at or above its parent has already been
+// reported as having all of its children invalidated.
+//
+// The whole chain has to be looked at rather than only the parent. A subtree arrives as one addition of its top node
+// plus one of every node under it, and the invalidation the diff produces names the surviving parent the subtree hangs
+// off: testing only the immediate parent would drop the top node, whose parent is that one, and then report every
+// descendant individually, whose parents are the new nodes themselves.
 func (d *uiaDecider) added(id accessibility.NodeID) {
 	n := d.cur.Node(id)
 	if n == nil || n.Ignored {
 		return
 	}
-	if d.invalidated[d.target(d.cur, n.Parent)] {
+	if d.invalidatedAt(d.cur, n.Parent) {
 		return
 	}
 	d.add(UIARaise{
@@ -933,11 +973,13 @@ func (d *uiaDecider) added(id accessibility.NodeID) {
 }
 
 // removed records the structure change a departed node asks for, followed by the disconnect that releases its provider.
-// The structure change is raised on the parent, since the node itself is gone, and is skipped when that parent has
-// already been reported as having all of its children invalidated or has left the tree too.
+// The structure change is raised on the parent, since the node itself is gone, and is skipped when something at or
+// above that parent has already been reported as having all of its children invalidated, or when the parent has left
+// the tree too. The chain is walked over the previous tree, which is the only one that still holds the departed node.
 func (d *uiaDecider) removed(id accessibility.NodeID) {
 	if n := d.old.Node(id); n != nil && !n.Ignored {
-		if parent := d.target(d.old, n.Parent); parent != 0 && !d.invalidated[parent] && d.cur.Node(parent) != nil {
+		parent := d.target(d.old, n.Parent)
+		if parent != 0 && !d.invalidatedAt(d.old, n.Parent) && d.cur.Node(parent) != nil {
 			d.add(UIARaise{
 				Kind:   UIARaiseStructure,
 				Node:   parent,
@@ -947,4 +989,21 @@ func (d *uiaDecider) removed(id accessibility.NodeID) {
 		}
 	}
 	d.add(UIARaise{Kind: UIARaiseDisconnect, Node: id})
+}
+
+// invalidatedAt reports whether the node with the given id, or any ancestor of it within t, has already been reported
+// as having all of its children invalidated. The walk is bounded so that a malformed tree — one whose Parent links form
+// a cycle — cannot spin here forever.
+func (d *uiaDecider) invalidatedAt(t *accessibility.Tree, id accessibility.NodeID) bool {
+	for depth := 0; id != 0 && depth < uiaMaxTreeDepth; depth++ {
+		if d.invalidated[d.target(t, id)] {
+			return true
+		}
+		n := t.Node(id)
+		if n == nil {
+			return false
+		}
+		id = n.Parent
+	}
+	return false
 }

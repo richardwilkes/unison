@@ -27,9 +27,11 @@ import (
 //  4. NodeAdded, in pre-order, for every id cur holds that old did not. These follow the ChildrenChanged events so that
 //     an adapter has already been told about the parent's new shape, and pre-order guarantees a new parent is reported
 //     before the new children inside it.
-//  5. For each surviving node, in pre-order, its own changes in a fixed order: NameChanged, DescriptionChanged,
-//     ValueChanged, NumberChanged, SortChanged, BoundsChanged, one StateChanged per changed flag, then the text
-//     events — TextDeleted and TextInserted for the one run of runes that differs, followed by TextSelectionChanged.
+//  5. For each surviving node, in pre-order, its own changes in a fixed order: RoleChanged, NameChanged,
+//     DescriptionChanged, ValueChanged, NumberChanged, SortChanged, BoundsChanged, one StateChanged per changed flag,
+//     then the text events — TextDeleted and TextInserted for the one run of runes that differs, followed by
+//     TextSelectionChanged. RoleChanged comes first because a node's role decides how an adapter interprets everything
+//     else about it, so the adapter must know the new role before it applies the rest.
 //  6. WindowActivated or WindowDeactivated when the root's Focused flipped.
 //  7. FocusChanged last, whenever the focus moved, so an adapter has already applied every structural and value change
 //     before it tells its assistive technology where to look.
@@ -108,6 +110,12 @@ func appendNodeChanges(events []Event, old, cur *Tree) []Event {
 // appendChangesForNode appends the events describing how cur differs from prev, which are the same node in two
 // successive snapshots.
 func appendChangesForNode(events []Event, prev, cur *Node) []Event {
+	// A live node really can change role: a label becomes an image when its text is swapped for a drawable, a button
+	// becomes a toggle button when it is made sticky, a table becomes a tree when a hierarchy appears. No adapter
+	// re-derives the role on its own, so it has to be told.
+	if prev.Role != cur.Role {
+		events = append(events, Event{Kind: RoleChanged, Node: cur.ID, Old: prev.Role.Key(), New: cur.Role.Key()})
+	}
 	if prev.Name != cur.Name {
 		events = append(events, Event{Kind: NameChanged, Node: cur.ID, Old: prev.Name, New: cur.Name})
 	}

@@ -34,8 +34,8 @@ func TestVariantSize(t *testing.T) {
 }
 
 // TestVariantScalarSetters verifies that each scalar setter tags the VARIANT correctly and stores the value where the
-// ABI expects it. VARIANT_TRUE is the one that matters most: a client compares against every bit set, so storing 1 would
-// read as neither true nor false.
+// ABI expects it. VARIANT_TRUE is the one that matters most: a client compares against every bit set, so storing 1
+// would read as neither true nor false.
 func TestVariantScalarSetters(t *testing.T) {
 	c := check.New(t)
 	var v VARIANT
@@ -61,10 +61,10 @@ func TestVariantScalarSetters(t *testing.T) {
 	c.Equal(uint64(0), v.Val)
 }
 
-// TestBSTRRoundTrip verifies that a BSTR survives the trip through the OLE automation allocator unchanged, including the
-// cases a naive NUL-terminated conversion would get wrong: an empty string must still produce a usable BSTR rather than
-// NULL, an embedded NUL must be preserved because a BSTR's length comes from its prefix, and a character outside the
-// basic multilingual plane must come back as one rune rather than as its two surrogates.
+// TestBSTRRoundTrip verifies that a BSTR survives the trip through the OLE automation allocator unchanged, including
+// the cases a naive NUL-terminated conversion would get wrong: an empty string must still produce a usable BSTR rather
+// than NULL, an embedded NUL must be preserved because a BSTR's length comes from its prefix, and a character outside
+// the basic multilingual plane must come back as one rune rather than as its two surrogates.
 func TestBSTRRoundTrip(t *testing.T) {
 	c := check.New(t)
 	for _, s := range []string{"", "hello", "café", "a\x00b", "\U0001F600", "line1\nline2"} {

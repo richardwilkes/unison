@@ -421,6 +421,19 @@ func (e *encoder) mapEntries(keySig, valSig Signature, v any) error {
 }
 
 func compareMapKeys(a, b reflect.Value) int {
+	// A map whose key type is an interface hands out values that are all of that interface kind, so the comparison has
+	// to be made against what they hold. Keys of different types cannot be ordered against each other at all, and a map
+	// holding such a mixture will not marshal, but ordering them by kind at least keeps the encoding deterministic and
+	// keeps the comparison from asking a string for its integer value.
+	if a.Kind() == reflect.Interface {
+		a = a.Elem()
+	}
+	if b.Kind() == reflect.Interface {
+		b = b.Elem()
+	}
+	if a.Kind() != b.Kind() {
+		return cmp.Compare(a.Kind(), b.Kind())
+	}
 	switch a.Kind() {
 	case reflect.String:
 		return strings.Compare(a.String(), b.String())

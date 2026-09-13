@@ -75,8 +75,8 @@ func TestDropResultEffect(t *testing.T) {
 // every place a BSTR is born without searching the package.
 const bstrAllocatorFile = "uia_variant_windows.go"
 
-// forbiddenSourcePatterns maps a source pattern this package must not contain to the set of files allowed to contain it,
-// which is empty for the patterns that are banned outright.
+// forbiddenSourcePatterns maps a source pattern this package must not contain to the set of files allowed to contain
+// it, which is empty for the patterns that are banned outright.
 //
 // syscall.NewLazyDLL searches the application directory before the system directory (a DLL-planting vector —
 // opengl32.dll is not a KnownDLL). CoInitializeEx with COINIT_MULTITHREADED on the STA UI thread only ever "worked"

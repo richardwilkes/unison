@@ -12,6 +12,7 @@ package dbus
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"path/filepath"
@@ -431,7 +432,7 @@ func TestConnSubscribe(t *testing.T) {
 	everything := make(chan *Message, 8)
 	cancel := b.client.Subscribe(SignalFilter{
 		Sender:    testDestination,
-		Path:      string(testPath),
+		Path:      testPath,
 		Interface: eventInterface,
 		Member:    "StateChanged",
 	}, func(msg *Message) { filtered <- msg })
@@ -656,4 +657,171 @@ func TestSubtreeExportsAreSafeWhileDispatching(t *testing.T) {
 	}
 	close(done)
 	wg.Wait()
+}
+
+// panickingObject panics whenever it is asked what it implements, which is code of the exporter's own running on the
+// dispatcher goroutine.
+type panickingObject struct{}
+
+func (panickingObject) Interfaces() []*Interface { panic("Interfaces blew up") }
+
+func TestPanicsInExportedCodeCostOnlyTheOneCall(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	const prefix = ObjectPath("/org/example/panics")
+	obj := newTestObject()
+	// Any peer on the bus chooses the path, and therefore whether the resolver and the object it hands back are asked
+	// anything at all, so a panic in either has to cost the one call rather than the whole process.
+	c.NoError(b.client.ExportSubtree(prefix, func(path ObjectPath) Object {
+		switch {
+		case strings.HasSuffix(string(path), "/resolver"):
+			panic("the resolver blew up")
+		case strings.HasSuffix(string(path), "/interfaces"):
+			return panickingObject{}
+		default:
+			return obj
+		}
+	}))
+	reply := b.call(prefix+"/resolver", testInterface, greetMember, "s", "x")
+	c.Equal(TypeError, reply.Type)
+	c.Equal(UnknownObject, reply.ErrorName) // A resolver that panicked resolved nothing
+	for _, one := range []struct {
+		iface  string
+		member string
+		sig    Signature
+		args   []any
+	}{
+		{iface: testInterface, member: greetMember, sig: "s", args: []any{"x"}},
+		{iface: introspectableInterface, member: "Introspect"},
+		{iface: propertiesInterface, member: getMember, sig: "ss", args: []any{testInterface, nameProperty}},
+		{iface: propertiesInterface, member: getAllMember, sig: "s", args: []any{""}},
+	} {
+		reply = b.call(prefix+"/interfaces", one.iface, one.member, one.sig, one.args...)
+		c.Equal(TypeError, reply.Type, one.member)
+		c.Equal(Failed, reply.ErrorName, one.member)
+	}
+	// The connection carries on afterwards, which is the whole point.
+	c.Equal([]any{"hello intact"}, replyValues(t, b.call(prefix+"/fine", testInterface, greetMember, "s", "intact")))
+}
+
+func TestQueueIsBoundedByItemsAndBytes(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	q := newQueue[string](8, 10)
+	c.True(q.push("abcde", 5))
+	c.True(q.push("fghij", 5))
+	c.False(q.push("k", 1)) // The byte bound is reached long before the item bound
+	c.Equal(1, q.dropped())
+	items, ok := q.drain()
+	c.True(ok)
+	c.Equal([]string{"abcde", "fghij"}, items)
+	c.True(q.push("lmnop", 5)) // Draining releases the bytes as well as the items
+	// An item larger than the entire byte bound still goes into an empty queue, since refusing it would mean never
+	// delivering it at all.
+	oversized := newQueue[string](8, 10)
+	c.True(oversized.push("enormous", 1000))
+	c.False(oversized.push("x", 1))
+	// The item bound still does the work when the items are small.
+	many := newQueue[string](2, 1<<20)
+	c.True(many.push("a", 1))
+	c.True(many.push("b", 1))
+	c.False(many.push("c", 1))
+	c.Equal(1, many.dropped())
+	many.close()
+	c.False(many.push("d", 1))
+	c.Equal(1, many.dropped()) // A push after the queue has closed is not a drop, since nothing is going anywhere
+	items, ok = many.drain()
+	c.False(ok)
+	c.Nil(items)
+}
+
+func TestIncomingQueueIsBoundedByBytes(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	defer close(release)
+	b.client.Subscribe(SignalFilter{Member: "Flood"}, func(_ *Message) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+	})
+	payload := make([]byte, 1<<20)
+	b.emit(testPath, eventInterface, "Flood", "ay", payload)
+	if _, ok := awaitOne(entered); !ok {
+		t.Fatal("timed out waiting for the handler to be called")
+	}
+	// The dispatcher is now wedged in the handler, so everything that follows piles up behind it. Far fewer than
+	// maxQueued messages arrive, so only the bound on their total size can stop the backlog from growing.
+	for range 2 + maxQueuedBytes/len(payload) {
+		b.emit(testPath, eventInterface, "Flood", "ay", payload)
+	}
+	c.True(b.client.Dropped() > 0, "expected some messages to have been dropped")
+}
+
+// reentrantRule is the match rule that a [reentrantObject] asks the bus for while it is answering a call.
+const reentrantRule = "type='signal',interface='org.example.Reentrant'"
+
+// reentrantObject answers a call by calling back into the connection from the dispatcher goroutine, which is what the
+// documentation on [Conn] promises a handler may do.
+type reentrantObject struct {
+	failures chan error
+}
+
+func (o *reentrantObject) Interfaces() []*Interface {
+	return []*Interface{
+		{
+			Name:    testInterface,
+			Methods: []*Method{{Name: greetMember, In: "s", Out: "s", Handle: o.greet}},
+		},
+	}
+}
+
+// greet emits a signal, asks the bus for a match rule and makes a call of its own, all before answering the call it was
+// given. None of it may deadlock: the reader routes the replies, so nothing a handler waits for is waiting on the
+// dispatcher that the handler is occupying.
+func (o *reentrantObject) greet(call *Call) {
+	conn := call.Conn()
+	conn.Emit(testPath, eventInterface, "StateChanged", "focused", int32(1))
+	if err := conn.AddMatch(reentrantRule); err != nil {
+		o.failures <- err
+	}
+	reply, err := conn.Call(NewMethodCall(testService, testPath, testInterface, "Ping"))
+	if err != nil {
+		o.failures <- err
+		call.Error(Failed, err.Error())
+		return
+	}
+	args, err := reply.Args()
+	if err != nil {
+		o.failures <- err
+		call.Error(Failed, err.Error())
+		return
+	}
+	call.ReplyWithSignature("", fmt.Sprintf("hello %v", args[0]))
+}
+
+func TestHandlerMayCallBackIntoTheConnection(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	obj := &reentrantObject{failures: make(chan error, 4)}
+	c.NoError(b.client.Export(testPath, obj))
+	// The call the handler makes has to be answered by someone other than the goroutine waiting for the outer reply.
+	go func() {
+		if nested, ok := awaitOne(b.calls); ok {
+			b.replyTo(nested, "s", "pong")
+		}
+	}()
+	c.Equal([]any{"hello pong"}, replyValues(t, b.call(testPath, testInterface, greetMember, "s", "you")))
+	c.Equal("StateChanged", b.nextSignal().Member)
+	c.Equal([]string{reentrantRule}, b.matchRules())
+	close(obj.failures)
+	for err := range obj.failures {
+		c.NoError(err)
+	}
 }

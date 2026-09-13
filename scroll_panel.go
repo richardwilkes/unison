@@ -295,8 +295,9 @@ func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ mod.Modifiers) bo
 // coordinate space, which is the space the content view's frame is expressed in, and the layout has already placed that
 // frame below the column header and to the right of the row header. The two are therefore compared directly. Setting
 // the headers aside a second time here, as this once did, shrank the region taken to be visible by the height of the
-// column header along the bottom of the view, so that a row sitting in that strip — in plain sight — was scrolled up out
-// of it whenever it was selected, and an assistive technology that had just read where the row was found it had moved.
+// column header along the bottom of the view, so that a row sitting in that strip — in plain sight — was scrolled up
+// out of it whenever it was selected, and an assistive technology that had just read where the row was found it had
+// moved.
 func (s *ScrollPanel) DefaultScrollRectIntoView(rect geom.Rect) bool {
 	viewRect := s.contentView.FrameRect()
 	if border := s.contentView.Border(); border != nil {

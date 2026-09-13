@@ -10,6 +10,7 @@
 package atspi
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -303,26 +304,53 @@ func TestStatesOfCheckables(t *testing.T) {
 func TestStatesOfTextControls(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	field := States(&accessibility.Node{Role: role.TextField}, true)
+	field := States(&accessibility.Node{Role: role.TextField, Text: &accessibility.TextInfo{}}, true)
 	c.True(field.Has(StateSingleLine))
 	c.True(field.Has(StateSelectableText))
 	c.True(field.Has(StateEditable))
 	c.False(field.Has(StateMultiLine))
-	locked := States(&accessibility.Node{Role: role.TextField, ReadOnly: true}, true)
+	locked := States(&accessibility.Node{Role: role.TextField, ReadOnly: true, Text: &accessibility.TextInfo{}}, true)
 	c.False(locked.Has(StateEditable))
 	c.True(locked.Has(StateReadOnly))
-	area := States(&accessibility.Node{Role: role.TextArea}, true)
+	area := States(&accessibility.Node{Role: role.TextArea, Text: &accessibility.TextInfo{}}, true)
 	c.True(area.Has(StateMultiLine))
 	c.True(area.Has(StateEditable))
 	c.False(area.Has(StateSingleLine))
-	document := States(&accessibility.Node{Role: role.Document}, true)
+	document := States(&accessibility.Node{Role: role.Document, Text: &accessibility.TextInfo{}}, true)
 	c.True(document.Has(StateMultiLine))
 	c.True(document.Has(StateSelectableText))
 	c.False(document.Has(StateEditable), "a document is never editable")
-	combo := States(&accessibility.Node{Role: role.ComboBox}, true)
+	combo := States(&accessibility.Node{Role: role.ComboBox, Text: &accessibility.TextInfo{}}, true)
 	c.True(combo.Has(StateHasPopup))
 	c.True(combo.Has(StateEditable))
 	c.True(States(&accessibility.Node{Role: role.PopupButton}, true).Has(StateHasPopup))
+}
+
+// TestStatesOfTextControlsWithNoText covers the state set of a text control whose content this process will not hand
+// over, which is what a password field is: [accessibility.Node] leaves the Text of a protected node nil, so
+// [Interfaces] gives the object no org.a11y.atspi.Text. Claiming the text states anyway would have an assistive
+// technology ask an object for text through an interface it does not implement.
+func TestStatesOfTextControlsWithNoText(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	password := &accessibility.Node{Role: role.TextField, Protected: true}
+	c.Equal(RolePasswordText, MapRole(password))
+	c.False(slices.Contains(Interfaces(password), InterfaceText), "a protected field hands over no text")
+	set := States(password, true)
+	for _, one := range []struct {
+		name  string
+		state StateBit
+	}{
+		{name: "single line", state: StateSingleLine},
+		{name: "selectable text", state: StateSelectableText},
+		{name: "editable", state: StateEditable},
+	} {
+		c.False(set.Has(one.state), "a node with no text interface must not claim %s", one.name)
+	}
+	c.True(set.Has(StateVisible), "everything else about it is still reported")
+	spin := States(&accessibility.Node{Role: role.SpinButton, Protected: true}, true)
+	c.False(spin.Has(StateSelectableText))
+	c.False(spin.Has(StateEditable))
 }
 
 func TestStatesOfCollections(t *testing.T) {

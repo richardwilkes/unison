@@ -220,19 +220,22 @@ a window expresses, such as a background task finishing; it does nothing when no
 so it may be called unconditionally, and it is safe to call from any goroutine.
 
 Until an assistive technology has actually asked for it, none of this costs anything beyond the `AccessibilityInfo` each
-panel carries and one atomic load per pass of the event loop that redrew something: no hierarchy is walked, nothing is
-allocated, and no goroutine or platform object exists. What counts as asking differs by platform. On macOS it is the
-first accessibility query a window's content view receives, which is what VoiceOver or Accessibility Inspector sends on
-reaching the application. On Windows it is the first `WM_GETOBJECT` asking for the UI Automation root object, and events
-are raised only while UI Automation reports a listening client. On Linux it is the accessibility bus launcher's
-`org.a11y.Status.IsEnabled` property, read once at startup over the session bus connection the color-scheme watcher
-already keeps and then watched, so a screen reader started or stopped while the application runs is followed both ways;
-`NO_AT_BRIDGE=1` is honored there exactly as it is for GTK. Setting `UNISON_ACCESSIBILITY=1` turns support on whatever
-the platform reports, which is useful for seeing what a screen reader would be told, `UNISON_ACCESSIBILITY=0` refuses it
-entirely, and the `NoAccessibility()` startup option refuses it from the start. `SetAccessibilityEnabled(false)` turns
-it off while the application runs, shutting down whatever is being served and freeing everything built for it, and
-`SetAccessibilityEnabled(true)` lets the next request start it again, so an application can leave the decision to a
-preference rather than to whatever on the desktop happens to ask.
+panel carries and one atomic load per pass of the event loop that redrew something: no hierarchy is walked and nothing
+is allocated. What counts as asking differs by platform. On macOS it is the first accessibility query a window's content
+view receives, which is what VoiceOver or Accessibility Inspector sends on reaching the application, and until it
+arrives no goroutine or platform object exists. On Windows it is the first `WM_GETOBJECT` asking for the UI Automation
+root object, and events are raised only while UI Automation reports a listening client; nothing exists before that
+message either. On Linux an application has to be reachable before anything can ask, so one thing does exist from the
+start: the accessibility bus launcher's `org.a11y.Status.IsEnabled` property is watched over the session bus connection
+the color-scheme watcher already keeps — a goroutine parked on that connection and two match rules on it — and read once
+the watch is in place, so a screen reader started or stopped while the application runs is followed both ways. The
+accessibility bus socket, the objects on it and the goroutines serving them exist only while support is actually
+enabled, and `NO_AT_BRIDGE=1` is honored exactly as it is for GTK. Setting `UNISON_ACCESSIBILITY=1` turns support on
+whatever the platform reports, which is useful for seeing what a screen reader would be told, `UNISON_ACCESSIBILITY=0`
+refuses it entirely, and the `NoAccessibility()` startup option refuses it from the start.
+`SetAccessibilityEnabled(false)` turns it off while the application runs, shutting down whatever is being served and
+freeing everything built for it, and `SetAccessibilityEnabled(true)` lets the next request start it again, so an
+application can leave the decision to a preference rather than to whatever on the desktop happens to ask.
 
 What an assistive technology would be handed can be asserted on in a headless session, with no display and no screen
 reader involved. `AccessibilityTree()` turns support on if it is not on already, describes the window as it is now and

@@ -71,8 +71,8 @@ func TestScrollPanelContentShrinkWhileScrolled(t *testing.T) {
 	c.Equal(float32(0), content.FrameRect().Y, "content should stay in view after a subsequent layout")
 }
 
-// TestScrollPanelScrollRectIntoViewWithColumnHeader verifies that a rect lying within the visible part of the content is
-// left alone, and one just past the bottom is brought in by exactly its overhang, when a column header is present.
+// TestScrollPanelScrollRectIntoViewWithColumnHeader verifies that a rect lying within the visible part of the content
+// is left alone, and one just past the bottom is brought in by exactly its overhang, when a column header is present.
 // DefaultScrollRectIntoView used to set the header aside a second time — the layout already places the content view
 // below it — which treated a strip the header's height along the bottom of the view as hidden, so that selecting a row
 // there scrolled the content for no reason and left an assistive technology's idea of where the row was one strip out.

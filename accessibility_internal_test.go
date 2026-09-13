@@ -39,8 +39,8 @@ type axTestCellKey struct {
 }
 
 // axTestList is a widget that has rows but no panel per row, which is how a list or a table is built. It describes each
-// row as a virtual child, keyed by the row's index so that the same row keeps the same node id however the rows around it
-// change, and gives each row cells of its own so that more than one level of virtual children is exercised.
+// row as a virtual child, keyed by the row's index so that the same row keeps the same node id however the rows around
+// it change, and gives each row cells of its own so that more than one level of virtual children is exercised.
 type axTestList struct {
 	window *Window
 	rows   []string
@@ -127,8 +127,8 @@ func axNewTestWindow(t *testing.T, title string, rect geom.Rect, panel Paneler) 
 }
 
 // TestAccessibilityVirtualChildren verifies what a collection widget can do: describe rows it has no panels for, have
-// each row keep its identity from one description to the next, receive requests aimed at one particular row, and have the
-// ids of rows it has stopped using reclaimed.
+// each row keep its identity from one description to the next, receive requests aimed at one particular row, and have
+// the ids of rows it has stopped using reclaimed.
 func TestAccessibilityVirtualChildren(t *testing.T) {
 	c := check.New(t)
 	const initialRows = 30
@@ -210,6 +210,102 @@ func TestAccessibilityVirtualChildren(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// axDuplicateKeyList is a widget that misuses the builder by handing the same key back more than once while describing
+// itself, which is what a table whose rows carry duplicate tid.TIDs, or a widget that adds one key under two parents,
+// does. It records what each attempt was given so the test can see which of them were refused.
+type axDuplicateKeyList struct {
+	Panel
+	first    accessibility.NodeID
+	repeat   accessibility.NodeID
+	nested   accessibility.NodeID
+	distinct accessibility.NodeID
+}
+
+// newAXDuplicateKeyList creates the widget, sized so that it has a frame to describe children within.
+func newAXDuplicateKeyList() *axDuplicateKeyList {
+	l := &axDuplicateKeyList{}
+	l.Self = l
+	l.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+		size := geom.NewSize(100, 2*axTestRowHeight)
+		return size, size, size
+	})
+	return l
+}
+
+// ProvideAccessibility adds one row, then tries to add it again under the same parent and under itself, and finally
+// adds a row with a key of its own to show that the refusals cost the description nothing else.
+func (l *axDuplicateKeyList) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	node.Role = role.List
+	node.Name = "Rows"
+	l.first = b.AddVirtualChild("row", func(n *accessibility.Node) {
+		n.Role = role.ListItem
+		n.Name = "first"
+		n.Bounds = geom.NewRect(0, 0, 100, axTestRowHeight)
+	})
+	l.repeat = b.AddVirtualChild("row", func(n *accessibility.Node) {
+		n.Role = role.ListItem
+		n.Name = "second"
+		n.Bounds = geom.NewRect(0, axTestRowHeight, 100, axTestRowHeight)
+	})
+	l.nested = b.AddVirtualChildOf(l.first, "row", func(n *accessibility.Node) {
+		n.Role = role.Cell
+		n.Name = "nested"
+		n.Bounds = geom.NewRect(0, 0, 50, axTestRowHeight)
+	})
+	l.distinct = b.AddVirtualChild("other", func(n *accessibility.Node) {
+		n.Role = role.ListItem
+		n.Name = "other"
+		n.Bounds = geom.NewRect(0, axTestRowHeight, 100, axTestRowHeight)
+	})
+}
+
+// TestAccessibilityDuplicateVirtualKeyRefused verifies that a key which has already been used during one description
+// adds nothing the second time. Letting it through would replace what the first node said and list its id twice among
+// its parent's children, which everything counted out of that list — the index within the parent, Tree.PositionInSet
+// and the events the next Diff produces — would then be wrong about.
+func TestAccessibilityDuplicateVirtualKeyRefused(t *testing.T) {
+	c := check.New(t)
+	var list *axDuplicateKeyList
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			list = newAXDuplicateKeyList()
+			wnd = axNewTestWindow(t, "duplicate keys", geom.NewRect(10, 10, 200, 150), list)
+		}))
+	c.NotNil(list)
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	listNode := screen.AccessibilityNodeFor(list)
+	c.True(listNode != nil)
+	if listNode == nil {
+		return
+	}
+	var first, repeat, nested, distinct accessibility.NodeID
+	screen.Do(func() {
+		first, repeat, nested, distinct = list.first, list.repeat, list.nested, list.distinct
+	})
+	c.True(first != 0, "the first use of a key adds the child")
+	c.Equal(accessibility.NodeID(0), repeat, "the same key a second time must be refused")
+	c.Equal(accessibility.NodeID(0), nested, "the same key under another parent must be refused")
+	c.True(distinct != 0, "a key of its own must still be honored after a refusal")
+	c.Equal([]accessibility.NodeID{first, distinct}, listNode.Children,
+		"the refused attempts must have left the list with one child per key")
+
+	firstNode := tree.Node(first)
+	c.True(firstNode != nil)
+	if firstNode != nil {
+		c.Equal("first", firstNode.Name, "the node must say what it said the first time")
+		c.Equal(0, len(firstNode.Children), "the refused attempt must not have become a child of it either")
+	}
+	pos, size := tree.PositionInSet(distinct)
+	c.Equal(2, pos, "the second child is the second of two")
+	c.Equal(2, size)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestAccessibilityGeometry verifies the conversion the platforms whose accessibility APIs work in physical screen
 // pixels apply to the window-local, logical-unit bounds a tree holds.
 func TestAccessibilityGeometry(t *testing.T) {
@@ -271,6 +367,64 @@ func TestAccessibilityDeactivationReleasesState(t *testing.T) {
 	})
 	screen.Do(func() { after = axSnapshotCount })
 	c.Equal(before, after, "no snapshot may be built while accessibility support is off")
+}
+
+// TestAccessibilityDisposalReleasesState verifies the teardown a window performs on its way out. Window.destroy shuts
+// the adapter down before the platform window goes away, since an adapter's teardown talks to that window, and
+// everything the window was holding for an assistive technology — the tree every query was answered from, and any
+// events nothing had drained — goes with it.
+func TestAccessibilityDisposalReleasesState(t *testing.T) {
+	c := check.New(t)
+	var doomed, other *Window
+	var panel *Panel
+	presses := 0
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			// The second window is there so that disposing of the first does not close the last window and end the
+			// session.
+			other = axNewTestWindow(t, "other", geom.NewRect(280, 20, 100, 100), NewPanel())
+			panel = axNewClickable(&presses)
+			panel.Accessibility.Name = "Before"
+			doomed = axNewTestWindow(t, "doomed", geom.NewRect(20, 20, 240, 120), panel)
+		}))
+	c.NotNil(doomed)
+	c.NotNil(other)
+
+	c.True(screen.AccessibilityTree(doomed) != nil)
+	// Renaming something and describing the window again leaves events nothing has drained, which is the state the
+	// teardown has to cope with.
+	screen.Do(func() { panel.Accessibility.Name = "After" })
+	c.True(screen.AccessibilityTree(doomed) != nil)
+	var tree *accessibility.Tree
+	var events int
+	var held bool
+	read := func() {
+		screen.Do(func() {
+			held = doomed.ax != nil
+			tree = nil
+			events = 0
+			if hw := headlessWindowFor(doomed); hw != nil {
+				tree = hw.axTree
+				events = len(hw.axEvents)
+			}
+		})
+	}
+	read()
+	c.True(held, "the window should be holding the description it published")
+	c.True(tree != nil, "the adapter should be holding the tree it answers from")
+	c.True(events > 0, "the rename should have left an event nothing has drained")
+
+	c.True(screen.Do(func() { doomed.Dispose() }))
+	read()
+	c.False(held, "disposal should have freed what the window was holding")
+	c.True(tree == nil, "the adapter should have been shut down")
+	c.Equal(0, events, "events nothing drained should have gone with the window")
+	c.True(screen.AccessibilityTree(doomed) == nil, "a window that is gone has nothing to describe")
+
+	// The window that is left is unaffected: support is still on and it is still described.
+	c.True(IsAccessibilityActive())
+	c.True(screen.AccessibilityTree(other) != nil)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // axNewClickable returns a panel that counts the clicks it is given, which is what an assistive technology's Press

@@ -94,9 +94,10 @@ const basicTypes = "ybnqiuxtdsog"
 
 // depths counts how deeply the containers being scanned, encoded or decoded are nested. The specification allows 32
 // nested arrays and 32 nested structures, and the two limits are independent of each other, so a signature such as
-// "a(a(…a(y)…))" with 17 array and structure pairs is within both even though it opens 34 containers in all. Variants
-// are counted on their own as well: nothing in the specification bounds them, but a variant carries its own type on the
-// wire rather than in the enclosing signature, so the recursion a nest of them causes has to be bounded by something.
+// "a(a(…a(y)…))" with 17 array and structure pairs is within both even though it opens 34 containers in all.
+// Variants are counted on their own as well: nothing in the specification bounds them, but a variant carries its own
+// type on the wire rather than in the enclosing signature, so the recursion a nest of them causes has to be bounded by
+// something.
 type depths struct {
 	arrays     int
 	structures int
@@ -396,6 +397,24 @@ func signatureOfDict(d Dict) (Signature, error) {
 	valSig, err := signatureOfValue(d[0].Value)
 	if err != nil {
 		return "", err
+	}
+	// Every remaining entry has to agree with the first, exactly as the elements of an array do: a dictionary has one
+	// key type and one value type, and deriving them from the first entry alone would turn a mixture into a signature
+	// that is silently wrong and a confusing "cannot marshal" failure much later on.
+	for _, entry := range d[1:] {
+		var otherSig Signature
+		if otherSig, err = signatureOfValue(entry.Key); err != nil {
+			return "", err
+		}
+		if otherSig != keySig {
+			return "", fmt.Errorf("dbus: dict entry keys have differing types %q and %q", keySig, otherSig)
+		}
+		if otherSig, err = signatureOfValue(entry.Value); err != nil {
+			return "", err
+		}
+		if otherSig != valSig {
+			return "", fmt.Errorf("dbus: dict entry values have differing types %q and %q", valSig, otherSig)
+		}
 	}
 	return "a{" + keySig + valSig + "}", nil
 }

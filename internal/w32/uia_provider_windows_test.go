@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"unsafe"
 
@@ -131,6 +132,194 @@ func TestUIAVtbls(t *testing.T) {
 		for slot, method := range vtbl {
 			c.True(method != 0, "interface %d slot %d is empty", iface, slot)
 		}
+	}
+}
+
+// uiaSlotOut is the out-parameter the slot-order tests hand every indirect call. It is as wide as the widest
+// out-parameter any slot in this package has — UiaRect's four doubles — so that a slot holding the wrong method, which
+// is exactly what those tests exist to catch, cannot write past the end of it while the test is finding that out.
+type uiaSlotOut struct {
+	buf UiaRect
+}
+
+// uiaSlotScratch allocates an out-parameter for an indirect call and pins it, for the reason uiaOut gives.
+func uiaSlotScratch(pin *runtime.Pinner) *uiaSlotOut {
+	out := &uiaSlotOut{}
+	pin.Pin(out)
+	return out
+}
+
+// fresh zeroes the buffer and returns its address, which is what a slot is handed. Zeroing before every call is what
+// keeps a method that writes four bytes where another writes eight from being read as having written the difference.
+func (o *uiaSlotOut) fresh() uintptr {
+	o.buf = UiaRect{}
+	return uintptr(unsafe.Pointer(o))
+}
+
+// i32 reads the buffer as the 32-bit integer a BOOL, a count, an index or an enumeration-valued property is.
+func (o *uiaSlotOut) i32() int32 {
+	return *(*int32)(unsafe.Pointer(o))
+}
+
+// f64 reads the buffer as the double every RangeValue measurement is.
+func (o *uiaSlotOut) f64() float64 {
+	return *(*float64)(unsafe.Pointer(o))
+}
+
+// ptr reads the buffer as the pointer an interface out-parameter and a BSTR both are.
+func (o *uiaSlotOut) ptr() uintptr {
+	return *(*uintptr)(unsafe.Pointer(o))
+}
+
+// array reads the buffer as a SAFEARRAY handle.
+func (o *uiaSlotOut) array() SAFEARRAY {
+	return SAFEARRAY(o.ptr())
+}
+
+// variant reads the buffer as the VARIANT GetPropertyValue fills in.
+func (o *uiaSlotOut) variant() *VARIANT {
+	return (*VARIANT)(unsafe.Pointer(o))
+}
+
+// rect reads the buffer as the UiaRect get_BoundingRectangle fills in.
+func (o *uiaSlotOut) rect() UiaRect {
+	return o.buf
+}
+
+// uiaCallSlot calls one method of one interface the way UI Automation does: indirectly, through the slot its virtual
+// method table holds, with the this pointer for that interface. method is the index among the interface's own methods,
+// so method 0 is the one declared first, after IUnknown's three.
+func uiaCallSlot(p *UIAProvider, iface uiaIface, method int, args ...uintptr) uint64 {
+	uiaEnsureVtbls()
+	all := make([]uintptr, 0, len(args)+1)
+	all = append(all, p.ifacePtr(iface))
+	all = append(all, args...)
+	r, _, _ := syscall.SyscallN(uiaVtblsForTest()[iface][uiaUnknownSlots+method], all...)
+	return uint64(r)
+}
+
+// TestUIAVtblSlotOrder verifies the one thing uiaBuildVtbls calls the whole content of the ABI contract: that method N
+// of an interface really sits in slot N of its virtual method table. No other test can. Every other test here calls the
+// Go functions the slots were built from, and those answer the same however the slots are ordered, so two methods of
+// the same shape swapped — get_CanMaximize for get_CanMinimize, say — would pass the entire suite while a real client
+// got one answer where it asked for the other.
+//
+// Two slots are left out. Both hold assembly thunks, because both take doubles, and doubles arrive in floating-point
+// registers that syscall.SyscallN cannot fill; TestUIAThunkSlots checks that those two slots hold the thunks, and
+// TestFromPointThunk and TestRangeValueSetValueThunk call them the way UI Automation would.
+//
+// The twelve control-pattern interfaces are covered by TestUIAPatternVtblSlotOrder in uia_patterns_windows_test.go.
+func TestUIAVtblSlotOrder(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out := uiaSlotScratch(&pin)
+	w := newTestUIAWindow(sampleTree())
+	root := w.rootProvider()
+	c.NotNil(root)
+	button := w.providerFor(4)
+	c.NotNil(button)
+
+	// IRawElementProviderSimple: get_ProviderOptions, GetPatternProvider, GetPropertyValue,
+	// get_HostRawElementProvider.
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceSimple, 0, out.fresh()))
+	c.Equal(int32(ProviderOptions_ServerSideProvider), out.i32(), "get_ProviderOptions")
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceSimple, 1, uintptr(UIA_InvokePatternId), out.fresh()))
+	c.Equal(button.ifacePtr(uiaIfaceInvoke), out.ptr(), "GetPatternProvider")
+	c.Equal(uintptr(1), button.release())
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceSimple, 2, uintptr(UIA_NamePropertyId), out.fresh()))
+	c.Equal(VT_BSTR, out.variant().VT, "GetPropertyValue")
+	c.Equal("One", uiaVariantString(out.variant()))
+	out.variant().Clear()
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceSimple, 3, out.fresh()))
+	c.Equal(uintptr(0), out.ptr(), "get_HostRawElementProvider: only the fragment root has a host")
+
+	// IRawElementProviderFragment: Navigate, GetRuntimeId, get_BoundingRectangle, GetEmbeddedFragmentRoots, SetFocus,
+	// get_FragmentRoot. Node 4 is the first of the window's two buttons, at (0,0 50x20) in a window whose content area
+	// starts at (100,50) with two pixels per logical unit.
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 0, uintptr(NavigateDirection_NextSibling), out.fresh()))
+	sibling := w.providerFor(5)
+	c.NotNil(sibling)
+	c.Equal(sibling.ifacePtr(uiaIfaceFragment), out.ptr(), "Navigate")
+	c.Equal(uintptr(1), sibling.release())
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 1, out.fresh()))
+	c.Equal([]int32{UiaAppendRuntimeId, 4, 0}, SafeArrayToInt32(out.array()), "GetRuntimeId")
+	out.array().Destroy()
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 2, out.fresh()))
+	c.Equal(UiaRect{Left: 100, Top: 50, Width: 100, Height: 40}, out.rect(), "get_BoundingRectangle")
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 3, out.fresh()))
+	c.Equal(uintptr(0), out.ptr(), "GetEmbeddedFragmentRoots: unison draws every widget itself")
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 4))
+	c.Equal(1, len(w.recorded()), "SetFocus")
+	c.Equal(accessibility.Focus, uiaRequestAt(w, 0).Action)
+	c.Equal(accessibility.NodeID(4), uiaRequestAt(w, 0).Node)
+	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 5, out.fresh()))
+	c.Equal(root.ifacePtr(uiaIfaceFragmentRoot), out.ptr(), "get_FragmentRoot")
+	c.Equal(uintptr(1), root.release())
+
+	// IRawElementProviderFragmentRoot: ElementProviderFromPoint, which holds a thunk, then GetFocus.
+	c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceFragmentRoot, 1, out.fresh()))
+	focus := w.providerFor(4)
+	c.NotNil(focus)
+	c.Equal(focus.ifacePtr(uiaIfaceFragment), out.ptr(), "GetFocus")
+	c.Equal(uintptr(1), focus.release())
+
+	// IRawElementProviderAdviseEvents: AdviseEventAdded, AdviseEventRemoved. The two are told apart by which way they
+	// move the count.
+	c.Equal(int32(0), w.Listeners())
+	c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceAdviseEvents, 0, uintptr(UIA_AutomationFocusChangedEventId), 0))
+	c.Equal(int32(1), w.Listeners(), "AdviseEventAdded")
+	c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceAdviseEvents, 1, uintptr(UIA_AutomationFocusChangedEventId), 0))
+	c.Equal(int32(0), w.Listeners(), "AdviseEventRemoved")
+
+	uiaCheckWindowSlotOrder(c, w, root, out)
+}
+
+// uiaCheckWindowSlotOrder verifies the slot order of IWindowProvider: SetVisualState, Close, WaitForInputIdle,
+// get_CanMaximize, get_CanMinimize, get_IsModal, get_WindowVisualState, get_WindowInteractionState, get_IsTopmost.
+//
+// Six of the nine take nothing but an out-parameter, so telling them apart takes more than one window: each is asked
+// about three, and over those three no two of the six answer the same sequence — CanMaximize says 1,0,0; CanMinimize
+// 1,1,1; IsModal 0,1,0; WindowVisualState 0,0,0; WindowInteractionState ready, ready, blocked; and IsTopmost 0,0,1. Any
+// two of them swapped therefore shows up as a wrong answer for at least one window.
+func uiaCheckWindowSlotOrder(c check.Checker, w *uiaTestWindow, root *UIAProvider, out *uiaSlotOut) {
+	c.Equal(UIA_E_NOTSUPPORTED, uiaCallSlot(root, uiaIfaceWindow, 0, uintptr(WindowVisualState_Maximized)),
+		"SetVisualState")
+	c.Equal(UIA_E_NOTSUPPORTED, uiaCallSlot(root, uiaIfaceWindow, 1), "Close")
+	c.Equal(UIA_E_NOTSUPPORTED, uiaCallSlot(root, uiaIfaceWindow, 2, 100, out.fresh()), "WaitForInputIdle")
+	for i, one := range []struct {
+		interaction WindowInteractionState
+		canMaximize int32
+		isModal     int32
+		isTopmost   int32
+		resizable   bool
+		modal       bool
+		floating    bool
+		disabled    bool
+	}{
+		{resizable: true, canMaximize: 1, interaction: WindowInteractionState_ReadyForUserInteraction},
+		{modal: true, isModal: 1, interaction: WindowInteractionState_ReadyForUserInteraction},
+		{floating: true, disabled: true, isTopmost: 1, interaction: WindowInteractionState_BlockedByModalWindow},
+	} {
+		next := sampleTree()
+		next.Nodes[1].Resizable = one.resizable
+		next.Nodes[1].Modal = one.modal
+		next.Nodes[1].Floating = one.floating
+		next.Nodes[1].Disabled = one.disabled
+		next.Generation = uint64(i + 2)
+		w.Publish(next, nil)
+		c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceWindow, 3, out.fresh()))
+		c.Equal(one.canMaximize, out.i32(), "get_CanMaximize, window %d", i)
+		c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceWindow, 4, out.fresh()))
+		c.Equal(int32(1), out.i32(), "get_CanMinimize, window %d", i)
+		c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceWindow, 5, out.fresh()))
+		c.Equal(one.isModal, out.i32(), "get_IsModal, window %d", i)
+		c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceWindow, 6, out.fresh()))
+		c.Equal(WindowVisualState_Normal, WindowVisualState(out.i32()), "get_WindowVisualState, window %d", i)
+		c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceWindow, 7, out.fresh()))
+		c.Equal(one.interaction, WindowInteractionState(out.i32()), "get_WindowInteractionState, window %d", i)
+		c.Equal(COM_S_OK, uiaCallSlot(root, uiaIfaceWindow, 8, out.fresh()))
+		c.Equal(one.isTopmost, out.i32(), "get_IsTopmost, window %d", i)
 	}
 }
 
@@ -268,6 +457,11 @@ func TestUIAFragmentNavigate(t *testing.T) {
 		p := w.providerFor(node)
 		c.NotNil(p)
 		c.Equal(COM_S_OK, uiaFragmentNavigate(p.ifacePtr(uiaIfaceFragment), uintptr(direction), outAddress))
+		if *out != 0 {
+			// The reference Navigate handed over is the caller's, which here is the test. Giving it back at once is
+			// what lets the counts be checked at the end; the provider map's own reference keeps the pointer good.
+			uiaProviderFromThis(*out, uiaIfaceFragment).release()
+		}
 		return *out
 	}
 	fragment := func(node accessibility.NodeID) uintptr {
@@ -295,10 +489,13 @@ func TestUIAFragmentNavigate(t *testing.T) {
 	c.Equal(uintptr(0), navigate(1, NavigateDirection_PreviousSibling))
 	c.Equal(uintptr(0), navigate(4, NavigateDirection_FirstChild))
 
-	// Every interface pointer handed out is AddRef'd, so the counts have to come back down.
+	// Every interface pointer Navigate handed out was AddRef'd and has been released again, so every provider is back
+	// to the single reference the window's provider map holds. A method that handed out an unowned pointer, or a
+	// caller that forgot to give one back, shows up here as a count of something other than one.
 	for _, node := range []accessibility.NodeID{1, 4, 5, 6, 7} {
 		p := w.providerFor(node)
-		c.True(atomic.LoadInt32(&p.refCount) >= 1)
+		c.NotNil(p)
+		c.Equal(int32(1), atomic.LoadInt32(&p.refCount), "node %d", node)
 	}
 	c.Equal(COM_E_POINTER, uiaFragmentNavigate(w.rootProvider().ifacePtr(uiaIfaceFragment), 0, 0))
 }
@@ -473,7 +670,9 @@ func TestUIAAdviseEvents(t *testing.T) {
 	c.Equal(int32(1), w.Listeners())
 }
 
-// TestUIAWindowPattern verifies the Window pattern the fragment root implements.
+// TestUIAWindowPattern verifies the Window pattern the fragment root implements, including that every one of its
+// answers comes from the snapshot rather than from a constant: a fixed-size dialog must not be reported as something
+// that can be maximized, and a window created with FloatingWindowOption really is topmost.
 func TestUIAWindowPattern(t *testing.T) {
 	c := check.New(t)
 	var pin runtime.Pinner
@@ -486,9 +685,9 @@ func TestUIAWindowPattern(t *testing.T) {
 	this := w.rootProvider().ifacePtr(uiaIfaceWindow)
 
 	c.Equal(COM_S_OK, uiaWindowCanMaximize(this, booleanAddress))
-	c.Equal(int32(1), *boolean)
+	c.Equal(int32(0), *boolean, "sampleTree's window is not resizable, so it has no maximize box")
 	c.Equal(COM_S_OK, uiaWindowCanMinimize(this, booleanAddress))
-	c.Equal(int32(1), *boolean)
+	c.Equal(int32(1), *boolean, "every window unison creates has a minimize box")
 	c.Equal(COM_S_OK, uiaWindowIsTopmost(this, booleanAddress))
 	c.Equal(int32(0), *boolean)
 	c.Equal(COM_S_OK, uiaWindowIsModal(this, booleanAddress))
@@ -498,11 +697,23 @@ func TestUIAWindowPattern(t *testing.T) {
 	c.Equal(COM_S_OK, uiaWindowInteractionStateValue(this, interactionAddress))
 	c.Equal(WindowInteractionState_ReadyForUserInteraction, *interaction)
 
+	// A resizable, floating window reports both, which is what the snapshot records for one created without
+	// NotResizableWindowOption and with FloatingWindowOption.
+	free := sampleTree()
+	free.Nodes[1].Resizable = true
+	free.Nodes[1].Floating = true
+	free.Generation = 2
+	w.Publish(free, nil)
+	c.Equal(COM_S_OK, uiaWindowCanMaximize(this, booleanAddress))
+	c.Equal(int32(1), *boolean)
+	c.Equal(COM_S_OK, uiaWindowIsTopmost(this, booleanAddress))
+	c.Equal(int32(1), *boolean)
+
 	// A modal window says so, and one that is disabled is disabled because something modal is in front of it.
 	modal := sampleTree()
 	modal.Nodes[1].Modal = true
 	modal.Nodes[1].Disabled = true
-	modal.Generation = 2
+	modal.Generation = 3
 	w.Publish(modal, nil)
 	c.Equal(COM_S_OK, uiaWindowIsModal(this, booleanAddress))
 	c.Equal(int32(1), *boolean)
@@ -514,6 +725,19 @@ func TestUIAWindowPattern(t *testing.T) {
 	c.Equal(UIA_E_NOTSUPPORTED, uiaWindowClose(this))
 	c.Equal(UIA_E_NOTSUPPORTED, uiaWindowWaitForInputIdle(this, 100, booleanAddress))
 	c.Equal(COM_E_POINTER, uiaWindowCanMaximize(this, 0))
+
+	// Every getter goes through the element rather than answering blind, so a client holding an IWindowProvider for a
+	// root that has since been retired is told the element is gone rather than handed a fabricated answer.
+	root := w.Root() // Stand in for the reference such a client would be holding.
+	defer root.release()
+	w.Destroy()
+	c.True(root.Stale())
+	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaWindowCanMaximize(this, booleanAddress))
+	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaWindowCanMinimize(this, booleanAddress))
+	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaWindowIsModal(this, booleanAddress))
+	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaWindowVisualState(this, visualAddress))
+	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaWindowInteractionStateValue(this, interactionAddress))
+	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaWindowIsTopmost(this, booleanAddress))
 }
 
 // TestUIAGetPatternProvider verifies that GetPatternProvider and QueryInterface agree, which a client that reaches a

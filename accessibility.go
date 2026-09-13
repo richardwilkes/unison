@@ -227,12 +227,17 @@ func (b *AccessibilityBuilder) IDFor(p Paneler) accessibility.NodeID {
 // fill is called with a node that has nothing but its identity filled in. Set its Bounds in the panel's own
 // coordinates; they are converted afterwards, and the child is marked Offscreen when none of it can be seen, exactly
 // as a real child is.
+//
+// Zero is returned, and nothing is added, when the key has already been used during this description, since a key names
+// one child and not two. Reusing one — a table whose rows hand back the same tid.TID, or the same key added under two
+// parents — is a mistake in the widget rather than something to paper over.
 func (b *AccessibilityBuilder) AddVirtualChild(key any, fill func(n *accessibility.Node)) accessibility.NodeID {
 	return b.AddVirtualChildOf(b.node.ID, key, fill)
 }
 
 // AddVirtualChildOf is AddVirtualChild with an explicit parent, which must be a node this panel has already added. Use
-// it to build more than one level of virtual children, such as the cells of a table row.
+// it to build more than one level of virtual children, such as the cells of a table row. As with AddVirtualChild, a key
+// that has already been used during this description adds nothing and yields zero.
 func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, key any,
 	fill func(n *accessibility.Node),
 ) accessibility.NodeID {
@@ -244,6 +249,14 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 		return 0
 	}
 	id := b.virtualID(key)
+	if b.snapshot.tree.Nodes[id] != nil {
+		// The key named a node that is already in this tree, so it already has a parent listing it among its children.
+		// Describing it a second time would replace what it said the first time and list its id twice among its
+		// siblings, which is what every position counted out of that list — the index within the parent, what
+		// Tree.PositionInSet answers, and the events the next Diff produces — would then be wrong about. Refusing
+		// leaves the mistake where a widget can see it rather than burying it in the tree.
+		return 0
+	}
 	node := &accessibility.Node{
 		ID:     id,
 		Parent: parent,

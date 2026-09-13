@@ -57,8 +57,8 @@ type testPeer struct {
 	mu      sync.Mutex
 }
 
-// newTestPeer creates a connection under test whose peer answers with the given function, which returns false for a call
-// it does not handle so that the test can deal with it instead. Both ends are closed when the test finishes.
+// newTestPeer creates a connection under test whose peer answers with the given function, which returns false for a
+// call it does not handle so that the test can deal with it instead. Both ends are closed when the test finishes.
 func newTestPeer(t *testing.T, answer func(p *testPeer, msg *dbus.Message) bool) *testPeer {
 	t.Helper()
 	c := check.New(t)
@@ -229,7 +229,7 @@ func (p *testPeer) call(path dbus.ObjectPath, iface, member string, sig dbus.Sig
 	}
 }
 
-// getProperty reads one property of an object the connection under test exports, unwrapping the variant it comes back in.
+// getProperty reads one property of an object the connection under test exports, unwrapping the variant it arrives in.
 func (p *testPeer) getProperty(path dbus.ObjectPath, iface, name string) any {
 	p.t.Helper()
 	args := p.replyValues(p.call(path, dbusPropertiesInterface, "Get", "ss", iface, name))
@@ -239,8 +239,8 @@ func (p *testPeer) getProperty(path dbus.ObjectPath, iface, name string) any {
 	return variant.Value
 }
 
-// setProperty writes one property of an object the connection under test exports, returning the reply so that a test can
-// look at the error a refusal produces.
+// setProperty writes one property of an object the connection under test exports, returning the reply so that a test
+// can look at the error a refusal produces.
 func (p *testPeer) setProperty(path dbus.ObjectPath, iface, name string, value dbus.Variant) *dbus.Message {
 	p.t.Helper()
 	return p.call(path, dbusPropertiesInterface, "Set", "ssv", iface, name, value)

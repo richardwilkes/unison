@@ -84,8 +84,16 @@ func parseAddressEntry(entry string) (transport, error) {
 		var resolved string
 		switch key {
 		case "path":
+			// An empty value is rejected rather than ignored, since leaving it out of the socket count would both
+			// accept "unix:path=,abstract=x" as an abstract socket and blame "unix:path=" for having no key at all.
+			if value == "" {
+				return transport{}, fmt.Errorf("dbus: address %q has an empty path", entry)
+			}
 			resolved = value
 		case "abstract":
+			if value == "" {
+				return transport{}, fmt.Errorf("dbus: address %q has an empty abstract name", entry)
+			}
 			resolved = "@" + value // The leading "@" selects the Linux abstract socket namespace
 		case "runtime":
 			if value != "yes" {

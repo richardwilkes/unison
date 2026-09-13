@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 )
 
@@ -147,4 +148,60 @@ func TestTableHeaderSortsHierarchicalFilterInPlace(t *testing.T) {
 	c.Equal(tid.TID("a"), table.Model.RootRows()[1].ID())
 	c.Equal(tid.TID("c1"), parent.Children()[0].ID(), "the model's children must be left alone")
 	c.Equal(tid.TID("c0"), parent.Children()[1].ID())
+}
+
+// axCustomColumnHeader is a column header written the way the documentation describes one: it embeds a *unison.Label
+// and points Self at itself, so it is neither the library's own header type nor a plain *unison.Label.
+type axCustomColumnHeader struct {
+	*unison.Label
+	state unison.SortState
+}
+
+func newAxCustomColumnHeader(title string) *axCustomColumnHeader {
+	h := &axCustomColumnHeader{Label: unison.NewLabel()}
+	h.Self = h
+	h.state = unison.SortState{Order: -1, Ascending: true, Sortable: true}
+	h.SetTitle(title)
+	return h
+}
+
+func (h *axCustomColumnHeader) SortState() unison.SortState         { return h.state }
+func (h *axCustomColumnHeader) SetSortState(state unison.SortState) { h.state = state }
+func (h *axCustomColumnHeader) Less() func(a, b string) bool        { return nil }
+
+// TestTableHeaderAccessibilityNamesACustomColumnHeader verifies that a column header built around a label but not of
+// the library's own type is still named by that label's text. The fallback used to insist on the concrete type, so a
+// custom header matched neither it nor the check for a plain label and was handed to a screen reader with no name.
+func TestTableHeaderAccessibilityNamesACustomColumnHeader(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var header *unison.TableHeader[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table = axNewTable(flatRows(2)...)
+			header = unison.NewTableHeader[*tableTestRow](table,
+				unison.TableColumnHeader[*tableTestRow](newAxCustomColumnHeader("Custom")),
+				unison.NewTableColumnHeader[*tableTestRow]("Stock", "", nil))
+			scroller := axScroller(table, geom.NewSize(300, 200))
+			scroller.SetColumnHeader(header)
+			wnd = newHeadlessWindow(t, "custom header", geom.NewRect(10, 10, 400, 400), axColumn(scroller))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(header)
+	c.True(node != nil)
+	c.False(node.Actions.Has(accessibility.Press),
+		"pressing the header would sort the table on whichever column sits in the middle of it")
+
+	columns := axChildNodes(tree, node)
+	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
+	c.Equal("Custom", columns[0].Name, "a header built around a label is named by that label's text")
+	c.Equal("Stock", columns[1].Name)
+	c.True(columns[0].Actions.Has(accessibility.Press), "a sortable column header can still be pressed")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

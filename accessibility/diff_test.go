@@ -149,6 +149,7 @@ func TestDiffValueEvents(t *testing.T) {
 	old := diffTree()
 	cur := diffTree()
 	n := cur.Node(3)
+	n.Role = role.ToggleButton
 	n.Name = "Cancel"
 	n.Description = "Abandon the changes"
 	n.Value = "off"
@@ -158,6 +159,7 @@ func TestDiffValueEvents(t *testing.T) {
 	n.Sort = accessibility.SortAscending
 	n.Bounds = geom.NewRect(1, 2, 3, 4)
 	c.Equal([]axEvent{
+		{Kind: accessibility.RoleChanged, Node: 3, Old: "button", New: "toggle-button"},
 		{Kind: accessibility.NameChanged, Node: 3, Old: "OK", New: "Cancel"},
 		{Kind: accessibility.DescriptionChanged, Node: 3, New: "Abandon the changes"},
 		{Kind: accessibility.ValueChanged, Node: 3, New: "off"},

@@ -57,16 +57,6 @@ type UiaRect struct {
 	Height float64
 }
 
-// UiaPoint is a point in screen coordinates.
-//
-// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcore/ns-uiautomationcore-uiapoint
-type UiaPoint struct {
-	// X is the horizontal coordinate.
-	X float64
-	// Y is the vertical coordinate.
-	Y float64
-}
-
 // UiaReturnRawElementProvider answers a WM_GETOBJECT message by handing UI Automation the fragment root for a window.
 // The result is the LRESULT the window procedure must return. Passing a nil provider with a zero wParam and lParam is
 // the documented way to tell UI Automation that a window's provider is going away, which a window does as it is
@@ -134,9 +124,9 @@ func UiaRaiseAutomationEvent(provider unsafe.Pointer, id EventID) uintptr {
 // raised on an element whose patterns include Toggle.
 //
 // The two VARIANTs are declared by value in the C signature. On both x64 and ARM64 a 24-byte structure is too large for
-// a register pair, so the ABI passes it as a pointer to a copy the caller owns — which is exactly what the Go parameters
-// are, hence the address of each is what goes across. The copies are never cleared here: a BSTR or interface reference
-// inside one still belongs to whoever built the original VARIANT, which must clear it once this returns.
+// a register pair, so the ABI passes it as a pointer to a copy the caller owns — which is exactly what the Go
+// parameters are, hence the address of each is what goes across. The copies are never cleared here: a BSTR or interface
+// reference inside one still belongs to whoever built the original VARIANT, which must clear it once this returns.
 //
 // https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcoreapi/nf-uiautomationcoreapi-uiaraiseautomationpropertychangedevent
 func UiaRaiseAutomationPropertyChangedEvent(provider unsafe.Pointer, id PropertyID, oldValue, newValue VARIANT) uintptr {
@@ -217,9 +207,9 @@ func UiaDisconnectAllProviders() uintptr {
 	return r
 }
 
-// UiaGetReservedNotSupportedValue returns the process-wide sentinel a provider puts in a VARIANT to say that it does not
-// supply a property at all, as opposed to supplying an empty value for it. Clients use the distinction to decide whether
-// to fall back to the host provider.
+// UiaGetReservedNotSupportedValue returns the process-wide sentinel a provider puts in a VARIANT to say that it does
+// not supply a property at all, as opposed to supplying an empty value for it. Clients use the distinction to decide
+// whether to fall back to the host provider.
 //
 // The sentinel is a singleton owned by UI Automation, but the reference count still matters: add a reference before
 // storing it in a VARIANT that UI Automation Core is going to clear.

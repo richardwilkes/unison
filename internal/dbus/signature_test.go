@@ -144,6 +144,7 @@ func TestSignatureOf(t *testing.T) {
 		{name: "slice of structs", value: []any{Struct{int32(1)}}, want: "a(i)"},
 		{name: "dict", value: Dict{{Key: "k", Value: "v"}}, want: stringDictSig},
 		{name: "dict of variants", value: Dict{{Key: "k", Value: Variant{Sig: "i", Value: int32(1)}}}, want: "a{sv}"},
+		{name: "multi-entry dict", value: Dict{{Key: "j", Value: "v"}, {Key: "k", Value: "w"}}, want: stringDictSig},
 		{name: "map", value: map[string]string{}, want: stringDictSig},
 		{name: "map of variants", value: map[string]Variant{}, want: propertiesSig},
 		{name: "map of slices", value: map[byte][]string{}, want: "a{yas}"},
@@ -166,6 +167,19 @@ func TestSignatureOf(t *testing.T) {
 			c.Equal(one.want, sig)
 		})
 	}
+}
+
+func TestSignatureOfDictChecksEveryEntry(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// A dictionary has one key type and one value type, so deriving them from the first entry alone turned a mixture
+	// into a signature that was silently wrong and a confusing "cannot marshal" failure much further along.
+	_, err := SignatureOf(Dict{{Key: "a", Value: "b"}, {Key: "c", Value: int32(1)}})
+	c.HasError(err)
+	c.Contains(err.Error(), "values have differing types")
+	_, err = SignatureOf(Dict{{Key: "a", Value: "b"}, {Key: int32(1), Value: "c"}})
+	c.HasError(err)
+	c.Contains(err.Error(), "keys have differing types")
 }
 
 func TestSignatureOfMultipleValues(t *testing.T) {
@@ -198,6 +212,9 @@ func TestSignatureOfRejects(t *testing.T) {
 		{name: "dict with a container key", value: Dict{{Key: Struct{byte(1)}, Value: "x"}}},
 		{name: "dict with an undecidable value", value: Dict{{Key: "a", Value: 1}}},
 		{name: "dict with an undecidable key", value: Dict{{Key: 1, Value: "a"}}},
+		{name: "dict with mixed values", value: Dict{{Key: "a", Value: "b"}, {Key: "c", Value: int32(1)}}},
+		{name: "dict with mixed keys", value: Dict{{Key: "a", Value: "b"}, {Key: int32(1), Value: "c"}}},
+		{name: "dict whose later value cannot be described", value: Dict{{Key: "a", Value: "b"}, {Key: "c", Value: 1}}},
 		{name: "slice with an undecidable element", value: []any{1}},
 		{name: "struct with an undecidable field", value: Struct{1}},
 		{name: "empty struct", value: Struct{}},

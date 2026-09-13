@@ -16,7 +16,7 @@ type EventKind uint8
 
 // Possible EventKind values.
 const (
-	FocusChanged         EventKind = iota // The keyboard focus moved to Event.Node, or away from everything when it is zero
+	FocusChanged         EventKind = iota // The keyboard focus moved to Event.Node, or off everything when it is zero
 	NameChanged                           // The node's Name changed
 	DescriptionChanged                    // The node's Description changed
 	ValueChanged                          // The node's Value changed
@@ -30,6 +30,7 @@ const (
 	NodeAdded                             // The node joined the tree
 	NodeRemoved                           // The node left the tree
 	SortChanged                           // The node's Sort direction changed
+	RoleChanged                           // The node's Role changed; Old and New hold the role keys
 	WindowActivated                       // The window became the active one
 	WindowDeactivated                     // The window stopped being the active one
 	Announcement                          // Event.New holds text to speak; never produced by Diff
@@ -66,6 +67,8 @@ func (e EventKind) String() string {
 		return "node-removed"
 	case SortChanged:
 		return "sort-changed"
+	case RoleChanged:
+		return "role-changed"
 	case WindowActivated:
 		return "window-activated"
 	case WindowDeactivated:

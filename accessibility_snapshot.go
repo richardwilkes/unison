@@ -33,14 +33,14 @@ import (
 //
 // Text controls fill in accessibility.Node.Text from their own ProvideAccessibility implementation, since only the
 // widget knows what its content and selection are. The laid-out lines within that — accessibility.TextInfo.Lines — are
-// measured only for the control that holds the focus, which is what AccessibilityBuilder.Focused is for: measuring every
-// line of every text control in a window on every snapshot would cost far more than anything an assistive technology
-// would do with the result.
+// measured only for the control that holds the focus, which is what AccessibilityBuilder.Focused is for: measuring
+// every line of every text control in a window on every snapshot would cost far more than anything an assistive
+// technology would do with the result.
 
 // axPublishThrottle bounds how often a window's tree is rebuilt. A window that redraws continuously — a blinking caret
-// is enough — would otherwise rebuild its tree on every frame, and an assistive technology gains nothing from being told
-// about changes faster than a person can perceive them. Headless sessions bypass it, since a test that asks for a tree
-// must be given the current one rather than one from up to this long ago.
+// is enough — would otherwise rebuild its tree on every frame, and an assistive technology gains nothing from being
+// told about changes faster than a person can perceive them. Headless sessions bypass it, since a test that asks for a
+// tree must be given the current one rather than one from up to this long ago.
 const axPublishThrottle = 50 * time.Millisecond
 
 // windowAccessibility is a window's accessibility state. It is nil until the window is first described, and is dropped
@@ -112,8 +112,8 @@ func (c *axCellContext) pathString() string {
 }
 
 // identify returns the id a panel is described under and where requests about it are sent: the panel's own id and the
-// panel itself, or — inside a table cell — an id the table's builder allocates for the panel's position within the cell,
-// with requests sent to the table.
+// panel itself, or — inside a table cell — an id the table's builder allocates for the panel's position within the
+// cell, with requests sent to the table.
 func (s *axSnapshot) identify(p *Panel) (accessibility.NodeID, axTarget) {
 	if s.cell == nil {
 		return axIDFor(p), axTarget{panel: p}
@@ -170,6 +170,7 @@ func (s *axSnapshot) buildRoot() {
 		Modal:   len(modalStack) != 0 && modalStack[len(modalStack)-1] == w,
 	}
 	node.Resizable = w.Resizable()
+	node.Floating = w.floating
 	if w.kind == WindowKindDialog || w.data[DialogClientDataKey] != nil {
 		node.Role = role.Dialog
 	}
@@ -187,6 +188,14 @@ func (s *axSnapshot) buildRoot() {
 	s.visit(root.contentPanel, node.ID, clip)
 	if id := s.openMenuFocus(); id != 0 {
 		s.focus = id
+		if item := s.tree.Nodes[id]; item != nil {
+			// Said here rather than by the item itself, so that exactly one node in the window reports being focused,
+			// and said along with being focusable: a client that checks whether a node can take the focus before
+			// trusting that it has it — AT-SPI's STATE_FOCUSABLE, UI Automation's IsKeyboardFocusable — would otherwise
+			// be handed a pair it cannot make sense of.
+			item.Focused = true
+			item.Focusable = true
+		}
 		s.clearDisplacedFocus(id)
 	}
 }
@@ -208,24 +217,42 @@ func (s *axSnapshot) clearDisplacedFocus(keep accessibility.NodeID) {
 	}
 }
 
-// openMenuFocus returns the node id of the item an open in-window menu is pointing at, or zero if no menu is open or
-// none of the open menus is pointing at anything. While a menu is open the keyboard focus stays wherever it was, since
-// the menu handles keys ahead of it, but what a person is choosing from is the item the menu has highlighted, so that
-// is what an assistive technology must be told the focus is. The stack is searched from the newest menu down, since a
-// sub-menu that has just opened has nothing highlighted yet while the item that opened it still does.
+// openMenuFocus returns the node id of the item the in-window menus are pointing at, or zero if no menu is open or
+// nothing is being pointed at. While a menu is open the keyboard focus stays wherever it was, since the menu handles
+// keys ahead of it, but what a person is choosing from is the item that is highlighted, so that is what an assistive
+// technology must be told the focus is. The open menus are searched from the newest down, since a sub-menu that has
+// just opened has nothing highlighted yet while the item that opened it still does, and the menu bar is searched last,
+// which is where the highlight is in the moment between a title being clicked and something in the menu it opened being
+// pointed at.
+//
+// Nothing counts while no menu is open. An item is highlighted by the pointer merely passing over it, and on the menu
+// bar that happens whenever the pointer crosses a title: reporting it as the focus would name an item the person has
+// not chosen anything from, alongside the control that actually holds the keyboard focus, on every such pass.
 func (s *axSnapshot) openMenuFocus() accessibility.NodeID {
-	panels := s.window.root.openMenuPanels
-	for i := len(panels) - 1; i >= 0; i-- {
-		if panels[i].menu == nil {
+	root := s.window.root
+	if len(root.openMenuPanels) == 0 {
+		return 0
+	}
+	for i := len(root.openMenuPanels) - 1; i >= 0; i-- {
+		if id := s.highlightedMenuItem(root.openMenuPanels[i]); id != 0 {
+			return id
+		}
+	}
+	return s.highlightedMenuItem(root.menuBarPanel)
+}
+
+// highlightedMenuItem returns the node id of the item a menu panel has highlighted, or zero when it has none, holds no
+// menu, or the item it has highlighted is not in the tree.
+func (s *axSnapshot) highlightedMenuItem(panel *menuPanel) accessibility.NodeID {
+	if panel == nil || panel.menu == nil {
+		return 0
+	}
+	for _, item := range panel.menu.items {
+		if !item.over || item.panel == nil {
 			continue
 		}
-		for _, item := range panels[i].menu.items {
-			if !item.over || item.panel == nil {
-				continue
-			}
-			if id := item.panel.Accessibility.id; id != 0 && s.tree.Nodes[id] != nil {
-				return id
-			}
+		if id := item.panel.Accessibility.id; id != 0 && s.tree.Nodes[id] != nil {
+			return id
 		}
 	}
 	return 0
@@ -297,13 +324,18 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 			node.Description = tip
 		}
 	}
-	if node.Role == role.Group && node.Name == "" && node.Description == "" {
-		// A grouping panel with nothing to say about itself is scaffolding rather than content. It stays in the tree so
-		// that hit testing and coordinate clipping still work, but an assistive technology is told to look past it.
-		node.Ignored = true
-	}
+	// Whether the node is scaffolding is decided here and then again once the callback has run, since a callback that
+	// gives an otherwise anonymous group the name it was missing — which is one of the things callbacks are for — would
+	// otherwise leave it marked for every assistive technology to skip. The callback has the last word either way: a
+	// value it set itself is not reconsidered, and neither is one the widget asked for.
+	widgetIgnored := node.Ignored
+	node.Ignored = widgetIgnored || axIsScaffolding(node)
 	if p.Accessibility.Callback != nil {
+		ignored := node.Ignored
 		SafeCall(func() { p.Accessibility.Callback(node) })
+		if node.Ignored == ignored {
+			node.Ignored = widgetIgnored || axIsScaffolding(node)
+		}
 	}
 	if node.Disabled {
 		// Every request that would act on a disabled node is refused, so advertising one would offer an assistive
@@ -337,6 +369,13 @@ func (s *axSnapshot) visitChildren(p *Panel, parent accessibility.NodeID, clip g
 	}
 }
 
+// axIsScaffolding reports whether a node is a grouping panel with nothing to say about itself, which makes it part of
+// how the window is put together rather than part of what it holds. Such a node stays in the tree so that hit testing
+// and coordinate clipping still work, but an assistive technology is told to look past it.
+func axIsScaffolding(node *accessibility.Node) bool {
+	return node.Role == role.Group && node.Name == "" && node.Description == ""
+}
+
 // resolveName fills in the node's name and label associations, for a node whose widget did not name it outright. The
 // order is: an explicit Accessibility.LabeledBy panel, then the sibling-label convention, then, for static text, the
 // text of the panel and its descendants.
@@ -345,7 +384,9 @@ func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 		if labeler := p.Accessibility.LabeledBy.AsPanel(); labeler != nil {
 			node.LabeledBy = append(node.LabeledBy, axIDFor(labeler))
 			if node.Name == "" {
-				node.Name = axLabelText(labeler)
+				// Trimmed exactly as the sibling-label convention below trims it, so that the same "Name:" label is
+				// spoken the same way whether the association was stated outright or merely inferred.
+				node.Name = axTrimLabelText(axLabelText(labeler))
 			}
 		}
 	}
@@ -360,10 +401,10 @@ func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 	}
 }
 
-// sweepVirtualIDs discards the virtual-child ids a panel is no longer using, once it is holding appreciably more of them
-// than it needs. The threshold leaves room for a control whose set of children shifts a little from snapshot to snapshot
-// — a table scrolling by a row — to keep reusing its ids, while a table whose rows are replaced wholesale, over and over,
-// cannot accumulate them without bound.
+// sweepVirtualIDs discards the virtual-child ids a panel is no longer using, once it is holding appreciably more of
+// them than it needs. The threshold leaves room for a control whose set of children shifts a little from snapshot to
+// snapshot — a table scrolling by a row — to keep reusing its ids, while a table whose rows are replaced wholesale,
+// over and over, cannot accumulate them without bound.
 func (s *axSnapshot) sweepVirtualIDs(p *Panel, used int) {
 	entries := p.Accessibility.virtual
 	if len(entries) <= 2*used+16 {
@@ -451,8 +492,8 @@ func axTrimLabelText(text string) string {
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text), ":"))
 }
 
-// axTooltipText returns the text of a panel's tooltip, which is what a node's description falls back to. A tooltip built
-// by NewTooltipWithText names itself; anything else is read from the labels it is built out of.
+// axTooltipText returns the text of a panel's tooltip, which is what a node's description falls back to. A tooltip
+// built by NewTooltipWithText names itself; anything else is read from the labels it is built out of.
 func axTooltipText(p *Panel) string {
 	tip := p.Tooltip
 	if tip == nil {
@@ -516,7 +557,12 @@ func (w *Window) publishAccessibilityNow() {
 
 // accessibilityGeometry returns where the window's content area sits on the screen, in physical pixels, along with the
 // backing scale that node bounds — which are window-local and in logical units — must be multiplied by to reach that
-// space. The platforms whose accessibility APIs work in physical screen pixels convert with these two values.
+// space.
+//
+// The Linux adapter is the one that converts with these two values. macOS needs none of it, since its adapter converts
+// each node's bounds through the content view and the window every time it is asked, and Windows asks the platform
+// where the client area is instead: a window rect there already holds its origin in the raw global pixel space, so
+// scaling that origin would be wrong. See w32AccessibilityGeometry.
 func (w *Window) accessibilityGeometry() (origin, scale geom.Point) {
 	scale = w.BackingScale()
 	return w.ContentRect().Point.MulPt(scale), scale

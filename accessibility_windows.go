@@ -56,6 +56,11 @@ func (w *Window) w32AccessibilityAdapter() *w32.UIAWindow {
 		w.ax = &windowAccessibility{}
 	}
 	w.wnd.uiaActivating = true
+	// Laid out first, since a message that arrives while a layout invalidation is still pending would otherwise be
+	// answered from the frames the panels had before it — the very first bounds this client is given, and the ones it
+	// draws its highlight from. Window.performAccessibilityAction lays the window out ahead of its publish for the same
+	// reason.
+	w.ValidateLayout()
 	// Synchronously and without regard to the publish throttle: whatever asked has nothing else to be answered from.
 	// This runs on the UI thread — WM_GETOBJECT is delivered to the thread that owns the window, even when UI Automation
 	// sent it from another one — so walking the live panel hierarchy here is safe, whether the message arrived from the
@@ -105,12 +110,22 @@ func (w *Window) nativeAccessibilityShutdown() {
 	}
 }
 
-// nativeAccessibilityAnnounce asks the platform's assistive technology to speak text.
-// nativeAccessibilityEnabledChanged has nothing to do on this platform: support starts on the next WM_GETOBJECT asking
-// for the UI Automation root, which activation refuses or allows as it stands at the time, and stopping has already
-// shut every adapter down and withdrawn its providers.
-func nativeAccessibilityEnabledChanged(_ bool) {}
+// nativeAccessibilityEnabledChanged turns support back on for an application the environment forced it on for, and
+// otherwise has nothing to do on this platform: support starts again on the next WM_GETOBJECT asking for the UI
+// Automation root, which activation refuses or allows as it stands at the time, and stopping has already shut every
+// adapter down and withdrawn its providers.
+//
+// An application that AccessibilityEnvKey forced support on for has no such message to wait for, since UI Automation
+// sends one only when a client of its own is there, so without this turning support off and back on would leave it
+// describing nothing at all. Linux restores a forced-on application the same way, through linuxA11yStatusInit, and the
+// promise SetAccessibilityEnabled makes is that the three platforms end up where they started.
+func nativeAccessibilityEnabledChanged(enabled bool) {
+	if enabled && accessibilityEnv > 0 {
+		activateAccessibility()
+	}
+}
 
+// nativeAccessibilityAnnounce asks the platform's assistive technology to speak text.
 func nativeAccessibilityAnnounce(text string) {
 	if w := w32AnnouncementWindow(); w != nil {
 		w.wnd.uia.Announce(text)
@@ -151,10 +166,9 @@ func (w *Window) w32AccessibilityAction(request accessibility.ActionRequest) {
 //
 // This is the platform's own answer rather than Window.accessibilityGeometry, which multiplies the content rect's
 // origin by the scale: window and display rects on this platform already keep their origin in the raw global pixel
-// space (see
-// w32ApplyFrameInsets), so scaling it again would place a window on a 2x display at twice its actual distance from the
-// top-left of the virtual screen. ClientToScreen gives the client area's origin in exactly the space UI Automation
-// works in.
+// space (see w32ApplyFrameInsets), so scaling it again would place a window on a 2x display at twice its actual
+// distance from the top-left of the virtual screen. ClientToScreen gives the client area's origin in exactly the space
+// UI Automation works in.
 func (w *Window) w32AccessibilityGeometry() w32.UIAGeometry {
 	var origin w32.POINT
 	w32.ClientToScreen(w.wnd.wnd, &origin)

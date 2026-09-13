@@ -11,6 +11,7 @@ package dbus
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"io"
 	"strings"
@@ -203,6 +204,16 @@ func TestDecodeRejectsMalformedHeaderFields(t *testing.T) {
 			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
 			Struct{byte(fieldSender), Variant{Sig: "s", Value: "no-dots"}},
 		}},
+		{name: "field code the specification marks invalid", fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+			Struct{byte(0), Variant{Sig: "s", Value: "reserved"}},
+		}},
+		{name: "unix file descriptor count with the wrong type", fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+			Struct{byte(fieldUnixFDs), Variant{Sig: "s", Value: "1"}},
+		}},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			t.Parallel()
@@ -226,6 +237,24 @@ func TestDecodeIgnoresUnknownHeaderFields(t *testing.T) {
 	c.NoError(err)
 	c.Equal(ObjectPath("/a"), m.Path)
 	c.Equal("M", m.Member)
+}
+
+func TestDecodeRejectsNonNULPaddingBeforeTheBody(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	data := encodeWithFields(t, []any{
+		Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+		Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+	})
+	fieldsEnd := fixedHeaderSize + int(binary.LittleEndian.Uint32(data[12:fixedHeaderSize]))
+	c.True(fieldsEnd < len(data), "the header fields must not already end on an 8 byte boundary")
+	_, err := Decode(bytes.NewReader(data))
+	c.NoError(err)
+	// The run of padding that puts the body on an 8 byte boundary is the one run the decoder never has to walk over, so
+	// it is checked on its own; libdbus rejects the same thing as DBUS_INVALID_ALIGNMENT_PADDING_NOT_NUL.
+	data[fieldsEnd] = 0xFF
+	_, err = Decode(bytes.NewReader(data))
+	c.True(errors.Is(err, errPaddingNotNUL))
 }
 
 // encodeWithFields builds a method call whose header field array holds exactly the given fields, bypassing the checks
@@ -407,6 +436,25 @@ func TestNewErrorAndAsError(t *testing.T) {
 	c.Equal(ServiceUnknown+": nope", Errorf(ServiceUnknown, "%s", "nope").Error())
 }
 
+func TestNewErrorFallsBackToFailed(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	call := NewMethodCall(busName, "/a", busName, "M")
+	call.Serial = 31
+	call.Sender = testSender
+	// An error name that will not encode would be dropped on its way out, leaving the caller with no reply at all, so
+	// anything that would not survive validation becomes the generic name instead.
+	for _, name := range []string{"", "nodots", "org.example.", "1.bad", "has a space", strings.Repeat("a.b", 200)} {
+		m := NewError(call, name, "explanation")
+		c.Equal(Failed, m.ErrorName, name)
+		m.Serial = 32
+		_, err := m.Encode()
+		c.NoError(err, name)
+		c.Equal("explanation", m.AsError().Message, name)
+	}
+	c.Equal(NotSupported, NewError(call, NotSupported, "").ErrorName)
+}
+
 func TestNewReply(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -436,6 +484,22 @@ func TestMessageStringIncludesEveryField(t *testing.T) {
 		Signature:   "s",
 	}
 	c.Equal("error #2 reply-to #1 from :1.42 to :1.7 /a org.a11y.atspi.Event.Object.M "+Failed+" (s)", m.String())
+}
+
+func TestMessageStringWithoutAnInterface(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// A member is only ever separated from an interface by a dot, so a message that has no interface must not be made
+	// to look as though its path or its serial were one.
+	m := NewMethodCall(busName, "/", "", "NoInterface")
+	m.Serial = 3
+	c.Equal("method call #3 to org.freedesktop.DBus / NoInterface", m.String())
+	c.Equal("method return #4 reply-to #3 M", (&Message{
+		Type:        TypeMethodReturn,
+		Serial:      4,
+		ReplySerial: 3,
+		Member:      "M",
+	}).String())
 }
 
 func TestTypeString(t *testing.T) {

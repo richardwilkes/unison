@@ -19,7 +19,9 @@ import (
 //   - They run on the UI thread, inside Publish, while a client's questions arrive on whichever thread UI Automation
 //     likes. That is why Publish installs the new snapshot before anything is raised: the first thing a client does
 //     with an event is ask about the element it names, and it must not be answered from the state the event describes
-//     leaving behind.
+//     leaving behind. The exception is raiseEvent, which a pattern method that has to report its own outcome calls on
+//     whichever thread it was itself called on; UI Automation's raise functions are free-threaded, as the providers
+//     here are.
 //   - They cost something even when nobody is listening, so every one of them sits behind UiaClientsAreListening. A
 //     window whose provider was created by something other than a screen reader — an inspection tool, the touch
 //     keyboard — raises nothing at all.
@@ -110,6 +112,16 @@ func (w *UIAWindow) Announce(text string) {
 		defer root.release()
 		root.raiseNotification(text)
 	}
+}
+
+// raiseEvent tells listening clients that something happened to this provider's element. Everything else in this file
+// is reached from a publish, where UIADecideRaises has already decided what to say; this is for the one pattern method
+// that has to report its own outcome, IInvokeProvider::Invoke, whose event no change to the snapshot need follow.
+func (p *UIAProvider) raiseEvent(eventID EventID) {
+	if !uiaClientsAreListening() {
+		return
+	}
+	uiaRaiseAutomationEvent(p.Unknown(), eventID)
 }
 
 // uiaStructureRuntimeID returns the runtime identifier a structure change carries: the added or removed child's, since

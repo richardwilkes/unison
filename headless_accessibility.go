@@ -16,12 +16,12 @@ import (
 
 // This file is the headless stand-in for a platform assistive-technology adapter, together with the driver methods a
 // test drives it through. The adapter does what the real ones do — it keeps the most recently published tree and
-// accumulates the events it was told about — and nothing else, so what a test sees is exactly what a screen reader would
-// have been handed.
+// accumulates the events it was told about — and nothing else, so what a test sees is exactly what a screen reader
+// would have been handed.
 //
 // A session starts with accessibility support inactive, exactly as an application whose platform has no assistive
-// technology running does, so a test that never asks for it pays nothing and can assert as much. EnableAccessibility and
-// AccessibilityTree are the two ways of asking.
+// technology running does, so a test that never asks for it pays nothing and can assert as much. EnableAccessibility
+// and AccessibilityTree are the two ways of asking.
 
 // accessibilityPublish adopts the tree as what this window currently looks like to an assistive technology and records
 // the events describing how it got there.
@@ -48,9 +48,9 @@ func (s *headlessState) accessibilityAnnounce(text string) {
 	s.announcements = append(s.announcements, text)
 }
 
-// EnableAccessibility turns on accessibility support for the session, as the arrival of a screen reader would, and waits
-// for every window to be described. Until this or AccessibilityTree has been called, no snapshot is ever built, which is
-// what a test asserting that an inactive session costs nothing relies on.
+// EnableAccessibility turns on accessibility support for the session, as the arrival of a screen reader would, and
+// waits for every window to be described. Until this or AccessibilityTree has been called, no snapshot is ever built,
+// which is what a test asserting that an inactive session costs nothing relies on.
 //
 // It does nothing if the NoAccessibility startup option, or AccessibilityEnvKey set to a false value, has refused
 // accessibility support for the application under test.
@@ -76,8 +76,8 @@ func (s *HeadlessScreen) AccessibilityTree(w *Window) *accessibility.Tree {
 	return tree
 }
 
-// AccessibilityEvents returns the events published for the window since the last time it was asked, and forgets them, so
-// a test asserts on what happened between two points rather than on everything that ever has. Enable accessibility
+// AccessibilityEvents returns the events published for the window since the last time it was asked, and forgets them,
+// so a test asserts on what happened between two points rather than on everything that ever has. Enable accessibility
 // support first, with EnableAccessibility or AccessibilityTree; a window nothing has ever been published for has no
 // events.
 func (s *HeadlessScreen) AccessibilityEvents(w *Window) []accessibility.Event {

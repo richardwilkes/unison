@@ -33,8 +33,8 @@ var axDisabledActions = accessibility.ActionSet(0).With(accessibility.ScrollInto
 //
 // The node is resolved through the registry the most recently published tree was built with, so a request naming a node
 // that has since gone away is refused rather than acted on. The panel that described the node is asked first, through
-// its Accessibility.ActionCallback and then through AccessibilityActor, and only if neither handled the request does the
-// default behavior for the action apply. Returns true if the request was carried out.
+// its Accessibility.ActionCallback and then through AccessibilityActor, and only if neither handled the request does
+// the default behavior for the action apply. Returns true if the request was carried out.
 //
 // A request that was carried out is followed at once by a fresh description of the window, laid out first so that
 // whatever the request scrolled or moved is where it now is. An assistive technology reads what it asked for straight
@@ -51,8 +51,8 @@ func (w *Window) performAccessibilityAction(req accessibility.ActionRequest) boo
 	return true
 }
 
-// dispatchAccessibilityAction finds the panel a request is aimed at and asks it, then the defaults, to carry the request
-// out. See performAccessibilityAction.
+// dispatchAccessibilityAction finds the panel a request is aimed at and asks it, then the defaults, to carry the
+// request out. See performAccessibilityAction.
 func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bool {
 	if !w.IsValid() || w.ax == nil {
 		return false

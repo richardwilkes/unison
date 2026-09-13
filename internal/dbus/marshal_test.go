@@ -126,6 +126,26 @@ func TestMarshalAcceptsMapsSortedByKey(t *testing.T) {
 	c.Equal(fromIntDict, fromIntMap)
 }
 
+func TestMarshalSortsMapKeysHeldInAnInterface(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// Every key of a map whose key type is an interface has the same reflect kind, so comparing them without unwrapping
+	// what they hold left the map unsorted and made the same map encode differently from one call to the next.
+	want, err := Marshal(stringDictSig, Dict{{Key: "a", Value: "1"}, {Key: "b", Value: "2"}, {Key: "c", Value: "3"}})
+	c.NoError(err)
+	sorted := map[any]string{"c": "3", "a": "1", "b": "2"}
+	for i := range 50 {
+		var data []byte
+		data, err = Marshal(stringDictSig, sorted)
+		c.NoError(err, i)
+		c.Equal(want, data, i)
+	}
+	// Keys of different types cannot be ordered against one another at all, so the comparison has to keep its hands off
+	// them rather than asking a string for its integer value; the mixture is then refused by the encoder.
+	_, err = Marshal(stringDictSig, map[any]string{"a": "1", int32(2): "2"})
+	c.HasError(err)
+}
+
 func TestMarshalAcceptsLooseTypes(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)

@@ -64,6 +64,7 @@ type PopupMenu[T comparable] struct {
 	ChoiceMadeCallback       func(popup *PopupMenu[T], index int, item T)
 	SelectionChangedCallback func(popup *PopupMenu[T])
 	ItemRendererCallback     func(item T) string
+	openMenu                 Menu
 	items                    []*popupMenuItem[T]
 	selection                map[int]bool
 	PopupMenuTheme
@@ -225,6 +226,9 @@ func (p *PopupMenu[T]) Click() {
 		if indexes := p.SelectedIndexes(); len(indexes) > 0 {
 			index = indexes[0]
 		}
+		// Remembered so that the popup can say whether its choices are showing. The menu is thrown away and built
+		// again on every click, so the one held here is the only one that could still be up.
+		p.openMenu = m
 		m.Popup(p.RectToRoot(p.ContentRect(true)), index)
 	}
 }
@@ -452,7 +456,8 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repe
 
 // ProvideAccessibility describes the popup menu to assistive technologies. The choices themselves are not part of the
 // description: they exist only while the menu is open, as a native menu on the platforms that have one and as panels
-// within the window elsewhere, and either way they are described then rather than now.
+// within the window elsewhere, and either way they are described then rather than now. Whether they are showing is
+// still reported, since that is the difference between a popup a person has opened and one they have not.
 func (p *PopupMenu[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	if node.Role == role.Auto {
@@ -460,18 +465,47 @@ func (p *PopupMenu[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	}
 	node.Value = p.Text()
 	node.Expandable = true
-	node.Actions = node.Actions.With(accessibility.Press, accessibility.Expand)
+	node.Expanded = axMenuIsOpen(p.openMenu)
+	node.Actions = node.Actions.With(accessibility.Press, accessibility.Expand, accessibility.Collapse)
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Pressing the popup menu, or asking it
-// to expand, shows its choices.
+// to expand, shows its choices; asking it to collapse takes them away again. Both are idempotent, since an assistive
+// technology that has been told the popup is already the way it is asking for expects nothing to change.
 func (p *PopupMenu[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Press, accessibility.Expand:
-		p.Click()
+		if !axMenuIsOpen(p.openMenu) {
+			p.Click()
+		}
+		return true
+	case accessibility.Collapse:
+		axCollapseMenu(p.AsPanel(), p.openMenu)
 		return true
 	default:
 		return false
+	}
+}
+
+// axMenuIsOpen reports whether the menu a widget popped up is still showing. Only the in-window menus can be asked: a
+// native platform menu runs an event loop of its own while it is up, so nothing here runs to ask it, and it is no part
+// of the window's panel tree either. Such a menu is therefore reported as closed, which is what the rest of the
+// description says of it too, since the platform describes its own menus.
+func axMenuIsOpen(m Menu) bool {
+	inWindow, ok := m.(*menu)
+	return ok && inWindow.popupPanel != nil
+}
+
+// axCollapseMenu tears down the menu a widget popped up, which is what an assistive technology asks for when it
+// collapses that widget. The whole stack goes with it: a widget's menu is always the bottom of the stack, since opening
+// one closes whatever was open before it, and anything above it is a sub-menu of its own. Nothing happens when there
+// was nothing showing to take down.
+func axCollapseMenu(p *Panel, m Menu) {
+	if !axMenuIsOpen(m) {
+		return
+	}
+	if wnd := p.Window(); wnd != nil {
+		wnd.root.closeMenuStackStoppingAt(nil)
 	}
 }
 

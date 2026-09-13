@@ -87,8 +87,8 @@ func (a *Adapter) rootCacheItem(windows []*windowState) dbus.Struct {
 	}
 }
 
-// cacheItem returns the cache item for a node: everything an assistive technology would otherwise have to make ten calls
-// to find out. index is where the node sits among its parent's children, which the caller already knows.
+// cacheItem returns the cache item for a node: everything an assistive technology would otherwise have to make ten
+// calls to find out. index is where the node sits among its parent's children, which the caller already knows.
 func (o *nodeObject) cacheItem(index int) dbus.Struct {
 	return dbus.Struct{
 		o.reference(),

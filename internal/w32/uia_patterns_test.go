@@ -246,6 +246,57 @@ func tableTree() *accessibility.Tree {
 	)
 }
 
+// buriedHeaderTree builds tableTree with its header moved inside an ignored layout panel, which is where a header can
+// genuinely end up, and optionally marks the header itself ignored so that it has no provider to hand a client.
+func buriedHeaderTree(ignoreHeader bool) *accessibility.Tree {
+	tree := tableTree()
+	tree.Nodes[2].Children = []accessibility.NodeID{13, 6}
+	tree.Nodes[13] = &accessibility.Node{
+		ID: 13, Parent: 2, Role: role.Group, Ignored: true, Children: []accessibility.NodeID{3},
+	}
+	tree.Nodes[3].Parent = 13
+	tree.Nodes[3].Ignored = ignoreHeader
+	return tree
+}
+
+// twoTableTree builds tableTree with a second table alongside the first under the same scroll area, which is the
+// layout proximity cannot resolve: either table could be the one the single header describes.
+func twoTableTree() *accessibility.Tree {
+	tree := tableTree()
+	tree.Nodes[2].Children = []accessibility.NodeID{3, 6, 13}
+	tree.Nodes[13] = &accessibility.Node{ID: 13, Parent: 2, Role: role.Table, Name: "Other", RowCount: 1}
+	return tree
+}
+
+// nestedTableTree builds tableTree with a second table inside cell 12 of the first, holding one row of one cell:
+//
+//	…
+//	└─ 10 row    row 2
+//	   ├─ 11 cell  row 2 column 0
+//	   └─ 12 cell  row 2 column 1
+//	      └─ 13 table                  1 row, 1 column
+//	         └─ 14 row   row 0
+//	            └─ 15 cell  row 0 column 0
+//
+// The inner table has no header of its own, which is what the outer table's header must not be mistaken for.
+func nestedTableTree() *accessibility.Tree {
+	tree := tableTree()
+	tree.Nodes[12].Children = []accessibility.NodeID{13}
+	tree.Nodes[13] = &accessibility.Node{
+		ID: 13, Parent: 12, Role: role.Table, Name: "Inner", RowCount: 1, ColumnCount: 1,
+		Bounds: geom.NewRect(100, 40, 100, 20), Children: []accessibility.NodeID{14},
+	}
+	tree.Nodes[14] = &accessibility.Node{
+		ID: 14, Parent: 13, Role: role.Row, Name: "Only", RowIndex: 0,
+		Bounds: geom.NewRect(100, 40, 100, 20), Children: []accessibility.NodeID{15},
+	}
+	tree.Nodes[15] = &accessibility.Node{
+		ID: 15, Parent: 14, Role: role.Cell, Name: "Deep", RowIndex: 0, ColumnIndex: 0,
+		Bounds: geom.NewRect(100, 40, 100, 20),
+	}
+	return tree
+}
+
 // TestUIASelectionItemRole verifies which role a selection container selects among, which is what decides where
 // GetSelection looks.
 func TestUIASelectionItemRole(t *testing.T) {
@@ -408,27 +459,21 @@ func TestUIATableColumnHeaders(t *testing.T) {
 	controlling.Nodes[6].Controls = []accessibility.NodeID{3}
 	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(controlling, 6))
 
-	// A header buried in a layout panel is still the header; an ignored header is not, since it has no provider.
-	buried := tableTree()
-	buried.Nodes[2].Children = []accessibility.NodeID{13, 6}
-	buried.Nodes[13] = &accessibility.Node{
-		ID: 13, Parent: 2, Role: role.Group, Ignored: true, Children: []accessibility.NodeID{3},
-	}
-	buried.Nodes[3].Parent = 13
-	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(buried, 6))
-	buried.Nodes[3].Ignored = true
-	c.Nil(UIATableColumnHeaders(buried, 6))
+	// A header buried in a layout panel is still the header; an ignored header is not, since it has no provider. Each
+	// case gets a tree of its own rather than being made by editing the previous one: a published snapshot is never
+	// modified, and UIATableColumnHeaders remembers its answer for the tree it was asked about.
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(buriedHeaderTree(false), 6))
+	c.Nil(UIATableColumnHeaders(buriedHeaderTree(true), 6))
 
 	// Two tables sharing an ancestor cannot be told apart by proximity, so neither claims a header. Naming one
 	// explicitly settles it.
-	two := tableTree()
-	two.Nodes[2].Children = []accessibility.NodeID{3, 6, 13}
-	two.Nodes[13] = &accessibility.Node{ID: 13, Parent: 2, Role: role.Table, Name: "Other", RowCount: 1}
+	two := twoTableTree()
 	c.Nil(UIATableColumnHeaders(two, 6))
 	c.Nil(UIATableColumnHeaders(two, 13))
-	two.Nodes[6].Controls = []accessibility.NodeID{3}
-	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(two, 6))
-	c.Nil(UIATableColumnHeaders(two, 13))
+	named := twoTableTree()
+	named.Nodes[6].Controls = []accessibility.NodeID{3}
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(named, 6))
+	c.Nil(UIATableColumnHeaders(named, 13))
 
 	// A table with no header anywhere in the window reports none rather than reaching for something unrelated.
 	alone := tableTree()
@@ -444,6 +489,36 @@ func TestUIATableColumnHeaders(t *testing.T) {
 	sibling.Nodes[3].Parent = 1
 	sibling.Nodes[2].Children = []accessibility.NodeID{6}
 	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(sibling, 6))
+}
+
+// TestUIATableColumnHeadersNested verifies that a table nested in a cell of another table claims no header at all
+// rather than the outer table's. Widening the proximity search past the table that contains it would have a screen
+// reader announce the outer table's column names over every cell of the inner one.
+func TestUIATableColumnHeadersNested(t *testing.T) {
+	c := check.New(t)
+	nested := nestedTableTree()
+	c.Nil(UIATableColumnHeaders(nested, 13), "the inner table's search stops at the table that contains it")
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(nested, 6), "the outer table is unaffected")
+	c.Equal(accessibility.NodeID(0), UIAColumnHeaderItem(nested, 15), "so the inner table's cell has no header")
+	c.Equal(accessibility.NodeID(5), UIAColumnHeaderItem(nested, 12), "while the cell holding it still has one")
+}
+
+// TestUIATableColumnHeadersMemo verifies that the answer remembered for one snapshot is never handed to another. The
+// cost of finding a header is what makes remembering it worth doing — a client asks once per cell — but a window that
+// publishes a new snapshot must be described by the new one from that moment on. See uiaHeaderMemo.
+func TestUIATableColumnHeadersMemo(t *testing.T) {
+	c := check.New(t)
+	first := tableTree()
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(first, 6))
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(first, 6), "asking twice answers the same")
+
+	headerless := tableTree()
+	delete(headerless.Nodes, 3)
+	delete(headerless.Nodes, 4)
+	delete(headerless.Nodes, 5)
+	headerless.Nodes[2].Children = []accessibility.NodeID{6}
+	c.Nil(UIATableColumnHeaders(headerless, 6), "the next snapshot has no header, and is not answered from the last")
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(first, 6), "and going back answers the first again")
 }
 
 // TestUIAColumnHeaderItem verifies which header a cell says describes its column, including the fallback for a snapshot
@@ -500,7 +575,8 @@ func TestUIAValueReadOnly(t *testing.T) {
 	c.True(UIAIsValueReadOnly(nil))
 
 	tree.Nodes[8].Disabled = true
-	c.True(UIAIsValueReadOnly(tree.Node(8)))
+	c.False(UIAIsValueReadOnly(tree.Node(8)),
+		"a disabled field is not read-only: being unusable now says nothing about whether the value could be set")
 	tree.Nodes[8].Disabled = false
 	tree.Nodes[8].Actions = tree.Nodes[8].Actions.Without(accessibility.SetValue)
 	c.True(UIAIsValueReadOnly(tree.Node(8)), "a node that offers no SetValue action cannot take one")
@@ -516,7 +592,8 @@ func TestUIARangeValueReadOnly(t *testing.T) {
 	c := check.New(t)
 	tree := patternTree()
 	c.False(UIAIsRangeValueReadOnly(tree.Node(11)), "a slider takes a new value")
-	c.True(UIAIsRangeValueReadOnly(tree.Node(12)), "a disabled one does not")
+	c.False(UIAIsRangeValueReadOnly(tree.Node(12)),
+		"so does a disabled one, in principle: SetValue refuses it as not enabled rather than as read-only")
 	c.True(UIAIsRangeValueReadOnly(tree.Node(13)), "nor does a progress bar, ever")
 	c.True(UIAIsRangeValueReadOnly(nil))
 

@@ -106,6 +106,11 @@ func macAccessibilityActivate(macWnd cocoa.Window) bool {
 	if w.ax == nil {
 		w.ax = &windowAccessibility{}
 	}
+	// Laid out first, since a query that arrives while a layout invalidation is still pending would otherwise be
+	// answered from the frames the panels had before it — the very first bounds VoiceOver is given, and the ones it
+	// draws its cursor from. Window.performAccessibilityAction lays the window out ahead of its publish for the same
+	// reason.
+	w.ValidateLayout()
 	w.publishAccessibilityNow()
 	return w.wnd.ax != nil
 }
@@ -136,10 +141,19 @@ func (w *Window) nativeAccessibilityShutdown() {
 	}
 }
 
-// nativeAccessibilityEnabledChanged has nothing to do on this platform: support starts on the next query the content
-// view receives, which activation refuses or allows as it stands at the time, and stopping has already shut every
-// adapter down.
-func nativeAccessibilityEnabledChanged(_ bool) {}
+// nativeAccessibilityEnabledChanged turns support back on for an application the environment forced it on for, and
+// otherwise has nothing to do on this platform: support starts again on the next query a content view receives, which
+// activation refuses or allows as it stands at the time, and stopping has already shut every adapter down.
+//
+// An application that AccessibilityEnvKey forced support on for has no such query to wait for, since a content view is
+// asked only when an assistive technology is actually there, so without this turning support off and back on would
+// leave it describing nothing at all. Linux restores a forced-on application the same way, through linuxA11yStatusInit,
+// and the promise SetAccessibilityEnabled makes is that the three platforms end up where they started.
+func nativeAccessibilityEnabledChanged(enabled bool) {
+	if enabled && accessibilityEnv > 0 {
+		activateAccessibility()
+	}
+}
 
 // nativeAccessibilityAnnounce asks the platform's assistive technology to speak text.
 func nativeAccessibilityAnnounce(text string) {

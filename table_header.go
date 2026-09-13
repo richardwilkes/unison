@@ -504,6 +504,15 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 	}
 }
 
+// axTitledLabel is satisfied by *Label and by anything that embeds one, such as a table column header. Nothing else in
+// the library pairs a String() with a SetTitle() that takes nothing but the text, which is what makes it a workable
+// stand-in for "was built out of a label" — a plain type assertion to fmt.Stringer would match every panel there is,
+// since Panel answers String() with the name of its type.
+type axTitledLabel interface {
+	String() string
+	SetTitle(text string)
+}
+
 // ProvideAccessibility describes the header to assistive technologies. The column headers are described directly, as
 // virtual children keyed by their column index: they are panels, but the header does not hold them as children — it
 // installs one just long enough to draw it or to forward an event to it and then detaches it again — so nothing would
@@ -514,6 +523,11 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 		node.Role = role.TableHeader
 	}
 	node.ColumnCount = len(h.table.Columns)
+	// Pressing the header is not activating it; the default behavior would synthesize a click at the center of the
+	// header, which DefaultMouseDown and DefaultMouseUp would forward to whichever column header happens to sit there,
+	// re-sorting the table on an arbitrary column — or, if that point falls within ColumnResizeSlop of a divider,
+	// starting a column resize.
+	node.Actions = node.Actions.Without(accessibility.Press)
 	for col, header := range h.ColumnHeaders {
 		if col >= len(h.table.Columns) {
 			// A header may have fewer column headers than the table has columns, exactly as drawing tolerates.
@@ -522,10 +536,13 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 		panel := header.AsPanel()
 		name := panel.Accessibility.Name
 		if name == "" {
-			// The library's own column header is a label, and asking a label for its text is not the same as asking a
-			// panel for it: every panel answers String() with the name of its type. Anything else is read from the
+			// A column header built around a label — the library's own is, and so is a custom one written the way the
+			// documentation describes, by embedding a *Label and pointing Self at itself — is named by that label's
+			// text. Asking a label for its text is not the same as asking a panel for it, since every panel answers
+			// String() with the name of its type, so the label is recognized by a pairing of methods only Label has
+			// rather than by the concrete type, which a custom header would not match. Anything else is read from the
 			// labels it is built out of.
-			if labeled, ok := header.(*DefaultTableColumnHeader[T]); ok {
+			if labeled, ok := header.(axTitledLabel); ok {
 				name = labeled.String()
 			} else {
 				name = axLabelText(panel)

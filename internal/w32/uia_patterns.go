@@ -10,6 +10,8 @@
 package w32
 
 import (
+	"sync"
+
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/role"
@@ -21,6 +23,10 @@ import (
 // is a pure function of the snapshot — nothing here touches the OS, allocates COM memory or depends on which thread it
 // runs on — so the file carries no build constraint and its tests run on any platform. uia_patterns_windows.go does
 // nothing but turn these answers into COM out-parameters.
+//
+// The one piece of state here is uiaHeaderMemo, which remembers the single most expensive answer for the snapshot it
+// was worked out from. It changes no answer, only how often one is worked out, and it is guarded so that the arbitrary
+// threads UI Automation calls in on may share it.
 
 // UIASelectionItemRole returns the role of the items the container of the given role selects among, or role.None when
 // that role is not a selection container. It is what decides which descendants ISelectionProvider::GetSelection looks
@@ -178,14 +184,55 @@ func UIAGridItem(t *accessibility.Tree, id accessibility.NodeID, row, column int
 //  2. Proximity: the nearest ancestor of the table that contains exactly one TableHeader and no table but this one.
 //     That ancestor is the scroll panel in every layout unison builds. Insisting that it hold only one table is what
 //     stops two tables side by side from claiming each other's header; an ancestor that holds more than one ends the
-//     search rather than widening it, since widening it can only make the ambiguity worse.
+//     search rather than widening it, since widening it can only make the ambiguity worse. The search also stops the
+//     moment it reaches another table or tree, since everything beyond that belongs to the outer table: a table nested
+//     in a cell of another one would otherwise walk out past its own container and announce the outer table's column
+//     names over the inner table's cells.
 //  3. Nothing, which the provider reports as an empty array.
+//
+// Which header a table's columns come from is remembered for the snapshot it was worked out from, since a client asks
+// for it once per cell; see uiaHeaderMemo.
 func UIATableColumnHeaders(t *accessibility.Tree, id accessibility.NodeID) []accessibility.NodeID {
-	header := uiaTableHeaderFor(t, id)
+	header := uiaMemoizedTableHeaderFor(t, id)
 	if header == 0 {
 		return nil
 	}
 	return uiaAppendItems(t, nil, header, role.ColumnHeader, nil, 0)
+}
+
+// uiaHeaderMemo remembers which TableHeader describes which table, for one snapshot at a time. Working the answer out
+// takes a walk of the whole tree plus a scan of one subtree per ancestor, and ITableItemProvider::GetColumnHeaderItems
+// asks for it once per cell, so a screen reader stepping through a table would otherwise pay that cost for every cell
+// it reads.
+//
+// Remembering it is correct only because a published snapshot is immutable: a publish swaps a whole new tree in rather
+// than editing the one providers are answering from, so an answer worked out from a tree cannot go out of date while
+// that tree is still the one being asked about. Only the most recently asked-about tree is kept, which is all a client
+// walking one table needs and which keeps this from holding every snapshot a window ever published alive.
+//
+// UI Automation calls providers on whichever thread it likes, so every access is under the lock, the computation
+// included: it is short, and several threads working the same answer out at once is the thing being avoided.
+var uiaHeaderMemo struct {
+	tree    *accessibility.Tree
+	headers map[accessibility.NodeID]accessibility.NodeID
+	lock    sync.Mutex
+}
+
+// uiaMemoizedTableHeaderFor answers uiaTableHeaderFor from uiaHeaderMemo, working the answer out and remembering it
+// whenever the memo does not already hold one for this tree.
+func uiaMemoizedTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibility.NodeID {
+	uiaHeaderMemo.lock.Lock()
+	defer uiaHeaderMemo.lock.Unlock()
+	if uiaHeaderMemo.tree != t || uiaHeaderMemo.headers == nil {
+		uiaHeaderMemo.tree = t
+		uiaHeaderMemo.headers = make(map[accessibility.NodeID]accessibility.NodeID)
+	}
+	if header, ok := uiaHeaderMemo.headers[id]; ok {
+		return header
+	}
+	header := uiaTableHeaderFor(t, id)
+	uiaHeaderMemo.headers[id] = header
+	return header
 }
 
 // uiaTableHeaderFor returns the id of the TableHeader node that describes the columns of the table with the given id,
@@ -218,6 +265,12 @@ func uiaTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibi
 	}
 	ancestor := t.UnignoredParent(id)
 	for depth := 0; ancestor != 0 && depth < uiaMaxTreeDepth; depth++ {
+		if n := t.Node(ancestor); n != nil && n.ID != id && (n.Role == role.Table || n.Role == role.Tree) {
+			// Another table contains this one, which a table nested in a cell really is. Its header describes its own
+			// columns, not this table's, and everything further out belongs to it as well, so the search ends here
+			// rather than climbing out of the container and claiming the outer table's column names.
+			return 0
+		}
 		headers, tables := uiaHeadersAndTablesWithin(t, ancestor, 0)
 		if tables > 1 {
 			return 0
@@ -309,9 +362,14 @@ func UIAValueString(n *accessibility.Node) string {
 //
 //   - the role. A color well and a popup button report a value so that a client can say what is currently chosen, but
 //     neither takes a new one through it, and a document is there to be read.
-//   - the node saying so, through ReadOnly or Disabled.
+//   - the node saying so, through ReadOnly.
 //   - the node not offering the SetValue action, which is the snapshot's own statement that nothing will happen if a
 //     client tries. Declaring a value writable and then refusing every attempt is worse than saying so up front.
+//
+// Being disabled is deliberately not one of them. Read-only says the value could never be set through this element;
+// disabled says nothing about the value at all, only that the element cannot be used just now, and UI Automation has
+// IsEnabled for that. The SetValue paths refuse a disabled element with UIA_E_ELEMENTNOTENABLED before they ever ask
+// this, so nothing is let through by the distinction.
 func UIAIsValueReadOnly(n *accessibility.Node) bool {
 	if n == nil {
 		return true
@@ -320,13 +378,14 @@ func UIAIsValueReadOnly(n *accessibility.Node) bool {
 	case role.ColorWell, role.PopupButton, role.Document:
 		return true
 	default:
-		return n.ReadOnly || n.Disabled || !n.Actions.Has(accessibility.SetValue)
+		return n.ReadOnly || !n.Actions.Has(accessibility.SetValue)
 	}
 }
 
 // UIAIsRangeValueReadOnly reports whether IRangeValueProvider::get_IsReadOnly says the value cannot be changed. A
 // progress bar is read-only by definition — it reports what the application is doing, and nothing outside the
-// application decides that — and everything else follows the same rules as UIAIsValueReadOnly.
+// application decides that — and everything else follows the same rules as UIAIsValueReadOnly, the disabled case
+// included.
 func UIAIsRangeValueReadOnly(n *accessibility.Node) bool {
 	if n == nil {
 		return true
@@ -334,5 +393,5 @@ func UIAIsRangeValueReadOnly(n *accessibility.Node) bool {
 	if n.Role == role.ProgressBar {
 		return true
 	}
-	return n.ReadOnly || n.Disabled || !n.Actions.Has(accessibility.SetValue)
+	return n.ReadOnly || !n.Actions.Has(accessibility.SetValue)
 }

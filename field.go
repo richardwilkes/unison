@@ -1517,11 +1517,15 @@ func (f *Field) axTextLines() []accessibility.Line {
 
 // PerformAccessibilityAction carries out a request from an assistive technology. The field's value may be replaced
 // outright, a range of it may be replaced in place — which participates in undo exactly as a paste does — the caret or
-// selection may be moved, and the field's contextual menu may be shown. Focusing the field is left to the default
+// selection may be moved, and the field's contextual menu may be shown, which takes the focus first because the menu is
+// built out of the commands that act on whatever holds it. Focusing the field is otherwise left to the default
 // behavior.
 func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.SetValue:
+		// Replacing the whole value is an edit of its own and must not be folded into whatever edit came before it, so
+		// the undo id is moved on first, exactly as the paste and replace paths move it on.
+		f.undoID = NextUndoID()
 		f.SetText(req.Value)
 		return true
 	case accessibility.SetTextSelection:
@@ -1531,6 +1535,11 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 		f.replaceRunes(req.Start, req.End, req.Value)
 		return true
 	case accessibility.ShowContextMenu:
+		// The menu is built from the cut, copy, paste and select-all actions, every one of which is routed to whatever
+		// holds the focus rather than to this field, so asking an unfocused field for its menu would describe, and then
+		// operate on, whatever else the focus is in. DefaultMouseDown takes the focus before showing the menu for a
+		// right-click, and the same has to happen here.
+		f.RequestFocus()
 		// A right-click would have put the menu under the pointer; there is no pointer here, so it goes where the
 		// person's attention is, which is the caret.
 		f.ShowContextMenu(f.FromSelectionIndex(f.selectionEnd))

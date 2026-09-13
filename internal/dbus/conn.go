@@ -37,8 +37,9 @@ const (
 )
 
 const (
-	// callTimeout is how long [Conn.Call] waits for a reply. The accessibility buses answer in microseconds, so a wait
-	// this long only ever happens when the peer is wedged, and waiting forever would wedge us too.
+	// callTimeout is how long a connection waits for a message to reach the transport and, separately, how long
+	// [Conn.Call] then waits for the reply. The accessibility buses answer in microseconds, so a wait this long only
+	// ever happens when the peer is wedged, and waiting forever would wedge us too.
 	callTimeout = 5 * time.Second
 	// dialTimeout bounds connecting and authenticating.
 	dialTimeout = 5 * time.Second
@@ -46,6 +47,11 @@ const (
 	// Reaching it means the peer has stopped reading, or a handler has stopped returning, for long enough that the
 	// backlog is no longer worth delivering.
 	maxQueued = 16384
+	// maxQueuedBytes is how many bytes of messages may be waiting in one of a connection's queues before further ones
+	// are dropped. A single message may be as large as [MaxMessageSize], so a bound on the count alone would let a
+	// peer that floods while a handler is blocked turn a backlog of 16384 messages into gigabytes of memory; this is
+	// what actually holds the promise that a backlog costs messages rather than memory.
+	maxQueuedBytes = 8 << 20
 )
 
 // ErrClosed is returned by operations on a connection that has been closed, and is what [Conn.OnDisconnect] callbacks
@@ -56,7 +62,7 @@ var ErrClosed = errors.New("dbus: connection closed")
 // SignalFilter matches every signal.
 type SignalFilter struct {
 	Sender    string
-	Path      string
+	Path      ObjectPath
 	Interface string
 	Member    string
 }
@@ -64,7 +70,7 @@ type SignalFilter struct {
 // matches returns true if msg satisfies every non-empty field of the filter.
 func (f *SignalFilter) matches(msg *Message) bool {
 	return (f.Sender == "" || f.Sender == msg.Sender) &&
-		(f.Path == "" || f.Path == string(msg.Path)) &&
+		(f.Path == "" || f.Path == msg.Path) &&
 		(f.Interface == "" || f.Interface == msg.Interface) &&
 		(f.Member == "" || f.Member == msg.Member)
 }
@@ -109,9 +115,10 @@ func (o *outgoing) finish(err error) {
 // signal and method call handlers, one at a time and in the order the messages arrived, which means a handler that
 // blocks delays every later message: handlers should do their work and return, replying to a method call later from
 // another goroutine if they must. The writer, which is started only when there is something to write, drains a queue
-// that the producer never waits on, so emitting a signal never blocks on the peer; the queue is deep rather than
-// unbounded, so a peer that has stopped reading eventually costs messages instead of memory (see [Conn.Enqueue] and
-// [Conn.Dropped]).
+// that the producer never waits on, so emitting a signal never blocks on the peer. Both queues are deep rather than
+// unbounded, and each is bounded by the bytes its messages occupy as well as by their number, so a peer that has
+// stopped reading, or that floods while a handler is blocked, eventually costs messages instead of memory (see
+// [Conn.Enqueue] and [Conn.Dropped]).
 type Conn struct {
 	rwc          io.ReadWriteCloser
 	in           *bufio.Reader
@@ -125,7 +132,7 @@ type Conn struct {
 	subtrees     []*subtree
 	subs         []*subscription
 	onDisconnect []func(error)
-	timeout      time.Duration // How long Call waits for a reply; only the tests ever change it
+	timeout      time.Duration // Bounds the write and, separately, the wait for a reply; only the tests change it
 	serial       atomic.Uint32
 	mu           sync.Mutex
 	writerOnce   sync.Once
@@ -180,9 +187,9 @@ func dialTransport(target transport) (*Conn, error) {
 	return conn, nil
 }
 
-// Connect returns a connection that speaks D-Bus over rwc. The SASL handshake is assumed to have already been performed,
-// or to be unnecessary, which is the case for the direct peer to peer connections the tests use, and no Hello is sent,
-// so [Conn.Name] is empty until [Conn.Hello] is called. Use [Dial] to reach a real bus.
+// Connect returns a connection that speaks D-Bus over rwc. The SASL handshake is assumed to have already been
+// performed, or to be unnecessary, which is the case for the direct peer to peer connections the tests use, and no
+// Hello is sent, so [Conn.Name] is empty until [Conn.Hello] is called. Use [Dial] to reach a real bus.
 func Connect(rwc io.ReadWriteCloser) (*Conn, error) {
 	if rwc == nil {
 		return nil, errors.New("dbus: no transport was supplied")
@@ -195,8 +202,8 @@ func newConn(rwc io.ReadWriteCloser, in *bufio.Reader) *Conn {
 	c := &Conn{
 		rwc:      rwc,
 		in:       in,
-		out:      newQueue[*outgoing](),
-		incoming: newQueue[*Message](),
+		out:      newQueue[*outgoing](maxQueued, maxQueuedBytes),
+		incoming: newQueue[*Message](maxQueued, maxQueuedBytes),
 		closed:   make(chan struct{}),
 		pending:  make(map[uint32]chan *Message),
 		objects:  make(map[ObjectPath]Object),
@@ -378,8 +385,8 @@ func (c *Conn) matchRule(member, rule string) error {
 }
 
 // Subscribe routes the signals that satisfy the filter to the handler and returns a function that stops doing so. The
-// handler runs on the dispatcher goroutine, so it must not block; see [Conn]. Subscribing does not by itself ask the bus
-// for anything, so a subscription for signals from another connection also needs [Conn.AddMatch].
+// handler runs on the dispatcher goroutine, so it must not block; see [Conn]. Subscribing does not by itself ask the
+// bus for anything, so a subscription for signals from another connection also needs [Conn.AddMatch].
 func (c *Conn) Subscribe(filter SignalFilter, handler func(*Message)) (cancel func()) {
 	sub := &subscription{handler: handler, filter: filter}
 	c.mu.Lock()
@@ -401,12 +408,19 @@ func (c *Conn) Subscribe(filter SignalFilter, handler func(*Message)) (cancel fu
 // Export publishes an object at a path, replacing whatever was there. Every exported object also answers the
 // org.freedesktop.DBus.Introspectable, org.freedesktop.DBus.Properties and org.freedesktop.DBus.Peer interfaces; see
 // [Object].
+//
+// The path, and the names and signatures the object declares, are checked here rather than being left to fail one call
+// at a time: a name that is not a valid D-Bus name could not be called, and would have to be escaped to keep it from
+// injecting markup of its own into the introspection document.
 func (c *Conn) Export(path ObjectPath, obj Object) error {
 	if err := path.Validate(); err != nil {
 		return err
 	}
 	if obj == nil {
 		return errors.New("dbus: no object was supplied to export")
+	}
+	if err := validateInterfaces(obj.Interfaces()); err != nil {
+		return err
 	}
 	c.mu.Lock()
 	c.objects[path] = obj
@@ -417,7 +431,8 @@ func (c *Conn) Export(path ObjectPath, obj Object) error {
 // ExportSubtree publishes the objects at and below a path, resolving each one as it is called. resolve is called on the
 // dispatcher goroutine and returns nil for a path that has nothing at it, which is answered with an UnknownObject
 // error. An object exported at an exact path with [Conn.Export] takes precedence, as does a subtree registered at a
-// longer prefix.
+// longer prefix. Since the objects do not exist yet, they cannot be checked the way [Conn.Export] checks the one it is
+// given; a name that is not a valid D-Bus name simply cannot be called, and is escaped when it is introspected.
 func (c *Conn) ExportSubtree(prefix ObjectPath, resolve func(path ObjectPath) Object) error {
 	if err := prefix.Validate(); err != nil {
 		return err
@@ -490,7 +505,7 @@ func (c *Conn) enqueue(item *outgoing) bool {
 		return false
 	}
 	c.writerOnce.Do(func() { go c.writeLoop() })
-	return c.out.push(item, maxQueued)
+	return c.out.push(item, len(item.data))
 }
 
 // writeAndWait queues an encoded message and returns once it has been handed to the transport, reporting any error.
@@ -563,8 +578,8 @@ func (c *Conn) readLoop() {
 	}
 }
 
-// route completes the call a reply answers or queues the message for the dispatcher. It must not block, since it runs on
-// the reader goroutine.
+// route completes the call a reply answers or queues the message for the dispatcher. It must not block, since it runs
+// on the reader goroutine.
 func (c *Conn) route(msg *Message) {
 	switch msg.Type {
 	case TypeMethodReturn, TypeError:
@@ -577,7 +592,7 @@ func (c *Conn) route(msg *Message) {
 		}
 	case TypeSignal, TypeMethodCall:
 		c.dispatchOnce.Do(func() { go c.dispatchLoop() })
-		c.incoming.push(msg, maxQueued)
+		c.incoming.push(msg, msg.size())
 	default: // A reply to nothing, or a type we do not know, is ignored, as the specification requires
 	}
 }
@@ -625,7 +640,11 @@ func (c *Conn) dispatchMethodCall(msg *Message) {
 		call.Error(UnknownObject, fmt.Sprintf("no object is exported at %s", msg.Path))
 		return
 	}
-	iface, method, ifaceFound := findMethod(obj.Interfaces(), msg.Interface, msg.Member)
+	ifaces, ok := call.interfaces()
+	if !ok {
+		return
+	}
+	iface, method, ifaceFound := findMethod(ifaces, msg.Interface, msg.Member)
 	if method == nil {
 		var builtinFound bool
 		if iface, method, builtinFound = findMethod(builtinInterfaces, msg.Interface, msg.Member); method == nil {
@@ -654,6 +673,19 @@ func (c *Conn) dispatchMethodCall(msg *Message) {
 	})
 }
 
+// interfaces returns the interfaces of the object the call was routed to. Interfaces is supplied by whoever exported
+// the object and runs on the dispatcher goroutine, exactly as a method handler does, so a panic in it answers the one
+// call with a Failed error and returns false rather than taking the whole connection down with it.
+func (call *Call) interfaces() (ifaces []*Interface, ok bool) {
+	ok = true
+	xos.SafeCall(func() { ifaces = call.obj.Interfaces() }, func(err error) {
+		errs.Log(err, "call", call.Message.String())
+		call.Error(Failed, err.Error())
+		ifaces, ok = nil, false
+	})
+	return ifaces, ok
+}
+
 // objectAt returns the object exported at the path, or nil if there is none. An exact export wins over a subtree, and a
 // longer subtree prefix wins over a shorter one.
 func (c *Conn) objectAt(path ObjectPath) Object {
@@ -673,7 +705,12 @@ func (c *Conn) objectAt(path ObjectPath) Object {
 	if best == nil {
 		return nil
 	}
-	return best.resolve(path) // Called without the lock, on the dispatcher goroutine
+	// The resolver is supplied by whoever registered the subtree and is called without the lock, on the dispatcher
+	// goroutine, so a panic in it costs the one call, which is then answered with UnknownObject, rather than the whole
+	// connection. Any peer on the bus can reach it, since the path it is asked about comes straight off the wire.
+	var resolved Object
+	xos.SafeCall(func() { resolved = best.resolve(path) }, func(err error) { errs.Log(err, "path", string(path)) })
+	return resolved
 }
 
 // childNodes returns the names of the immediate children of the path that have something exported at or below them, for
@@ -729,35 +766,41 @@ func (c *Conn) fail(err error) {
 }
 
 // queue is a first in, first out queue that a producer may add to without ever blocking and that one consumer drains in
-// batches. It is bounded by the limit passed to [queue.push], which drops whatever arrives once the queue is that
-// full rather than making the producer wait.
+// batches. It is bounded both by how many items it holds and by how many bytes those items occupy, dropping whatever
+// arrives once either bound is reached rather than making the producer wait. The byte bound is what keeps a backlog of
+// messages that may each be as large as [MaxMessageSize] from costing an unbounded amount of memory.
 type queue[T any] struct {
 	cond      *sync.Cond
 	items     []T
+	bytes     int
+	maxItems  int
+	maxBytes  int
 	dropCount int
 	mu        sync.Mutex
 	closed    bool
 }
 
-// newQueue creates a new, empty queue.
-func newQueue[T any]() *queue[T] {
-	q := &queue[T]{}
+// newQueue creates a new, empty queue that holds at most maxItems items occupying at most maxBytes bytes.
+func newQueue[T any](maxItems, maxBytes int) *queue[T] {
+	q := &queue[T]{maxItems: maxItems, maxBytes: maxBytes}
 	q.cond = sync.NewCond(&q.mu)
 	return q
 }
 
-// push adds an item unless the queue is closed or already holds limit items, in which case it returns false and counts
-// the item as dropped. It never blocks.
-func (q *queue[T]) push(item T, limit int) bool {
+// push adds an item unless the queue is closed or is already as full as it may be, in which case it returns false and
+// counts the item as dropped. size is how many bytes the item occupies; an item larger than the whole byte bound is
+// still accepted by an empty queue, since dropping it would mean never delivering it at all. It never blocks.
+func (q *queue[T]) push(item T, size int) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if q.closed || len(q.items) >= limit {
+	if q.closed || len(q.items) >= q.maxItems || (len(q.items) != 0 && q.bytes+size > q.maxBytes) {
 		if !q.closed {
 			q.dropCount++
 		}
 		return false
 	}
 	q.items = append(q.items, item)
+	q.bytes += size
 	q.cond.Signal()
 	return true
 }
@@ -772,7 +815,7 @@ func (q *queue[T]) drain() (items []T, ok bool) {
 	if q.closed {
 		return nil, false
 	}
-	items, q.items = q.items, nil
+	items, q.items, q.bytes = q.items, nil, 0
 	return items, true
 }
 
@@ -781,6 +824,7 @@ func (q *queue[T]) close() {
 	q.mu.Lock()
 	q.closed = true
 	q.items = nil
+	q.bytes = 0
 	q.cond.Broadcast()
 	q.mu.Unlock()
 }

@@ -176,18 +176,24 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 }
 
 // ProvideAccessibility describes the progress bar to assistive technologies. A bar with no maximum is indeterminate:
-// there is no telling how far along it is, only that something is still happening, which is what Busy says. Its value
-// cannot be changed from the outside, so it is reported as read-only.
+// there is no telling how far along it is, only that something is still happening, which is what Busy says, so it
+// reports no number at all. Claiming one would hand Windows a range whose maximum equals its minimum, which the UI
+// Automation range value contract forbids, and would have macOS answer with a value of zero that never moves, leaving a
+// screen reader announcing "0%" for as long as the work takes. Either way the bar's value cannot be changed from the
+// outside, so it is reported as read-only.
 func (p *ProgressBar) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	if node.Role == role.Auto {
 		node.Role = role.ProgressBar
 	}
+	node.ReadOnly = true
+	if p.maximum == 0 {
+		node.Busy = true
+		return
+	}
 	node.HasNumber = true
 	node.Number = float64(p.current)
 	node.Max = float64(p.maximum)
-	node.ReadOnly = true
-	node.Busy = p.maximum == 0
 }
 
 func (p *ProgressBar) animationTick() {

@@ -2295,6 +2295,10 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node.Multiselectable = true
 	node.RowCount = len(t.rowCache)
 	node.ColumnCount = len(t.Columns)
+	// Pressing the table is not activating it; the default behavior would synthesize a click at the center of the
+	// table's whole frame, which for a table in a scroll panel lands on a row somewhere near the middle of the model,
+	// far from anything that can be seen, and replaces the selection with it.
+	node.Actions = node.Actions.Without(accessibility.Press)
 	if len(t.rowCache) == 0 {
 		return
 	}
@@ -2303,22 +2307,36 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 		focusedRow = t.focusedCellRowIndex
 	}
 	reach := axReach(b.VisibleRect())
-	// The rows are walked in order, accumulating the y coordinate as their heights go by, since asking each row where it
-	// is would walk the rows before it all over again.
+	// The rows are walked in order, accumulating the y coordinate as their heights go by, since asking each row where
+	// it is would walk the rows before it all over again. The walk stops as soon as nothing worth describing can be
+	// left, so that a table of a million rows costs no more than a table of a hundred.
 	rect := t.ContentRect(false)
 	described := 0
+	// An upper bound on how many selected rows are still to come. It counts any rows the selection holds that are no
+	// longer showing as well, which costs the walk nothing but its early exit.
+	selectedLeft := len(t.selMap)
 	for row := range t.rowCache {
 		rect.Height = t.rowCache[row].height
+		selected := t.IsRowSelected(row)
+		if selected {
+			selectedLeft--
+		}
 		switch {
 		case rect.Intersects(reach), row == focusedRow:
 			t.axAddRow(b, row, rect)
-		case described < axMaxSelectedRows && t.IsRowSelected(row):
+		case selected && described < axMaxSelectedRows:
 			t.axAddRow(b, row, rect)
 			described++
 		}
 		rect.Y += rect.Height
 		if t.ShowRowDivider {
 			rect.Y++
+		}
+		if rect.Y > reach.Bottom() && row >= focusedRow &&
+			(selectedLeft <= 0 || described >= axMaxSelectedRows) {
+			// Every row from here down starts below the reach, so none of them can be seen; the focused row has gone
+			// by; and either the selection holds nothing further or as much of it as will be described has been.
+			break
 		}
 	}
 }
@@ -2405,6 +2423,11 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect) {
 			accessibility.RemoveFromSelection, accessibility.ScrollIntoView)
 		if toggleable {
 			n.Actions = n.Actions.With(accessibility.Expand, accessibility.Collapse)
+		}
+		if t.DoubleClickCallback != nil {
+			// Pressing a row is opening it, which is what a double-click and the Return key stand for, so it is offered
+			// only when there is something for it to do.
+			n.Actions = n.Actions.With(accessibility.Press)
 		}
 	})
 	if rowID == 0 {
@@ -2505,7 +2528,8 @@ func axDescendantOffers(tree *accessibility.Tree, id accessibility.NodeID, actio
 // one of the rows or cells described by ProvideAccessibility, which arrives as the key that row or cell was described
 // under; acting on a cell acts on the row it belongs to, apart from scrolling, which brings the cell itself into view.
 // Selecting a row also scrolls it into view, as the arrow keys do, since an assistive technology moving through the
-// rows selects each one as it goes and expects to see where it has got to.
+// rows selects each one as it goes and expects to see where it has got to. Pressing a row opens it, which is the
+// gesture a double-click and the Return key stand for.
 func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	var id tid.TID
 	col := -1
@@ -2530,8 +2554,19 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		return t.axActOnCellContent(row, col, req)
 	}
 	switch req.Action {
+	case accessibility.Press:
+		if t.DoubleClickCallback == nil {
+			return false
+		}
+		// Both of the gestures this stands for act on the selection: a double-click has already selected the row with
+		// its first click, and the Return key runs against whatever is selected. So the row is selected first when it
+		// was not already, and the callback then finds what it expects.
+		if !t.IsRowSelected(row) {
+			t.axSelectOnly(id)
+		}
+		SafeCall(t.DoubleClickCallback)
 	case accessibility.Select:
-		t.SetSelectionMap(map[tid.TID]bool{id: true})
+		t.axSelectOnly(id)
 		t.ScrollRowIntoView(row)
 	case accessibility.AddToSelection:
 		t.SelectByIndex(row)
@@ -2552,6 +2587,15 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		return false
 	}
 	return true
+}
+
+// axSelectOnly makes the row with the given id the whole of the selection, and the anchor a later shift-click extends
+// from. A plain click does both — SetSelectionMap alone leaves the anchor wherever it last was, on a row that may not
+// even be selected any more — and a person who has just moved the selection with an assistive technology and then
+// shift-clicks expects the same thing to happen as if they had clicked the row themselves.
+func (t *Table[T]) axSelectOnly(id tid.TID) {
+	t.SetSelectionMap(map[tid.TID]bool{id: true})
+	t.selAnchor = id
 }
 
 // axPerformInCell carries out a request aimed at a panel inside one of the table's cells. The cell is built and
@@ -2597,9 +2641,14 @@ func (t *Table[T]) axActOnDisclosure(key axDisclosureKey, req accessibility.Acti
 	}
 }
 
-// axActOnCellContent passes a press or toggle aimed at a cell on to the first thing within the cell that can be
-// pressed, with the cell built and attached as it is for a click. A screen reader moving through a table treats the
-// cell as the unit and presses that, expecting the check box or button within it to respond.
+// axActOnCellContent passes a press or toggle aimed at a cell on to the content within the cell that can carry it out,
+// with the cell built and attached as it is for a click. A screen reader moving through a table treats the cell as the
+// unit and presses that, expecting the check box or button within it to respond.
+//
+// Each candidate is offered the request in turn until one of them reports having carried it out, because what a widget
+// does with a request is only known from handing it over: a cell that holds a button and a check box advertises both a
+// press and a toggle, since between them they offer both, yet only the check box has a state to move on, so a toggle
+// handed to the button would be refused and the cell would have advertised something it then would not do.
 func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequest) bool {
 	if col >= len(t.Columns) {
 		return false
@@ -2607,32 +2656,41 @@ func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequ
 	cell := t.cell(row, col)
 	t.installCell(cell, t.CellFrame(row, col))
 	handled := false
-	if target := axFirstPressable(cell); target != nil {
-		handled = target.axDispatchAction(req, false)
+	for _, target := range axPressableTargets(cell) {
+		if target.axDispatchAction(req, false) {
+			handled = true
+			break
+		}
 	}
 	t.uninstallCell(cell, row, col)
 	t.MarkForRedraw()
 	return handled
 }
 
-// axFirstPressable returns the first panel at or beneath p, in drawing order, that can respond to a press: one with an
-// accessibility action callback or actor of its own, or one that handles both halves of a click. Nil if there is none.
-func axFirstPressable(p *Panel) *Panel {
-	if p.Hidden {
-		return nil
+// axPressableTargets returns the panels at or beneath p, in drawing order, that might respond to a press or a toggle:
+// ones with an accessibility action callback or actor of their own, and ones that handle both halves of a click.
+// Hidden and disabled panels are left out, along with everything beneath them, since neither a click nor a request from
+// an assistive technology reaches those — a cell holding a disabled button ahead of an enabled check box must land on
+// the check box rather than being refused by the button.
+func axPressableTargets(p *Panel) []*Panel {
+	var targets []*Panel
+	axAppendPressableTargets(&targets, p)
+	return targets
+}
+
+// axAppendPressableTargets appends p and the panels beneath it that might respond to a press or a toggle to targets.
+func axAppendPressableTargets(targets *[]*Panel, p *Panel) {
+	if p.Hidden || !p.Enabled() {
+		return
 	}
 	if p.Accessibility.ActionCallback != nil || (p.MouseDownCallback != nil && p.MouseUpCallback != nil) {
-		return p
-	}
-	if _, ok := p.Self.(AccessibilityActor); ok {
-		return p
+		*targets = append(*targets, p)
+	} else if _, ok := p.Self.(AccessibilityActor); ok {
+		*targets = append(*targets, p)
 	}
 	for _, child := range p.Children() {
-		if found := axFirstPressable(child); found != nil {
-			return found
-		}
+		axAppendPressableTargets(targets, child)
 	}
-	return nil
 }
 
 // axRowIndexForID returns the index of the row with the given id among the rows the table is currently showing, or -1

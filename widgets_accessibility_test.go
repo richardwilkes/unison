@@ -320,14 +320,15 @@ func TestLabelAccessibility(t *testing.T) {
 func TestLinkAccessibility(t *testing.T) {
 	c := check.New(t)
 	const target = "https://example.com/docs"
-	var link *unison.Label
+	var link, tipped *unison.Label
 	var followed string
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
 		unison.StartupFinishedCallback(func() {
 			link = unison.NewLink("Documentation", "", target, nil,
 				func(_ unison.Paneler, where string) { followed = where })
-			wnd = newHeadlessWindow(t, "link", geom.NewRect(10, 10, 300, 120), axColumn(link))
+			tipped = unison.NewLink("Guide", "Opens the guide", target, nil, nil)
+			wnd = newHeadlessWindow(t, "link", geom.NewRect(10, 10, 300, 120), axColumn(link, tipped))
 		}))
 	c.NotNil(wnd)
 
@@ -338,6 +339,10 @@ func TestLinkAccessibility(t *testing.T) {
 	c.Equal("Documentation", node.Name)
 	c.Equal(target, node.Description, "where the link leads is worth hearing")
 	c.True(node.Actions.Has(accessibility.Press))
+	// A tooltip is words someone chose for this link, so it must win over the URL rather than be hidden by it.
+	tippedNode := screen.AccessibilityNodeFor(tipped)
+	c.True(tippedNode != nil)
+	c.Equal("Opens the guide", tippedNode.Description, "a tooltip should not be displaced by the target")
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   node.ID,

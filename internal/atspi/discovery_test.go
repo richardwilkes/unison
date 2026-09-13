@@ -151,6 +151,40 @@ func TestWatchEnabledReportsWhatItStartedWith(t *testing.T) {
 		"and only once the bus has agreed to deliver the signals that would report a later change")
 }
 
+// TestWatchEnabledSaysNothingOnceItIsCanceled covers the other side of that first read. [Enabled] is a round trip to
+// the session bus, so a watch can be canceled while the answer is still on its way back, and a caller that has stopped
+// listening must hear nothing afterwards: for the root package, canceling before the first answer means accessibility
+// support was refused outright, and reporting it anyway would start a bridge nobody asked for.
+func TestWatchEnabledSaysNothingOnceItIsCanceled(t *testing.T) {
+	clearAccessibilityEnvironment(t)
+	c := check.New(t)
+	asked := make(chan struct{})
+	answer := make(chan struct{})
+	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+		if msg.Interface == dbusPropertiesInterface && msg.Member == "Get" {
+			// The watch is canceled while this reply is still owed, which is the race the second check closes.
+			close(asked)
+			<-answer
+		}
+		return statusAnswers(peer, msg)
+	})
+	p.enabled.Store(true)
+	changes := make(chan bool, 8)
+	cancel := WatchEnabled(p.client, func(enabled bool) { changes <- enabled })
+	<-asked
+	cancel()
+	close(answer)
+	// Taking the match rules back off the bus is the last thing the watch's goroutine does, so once they are gone it
+	// has decided what to do with the answer it was waiting for.
+	waitForRules(t, p, 0)
+	select {
+	case reported := <-changes:
+		t.Fatalf("a canceled watch reported %v", reported)
+	default:
+	}
+	c.Equal(0, len(p.matchRules()))
+}
+
 func TestWatchEnabledIgnoresWhatIsNotItsBusiness(t *testing.T) {
 	clearAccessibilityEnvironment(t)
 	c := check.New(t)

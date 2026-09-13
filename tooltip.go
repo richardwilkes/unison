@@ -86,6 +86,9 @@ func NewTooltipWithText(text string) *Panel {
 	for str := range strings.SplitSeq(text, "\n") {
 		l := NewLabel()
 		l.LabelTheme = DefaultTooltipTheme.Label
+		// The tooltip has already said the whole of the text, so a label per line of it would only have an assistive
+		// technology say the same thing again, a line at a time.
+		l.Accessibility.Role = role.None
 		l.SetTitle(str)
 		tip.AddChild(l)
 	}
@@ -108,6 +111,9 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 			l := NewLabel()
 			l.LabelTheme = DefaultTooltipTheme.Label
 			l.Font = font
+			// The secondary text is already the tooltip's description, so its labels are hidden for the same reason the
+			// primary text's are.
+			l.Accessibility.Role = role.None
 			l.SetTitle(str)
 			tip.AddChild(l)
 		}

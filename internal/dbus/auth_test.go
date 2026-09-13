@@ -23,8 +23,8 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 )
 
-// authPeer stands in for a server during the SASL handshake, replying with a canned script and recording what the client
-// sent.
+// authPeer stands in for a server during the SASL handshake, replying with a canned script and recording what the
+// client sent.
 type authPeer struct {
 	responses *strings.Reader
 	writeErr  error

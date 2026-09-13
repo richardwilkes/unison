@@ -46,8 +46,8 @@ func nodeActions(n *accessibility.Node) []nodeAction {
 }
 
 // hasActions returns true if a node supports at least one of the actions AT-SPI can ask for, which is what decides
-// whether it implements org.a11y.atspi.Action at all. It answers without allocating, since it is asked for every node of
-// every snapshot.
+// whether it implements org.a11y.atspi.Action at all. It answers without allocating, since it is asked for every node
+// of every snapshot.
 func hasActions(n *accessibility.Node) bool {
 	for _, one := range actionOrder {
 		if n.Actions.Has(one.action) {
@@ -57,8 +57,8 @@ func hasActions(n *accessibility.Node) bool {
 	return false
 }
 
-// actionInterface returns the org.a11y.atspi.Action interface of a node. The actions are the ones the caller has already
-// worked out, so that the list is built once per call rather than once per method.
+// actionInterface returns the org.a11y.atspi.Action interface of a node. The actions are the ones the caller has
+// already worked out, so that the list is built once per call rather than once per method.
 func (o *nodeObject) actionInterface(actions []nodeAction) *dbus.Interface {
 	return &dbus.Interface{
 		Name: InterfaceAction,
@@ -115,8 +115,8 @@ func (o *nodeObject) actionKeyBinding(actions []nodeAction) func(*dbus.Call) {
 	}
 }
 
-// getActions returns the handler for org.a11y.atspi.Action.GetActions, which hands over every action in one call as name,
-// description and key binding.
+// getActions returns the handler for org.a11y.atspi.Action.GetActions, which hands over every action in one call as
+// name, description and key binding.
 func (o *nodeObject) getActions(actions []nodeAction) func(*dbus.Call) {
 	return func(call *dbus.Call) {
 		list := make([]any, 0, len(actions))
@@ -131,8 +131,8 @@ func (o *nodeObject) getActions(actions []nodeAction) func(*dbus.Call) {
 	}
 }
 
-// doAction returns the handler for org.a11y.atspi.Action.DoAction. The answer is optimistic: the request is handed to the
-// user interface thread, and "yes" means it was accepted rather than that it has happened.
+// doAction returns the handler for org.a11y.atspi.Action.DoAction. The answer is optimistic: the request is handed to
+// the user interface thread, and "yes" means it was accepted rather than that it has happened.
 func (o *nodeObject) doAction(actions []nodeAction) func(*dbus.Call) {
 	return func(call *dbus.Call) {
 		index, ok := actionIndex(call, actions)

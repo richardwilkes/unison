@@ -347,13 +347,26 @@ func TestTableAccessibility(t *testing.T) {
 	c.Equal([]int{2}, axSelectedRowIndexes(screen, table))
 	tree = screen.AccessibilityTree(wnd)
 	node = screen.AccessibilityNodeFor(table)
-	c.True(axTableRows(tree, node)["row 2 col 0"].Selected, "the selected row should say so")
+	rowsByName := axTableRows(tree, node)
+	selected := rowsByName["row 2 col 0"]
+	c.True(selected != nil, "the row that was selected should still be described")
+	if selected != nil {
+		c.True(selected.Selected, "the selected row should say so")
+	}
 
 	// Scrolling a cell into view is the one thing a request aimed at a cell does to the cell rather than to its row.
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   axChildNodes(tree, axTableRows(tree, node)["row 1 col 0"])[1].ID,
-		Action: accessibility.ScrollIntoView,
-	}))
+	second := rowsByName["row 1 col 0"]
+	c.True(second != nil)
+	if second != nil {
+		secondCells := axChildNodes(tree, second)
+		c.Equal(2, len(secondCells), "a row has one cell per column")
+		if len(secondCells) == 2 {
+			c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+				Node:   secondCells[1].ID,
+				Action: accessibility.ScrollIntoView,
+			}))
+		}
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -549,9 +562,9 @@ func TestTableAccessibilityHierarchicalFilterRefusesOpenStateChanges(t *testing.
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestTableAccessibilityWithNoColumns verifies that a table holding rows but no columns never asks a row for the data of
-// a column that does not exist. Every other caller of CellDataForSort is driven by a real column index, so a model is
-// entitled to reach straight for the column it was handed.
+// TestTableAccessibilityWithNoColumns verifies that a table holding rows but no columns never asks a row for the data
+// of a column that does not exist. Every other caller of CellDataForSort is driven by a real column index, so a model
+// is entitled to reach straight for the column it was handed.
 func TestTableAccessibilityWithNoColumns(t *testing.T) {
 	c := check.New(t)
 	var table *unison.Table[*tableTestRow]
@@ -592,8 +605,8 @@ func TestTableAccessibilityWithNoColumns(t *testing.T) {
 }
 
 // TestTableAccessibilityBoundsSelectionAndFocus verifies that a table far taller than its view port describes the rows
-// that can be seen, caps how many it describes solely because they are selected, and always describes the row holding
-// the cell that has the keyboard focus, however far out of view it has been scrolled.
+// that can be seen and caps how many it describes solely because they are selected. Nothing here focuses a cell; that a
+// row out of view is described because it holds the focused one is TestTableAccessibilityFocusedCell's job.
 func TestTableAccessibilityBoundsSelectionAndFocus(t *testing.T) {
 	c := check.New(t)
 	const rowCount = 300
@@ -1076,6 +1089,116 @@ func TestInWindowMenuAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// axFocusedNodes returns every node in a tree that reports being focused, other than the window itself, whose Focused
+// says only that the window is the active one.
+func axFocusedNodes(tree *accessibility.Tree) []*accessibility.Node {
+	var nodes []*accessibility.Node
+	tree.Walk(func(n *accessibility.Node) bool {
+		if n.Focused && n.ID != tree.Root {
+			nodes = append(nodes, n)
+		}
+		return true
+	})
+	return nodes
+}
+
+// axNodeNames returns the name and role of each node, so that a failure says which nodes were found rather than where
+// they happen to sit in memory.
+func axNodeNames(nodes []*accessibility.Node) []string {
+	names := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		names = append(names, n.Role.String()+" "+strconv.Quote(n.Name))
+	}
+	return names
+}
+
+// TestMenuBarAccessibilityFocus verifies that the pointer crossing a menu bar leaves the keyboard focus where it is,
+// and that once a menu is open exactly one node stands for the focus, whether that is an item of the menu or the title
+// on the bar that opened it. A menu item is highlighted by the pointer merely passing over it, so without that rule
+// hovering a title would have the window report two focused nodes — the title and whatever really holds the focus —
+// which is a tree an assistive technology cannot make sense of.
+func TestMenuBarAccessibilityFocus(t *testing.T) {
+	c := check.New(t)
+	const (
+		menuID = unison.UserBaseID + iota
+		cutID
+	)
+	var field *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			wnd = newHeadlessWindow(t, "menu focus", geom.NewRect(10, 10, 400, 300), axColumn(field))
+			if wnd == nil {
+				return
+			}
+			unison.DefaultMenuFactory().BarForWindow(wnd, func(bar unison.Menu) {
+				f := bar.Factory()
+				edit := f.NewMenu(menuID, "Edit", nil)
+				edit.InsertItem(-1, f.NewItem(cutID, "Cut", unison.KeyBinding{}, nil, nil))
+				bar.InsertMenu(-1, edit)
+			})
+			wnd.ToFront()
+		}))
+	c.NotNil(wnd)
+	screen.Sync()
+
+	screen.Click(screen.PanelCenter(field))
+	tree := screen.AccessibilityTree(wnd)
+	fieldNode := screen.AccessibilityNodeFor(field)
+	c.True(fieldNode != nil)
+	if fieldNode == nil {
+		return
+	}
+	c.Equal(fieldNode.ID, tree.Focus, "the field holds the keyboard focus")
+	title := axNamed(tree, "Edit")
+	c.True(title != nil)
+	if title == nil {
+		return
+	}
+
+	// Merely moving the pointer onto the bar highlights the title, which is not a focus change: nothing has been opened
+	// and the field still has the keys.
+	screen.MouseMove(axScreenPoint(screen, wnd, title), mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(fieldNode.ID, tree.Focus, "hovering a menu bar title must not move the focus")
+	focused := axFocusedNodes(tree)
+	c.Equal(1, len(focused), "only one node in a window may report being focused: %v", axNodeNames(focused))
+	if len(focused) == 1 {
+		c.Equal(fieldNode.ID, focused[0].ID)
+	}
+
+	// Clicking it opens the menu with the pointer still on the title and nothing in the menu highlighted, which is when
+	// the title itself stands for what the person is choosing from.
+	screen.Click(axScreenPoint(screen, wnd, title))
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "the menu should have opened")
+	focused = axFocusedNodes(tree)
+	c.Equal(1, len(focused), "only one node in a window may report being focused: %v", axNodeNames(focused))
+	if len(focused) == 1 {
+		c.Equal(title.ID, focused[0].ID, "the title whose menu is open is what is being chosen from")
+		c.True(focused[0].Focusable, "a node that says it is focused must say it can be")
+		c.Equal(title.ID, tree.Focus)
+	}
+
+	// Moving onto an item of the open menu hands the focus to it, and the title gives it up.
+	cut := axNamed(tree, "Cut")
+	c.True(cut != nil)
+	if cut == nil {
+		return
+	}
+	screen.MouseMove(axScreenPoint(screen, wnd, cut), mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	focused = axFocusedNodes(tree)
+	c.Equal(1, len(focused), "only one node in a window may report being focused: %v", axNodeNames(focused))
+	if len(focused) == 1 {
+		c.Equal(cut.ID, focused[0].ID, "the item the menu is pointing at is what is being chosen from")
+		c.True(focused[0].Focusable)
+	}
+	c.Equal(cut.ID, tree.Focus)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestTooltipAccessibility verifies that a tooltip, while it is showing, is described as one — a child of the window
 // rather than of the panel it belongs to, since that is where it is drawn.
 func TestTooltipAccessibility(t *testing.T) {
@@ -1104,6 +1227,8 @@ func TestTooltipAccessibility(t *testing.T) {
 	if len(tips) == 1 {
 		c.Equal("Write the file out", tips[0].Name, "the tooltip's text is its name, line breaks and all")
 		c.Equal(tree.Root, tips[0].Parent, "a tooltip is drawn by the window rather than by the panel it explains")
+		c.Equal(0, len(tips[0].Children),
+			"the labels the text is drawn with are hidden, so it is not announced a second time")
 	}
 	c.Equal("Write the file out", screen.AccessibilityNodeFor(button).Description,
 		"the tooltip is the button's description as well")

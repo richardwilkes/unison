@@ -123,8 +123,9 @@ func (o *rootObject) getChildren(call *dbus.Call) {
 	call.Reply(o.windowReferences())
 }
 
-// getIndexInParent implements org.a11y.atspi.Accessible.GetIndexInParent for the application root. Where the application
-// sits among the desktop's children is the registry's business, not the application's, so the answer is "unknown".
+// getIndexInParent implements org.a11y.atspi.Accessible.GetIndexInParent for the application root. Where the
+// application sits among the desktop's children is the registry's business, not the application's, so the answer is
+// "unknown".
 func (o *rootObject) getIndexInParent(call *dbus.Call) {
 	call.Reply(int32(-1))
 }
@@ -186,8 +187,8 @@ func (o *rootObject) getLocale(call *dbus.Call) {
 }
 
 // getApplicationBusAddress implements org.a11y.atspi.Application.GetApplicationBusAddress. It is how an application
-// offers a private bus of its own for the assistive technology to use instead of the accessibility bus, which Unison does
-// not do. libatspi asks every application, so the answer has to be a polite refusal rather than an unknown method.
+// offers a private bus of its own for the assistive technology to use instead of the accessibility bus, which Unison
+// does not do. libatspi asks every application, so the answer has to be a polite refusal rather than an unknown method.
 func (o *rootObject) getApplicationBusAddress(call *dbus.Call) {
 	call.Error(dbus.NotSupported, "unison does not offer a private accessibility bus")
 }

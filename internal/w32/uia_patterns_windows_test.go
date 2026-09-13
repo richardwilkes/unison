@@ -63,6 +63,174 @@ func uiaSafeArrayUnknowns(c check.Checker, array SAFEARRAY) []uintptr {
 	return pointers
 }
 
+// TestUIAPatternVtblSlotOrder verifies that method N of each control-pattern interface really sits in slot N of that
+// interface's virtual method table. No other test here can: every other one calls the Go functions the slots were built
+// from, and those answer the same however the slots are ordered, so two methods of the same shape swapped —
+// uiaGridItemRow for uiaGridItemColumn, say — would pass the whole suite while a real client got one answer where it
+// asked for the other. These call through the table with syscall.SyscallN, the way UI Automation does.
+//
+// See TestUIAVtblSlotOrder, which does the same for the provider and window-level interfaces and explains why the two
+// slots holding assembly thunks — IRangeValueProvider::SetValue among them — are left out.
+func TestUIAPatternVtblSlotOrder(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out := uiaSlotScratch(&pin)
+	w := newTestUIAWindow(patternTree())
+
+	// IInvokeProvider: Invoke.
+	c.Equal(COM_S_OK, uiaCallSlot(w.providerFor(2), uiaIfaceInvoke, 0))
+	c.Equal(1, len(w.recorded()), "Invoke")
+	c.Equal(accessibility.Press, uiaRequestAt(w, 0).Action)
+
+	// IToggleProvider: Toggle, get_ToggleState. Node 4 is a check box with a mixed check.
+	toggle := w.providerFor(4)
+	c.Equal(COM_S_OK, uiaCallSlot(toggle, uiaIfaceToggle, 0))
+	c.Equal(2, len(w.recorded()), "Toggle")
+	c.Equal(accessibility.Toggle, uiaRequestAt(w, 1).Action)
+	c.Equal(COM_S_OK, uiaCallSlot(toggle, uiaIfaceToggle, 1, out.fresh()))
+	c.Equal(ToggleState_Indeterminate, ToggleState(out.i32()), "get_ToggleState")
+
+	// IValueProvider: SetValue, get_Value, get_IsReadOnly. All three take one argument beyond the this pointer, so the
+	// two getters are read first, while what the field holds is still what the snapshot says.
+	value := w.providerFor(8)
+	c.Equal(COM_S_OK, uiaCallSlot(value, uiaIfaceValue, 1, out.fresh()))
+	c.Equal("Gandalf", BSTRToString(BSTR(out.ptr())), "get_Value")
+	BSTR(out.ptr()).Free()
+	c.Equal(COM_S_OK, uiaCallSlot(value, uiaIfaceValue, 2, out.fresh()))
+	c.Equal(int32(0), out.i32(), "get_IsReadOnly")
+	text, err := windows.UTF16PtrFromString("Frodo")
+	c.NoError(err)
+	pin.Pin(text)
+	c.Equal(COM_S_OK, uiaCallSlot(value, uiaIfaceValue, 0, uintptr(unsafe.Pointer(text))))
+	c.Equal(3, len(w.recorded()), "SetValue")
+	c.Equal("Frodo", uiaRequestAt(w, 2).Value)
+
+	// IExpandCollapseProvider: Expand, Collapse, get_ExpandCollapseState. Node 14 is a collapsed popup button, and the
+	// two methods that take nothing but the this pointer are told apart by the action each asks the window for.
+	popup := w.providerFor(14)
+	c.Equal(COM_S_OK, uiaCallSlot(popup, uiaIfaceExpandCollapse, 0))
+	c.Equal(accessibility.Expand, uiaRequestAt(w, 3).Action, "Expand")
+	c.Equal(COM_S_OK, uiaCallSlot(popup, uiaIfaceExpandCollapse, 1))
+	c.Equal(accessibility.Collapse, uiaRequestAt(w, 4).Action, "Collapse")
+	c.Equal(5, len(w.recorded()))
+	c.Equal(COM_S_OK, uiaCallSlot(popup, uiaIfaceExpandCollapse, 2, out.fresh()))
+	c.Equal(ExpandCollapseState_Collapsed, ExpandCollapseState(out.i32()), "get_ExpandCollapseState")
+
+	uiaCheckRangeValueSlotOrder(c, out)
+	uiaCheckSelectionSlotOrder(c, out)
+	uiaCheckTableSlotOrder(c, out)
+}
+
+// uiaCheckRangeValueSlotOrder verifies the slot order of IRangeValueProvider: SetValue, get_Value, get_IsReadOnly,
+// get_Maximum, get_Minimum, get_LargeChange, get_SmallChange. Every one of the six getters takes nothing but an
+// out-parameter, so the slider is given a range whose six answers are all different from one another: a value of 5 over
+// -1 to 10, a step of 2 — which makes the large change 20 — and no SetValue action, which makes it read-only.
+func uiaCheckRangeValueSlotOrder(c check.Checker, out *uiaSlotOut) {
+	tree := patternTree()
+	tree.Nodes[11].Min = -1
+	tree.Nodes[11].Step = 2
+	tree.Nodes[11].Actions = accessibility.ActionSet(0).With(accessibility.Increment, accessibility.Decrement)
+	slider := newTestUIAWindow(tree).providerFor(11)
+	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 1, out.fresh()))
+	c.Equal(5.0, out.f64(), "get_Value")
+	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 2, out.fresh()))
+	c.Equal(int32(1), out.i32(), "get_IsReadOnly")
+	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 3, out.fresh()))
+	c.Equal(10.0, out.f64(), "get_Maximum")
+	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 4, out.fresh()))
+	c.Equal(-1.0, out.f64(), "get_Minimum")
+	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 5, out.fresh()))
+	c.Equal(20.0, out.f64(), "get_LargeChange")
+	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 6, out.fresh()))
+	c.Equal(2.0, out.f64(), "get_SmallChange")
+}
+
+// uiaCheckSelectionSlotOrder verifies the slot order of ISelectionProvider — GetSelection, get_CanSelectMultiple,
+// get_IsSelectionRequired — of ISelectionItemProvider — Select, AddToSelection, RemoveFromSelection, get_IsSelected,
+// get_SelectionContainer — and of IScrollItemProvider's one method. The three that take nothing but the this pointer
+// are told apart by the action each asks the window for.
+func uiaCheckSelectionSlotOrder(c check.Checker, out *uiaSlotOut) {
+	w := newTestUIAWindow(listTree())
+	list := w.providerFor(2)
+	c.Equal(COM_S_OK, uiaCallSlot(list, uiaIfaceSelection, 0, out.fresh()))
+	c.Equal(2, len(uiaSafeArrayUnknowns(c, out.array())), "GetSelection")
+	out.array().Destroy()
+	c.Equal(COM_S_OK, uiaCallSlot(list, uiaIfaceSelection, 1, out.fresh()))
+	c.Equal(int32(1), out.i32(), "get_CanSelectMultiple")
+	c.Equal(COM_S_OK, uiaCallSlot(list, uiaIfaceSelection, 2, out.fresh()))
+	c.Equal(int32(0), out.i32(), "get_IsSelectionRequired")
+
+	selected := w.providerFor(3)
+	c.Equal(COM_S_OK, uiaCallSlot(selected, uiaIfaceSelectionItem, 3, out.fresh()))
+	c.Equal(int32(1), out.i32(), "get_IsSelected")
+	c.Equal(COM_S_OK, uiaCallSlot(selected, uiaIfaceSelectionItem, 4, out.fresh()))
+	c.Equal(list.ifacePtr(uiaIfaceSimple), out.ptr(), "get_SelectionContainer")
+	c.Equal(uintptr(1), list.release())
+
+	other := w.providerFor(6)
+	for i, action := range []accessibility.Action{
+		accessibility.Select, accessibility.AddToSelection, accessibility.RemoveFromSelection,
+	} {
+		c.Equal(COM_S_OK, uiaCallSlot(other, uiaIfaceSelectionItem, i))
+		c.Equal(i+1, len(w.recorded()))
+		c.Equal(action, uiaRequestAt(w, i).Action, "selection item method %d", i)
+	}
+
+	c.Equal(COM_S_OK, uiaCallSlot(selected, uiaIfaceScrollItem, 0))
+	c.Equal(4, len(w.recorded()))
+	c.Equal(accessibility.ScrollIntoView, uiaRequestAt(w, 3).Action, "ScrollIntoView")
+}
+
+// uiaCheckTableSlotOrder verifies the slot order of IGridProvider — GetItem, get_RowCount, get_ColumnCount — of
+// IGridItemProvider — get_Row, get_Column, get_RowSpan, get_ColumnSpan, get_ContainingGrid — of ITableProvider —
+// GetRowHeaders, GetColumnHeaders, get_RowOrColumnMajor — and of ITableItemProvider's GetRowHeaderItems and
+// GetColumnHeaderItems.
+//
+// Cell 11 sits at row 2 of column 0, so get_Row and get_Column answer differently. The two spans are both the constant
+// one, so nothing can tell them apart from each other — and nothing would go wrong if they were swapped.
+func uiaCheckTableSlotOrder(c check.Checker, out *uiaSlotOut) {
+	w := newTestUIAWindow(tableTree())
+	grid := w.providerFor(6)
+	c.Equal(COM_S_OK, uiaCallSlot(grid, uiaIfaceGrid, 0, 1, 0, out.fresh()))
+	cell := w.providerFor(8)
+	c.Equal(cell.ifacePtr(uiaIfaceSimple), out.ptr(), "GetItem")
+	c.Equal(uintptr(1), cell.release())
+	c.Equal(COM_S_OK, uiaCallSlot(grid, uiaIfaceGrid, 1, out.fresh()))
+	c.Equal(int32(5), out.i32(), "get_RowCount")
+	c.Equal(COM_S_OK, uiaCallSlot(grid, uiaIfaceGrid, 2, out.fresh()))
+	c.Equal(int32(2), out.i32(), "get_ColumnCount")
+
+	item := w.providerFor(11)
+	c.Equal(COM_S_OK, uiaCallSlot(item, uiaIfaceGridItem, 0, out.fresh()))
+	c.Equal(int32(2), out.i32(), "get_Row")
+	c.Equal(COM_S_OK, uiaCallSlot(item, uiaIfaceGridItem, 1, out.fresh()))
+	c.Equal(int32(0), out.i32(), "get_Column")
+	c.Equal(COM_S_OK, uiaCallSlot(item, uiaIfaceGridItem, 2, out.fresh()))
+	c.Equal(int32(1), out.i32(), "get_RowSpan")
+	c.Equal(COM_S_OK, uiaCallSlot(item, uiaIfaceGridItem, 3, out.fresh()))
+	c.Equal(int32(1), out.i32(), "get_ColumnSpan")
+	c.Equal(COM_S_OK, uiaCallSlot(item, uiaIfaceGridItem, 4, out.fresh()))
+	c.Equal(grid.ifacePtr(uiaIfaceSimple), out.ptr(), "get_ContainingGrid")
+	c.Equal(uintptr(1), grid.release())
+
+	c.Equal(COM_S_OK, uiaCallSlot(grid, uiaIfaceTable, 0, out.fresh()))
+	c.Nil(uiaSafeArrayUnknowns(c, out.array()), "GetRowHeaders: a unison table has none")
+	out.array().Destroy()
+	c.Equal(COM_S_OK, uiaCallSlot(grid, uiaIfaceTable, 1, out.fresh()))
+	c.Equal(2, len(uiaSafeArrayUnknowns(c, out.array())), "GetColumnHeaders")
+	out.array().Destroy()
+	c.Equal(COM_S_OK, uiaCallSlot(grid, uiaIfaceTable, 2, out.fresh()))
+	c.Equal(RowOrColumnMajor_RowMajor, RowOrColumnMajor(out.i32()), "get_RowOrColumnMajor")
+
+	c.Equal(COM_S_OK, uiaCallSlot(item, uiaIfaceTableItem, 0, out.fresh()))
+	c.Nil(uiaSafeArrayUnknowns(c, out.array()), "GetRowHeaderItems: a unison cell belongs to none")
+	out.array().Destroy()
+	c.Equal(COM_S_OK, uiaCallSlot(item, uiaIfaceTableItem, 1, out.fresh()))
+	c.Equal(1, len(uiaSafeArrayUnknowns(c, out.array())), "GetColumnHeaderItems")
+	out.array().Destroy()
+}
+
 // TestUIAInvokePattern verifies the one method of the Invoke pattern: the press a client asks for reaches the window as
 // an action, a disabled element refuses, and an element with nowhere to send the request says so rather than reporting
 // success.
@@ -82,6 +250,38 @@ func TestUIAInvokePattern(t *testing.T) {
 
 	plain := NewUIAWindow(UIAConfig{}, patternTree(), UIAGeometry{})
 	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
+}
+
+// TestUIAInvokeRaisesInvoked verifies that Invoke reports the invocation with UIA_Invoke_InvokedEventId on the element
+// it pressed. The interface requires it, and this is the only place it can come from: pressing something need not
+// change the snapshot at all, so there may be no publish to carry the news and a client waiting on Invoked would wait
+// forever.
+func TestUIAInvokeRaisesInvoked(t *testing.T) {
+	c := check.New(t)
+	r := uiaRecord(t, true)
+	w := newTestUIAWindow(patternTree())
+	button := w.providerFor(2)
+	c.NotNil(button)
+
+	c.Equal(COM_S_OK, uiaInvokeInvoke(button.ifacePtr(uiaIfaceInvoke)))
+	c.Equal(1, len(w.recorded()))
+	c.Equal(1, len(r.raises))
+	c.Equal(UIARaiseEvent, r.raises[0].Kind)
+	c.Equal(UIA_Invoke_InvokedEventId, r.raises[0].Event)
+	c.Equal(button.Unknown(), r.raises[0].Provider, "the event names the element that was invoked")
+
+	// A refused invocation reports nothing. Node 3 is disabled, and a window with nowhere to send the request cannot
+	// have carried it out either.
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaInvokeInvoke(w.providerFor(3).ifacePtr(uiaIfaceInvoke)))
+	plain := NewUIAWindow(UIAConfig{}, patternTree(), UIAGeometry{})
+	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
+	c.Equal(1, len(r.raises))
+
+	// Like every other raise this package makes, it costs nothing while no client is listening.
+	quiet := uiaRecord(t, false)
+	c.Equal(COM_S_OK, uiaInvokeInvoke(button.ifacePtr(uiaIfaceInvoke)))
+	c.Equal(2, len(w.recorded()))
+	c.Nil(quiet.raises)
 }
 
 // TestUIATogglePattern verifies the Toggle pattern, including that a toggle button reports whether it is pressed while
@@ -373,6 +573,41 @@ func TestUIASelectionItemPattern(t *testing.T) {
 	rows.Publish(disabled, nil)
 	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaSelectionItemSelect(rows.providerFor(7).ifacePtr(uiaIfaceSelectionItem)))
 	c.Equal(0, len(rows.recorded()))
+}
+
+// TestUIASelectionItemRefusesImpossibleChanges verifies that the three methods that change what is selected are
+// measured against what the snapshot says the element offers, as every other write path here is.
+//
+// Adding to or removing from a selection means nothing in a container that holds one selection at a time: the widget
+// replaces the selection instead, so a client answered S_OK would have been told the opposite of what happened. UI
+// Automation defines UIA_E_INVALIDOPERATION for that, and for an item that does not offer the action at all.
+func TestUIASelectionItemRefusesImpossibleChanges(t *testing.T) {
+	c := check.New(t)
+	w := newTestUIAWindow(listTree())
+
+	// Node 9 is a tab, and a tab list holds one selection at a time.
+	tab := w.providerFor(9).ifacePtr(uiaIfaceSelectionItem)
+	c.Equal(UIA_E_INVALIDOPERATION, uiaSelectionItemAddToSelection(tab))
+	c.Equal(UIA_E_INVALIDOPERATION, uiaSelectionItemRemoveFromSelection(tab))
+	c.Equal(0, len(w.recorded()))
+	c.Equal(COM_S_OK, uiaSelectionItemSelect(tab), "choosing it outright is what a tab list does allow")
+	c.Equal(1, len(w.recorded()))
+	c.Equal(accessibility.NodeID(9), uiaRequestAt(w, 0).Node)
+	c.Equal(accessibility.Select, uiaRequestAt(w, 0).Action)
+
+	// Node 6 is a list item whose container allows several selections, so only the actions it does not offer are
+	// refused.
+	limited := listTree()
+	limited.Nodes[6].Actions = accessibility.ActionSet(0).With(accessibility.Select)
+	limited.Generation = 2
+	w.Publish(limited, nil)
+	item := w.providerFor(6).ifacePtr(uiaIfaceSelectionItem)
+	c.Equal(UIA_E_INVALIDOPERATION, uiaSelectionItemAddToSelection(item))
+	c.Equal(UIA_E_INVALIDOPERATION, uiaSelectionItemRemoveFromSelection(item))
+	c.Equal(1, len(w.recorded()))
+	c.Equal(COM_S_OK, uiaSelectionItemSelect(item))
+	c.Equal(2, len(w.recorded()))
+	c.Equal(accessibility.NodeID(6), uiaRequestAt(w, 1).Node)
 }
 
 // TestUIAExpandCollapsePattern verifies the ExpandCollapse pattern, including that an element that cannot be expanded

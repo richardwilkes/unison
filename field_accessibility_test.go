@@ -512,3 +512,163 @@ func TestComboFieldAccessibilityKeepsItsRole(t *testing.T) {
 	c.True(node.Text != nil)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestFieldAccessibilityContextMenuTakesTheFocus verifies that asking a field that is not holding the focus for its
+// contextual menu gives it the focus first. The menu is built out of the cut, copy, paste and select-all commands,
+// every one of which is routed to whatever currently holds the focus, so a menu shown for an unfocused field described,
+// and then acted on, whatever else did. The mouse path never had the problem, since a right-click takes the focus on
+// the way in.
+func TestFieldAccessibilityContextMenuTakesTheFocus(t *testing.T) {
+	c := check.New(t)
+	var first, second *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			first = unison.NewField()
+			first.SetText("first")
+			second = unison.NewField()
+			second.SetText("second")
+			wnd = newHeadlessWindow(t, "context menu focus", geom.NewRect(10, 10, 300, 200),
+				axColumn(first, second))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+	c.True(screen.Do(func() { first.RequestFocus() }))
+	screen.Sync()
+	var focused bool
+	screen.Do(func() { focused = first.Focused() })
+	c.True(focused, "the first field should be holding the focus")
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(second)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	before := axRootChildCount(screen.AccessibilityTree(wnd))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+	}))
+	screen.Do(func() { focused = second.Focused() })
+	c.True(focused, "the field whose menu was asked for must be the one the menu's commands act on")
+	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(wnd)),
+		"the field's contextual menu should have opened within the window")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldAccessibilitySetValueStartsANewUndo verifies that replacing a field's value outright begins an edit of its
+// own. SetText, unlike the replacement path, does not move the undo id on, so an application's undo manager was free to
+// absorb an assistive technology's replacement into whatever edit preceded it.
+func TestFieldAccessibilitySetValueStartsANewUndo(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.SetText("before")
+			wnd = newHeadlessWindow(t, "undo id", geom.NewRect(10, 10, 300, 150), axColumn(field))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(field)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	var was, now int64
+	var text string
+	screen.Do(func() { was = field.CurrentUndoID() })
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.SetValue,
+		Value:  "after",
+	}))
+	screen.Do(func() {
+		now = field.CurrentUndoID()
+		text = field.Text()
+	})
+	c.Equal("after", text)
+	c.True(now != was, "replacing the value outright must begin an edit of its own rather than joining the last one")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axFloatFormat writes a number out the way the numeric field tests read it back.
+func axFloatFormat(value float64) string { return strconv.FormatFloat(value, 'f', 3, 64) }
+
+// axFloatExtract reads a number the way axFloatFormat wrote it.
+func axFloatExtract(s string) (float64, error) { return strconv.ParseFloat(s, 64) }
+
+// TestNumericFieldAccessibilityStepFollowsTheRange verifies that a numeric field steps by an amount its range can
+// actually be walked in. The step used to be one whatever the field held, so a single increment of a field running from
+// zero to one went straight to the maximum and stepping was of no use at all.
+func TestNumericFieldAccessibilityStepFollowsTheRange(t *testing.T) {
+	c := check.New(t)
+	var whole *unison.NumericField[int]
+	var fine, wide *unison.NumericField[float64]
+	var wholeNarrow *unison.NumericField[int]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			whole = unison.NewNumericField(5, 0, 100, strconv.Itoa, strconv.Atoi, nil)
+			wholeNarrow = unison.NewNumericField(2, 0, 4, strconv.Itoa, strconv.Atoi, nil)
+			fine = unison.NewNumericField(0.5, 0, 1, axFloatFormat, axFloatExtract, nil)
+			wide = unison.NewNumericField(100, 0, 255, axFloatFormat, axFloatExtract, nil)
+			wnd = newHeadlessWindow(t, "steps", geom.NewRect(10, 10, 400, 300),
+				axColumn(whole, wholeNarrow, fine, wide))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	wholeNode := screen.AccessibilityNodeFor(whole)
+	c.True(wholeNode != nil)
+	if wholeNode != nil {
+		c.Equal(float64(1), wholeNode.Step, "a field of whole numbers steps by one of them")
+	}
+	narrowNode := screen.AccessibilityNodeFor(wholeNarrow)
+	c.True(narrowNode != nil)
+	if narrowNode != nil {
+		c.Equal(float64(1), narrowNode.Step, "a whole-number field cannot step by less than one however small its range")
+	}
+	wideNode := screen.AccessibilityNodeFor(wide)
+	c.True(wideNode != nil)
+	if wideNode != nil {
+		c.Equal(float64(1), wideNode.Step, "a range of twenty units or more is counted in whole numbers")
+	}
+	fineNode := screen.AccessibilityNodeFor(fine)
+	c.True(fineNode != nil)
+	if fineNode == nil {
+		return
+	}
+	c.Equal(0.05, fineNode.Step, "a fractional range steps by a twentieth of itself")
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   fineNode.ID,
+		Action: accessibility.Increment,
+	}))
+	var value float64
+	screen.Do(func() { value = fine.Value() })
+	c.Equal(0.55, value, "incrementing should have moved the value by one step rather than to the maximum")
+
+	for range 3 {
+		c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+			Node:   fineNode.ID,
+			Action: accessibility.Decrement,
+		}))
+	}
+	screen.Do(func() { value = fine.Value() })
+	c.Equal(0.4, value, "three steps down from 0.55 is 0.4")
+
+	// A whole-number field still moves a whole number at a time.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   narrowNode.ID,
+		Action: accessibility.Increment,
+	}))
+	var count int
+	screen.Do(func() { count = wholeNarrow.Value() })
+	c.Equal(3, count)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

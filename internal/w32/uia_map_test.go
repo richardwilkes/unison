@@ -301,8 +301,8 @@ func TestUIAOrientation(t *testing.T) {
 	}))
 }
 
-// TestUIAToggleState verifies that a toggle button reports its pressed state while everything else checkable reports its
-// check state, and that a mixed check becomes indeterminate rather than on.
+// TestUIAToggleState verifies that a toggle button reports its pressed state while everything else checkable reports
+// its check state, and that a mixed check becomes indeterminate rather than on.
 func TestUIAToggleState(t *testing.T) {
 	c := check.New(t)
 	c.Equal(ToggleState_Off, UIAToggleState(nil))
@@ -322,8 +322,8 @@ func TestUIAToggleState(t *testing.T) {
 	}))
 }
 
-// TestUIAExpandCollapseState verifies that a node which cannot expand is reported as a leaf, which is a different answer
-// from being collapsed.
+// TestUIAExpandCollapseState verifies that a node which cannot expand is reported as a leaf, which is a different
+// answer from being collapsed.
 func TestUIAExpandCollapseState(t *testing.T) {
 	c := check.New(t)
 	c.Equal(ExpandCollapseState_LeafNode, UIAExpandCollapseState(nil))
@@ -646,9 +646,9 @@ func TestUIADecideRaisesTextProperties(t *testing.T) {
 }
 
 // TestUIADecideRaisesValue verifies that a value change becomes whichever value property the element actually has. A
-// text field reports its value through the Value pattern and a slider through RangeValue, so raising the Value pattern's
-// property on a slider would be telling a client about a property the element does not support; a label has neither, so
-// its value change is dropped.
+// text field reports its value through the Value pattern and a slider through RangeValue, so raising the Value
+// pattern's property on a slider would be telling a client about a property the element does not support; a label has
+// neither, so its value change is dropped.
 func TestUIADecideRaisesValue(t *testing.T) {
 	c := check.New(t)
 	cur := eventTree()
@@ -697,8 +697,8 @@ func TestUIADecideRaisesText(t *testing.T) {
 	}))
 }
 
-// TestUIADecideRaisesStates verifies the state flags that map onto a property of their own, and that a flag belonging to
-// a pattern the element does not support raises nothing.
+// TestUIADecideRaisesStates verifies the state flags that map onto a property of their own, and that a flag belonging
+// to a pattern the element does not support raises nothing.
 func TestUIADecideRaisesStates(t *testing.T) {
 	c := check.New(t)
 	for i, one := range []struct {
@@ -869,8 +869,8 @@ func TestUIADecideRaisesRadioButton(t *testing.T) {
 		}))
 }
 
-// TestUIADecideRaisesBounds verifies that only the focused node and the root report a new bounding rectangle. Resizing a
-// window moves everything in it, and a client that wanted every rectangle would ask for them.
+// TestUIADecideRaisesBounds verifies that only the focused node and the root report a new bounding rectangle. Resizing
+// a window moves everything in it, and a client that wanted every rectangle would ask for them.
 func TestUIADecideRaisesBounds(t *testing.T) {
 	c := check.New(t)
 	c.Equal([]UIARaise{
@@ -884,8 +884,8 @@ func TestUIADecideRaisesBounds(t *testing.T) {
 	}))
 }
 
-// TestUIADecideRaisesIgnored verifies that a node the snapshot marks Ignored never appears, since it has no provider for
-// an event to be raised on.
+// TestUIADecideRaisesIgnored verifies that a node the snapshot marks Ignored never appears, since it has no provider
+// for an event to be raised on.
 func TestUIADecideRaisesIgnored(t *testing.T) {
 	c := check.New(t)
 	c.Nil(UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
@@ -895,8 +895,8 @@ func TestUIADecideRaisesIgnored(t *testing.T) {
 	}))
 }
 
-// TestUIADecideRaisesAdded verifies that a new node reports itself as added, and that it says nothing once its parent has
-// already reported all of its children invalidated — which is what the diff produces for a real addition, since the
+// TestUIADecideRaisesAdded verifies that a new node reports itself as added, and that it says nothing once its parent
+// has already reported all of its children invalidated — which is what the diff produces for a real addition, since the
 // parent's list of children changed too.
 func TestUIADecideRaisesAdded(t *testing.T) {
 	c := check.New(t)
@@ -912,8 +912,36 @@ func TestUIADecideRaisesAdded(t *testing.T) {
 		UIADecideRaises(old, cur, accessibility.Diff(old, cur)))
 }
 
-// TestUIADecideRaisesRemoved verifies that a departed node reports its removal on the parent it left, since it no longer
-// exists to raise anything itself, and that the disconnect releasing its provider happens either way.
+// TestUIADecideRaisesAddedSubtree verifies that a whole subtree arriving at once is reported as one invalidation of the
+// parent it hangs off and nothing else.
+//
+// The diff invalidates that parent and then reports every node of the subtree as added, so looking only at a new node's
+// immediate parent drops the subtree's top node — whose parent is the invalidated one — and then reports every node
+// beneath it, whose parents are the new nodes themselves. A client answers the invalidation by reading the children
+// again, so those are events it would only make it do the same work over.
+func TestUIADecideRaisesAddedSubtree(t *testing.T) {
+	c := check.New(t)
+	old := eventTree()
+	cur := eventTree()
+	cur.Node(1).Children = append(cur.Node(1).Children, 11)
+	cur.Nodes[11] = &accessibility.Node{ID: 11, Parent: 1, Role: role.Group, Children: []accessibility.NodeID{12, 13}}
+	cur.Nodes[12] = &accessibility.Node{ID: 12, Parent: 11, Role: role.Button, Name: "One"}
+	cur.Nodes[13] = &accessibility.Node{ID: 13, Parent: 11, Role: role.Button, Name: "Two"}
+
+	c.Equal([]UIARaise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
+		UIADecideRaises(old, cur, accessibility.Diff(old, cur)))
+
+	// A node added under an invalidated ancestor several levels up is dropped just the same, which is what the walk up
+	// the chain is for.
+	c.Equal([]UIARaise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
+		UIADecideRaises(old, cur, []accessibility.Event{
+			{Kind: accessibility.ChildrenChanged, Node: 1},
+			{Kind: accessibility.NodeAdded, Node: 12},
+		}))
+}
+
+// TestUIADecideRaisesRemoved verifies that a departed node reports its removal on the parent it left, since it no
+// longer exists to raise anything itself, and that the disconnect releasing its provider happens either way.
 func TestUIADecideRaisesRemoved(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
@@ -932,8 +960,9 @@ func TestUIADecideRaisesRemoved(t *testing.T) {
 	}, UIADecideRaises(old, cur, accessibility.Diff(old, cur)))
 }
 
-// TestUIADecideRaisesRemovedSubtree verifies that removing a whole subtree reports the invalidation once on the surviving
-// parent and disconnects every node that left, rather than trying to raise a removal on a parent that is gone too.
+// TestUIADecideRaisesRemovedSubtree verifies that removing a whole subtree reports the invalidation once on the
+// surviving parent and disconnects every node that left, rather than trying to raise a removal on a parent that is
+// gone too.
 func TestUIADecideRaisesRemovedSubtree(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
@@ -949,10 +978,84 @@ func TestUIADecideRaisesRemovedSubtree(t *testing.T) {
 		raiseDisconnect(6),
 		raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated),
 	}, UIADecideRaises(old, cur, accessibility.Diff(old, cur)))
+
+	// A removal under an ancestor the same batch invalidated higher up is dropped too. A diff never produces that on
+	// its own — a real removal changes the immediate parent's list of children as well — so the events are written out
+	// here to reach the walk up the chain that removals share with additions.
+	gone := eventTree()
+	gone.Node(4).Children = []accessibility.NodeID{5}
+	delete(gone.Nodes, 6)
+	c.Equal([]UIARaise{
+		raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated),
+		raiseDisconnect(6),
+	}, UIADecideRaises(old, gone, []accessibility.Event{
+		{Kind: accessibility.ChildrenChanged, Node: 1},
+		{Kind: accessibility.NodeRemoved, Node: 6},
+	}))
 }
 
-// TestUIADecideRaisesWindowActivation verifies that a window becoming active points the client back at whatever inside it
-// has the focus, and that a window losing it says nothing at all.
+// TestUIADecideRaisesIgnoredFlip verifies that a node whose Ignored flag flips has the nearest unignored parent told to
+// read its children again.
+//
+// Nothing else says it happened: an ignored node stays in the snapshot so that hit testing and coordinate clipping go
+// on working, so no list of children changed, while to a client the node has just joined or left the tree entirely. It
+// reaches a real window — ScrollBar.ProvideAccessibility ignores a scroll bar with nothing to scroll — and a client
+// that was told nothing would keep a hierarchy that permanently disagrees with what UIANavigate answers.
+func TestUIADecideRaisesIgnoredFlip(t *testing.T) {
+	c := check.New(t)
+	shown := eventTree()
+	hidden := eventTree()
+	hidden.Node(3).Ignored = true
+
+	// The check box directly under the window leaves the tree a client sees, and then comes back.
+	c.Equal([]UIARaise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
+		UIADecideRaises(shown, hidden, accessibility.Diff(shown, hidden)))
+	c.Equal([]UIARaise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
+		UIADecideRaises(hidden, shown, accessibility.Diff(hidden, shown)))
+
+	// Node 10 sits under an ignored group, so the invalidation lands on the window rather than on a parent with no
+	// provider to raise it on.
+	buried := eventTree()
+	buried.Node(10).Ignored = true
+	c.Equal([]UIARaise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
+		UIADecideRaises(shown, buried, accessibility.Diff(shown, buried)))
+
+	// Having said the parent's children are all invalid, the additions and removals under it are dropped, exactly as
+	// they are for a list of children that changed.
+	c.Equal([]UIARaise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
+		UIADecideRaises(shown, hidden, []accessibility.Event{
+			{Kind: accessibility.StateChanged, Node: 3, State: accessibility.StateIgnored, Old: "false", New: "true"},
+			{Kind: accessibility.NodeAdded, Node: 2},
+		}))
+}
+
+// TestUIADecideRaisesRole verifies that a node whose role changed reports its control type as changed. A live node
+// really can change role — a label becomes an image when its text is swapped for a drawable, a button becomes a toggle
+// button when it is made sticky — and the control type is what a client derives the spoken kind of the element, and the
+// patterns it bothers looking for, from.
+//
+// The localized control type is deliberately not reported alongside it: this package never answers that property, since
+// UI Automation has a localized name for every control type and ours would be in English only, so it derives that one
+// from the control type it has just been told about.
+func TestUIADecideRaisesRole(t *testing.T) {
+	c := check.New(t)
+	old := eventTree()
+	cur := eventTree()
+	cur.Node(3).Role = role.ToggleButton
+
+	events := accessibility.Diff(old, cur)
+	c.Equal(1, len(events))
+	c.Equal(accessibility.RoleChanged, events[0].Kind)
+	c.Equal([]UIARaise{raiseProperty(3, UIA_ControlTypePropertyId)}, UIADecideRaises(old, cur, events))
+
+	// An ignored node has no provider, so its role change is dropped like everything else about it.
+	c.Nil(UIADecideRaises(old, cur, []accessibility.Event{
+		{Kind: accessibility.RoleChanged, Node: 9, Old: "group", New: "tool-bar"},
+	}))
+}
+
+// TestUIADecideRaisesWindowActivation verifies that a window becoming active points the client back at whatever inside
+// it has the focus, and that a window losing it says nothing at all.
 func TestUIADecideRaisesWindowActivation(t *testing.T) {
 	c := check.New(t)
 	c.Equal([]UIARaise{raiseEvent(2, UIA_AutomationFocusChangedEventId)},
@@ -967,8 +1070,8 @@ func TestUIADecideRaisesWindowActivation(t *testing.T) {
 	}))
 }
 
-// TestUIADecideRaisesAnnouncement verifies that an announcement is aimed at the root and that saying the same thing twice
-// really does say it twice, unlike every other kind of call, which is deduplicated.
+// TestUIADecideRaisesAnnouncement verifies that an announcement is aimed at the root and that saying the same thing
+// twice really does say it twice, unlike every other kind of call, which is deduplicated.
 func TestUIADecideRaisesAnnouncement(t *testing.T) {
 	c := check.New(t)
 	c.Equal([]UIARaise{
@@ -1004,8 +1107,8 @@ func TestUIADecideRaisesDeterminism(t *testing.T) {
 	}
 }
 
-// TestUIARaiseStrings verifies that the diagnostic strings name each kind and carry the field that matters for it, since
-// a failing provider test is read through them.
+// TestUIARaiseStrings verifies that the diagnostic strings name each kind and carry the field that matters for it,
+// since a failing provider test is read through them.
 func TestUIARaiseStrings(t *testing.T) {
 	c := check.New(t)
 	c.Equal("event", UIARaiseEvent.String())

@@ -175,7 +175,7 @@ const (
 // Granularity is the unit that org.a11y.atspi.Text.GetStringAtOffset works in, from AtspiTextGranularity.
 type Granularity uint32
 
-// The granularities AT-SPI defines. All of them are answered; see [textUnitForGranularity].
+// The granularities AT-SPI defines. All of them are answered; see [unitForGranularity].
 const (
 	GranularityChar      Granularity = 0 // ATSPI_TEXT_GRANULARITY_CHAR
 	GranularityWord      Granularity = 1 // ATSPI_TEXT_GRANULARITY_WORD
@@ -190,7 +190,7 @@ const (
 type Boundary uint32
 
 // The boundary types AT-SPI defines. Each unit comes in a START and an END form, which differ in where the range a
-// method answers with begins and ends relative to the unit; see [textUnitForBoundary].
+// method answers with begins and ends relative to the unit; see [unitForBoundary].
 const (
 	BoundaryChar          Boundary = 0 // ATSPI_TEXT_BOUNDARY_CHAR
 	BoundaryWordStart     Boundary = 1 // ATSPI_TEXT_BOUNDARY_WORD_START
@@ -240,8 +240,8 @@ const (
 )
 
 // The AT-SPI event interface names. An AT-SPI event is named class:major:minor, and the class is what becomes the D-Bus
-// interface of the signal, so these are the classes of the events Unison sends. Nothing implements them: they exist only
-// as the interface an event carries, which is what an assistive technology matches its listeners against.
+// interface of the signal, so these are the classes of the events Unison sends. Nothing implements them: they exist
+// only as the interface an event carries, which is what an assistive technology matches its listeners against.
 const (
 	// InterfaceEventObject is the class of the events about an object itself, which is most of them.
 	InterfaceEventObject = "org.a11y.atspi.Event.Object"

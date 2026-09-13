@@ -25,7 +25,7 @@ const clippedWindow WindowKey = 5
 // technology knows how far to scroll to reveal it; what can be pointed at is the part of that the ancestors leave.
 //
 //	70 window "Ledger"        (0,0 200x100)  active
-//	└─ 71 scroll area         (0,0 200x40)   the view port
+//	└─ 71 scroll area         (0,0 200x30)   the view port
 //	   └─ 72 list             (0,0 200x60)
 //	      ├─ 73 row "One"     (0,0 200x20)   wholly within the view port
 //	      ├─ 74 row "Two"     (0,20 200x20)  the lower half is below the view port

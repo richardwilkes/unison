@@ -12,6 +12,7 @@ package atspi
 import (
 	"bufio"
 	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -23,6 +24,9 @@ import (
 	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/internal/dbus"
 )
+
+// toggleWindow is the window the state tests that need a node whose role decides its states publish.
+const toggleWindow WindowKey = 6
 
 // mainWindowSignals is how many signals the first publish of the main window sends: one cache item for each of the
 // eight reported nodes, the window's Create, the application root gaining a child, and then the four signals that say
@@ -168,6 +172,46 @@ func (ta *testAdapter) cachedID(record signalRecord) dbus.ObjectRef {
 	ref, ok := item[0].(dbus.ObjectRef)
 	ta.c.True(ok, "a cache item starts with the object it describes")
 	return ref
+}
+
+// childLists is what an assistive technology keeps as it listens: libatspi holds an array of children per object and
+// applies every children-changed to it, so replaying what a publish announced against the lists the client had before
+// it has to produce the lists the objects themselves now report. Checking the objects alone would pass while the
+// announcement was wrong, which is the only thing a client that never asks again would ever see.
+type childLists map[dbus.ObjectPath][]dbus.ObjectRef
+
+// apply replays the children-changed events among a run of signals, leaving every other signal alone. Each one has to
+// name the child that really is at the index it carries, since the index is all a client has to go on.
+func (lists childLists) apply(c check.Checker, records []signalRecord) {
+	for _, record := range records {
+		if record.iface != InterfaceEventObject || record.member != signalChildrenChanged {
+			continue
+		}
+		detail, ok := record.args[0].(string)
+		c.True(ok, "a detail string is a string")
+		index, ok := record.args[1].(int32)
+		c.True(ok, "the first integer of an event is an integer")
+		value, ok := record.args[3].(dbus.Variant)
+		c.True(ok, "the value of an event is a variant")
+		ref, ok := value.Value.(dbus.ObjectRef)
+		c.True(ok, "children-changed carries a reference to the child")
+		list := lists[record.path]
+		switch detail {
+		case detailAdd:
+			if int(index) > len(list) {
+				c.Fatalf("%s cannot gain a child at %d; it has %d", record.path, index, len(list))
+			}
+			lists[record.path] = slices.Insert(list, int(index), ref)
+		case detailRemove:
+			if int(index) >= len(list) {
+				c.Fatalf("%s cannot lose the child at %d; it has %d", record.path, index, len(list))
+			}
+			c.Equal(ref, list[index], "the child leaving %s must be the one at the index announced", record.path)
+			lists[record.path] = slices.Delete(list, int(index), int(index)+1)
+		default:
+			c.Fatalf("children-changed carried the unknown detail %q", detail)
+		}
+	}
 }
 
 // activeMainTree returns the main window's tree with the given changes applied, keeping it the active window.
@@ -410,18 +454,31 @@ func TestANodeThatStopsBeingIgnored(t *testing.T) {
 	}, events, "the group is still in the tree, so nothing was added or removed there")
 	ta.Publish(mainWindow, named, events, sampleGeometry())
 
-	signals := ta.peer.nextSignals(7)
+	signals := ta.peer.nextSignals(9)
 	c.Equal(objectEvent(2, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("Identity")), signals[0])
-	// The group joins the window's children, and the two nodes that used to stand in for it become its own.
-	c.Equal(nodeRef(2), ta.cachedID(signals[1]))
-	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(2))), signals[2])
-	c.Equal(nodeRef(3), ta.cachedID(signals[3]))
-	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(3))), signals[4])
-	c.Equal(nodeRef(4), ta.cachedID(signals[5]))
-	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(4))), signals[6])
-	c.Equal([]dbus.ObjectRef{nodeRef(2), nodeRef(5), nodeRef(8), nodeRef(9)},
-		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""),
+	// The two nodes that were standing in for the group leave the window before anything is put in their place. The
+	// second of them was at index 1 of the list the snapshots hold, but the first removal has already taken index 0
+	// away by the time the client hears about it.
+	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 0, 0, variantRef(nodeRef(3))), signals[1])
+	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 0, 0, variantRef(nodeRef(4))), signals[2])
+	// The group then joins the window's children, and the two nodes become its own.
+	c.Equal(nodeRef(2), ta.cachedID(signals[3]))
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(2))), signals[4])
+	c.Equal(nodeRef(3), ta.cachedID(signals[5]))
+	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(3))), signals[6])
+	c.Equal(nodeRef(4), ta.cachedID(signals[7]))
+	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(4))), signals[8])
+
+	// Replaying what was announced against the lists a client held before the publish has to produce the lists the
+	// objects report now. Checking the objects alone would pass even if the window had never been told that the two
+	// nodes had left it, which is exactly the mistake a caching client would then live with forever.
+	lists := childLists{NodePath(1): {nodeRef(3), nodeRef(4), nodeRef(5), nodeRef(8), nodeRef(9)}}
+	lists.apply(c, signals)
+	children := ta.one(NodePath(1), InterfaceAccessible, "GetChildren", "")
+	c.Equal([]dbus.ObjectRef{nodeRef(2), nodeRef(5), nodeRef(8), nodeRef(9)}, children,
 		"what was announced has to be what the window now reports")
+	c.Equal(lists[NodePath(1)], children, "a client that applied the announcement has the window's children right")
+	c.Equal(lists[NodePath(2)], ta.one(NodePath(2), InterfaceAccessible, "GetChildren", ""), "and the group's")
 }
 
 // TestANodeThatBecomesIgnored covers the other direction: a node leaving the reported hierarchy while staying in the
@@ -450,8 +507,11 @@ func TestANodeThatBecomesIgnored(t *testing.T) {
 	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 2, 0, variantRef(nodeRef(6))), signals[3])
 	c.Equal(nodeRef(7), ta.cachedID(signals[4]))
 	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 3, 0, variantRef(nodeRef(7))), signals[5])
-	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(6), nodeRef(7), nodeRef(8), nodeRef(9)},
-		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""))
+	lists := childLists{NodePath(1): {nodeRef(3), nodeRef(4), nodeRef(5), nodeRef(8), nodeRef(9)}}
+	lists.apply(c, signals)
+	children := ta.one(NodePath(1), InterfaceAccessible, "GetChildren", "")
+	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(6), nodeRef(7), nodeRef(8), nodeRef(9)}, children)
+	c.Equal(lists[NodePath(1)], children, "a client that applied the announcement has the window's children right")
 }
 
 // TestActivationAndAFocusMoveInOneSnapshot covers the pair of events that clicking a control in a window that was not
@@ -683,6 +743,7 @@ func TestStateChanges(t *testing.T) {
 	ta := newEventAdapter(t)
 	c := ta.c
 	for _, one := range []struct {
+		tree     *accessibility.Tree
 		name     string
 		expected []signalRecord
 		event    accessibility.Event
@@ -700,6 +761,9 @@ func TestStateChanges(t *testing.T) {
 		},
 		{
 			name: "becoming read only is also the loss of being editable",
+			tree: activeMainTree(func(tree *accessibility.Tree) {
+				tree.Node(4).Text = &accessibility.TextInfo{Text: textBefore}
+			}),
 			event: accessibility.Event{
 				Kind: accessibility.StateChanged, Node: 4, State: accessibility.StateReadOnly,
 				Old: falseValue, New: trueValue,
@@ -707,6 +771,87 @@ func TestStateChanges(t *testing.T) {
 			expected: []signalRecord{
 				stateEvent(4, stateNameReadOnly, true),
 				stateEvent(4, stateNameEditable, false),
+			},
+		},
+		{
+			// A slider's state set never holds EDITABLE, so there is nothing for it to lose along with the change,
+			// and retracting a state it never had would leave a client holding the opposite of the truth.
+			name: "a control that was never editable only gains read only",
+			event: accessibility.Event{
+				Kind: accessibility.StateChanged, Node: 8, State: accessibility.StateReadOnly,
+				Old: falseValue, New: trueValue,
+			},
+			expected: []signalRecord{stateEvent(8, stateNameReadOnly, true)},
+		},
+		{
+			// AT-SPI has a state for each side of the pair, and [States] puts COLLAPSED on every unexpanded
+			// expandable node, so expanding one has to retract it.
+			name: "expanding a row retracts being collapsed",
+			tree: activeMainTree(func(tree *accessibility.Tree) {
+				tree.Node(5).Expandable = true
+				tree.Node(5).Expanded = true
+			}),
+			event: accessibility.Event{
+				Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateExpanded,
+				Old: falseValue, New: trueValue,
+			},
+			expected: []signalRecord{
+				stateEvent(5, stateNameExpanded, true),
+				stateEvent(5, stateNameCollapsed, false),
+			},
+		},
+		{
+			name: "collapsing it again",
+			tree: activeMainTree(func(tree *accessibility.Tree) { tree.Node(5).Expandable = true }),
+			event: accessibility.Event{
+				Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateExpanded,
+				Old: trueValue, New: falseValue,
+			},
+			expected: []signalRecord{
+				stateEvent(5, stateNameExpanded, false),
+				stateEvent(5, stateNameCollapsed, true),
+			},
+		},
+		{
+			name: "becoming expandable while already open",
+			tree: activeMainTree(func(tree *accessibility.Tree) {
+				tree.Node(5).Expandable = true
+				tree.Node(5).Expanded = true
+			}),
+			event: accessibility.Event{
+				Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateExpandable,
+				Old: falseValue, New: trueValue,
+			},
+			expected: []signalRecord{
+				stateEvent(5, stateNameExpandable, true),
+				stateEvent(5, stateNameExpanded, true),
+			},
+		},
+		{
+			// The ability to expand never arrives on its own either: a node that gains it gains the side of the pair
+			// it is on at the same moment, and only that side, since the other was never reported.
+			name: "becoming expandable says which way it is",
+			tree: activeMainTree(func(tree *accessibility.Tree) { tree.Node(5).Expandable = true }),
+			event: accessibility.Event{
+				Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateExpandable,
+				Old: falseValue, New: trueValue,
+			},
+			expected: []signalRecord{
+				stateEvent(5, stateNameExpandable, true),
+				stateEvent(5, stateNameCollapsed, true),
+			},
+		},
+		{
+			// This one follows straight on from the case above, so the snapshot it replaces is the collapsed
+			// expandable list, and COLLAPSED is what the client holds and what has to be taken back.
+			name: "and losing it takes the side it was on away",
+			event: accessibility.Event{
+				Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateExpandable,
+				Old: trueValue, New: falseValue,
+			},
+			expected: []signalRecord{
+				stateEvent(5, stateNameExpandable, false),
+				stateEvent(5, stateNameCollapsed, false),
 			},
 		},
 		{
@@ -770,7 +915,11 @@ func TestStateChanges(t *testing.T) {
 			},
 		},
 	} {
-		ta.Publish(mainWindow, mainTree(), []accessibility.Event{one.event}, sampleGeometry())
+		tree := one.tree
+		if tree == nil {
+			tree = mainTree()
+		}
+		ta.Publish(mainWindow, tree, []accessibility.Event{one.event}, sampleGeometry())
 		if len(one.expected) != 0 {
 			c.Equal(one.expected, ta.peer.nextSignals(len(one.expected)), one.name)
 		}
@@ -788,14 +937,132 @@ func TestStateChanges(t *testing.T) {
 		{state: accessibility.StateModal, expected: stateNameModal},
 		{state: accessibility.StateBusy, expected: stateNameBusy},
 		{state: accessibility.StateInvalid, expected: stateNameInvalidEntry},
-		{state: accessibility.StateExpandable, expected: stateNameExpandable},
-		{state: accessibility.StateExpanded, expected: stateNameExpanded},
 	} {
 		ta.Publish(mainWindow, mainTree(), []accessibility.Event{{
 			Kind: accessibility.StateChanged, Node: 5, State: one.state, Old: trueValue, New: falseValue,
 		}}, sampleGeometry())
 		c.Equal([]signalRecord{stateEvent(5, one.expected, false)}, ta.peer.nextSignals(1), one.state.String())
 	}
+}
+
+// toggleTree is a window of the controls whose AT-SPI states come from more of the node than the flag that changed:
+//
+//	90 window "Options"              (0,0 200x80)   active
+//	├─ 91 toggle button "Bold"       (0,0 100x20)   pressed
+//	├─ 92 disclosure triangle        (0,20 20x20)
+//	└─ 93 menu item "Wrap"           (0,40 200x20)  carries a check, currently off
+func toggleTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 90, Role: role.Window, Name: "Options", Focused: true, Bounds: geom.NewRect(0, 0, 200, 80),
+			Children: []accessibility.NodeID{91, 92, 93},
+		},
+		&accessibility.Node{
+			ID: 91, Parent: 90, Role: role.ToggleButton, Name: "Bold", Pressed: true,
+			Bounds: geom.NewRect(0, 0, 100, 20),
+		},
+		&accessibility.Node{ID: 92, Parent: 90, Role: role.DisclosureTriangle, Bounds: geom.NewRect(0, 20, 20, 20)},
+		&accessibility.Node{
+			ID: 93, Parent: 90, Role: role.MenuItem, Name: "Wrap", HasCheck: true, Bounds: geom.NewRect(0, 40, 200, 20),
+		},
+	)
+}
+
+// TestStateChangesThatTheNodeDecides covers the two states no flag of its own ever moves: the CHECKED that a toggle's
+// pressed-ness stands for, and the CHECKABLE that says whether a node carries a check at all. A client caches a state
+// set until something retracts it, so a state this package puts in one and never takes out again is wrong for as long
+// as the window lives.
+func TestStateChangesThatTheNodeDecides(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	options := toggleTree()
+	ta.Publish(toggleWindow, options, nil, sampleGeometry())
+	ta.peer.nextSignals(8) // Four cache items, the window's Create and place, and the two that say it is active
+	c.True(States(options.Node(91), true).Has(StateChecked), "a toggle that is down is a control that is checked")
+
+	// Releasing the toggle has to retract that CHECKED as well as the PRESSED it came with.
+	released := toggleTree()
+	released.Generation++
+	released.Node(91).Pressed = false
+	events := accessibility.Diff(options, released)
+	c.Equal([]accessibility.Event{{
+		Kind: accessibility.StateChanged, Node: 91, State: accessibility.StatePressed,
+		Old: trueValue, New: falseValue,
+	}}, events)
+	ta.Publish(toggleWindow, released, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(91, stateNamePressed, false),
+		stateEvent(91, stateNameChecked, false),
+	}, ta.peer.nextSignals(2))
+
+	// A disclosure triangle is the other role AT-SPI reports as a toggle, so its pressed-ness is its check too.
+	opened := toggleTree()
+	opened.Generation += 2
+	opened.Node(91).Pressed = false
+	opened.Node(92).Pressed = true
+	ta.Publish(toggleWindow, opened, accessibility.Diff(released, opened), sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(92, stateNamePressed, true),
+		stateEvent(92, stateNameChecked, true),
+	}, ta.peer.nextSignals(2))
+
+	// A menu item that stops carrying a check loses CHECKABLE, and says so even though its check state has not moved.
+	plain := toggleTree()
+	plain.Generation += 3
+	plain.Node(91).Pressed = false
+	plain.Node(92).Pressed = true
+	plain.Node(93).HasCheck = false
+	events = accessibility.Diff(opened, plain)
+	c.Equal([]accessibility.Event{{
+		Kind: accessibility.StateChanged, Node: 93, State: accessibility.StateChecked,
+		Old: checkenum.Off.Key(), New: checkenum.Off.Key(),
+	}}, events, "losing the check is a change even though the check state is what it was")
+	ta.Publish(toggleWindow, plain, events, sampleGeometry())
+	c.Equal([]signalRecord{stateEvent(93, stateNameCheckable, false)}, ta.peer.nextSignals(1),
+		"nothing but the checkability moved, so nothing else is announced")
+
+	// Getting it back while already checked gains both states at once.
+	ticked := toggleTree()
+	ticked.Generation += 4
+	ticked.Node(91).Pressed = false
+	ticked.Node(92).Pressed = true
+	ticked.Node(93).Checked = checkenum.On
+	ta.Publish(toggleWindow, ticked, accessibility.Diff(plain, ticked), sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(93, stateNameCheckable, true),
+		stateEvent(93, stateNameChecked, true),
+	}, ta.peer.nextSignals(2))
+}
+
+// TestARoleChangeIsAPropertyChange covers a live control becoming a different kind of thing, which happens whenever a
+// label is given a drawable instead of text or a button is made sticky. AT-SPI has no event of its own for it: the role
+// is a property, and its value is the role's number rather than its name.
+func TestARoleChangeIsAPropertyChange(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	swapped := activeMainTree(func(tree *accessibility.Tree) { tree.Node(3).Role = role.Image })
+	events := accessibility.Diff(mainTree(), swapped)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.RoleChanged, Node: 3, Old: role.Label.Key(), New: role.Image.Key()},
+	}, events)
+	ta.Publish(mainWindow, swapped, events, sampleGeometry())
+	c.Equal(objectEvent(3, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleImage))),
+		ta.peer.nextSignal())
+
+	// The role reported is the one this package would answer with rather than the one the event names, since an
+	// unnamed group is a panel while a named one is a grouping.
+	named := activeMainTree(func(tree *accessibility.Tree) { tree.Node(5).Role = role.Group })
+	ta.Publish(mainWindow, named, accessibility.Diff(mainTree(), named), sampleGeometry())
+	c.Equal(objectEvent(5, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleGrouping))),
+		ta.peer.nextSignal())
+
+	// A node with no object at all says nothing, as it has nothing for a property to have changed on.
+	ignored := activeMainTree(func(tree *accessibility.Tree) { tree.Node(2).Role = role.Toolbar })
+	ta.Publish(mainWindow, ignored, accessibility.Diff(mainTree(), ignored), sampleGeometry())
+	ta.Announce("Nothing about the group")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
 func TestTextEvents(t *testing.T) {

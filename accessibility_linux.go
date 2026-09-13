@@ -185,6 +185,11 @@ func linuxStartA11y() {
 		if wnd.ax == nil {
 			wnd.ax = &windowAccessibility{}
 		}
+		// Laid out first, since a window whose layout invalidation is still pending would otherwise be described from
+		// the frames its panels had before it — the very first bounds the registry is given, and the ones a screen
+		// reader draws its highlight from. Window.performAccessibilityAction lays the window out ahead of its publish
+		// for the same reason.
+		wnd.ValidateLayout()
 		wnd.publishAccessibilityNow()
 	}
 }

@@ -10,6 +10,7 @@
 package dbus
 
 import (
+	"encoding/xml"
 	"errors"
 	"strings"
 	"sync"
@@ -51,6 +52,8 @@ func newTestObject() *testObject {
 				{Name: "Boom", Handle: func(_ *Call) { panic("the handler blew up") }},
 				{Name: "Unimplemented"},
 				{Name: "Later", Out: "s", Handle: func(call *Call) { o.deferred <- call }},
+				{Name: "Derived", Handle: func(call *Call) { call.ReplyWithSignature("", "derived", int32(2)) }},
+				{Name: "Explicit", Out: "v", Handle: func(call *Call) { call.ReplyWithSignature(stringDictSig, Dict{}) }},
 			},
 			Properties: []*Property{
 				{Name: nameProperty, Sig: "s", Get: o.getName, Set: o.setName},
@@ -252,6 +255,151 @@ func TestReplyFromAnotherGoroutine(t *testing.T) {
 		call.Error(Failed, "this second answer is ignored")
 	}()
 	c.Equal([]any{"answered later"}, replyValues(t, b.call(testPath, testInterface, "Later", "")))
+}
+
+func TestReplyWithSignature(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	exportTestObject(t, b)
+	// An empty signature derives one from the values...
+	reply := b.call(testPath, testInterface, "Derived", "")
+	c.Equal(Signature("si"), reply.Signature)
+	c.Equal([]any{"derived", int32(2)}, replyValues(t, reply))
+	// ...while an explicit one replaces whatever the method declared, which is how a handler returns an empty
+	// dictionary from a method whose declared reply type cannot describe it.
+	reply = b.call(testPath, testInterface, "Explicit", "")
+	c.Equal(Signature(stringDictSig), reply.Signature)
+	c.Equal([]any{Dict{}}, replyValues(t, reply))
+}
+
+func TestPropertiesOnABuiltinInterface(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	exportTestObject(t, b)
+	// Every object implements the standard interfaces, so naming one of them is not an unknown interface; none of them
+	// has any properties, so asking for one is an unknown property, which is exactly what GetAll already assumes when
+	// it answers the same name with an empty dictionary.
+	for _, iface := range []string{peerInterface, propertiesInterface, introspectableInterface} {
+		reply := b.call(testPath, propertiesInterface, getMember, "ss", iface, nameProperty)
+		c.Equal(UnknownProperty, reply.ErrorName, iface)
+		reply = b.call(testPath, propertiesInterface, setMember, "ssv", iface, nameProperty,
+			Variant{Sig: "s", Value: changedName})
+		c.Equal(UnknownProperty, reply.ErrorName, iface)
+		c.Equal([]any{Dict{}}, replyValues(t, b.call(testPath, propertiesInterface, getAllMember, "s", iface)), iface)
+	}
+}
+
+// declaredObject returns whatever interfaces a test gives it, valid or not.
+type declaredObject struct {
+	ifaces []*Interface
+}
+
+func (o declaredObject) Interfaces() []*Interface { return o.ifaces }
+
+// readable is a property getter, for the declarations that need one in order to be about something else.
+func readable() (any, error) { return "", nil }
+
+func TestExportRejectsInvalidDeclarations(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	for i, one := range []*Interface{
+		{Name: "single"},
+		{Name: `org.example.X"><node name="pwned`},
+		{Name: testInterface, Methods: []*Method{{Name: "has.a.dot"}}},
+		{Name: testInterface, Methods: []*Method{{Name: `M"`}}},
+		{Name: testInterface, Methods: []*Method{{Name: "M", In: "a"}}},
+		{Name: testInterface, Methods: []*Method{{Name: "M", Out: "(i"}}},
+		{Name: testInterface, Signals: []*Signal{{Name: "not a name"}}},
+		{Name: testInterface, Signals: []*Signal{{Name: "S", Sig: "h"}}},
+		{Name: testInterface, Properties: []*Property{{Name: "P<", Sig: "s", Get: readable}}},
+		{Name: testInterface, Properties: []*Property{{Name: "P", Sig: "ss", Get: readable}}},
+		{Name: testInterface, Properties: []*Property{{Name: "P", Sig: "", Get: readable}}},
+		{Name: testInterface, Properties: []*Property{{Name: "P", Sig: "s"}}}, // Neither readable nor writable
+	} {
+		c.HasError(b.client.Export(testPath, declaredObject{ifaces: []*Interface{one}}), "case %d: %s", i, one.Name)
+	}
+	c.NoError(b.client.Export(testPath, declaredObject{ifaces: []*Interface{{
+		Name:       testInterface,
+		Methods:    []*Method{{Name: "M", In: "s", Out: stringDictSig}},
+		Signals:    []*Signal{{Name: "S", Sig: "s"}},
+		Properties: []*Property{{Name: "P", Sig: "s", Get: readable}},
+	}}}))
+}
+
+func TestIntrospectionEscapesWhatItIsGiven(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	const prefix = ObjectPath("/org/example/unchecked")
+	// Only Export checks what an object declares, so a resolver may still hand out a name that would end the attribute
+	// it lands in and add markup of its own. Escaping is what keeps the document parseable no matter what it describes.
+	c.NoError(b.client.ExportSubtree(prefix, func(_ ObjectPath) Object {
+		return declaredObject{ifaces: []*Interface{{
+			Name:    `org.example.X"><node name="pwned`,
+			Methods: []*Method{{Name: `M"`, In: "s"}},
+			Signals: []*Signal{{Name: "S&"}},
+			Properties: []*Property{
+				{Name: "P<", Sig: "s", Get: readable},
+				{Name: "Useless", Sig: "s"},
+			},
+		}}}
+	}))
+	values := replyValues(t, b.call(prefix+"/x", introspectableInterface, "Introspect", ""))
+	doc, ok := values[0].(string)
+	c.True(ok)
+	c.Contains(doc, `<interface name="org.example.X&quot;&gt;&lt;node name=&quot;pwned">`)
+	c.Contains(doc, `<method name="M&quot;">`)
+	c.Contains(doc, `<signal name="S&amp;"/>`)
+	c.Contains(doc, `<property name="P&lt;" type="s" access="read"/>`)
+	// A property that can neither be read nor written is left out rather than advertised as one that can be written.
+	c.NotContains(doc, "Useless")
+	var node struct {
+		XMLName  xml.Name `xml:"node"`
+		Children []struct {
+			Name string `xml:"name,attr"`
+		} `xml:"node"`
+	}
+	c.NoError(xml.Unmarshal([]byte(doc), &node))
+	c.Equal(0, len(node.Children), "nothing may inject a node of its own")
+}
+
+// unnamedErrorObject answers with errors whose names would keep the reply from being encoded at all.
+type unnamedErrorObject struct{}
+
+func (unnamedErrorObject) Interfaces() []*Interface {
+	return []*Interface{
+		{
+			Name: "org.example.Unnamed",
+			Methods: []*Method{
+				{Name: "NoName", Handle: func(call *Call) { call.failWith(&Error{Message: "no name"}) }},
+				{Name: "BadName", Handle: func(call *Call) { call.Error("not a name", "malformed") }},
+			},
+		},
+	}
+}
+
+func TestErrorRepliesAlwaysHaveAValidName(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	c.NoError(b.client.Export(testPath, unnamedErrorObject{}))
+	// An object that chooses an error name that will not encode used to produce a reply that was logged and dropped on
+	// its way out, leaving the caller waiting for an answer that never came.
+	for _, one := range []struct {
+		member string
+		want   string
+	}{
+		{member: "NoName", want: "no name"},
+		{member: "BadName", want: "malformed"},
+	} {
+		reply := b.call(testPath, "org.example.Unnamed", one.member, "")
+		c.Equal(TypeError, reply.Type, one.member)
+		c.Equal(Failed, reply.ErrorName, one.member)
+		c.Equal(one.want, reply.AsError().Message, one.member)
+	}
 }
 
 func TestPeerInterface(t *testing.T) {
@@ -484,9 +632,9 @@ func TestIntrospect(t *testing.T) {
 	c.NoError(b.client.Export("/org/example/elsewhere", smallObject{}))
 	values := replyValues(t, b.call(root, introspectableInterface, "Introspect", ""))
 	c.Equal(1, len(values))
-	xml, ok := values[0].(string)
+	doc, ok := values[0].(string)
 	c.True(ok)
-	c.Equal(smallIntrospection, xml)
+	c.Equal(smallIntrospection, doc)
 }
 
 // partialPropertiesObject declares just one member of a standard interface, which is all the specification requires an
@@ -524,11 +672,11 @@ func TestPartiallyDeclaredStandardInterface(t *testing.T) {
 	// Introspection has to describe what dispatch actually does, so the members that fell through to the built-in
 	// implementation appear alongside the declared one rather than being left out.
 	values = replyValues(t, b.call(path, introspectableInterface, "Introspect", ""))
-	xml, ok := values[0].(string)
+	doc, ok := values[0].(string)
 	c.True(ok)
-	c.Equal(1, strings.Count(xml, `<interface name="`+propertiesInterface+`">`))
+	c.Equal(1, strings.Count(doc, `<interface name="`+propertiesInterface+`">`))
 	for _, member := range []string{getMember, getAllMember, setMember} {
-		c.Contains(xml, `<method name="`+member+`">`, member)
+		c.Contains(doc, `<method name="`+member+`">`, member)
 	}
-	c.Contains(xml, `<signal name="PropertiesChanged">`)
+	c.Contains(doc, `<signal name="PropertiesChanged">`)
 }

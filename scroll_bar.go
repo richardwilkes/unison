@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"math"
+
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -294,6 +296,14 @@ func (s *ScrollBar) PerformAccessibilityAction(req accessibility.ActionRequest) 
 		s.SetRange(s.value-s.axStep(), s.extent, s.maximum)
 		return true
 	case accessibility.SetValue:
+		if math.IsNaN(req.Number) || math.IsInf(req.Number, 0) {
+			// Nothing hands these on: the AT-SPI value interface takes any double a client cares to send without
+			// looking at it, and every one of SetRange's clamps is false for a NaN, so one would settle in as the bar's
+			// value for good — every later comparison against it differing — and go on through ChangedCallback to the
+			// frame of whatever the bar scrolls. An infinity is refused with it rather than being narrowed to a float32
+			// that the language does not define.
+			return false
+		}
 		s.SetRange(float32(req.Number), s.extent, s.maximum)
 		return true
 	default:

@@ -70,7 +70,9 @@ const (
 const (
 	stateNameActive          = "active"
 	stateNameBusy            = "busy"
+	stateNameCheckable       = "checkable"
 	stateNameChecked         = "checked"
+	stateNameCollapsed       = "collapsed"
 	stateNameEditable        = "editable"
 	stateNameEnabled         = "enabled"
 	stateNameExpandable      = "expandable"
@@ -95,6 +97,7 @@ const (
 const (
 	propertyAccessibleName        = "accessible-name"
 	propertyAccessibleDescription = "accessible-description"
+	propertyAccessibleRole        = "accessible-role"
 	propertyAccessibleValue       = "accessible-value"
 )
 
@@ -209,6 +212,8 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 		a.emitPropertyChange(data, ev.Node, propertyAccessibleName, variantString(ev.New))
 	case accessibility.DescriptionChanged:
 		a.emitPropertyChange(data, ev.Node, propertyAccessibleDescription, variantString(ev.New))
+	case accessibility.RoleChanged:
+		a.emitRoleChanged(data, ev.Node)
 	case accessibility.ValueChanged, accessibility.NumberChanged:
 		a.emitValueChanged(pub, ev.Node)
 	case accessibility.StateChanged:
@@ -261,6 +266,22 @@ func (a *Adapter) emitValueChanged(pub *publication, id accessibility.NodeID) {
 	}
 	pub.valueAnnounced[id] = true
 	a.emitPropertyChange(pub.data, id, propertyAccessibleValue, variantDouble(n.Number))
+}
+
+// emitRoleChanged announces that a node is no longer the kind of thing it was, which a live control really does become:
+// a label turns into an image when its text is swapped for a drawable, and a button turns into a toggle button when it
+// is made sticky. AT-SPI carries it as the accessible-role property, whose value is the role's number rather than its
+// name, since the number is what the cache item holds and what an assistive technology compares against.
+//
+// The role is read from the new snapshot rather than from the event, because what this package reports depends on more
+// of the node than the schema's role does: an unnamed group is a panel while a named one is a grouping, and a protected
+// text field is password text.
+func (a *Adapter) emitRoleChanged(data *windowData, id accessibility.NodeID) {
+	n := reportedNode(data, id)
+	if n == nil {
+		return
+	}
+	a.emitPropertyChange(data, id, propertyAccessibleRole, variantUint32(uint32(MapRole(n))))
 }
 
 // emitWindowAdded announces a window that has just joined the accessibility tree: one cache item per reported node, the
@@ -424,7 +445,8 @@ func (a *Adapter) emitStateChanged(pub *publication, ev *accessibility.Event) {
 		a.emitIgnoredChanged(pub, ev)
 		return
 	}
-	if reportedNode(pub.data, ev.Node) == nil {
+	n := reportedNode(pub.data, ev.Node)
+	if n == nil {
 		return
 	}
 	if ev.State == accessibility.StateSelected && ev.New == trueValue {
@@ -432,7 +454,7 @@ func (a *Adapter) emitStateChanged(pub *publication, ev *accessibility.Event) {
 		// thing a client that honors that state has no other way of learning.
 		a.noteActiveDescendant(pub, ev.Node)
 	}
-	for _, one := range stateChanges(ev) {
+	for _, one := range stateChanges(reportedNode(pub.prior, ev.Node), n, ev) {
 		var detail1 int32
 		if one.on {
 			detail1 = 1
@@ -448,7 +470,10 @@ func (a *Adapter) emitStateChanged(pub *publication, ev *accessibility.Event) {
 // a name. Reporting nothing leaves the client's cached hierarchy permanently at odds with what GetChildren answers.
 //
 // The node's own reported children move with it, from the nearest reported ancestor onto the node or the other way
-// about, and are told where they are now. Nothing deeper has to be: only the direct children change parents.
+// about, and both ends of every move are announced: the ancestor that used to report a child is told it has gone before
+// the object that holds it now is told it has arrived. Leaving the first half out would have a client that keeps a
+// child list per object — which libatspi does — hold the same children in two places for as long as the window lives.
+// Nothing deeper has to be said: only the direct children change parents.
 func (a *Adapter) emitIgnoredChanged(pub *publication, ev *accessibility.Event) {
 	if ev.New == trueValue {
 		// The node has left the reported hierarchy, so its children are placed under the ancestor that holds them now
@@ -459,8 +484,19 @@ func (a *Adapter) emitIgnoredChanged(pub *publication, ev *accessibility.Event) 
 		}
 		return
 	}
+	// The node has joined the reported hierarchy, and the children that were standing in for it are now its own. They
+	// are taken away from the ancestor that used to report them first, so that the indexes the removals carry are the
+	// ones the client's list actually has and so that the node itself lands where the new snapshot puts it.
+	children := pub.data.unignoredChildren(ev.Node)
+	if parent := pub.prior.parent(ev.Node); parent != 0 {
+		for _, id := range children {
+			if reportedNode(pub.prior, id) != nil {
+				a.emitChildRemoved(pub, parent, id, pub.prior.indexInParent(id))
+			}
+		}
+	}
 	a.emitNodeAdded(pub.data, ev.Node)
-	for _, id := range pub.data.unignoredChildren(ev.Node) {
+	for _, id := range children {
 		a.emitNodeAdded(pub.data, id)
 	}
 }
@@ -513,7 +549,14 @@ type stateChange struct {
 
 // stateChanges returns the AT-SPI states a StateChanged event is reported as. Some of Unison's flags are the opposite
 // of AT-SPI's state, and some are two states at once; a flag AT-SPI has no state for is reported as nothing at all.
-func stateChanges(ev *accessibility.Event) []stateChange {
+//
+// The node the event names has to be looked at as well as the flag that changed, in both the snapshot it is in now and
+// the one before it, because several of the states [States] reports are derived from more of the node than the flag:
+// whether a control can be edited at all, whether its pressed-ness is also its check, and which side of the
+// expanded/collapsed pair it is on. A state a node's state set never holds must never be retracted, and one the state
+// set does hold must never be left behind for a client to cache forever. prior is nil when the node was not reported
+// before this publish.
+func stateChanges(prior, n *accessibility.Node, ev *accessibility.Event) []stateChange {
 	on := ev.New == trueValue
 	switch ev.State {
 	case accessibility.StateDisabled:
@@ -528,10 +571,23 @@ func stateChanges(ev *accessibility.Event) []stateChange {
 	case accessibility.StateMultiselectable:
 		return []stateChange{{name: stateNameMultiselectable, on: on}}
 	case accessibility.StatePressed:
+		if pressedIsChecked(n) {
+			// AT-SPI reports a toggle that is down as a control that is checked, which is where [roleStates] gets
+			// CHECKED from for these two roles, so leaving it out would have a client hold a CHECKED nothing ever
+			// retracts.
+			return []stateChange{{name: stateNamePressed, on: on}, {name: stateNameChecked, on: on}}
+		}
 		return []stateChange{{name: stateNamePressed, on: on}}
 	case accessibility.StateReadOnly:
-		// A control whose value can no longer be changed has gained READ_ONLY and lost EDITABLE.
-		return []stateChange{{name: stateNameReadOnly, on: on}, {name: stateNameEditable, on: !on}}
+		// A control whose value can no longer be changed has gained READ_ONLY and lost EDITABLE — but only if its
+		// state set ever holds EDITABLE, which only the text-bearing roles that actually carry text do. Telling a
+		// slider or a button that it has lost a state it never had would have a client retract something it was
+		// never given, and hand it back again on the way out.
+		changes := []stateChange{{name: stateNameReadOnly, on: on}}
+		if editableText(n) {
+			changes = append(changes, stateChange{name: stateNameEditable, on: !on})
+		}
+		return changes
 	case accessibility.StateModal:
 		return []stateChange{{name: stateNameModal, on: on}}
 	case accessibility.StateBusy:
@@ -542,11 +598,29 @@ func stateChanges(ev *accessibility.Event) []stateChange {
 		// A node scrolled or clipped out of view is still VISIBLE in AT-SPI's sense, but it is no longer SHOWING.
 		return []stateChange{{name: stateNameShowing, on: !on}}
 	case accessibility.StateExpandable:
-		return []stateChange{{name: stateNameExpandable, on: on}}
+		// [States] gives an expandable node exactly one of EXPANDED and COLLAPSED, and a node that cannot be expanded
+		// neither of them, so the side it is on arrives and departs with the ability itself. Which side that is comes
+		// from whichever snapshot had the ability, since only that one reported either state; the other one is left
+		// alone rather than retracted, having never been sent.
+		side := n
+		if !on {
+			side = prior
+		}
+		changes := []stateChange{{name: stateNameExpandable, on: on}}
+		switch {
+		case side == nil:
+		case side.Expanded:
+			changes = append(changes, stateChange{name: stateNameExpanded, on: on})
+		default:
+			changes = append(changes, stateChange{name: stateNameCollapsed, on: on})
+		}
+		return changes
 	case accessibility.StateExpanded:
-		return []stateChange{{name: stateNameExpanded, on: on}}
+		// AT-SPI has a state for each side of this one, so expanding a node has to retract COLLAPSED as well, exactly
+		// as becoming read-only retracts EDITABLE.
+		return []stateChange{{name: stateNameExpanded, on: on}, {name: stateNameCollapsed, on: !on}}
 	case accessibility.StateChecked:
-		return checkedStateChanges(ev)
+		return checkedStateChanges(prior, n, ev)
 	case accessibility.StateIgnored, accessibility.StateProtected, accessibility.StateNone:
 		// A node becoming ignored, or stopping being ignored, joins or leaves the reported hierarchy rather than
 		// changing a state, and is turned into the signals that say so by [Adapter.emitIgnoredChanged] before it ever
@@ -558,12 +632,35 @@ func stateChanges(ev *accessibility.Event) []stateChange {
 	}
 }
 
-// checkedStateChanges returns the states a change to a node's check state is reported as. CHECKED is the on state and
-// INDETERMINATE is the mixed one, so moving between them changes both.
-func checkedStateChanges(ev *accessibility.Event) []stateChange {
+// checkedStateChanges returns the states a change to a node's check is reported as. [accessibility.Diff] sends one
+// event for both halves of a check — whether the node carries one at all, and which way it is set if it does — so both
+// are worked out here. CHECKED is the on state and INDETERMINATE is the mixed one, so moving between them changes both,
+// while a node that has only gained or lost its check changes nothing but CHECKABLE.
+//
+// Whether the node is checkable is read from the two snapshots rather than from the event, since the event's values are
+// the check state alone and a node that cannot be checked reports neither CHECKED nor INDETERMINATE however its Checked
+// field is left. That is also why gaining or losing the check carries whichever of the two the node holds with it.
+func checkedStateChanges(prior, n *accessibility.Node, ev *accessibility.Event) []stateChange {
+	var changes []stateChange
 	was := check.Extract(ev.Old)
 	now := check.Extract(ev.New)
-	changes := []stateChange{{name: stateNameChecked, on: now == check.On}}
+	if wasCheckable, isCheckable := checkable(prior), checkable(n); wasCheckable != isCheckable {
+		changes = append(changes, stateChange{name: stateNameCheckable, on: isCheckable})
+		// A node that cannot be checked reports neither of the other two, so gaining or losing the check takes
+		// whichever of them the node holds with it.
+		if !wasCheckable {
+			was = check.Off
+		}
+		if !isCheckable {
+			now = check.Off
+		}
+	}
+	if was == now {
+		// Nothing a client was ever told about moved: a node as checkable as it was and set the way it was has no
+		// state to change, and saying otherwise would have an assistive technology announce what did not happen.
+		return changes
+	}
+	changes = append(changes, stateChange{name: stateNameChecked, on: now == check.On})
 	if was == check.Mixed || now == check.Mixed {
 		changes = append(changes, stateChange{name: stateNameIndeterminate, on: now == check.Mixed})
 	}
@@ -624,10 +721,17 @@ func (a *Adapter) emitNodeRemoved(pub *publication, id accessibility.NodeID) {
 		return
 	}
 	if parent := prior.parent(id); parent != 0 {
-		a.emit(NodePath(parent), InterfaceEventObject, signalChildrenChanged, detailRemove,
-			int32(pub.removalIndex(parent, prior.indexInParent(id))), 0, variantRef(a.reference(id)))
+		a.emitChildRemoved(pub, parent, id, prior.indexInParent(id))
 	}
 	a.emitCacheRemove(a.reference(id))
+}
+
+// emitChildRemoved announces that a node is no longer among a parent's children, without saying anything about the node
+// itself, which may well have gone somewhere else rather than away. index is where the child sat in the snapshot before
+// this publish; see [publication.removalIndex] for why that is not what the signal carries.
+func (a *Adapter) emitChildRemoved(pub *publication, parent, id accessibility.NodeID, index int) {
+	a.emit(NodePath(parent), InterfaceEventObject, signalChildrenChanged, detailRemove,
+		int32(pub.removalIndex(parent, index)), 0, variantRef(a.reference(id)))
 }
 
 // emitBoundsChanged announces that a window has moved or been resized. Only window roots report it: the nodes inside a
@@ -682,6 +786,12 @@ func variantString(s string) dbus.Variant {
 // the value is not optional.
 func variantInt32(v int32) dbus.Variant {
 	return dbus.Variant{Sig: "i", Value: v}
+}
+
+// variantUint32 returns an unsigned integer as the value an event carries, which is what the enumerations AT-SPI passes
+// by number, such as a role, are sent as.
+func variantUint32(v uint32) dbus.Variant {
+	return dbus.Variant{Sig: "u", Value: v}
 }
 
 // variantDouble returns a floating point number as the value an event carries.

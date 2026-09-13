@@ -136,8 +136,13 @@ func NewReply(call *Message) *Message {
 }
 
 // NewError creates an error reply to a method call. If message is not empty, it becomes the body of the reply, which is
-// where D-Bus clients look for the human-readable part of an error.
+// where D-Bus clients look for the human-readable part of an error. A name that is not a valid error name, which
+// includes the empty one, becomes [Failed]: a reply that will not encode is dropped rather than sent, leaving the peer
+// waiting for an answer that never comes, and a generic error name says far more than that does.
 func NewError(call *Message, name, message string) *Message {
+	if validateInterfaceName("error name", name) != nil {
+		name = Failed
+	}
 	m := &Message{
 		Type:        TypeError,
 		ErrorName:   name,
@@ -244,7 +249,11 @@ func (m *Message) String() string {
 		sb.WriteString(m.Interface)
 	}
 	if m.Member != "" {
-		sb.WriteString(".")
+		if m.Interface != "" {
+			sb.WriteString(".") // Only an interface that is actually there has a member separated from it by a dot
+		} else {
+			sb.WriteString(" ")
+		}
 		sb.WriteString(m.Member)
 	}
 	if m.ErrorName != "" {
@@ -257,6 +266,14 @@ func (m *Message) String() string {
 		sb.WriteString(")")
 	}
 	return sb.String()
+}
+
+// size is roughly how many bytes the message occupies, which is what a connection's queues are bounded by. The body
+// dominates everything else a message holds, so the fixed header stands in for the parts of the header that are not
+// worth adding up exactly.
+func (m *Message) size() int {
+	return fixedHeaderSize + len(m.Path) + len(m.Interface) + len(m.Member) + len(m.ErrorName) + len(m.Destination) +
+		len(m.Sender) + len(m.Signature) + len(m.Body)
 }
 
 // Encode marshals the message into its wire representation. The header fields are written in the order Path,
@@ -452,6 +469,13 @@ func Decode(r io.Reader) (*Message, error) {
 	if !ok {
 		return nil, errors.New("dbus: malformed header fields")
 	}
+	// The body starts on an 8 byte boundary, and the padding that puts it there must be NUL like every other run of
+	// padding, which the decoder has no reason to look at because it stops at the end of the header field array.
+	for _, b := range data[fixedHeaderSize+int(fieldsLength) : fixedHeaderSize+int(padded)] {
+		if b != 0 {
+			return nil, errPaddingNotNUL
+		}
+	}
 	if err = m.applyHeaderFields(list); err != nil {
 		return nil, err
 	}
@@ -503,7 +527,12 @@ func (m *Message) applyHeaderFields(fields []any) error {
 		if !ok {
 			return errors.New("dbus: malformed header field value")
 		}
-		if code > 0 && code < 32 {
+		if code == 0 {
+			return errors.New("dbus: header field code 0 is not valid")
+		}
+		// Only the codes the specification has assigned are worth tracking: everything from 32 up is unknown and
+		// ignored, so a repeat of one costs nothing.
+		if code < 32 {
 			if seen&(1<<code) != 0 {
 				return fmt.Errorf("dbus: header field %d appears more than once", code)
 			}
@@ -556,7 +585,12 @@ func (m *Message) applyHeaderField(code byte, variant Variant) error {
 			return headerFieldTypeError(code, variant.Sig)
 		}
 		m.Signature = s
-	case fieldUnixFDs: // Unix file descriptors are not supported, but the count itself is harmless
+	case fieldUnixFDs:
+		// Unix file descriptors are not supported, so the count is ignored, but a field of the wrong type is still a
+		// peer that is making things up, exactly as it is for every other field whose type the specification fixes.
+		if _, ok := variant.Value.(uint32); !ok {
+			return headerFieldTypeError(code, variant.Sig)
+		}
 	default: // Unknown header fields must be ignored
 	}
 	return nil

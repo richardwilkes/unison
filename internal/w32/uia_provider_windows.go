@@ -280,15 +280,24 @@ func (p *UIAProvider) current() (tree *accessibility.Tree, node *accessibility.N
 }
 
 // supports reports whether this provider hands out one of the interfaces, which is what QueryInterface,
-// GetPatternProvider and every control-pattern method answer from. Every element implements the two provider interfaces; the fragment root
-// alone implements the three window-level ones; and a pattern interface exists only when UIAPatterns says the node
-// supports that pattern.
+// GetPatternProvider and every control-pattern method answer from. Every element implements the two provider
+// interfaces; the fragment root alone implements the three window-level ones; and a pattern interface exists only when
+// UIAPatterns says the node supports that pattern.
 //
 // IWindowProvider is both a pattern interface and a window-level one, and the root-only half is what decides: a nested
 // node that reports role.Dialog — a dialog-shaped panel inside a window — is not a window of its own, and answering
 // get_CanMaximize, get_WindowVisualState or get_IsTopmost for it would be describing the containing window through an
 // element that is not it. UIAPatterns cannot make that distinction, since it knows a node and not which one is the
 // root, so it is made here and everything that hands out an interface goes through this.
+//
+// Answering from the live snapshot is a knowing deviation from COM, which requires the set of interfaces an object
+// implements to be fixed for its lifetime: a client that obtained an IID from a successful QueryInterface is entitled
+// to assume the same call keeps succeeding, and here it stops as soon as the node loses the pattern or leaves the tree.
+// The alternative is worse. A provider whose node is a slider at one moment and a label at the next would either have
+// to hand out IRangeValueProvider forever, with every method on it answering UIA_E_NOTSUPPORTED, or fix the set at
+// creation and refuse a pattern the element has since gained. UI Automation expects providers to change under a client
+// — that is what the property-changed and structure-changed events are for — and defines UIA_E_NOTSUPPORTED and
+// UIA_E_ELEMENTNOTAVAILABLE for exactly this, so a client that re-asks is told something true either way.
 func (p *UIAProvider) supports(iface uiaIface) bool {
 	switch iface {
 	case uiaIfaceSimple, uiaIfaceFragment:
@@ -789,22 +798,19 @@ func uiaWindowWaitForInputIdle(_, _, out uintptr) uint64 {
 	return UIA_E_NOTSUPPORTED
 }
 
-// uiaWindowCanMaximize implements IWindowProvider::get_CanMaximize.
-func uiaWindowCanMaximize(_, out uintptr) uint64 {
-	if out == 0 {
-		return COM_E_POINTER
-	}
-	uiaSetBOOL(out, true)
-	return COM_S_OK
+// uiaWindowCanMaximize implements IWindowProvider::get_CanMaximize. A window the snapshot reports as not resizable has
+// no maximize box — w32WindowStyle leaves WS_MAXIMIZEBOX out for one — so Resizable is the answer, rather than a
+// constant that tells a client a fixed-size dialog can be maximized and leaves it to discover otherwise when
+// SetVisualState refuses.
+func uiaWindowCanMaximize(this, out uintptr) uint64 {
+	return uiaPatternBOOL(this, uiaIfaceWindow, out, func(n *accessibility.Node) bool { return n.Resizable })
 }
 
-// uiaWindowCanMinimize implements IWindowProvider::get_CanMinimize.
-func uiaWindowCanMinimize(_, out uintptr) uint64 {
-	if out == 0 {
-		return COM_E_POINTER
-	}
-	uiaSetBOOL(out, true)
-	return COM_S_OK
+// uiaWindowCanMinimize implements IWindowProvider::get_CanMinimize. Every window unison creates has a minimize box,
+// including the undecorated ones, so the answer is always yes — but it is still answered through uiaPatternNode, so
+// that an element whose node has left the tree says so rather than reporting on a window it no longer stands for.
+func uiaWindowCanMinimize(this, out uintptr) uint64 {
+	return uiaPatternBOOL(this, uiaIfaceWindow, out, func(_ *accessibility.Node) bool { return true })
 }
 
 // uiaWindowIsModal implements IWindowProvider::get_IsModal, which is how a client knows to keep the user inside this
@@ -817,13 +823,12 @@ func uiaWindowIsModal(this, out uintptr) uint64 {
 
 // uiaWindowVisualState implements IWindowProvider::get_WindowVisualState. The snapshot does not record whether a window
 // is maximized or minimized — a minimized window has nothing worth reporting anyway — so every window reports itself
-// normal.
-func uiaWindowVisualState(_, out uintptr) uint64 {
-	if out == 0 {
-		return COM_E_POINTER
-	}
-	*xruntime.PtrFromUintptr[WindowVisualState](out) = WindowVisualState_Normal
-	return COM_S_OK
+// normal. It still goes through uiaPatternNode, so that an element whose node has left the tree is reported as gone
+// rather than answered for.
+func uiaWindowVisualState(this, out uintptr) uint64 {
+	return uiaPatternInt32(this, uiaIfaceWindow, out, func(_ *accessibility.Node) int32 {
+		return int32(WindowVisualState_Normal)
+	})
 }
 
 // uiaWindowInteractionStateValue implements IWindowProvider::get_WindowInteractionState. A window the snapshot reports
@@ -842,13 +847,11 @@ func uiaWindowInteractionStateValue(this, out uintptr) uint64 {
 	return COM_S_OK
 }
 
-// uiaWindowIsTopmost implements IWindowProvider::get_IsTopmost. Unison never sets WS_EX_TOPMOST.
-func uiaWindowIsTopmost(_, out uintptr) uint64 {
-	if out == 0 {
-		return COM_E_POINTER
-	}
-	uiaSetBOOL(out, false)
-	return COM_S_OK
+// uiaWindowIsTopmost implements IWindowProvider::get_IsTopmost, which is the snapshot's Floating flag: a window created
+// with FloatingWindowOption is given WS_EX_TOPMOST by w32WindowExStyle, and it really does stay in front of the
+// ordinary windows, which is what a client wants to know before it describes the window's place on screen.
+func uiaWindowIsTopmost(this, out uintptr) uint64 {
+	return uiaPatternBOOL(this, uiaIfaceWindow, out, func(n *accessibility.Node) bool { return n.Floating })
 }
 
 // uiaSetBOOL stores a Win32 BOOL into an out-parameter. Unlike a VARIANT_BOOL, true is one rather than every bit set.

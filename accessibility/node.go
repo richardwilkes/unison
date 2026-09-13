@@ -161,6 +161,8 @@ type Node struct {
 	Modal bool
 	// Resizable reports that a window or dialog node can be resized by the user. It is meaningful only on a root node.
 	Resizable bool
+	// Floating reports that a window node stays in front of the ordinary windows. It is meaningful only on a root node.
+	Floating bool
 	// Busy reports that the node is working and its value is not yet meaningful.
 	Busy bool
 	// Invalid reports that the node's current value has been rejected.

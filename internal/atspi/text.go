@@ -20,8 +20,8 @@ import (
 // password field must never leave the process, but its length is what an assistive technology reads out as it is typed.
 const bulletRune = '•'
 
-// textInterface returns the org.a11y.atspi.Text interface of a node that holds navigable text, which is how an assistive
-// technology reads a control a character, a word, a line or a selection at a time rather than as one string.
+// textInterface returns the org.a11y.atspi.Text interface of a node that holds navigable text, which is how an
+// assistive technology reads a control a character, a word, a line or a selection at a time rather than as one string.
 //
 // Every offset is a rune index, which is what AT-SPI calls a character. Nothing here changes the control: moving the
 // caret or the selection is handed to the user interface thread and answered optimistically, exactly as the other
@@ -132,8 +132,8 @@ func lineAt(lines []accessibility.Line, offset int) int {
 	return len(lines) - 1
 }
 
-// getText implements org.a11y.atspi.Text.GetText. An end offset that is negative, which is how AT-SPI says "to the end",
-// or past the end is the end of the text.
+// getText implements org.a11y.atspi.Text.GetText. An end offset that is negative, which is how AT-SPI says "to the
+// end", or past the end is the end of the text.
 func (o *nodeObject) getText(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
@@ -209,8 +209,8 @@ func (o *nodeObject) getCharacterAtOffset(call *dbus.Call) {
 	call.Reply(runes[offset])
 }
 
-// setCaretOffset implements org.a11y.atspi.Text.SetCaretOffset. The answer is optimistic: the request has been handed to
-// the user interface thread, and the caret is still where it was until the next snapshot says otherwise.
+// setCaretOffset implements org.a11y.atspi.Text.SetCaretOffset. The answer is optimistic: the request has been handed
+// to the user interface thread, and the caret is still where it was until the next snapshot says otherwise.
 func (o *nodeObject) setCaretOffset(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
@@ -459,8 +459,8 @@ func (o *nodeObject) getDefaultAttributes(call *dbus.Call) {
 	call.Reply(dbus.Dict{})
 }
 
-// rectExtents converts a rectangle in the same window-local logical space as a node's Bounds into the physical pixels of
-// the given coordinate space, which is what [windowData.extents] does for the node's own bounds.
+// rectExtents converts a rectangle in the same window-local logical space as a node's Bounds into the physical pixels
+// of the given coordinate space, which is what [windowData.extents] does for the node's own bounds.
 func (d *windowData) rectExtents(n *accessibility.Node, r geom.Rect, coord CoordType) (x, y, w, h int32) {
 	origin := d.originFor(n, coord)
 	scale := d.geometry.effectiveScale()

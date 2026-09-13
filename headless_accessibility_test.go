@@ -20,9 +20,10 @@ import (
 )
 
 // These tests drive the accessibility core the way a screen reader would: they let the application run, ask for the
-// description of a window, and assert on what an assistive technology would have been handed. Widgets do not describe
-// themselves yet, so the panels here say what they are through Panel.Accessibility directly. A session owns most of the
-// package's mutable globals while it runs, so none of these may call t.Parallel.
+// description of a window, and assert on what an assistive technology would have been handed. The panels here mostly
+// say what they are through Panel.Accessibility directly rather than leaning on a widget's own ProvideAccessibility, so
+// that what is being checked is the core rather than any one widget. A session owns most of the package's mutable
+// globals while it runs, so none of these may call t.Parallel.
 
 // axColumn returns a panel that stacks its children in a single column, for building the content of a test window.
 func axColumn(children ...unison.Paneler) *unison.Panel {
@@ -179,8 +180,9 @@ func TestAccessibilityEnvironmentOverrides(t *testing.T) {
 }
 
 // TestAccessibilityTreeShape verifies how the panel hierarchy is turned into a tree: the window is the root, hidden
-// panels are left out, a panel that hides itself promotes its children, scaffolding groups are marked to be looked past,
-// a control takes its name from the label beside it or from the panel it points at, and a tooltip becomes a description.
+// panels are left out, a panel that hides itself promotes its children, scaffolding groups are marked to be looked
+// past, a control takes its name from the label beside it or from the panel it points at, and a tooltip becomes a
+// description.
 func TestAccessibilityTreeShape(t *testing.T) {
 	c := check.New(t)
 	var content, hidden, promoted, group, well, tipped *unison.Panel
@@ -208,7 +210,7 @@ func TestAccessibilityTreeShape(t *testing.T) {
 			group = unison.NewPanel()
 
 			colorLabel := unison.NewLabel()
-			colorLabel.SetTitle("Color")
+			colorLabel.SetTitle("Color:")
 			colorLabel.Accessibility.Role = role.Label
 			well = unison.NewPanel()
 			well.Accessibility.Role = role.ColorWell
@@ -263,8 +265,14 @@ func TestAccessibilityTreeShape(t *testing.T) {
 
 	wellNode := screen.AccessibilityNodeFor(well)
 	c.True(wellNode != nil)
-	c.Equal("Color", wellNode.Name, "an explicit LabeledBy names the control")
+	c.Equal("Color", wellNode.Name,
+		"an explicit LabeledBy names the control, minus the colon the label beside one has taken off it")
 	c.Equal(1, len(wellNode.LabeledBy))
+	colorLabelNode := tree.Node(wellNode.LabeledBy[0])
+	c.True(colorLabelNode != nil)
+	if colorLabelNode != nil {
+		c.Equal("Color:", colorLabelNode.Name, "the label's own name is its text, colon and all")
+	}
 
 	tippedNode := screen.AccessibilityNodeFor(tipped)
 	c.True(tippedNode != nil)
@@ -272,8 +280,52 @@ func TestAccessibilityTreeShape(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestAccessibilityFocusTracking verifies that the tree says where the keyboard focus is, and that moving it is reported
-// as an event.
+// TestAccessibilityCallbackDecidesScaffolding verifies that Accessibility.Callback, which runs last and may adjust
+// anything on the node, is not too late to settle whether the node is scaffolding: a group it gives the name that was
+// missing is content and must be reported, which is exactly what naming an otherwise anonymous group is for, while a
+// group it marks to be looked past stays that way however much the node says.
+func TestAccessibilityCallbackDecidesScaffolding(t *testing.T) {
+	c := check.New(t)
+	var named, looked, plain *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			named = unison.NewPanel()
+			named.Accessibility.Callback = func(n *accessibility.Node) { n.Name = "Toolbar" }
+
+			looked = unison.NewPanel()
+			looked.Accessibility.Name = "Says something"
+			looked.Accessibility.Callback = func(n *accessibility.Node) { n.Ignored = true }
+
+			plain = unison.NewPanel()
+
+			wnd = newHeadlessWindow(t, "callbacks", geom.NewRect(10, 10, 300, 300),
+				axColumn(named, looked, plain))
+		}))
+	c.NotNil(wnd)
+
+	c.True(screen.AccessibilityTree(wnd) != nil)
+	namedNode := screen.AccessibilityNodeFor(named)
+	c.True(namedNode != nil)
+	if namedNode != nil {
+		c.Equal("Toolbar", namedNode.Name, "the callback runs last and may name the node")
+		c.False(namedNode.Ignored, "a group the callback named has something to say and is not scaffolding")
+	}
+	lookedNode := screen.AccessibilityNodeFor(looked)
+	c.True(lookedNode != nil)
+	if lookedNode != nil {
+		c.True(lookedNode.Ignored, "a callback that marks a node to be looked past has the last word")
+	}
+	plainNode := screen.AccessibilityNodeFor(plain)
+	c.True(plainNode != nil)
+	if plainNode != nil {
+		c.True(plainNode.Ignored, "a group with nothing to say about itself is still scaffolding")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityFocusTracking verifies that the tree says where the keyboard focus is, and that moving it is
+// reported as an event.
 func TestAccessibilityFocusTracking(t *testing.T) {
 	c := check.New(t)
 	var first, second *unison.Field

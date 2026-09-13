@@ -47,16 +47,16 @@ func (o *nodeObject) accessibleInterface() *dbus.Interface {
 	}
 }
 
-// accessibleID returns the identifier an assistive technology can use to recognize this node again, which is the decimal
-// form of its node id. Ids come from one process-wide counter and are never reused, so this is stable for as long as the
-// node exists.
+// accessibleID returns the identifier an assistive technology can use to recognize this node again, which is the
+// decimal form of its node id. Ids come from one process-wide counter and are never reused, so this is stable for as
+// long as the node exists.
 func (o *nodeObject) accessibleID() string {
 	return strconv.FormatUint(uint64(o.node.ID), 10)
 }
 
 // getChildAtIndex implements org.a11y.atspi.Accessible.GetChildAtIndex. An index that is out of range is answered with
-// the null reference rather than an error, which is what libatspi expects of a hierarchy that may have changed since the
-// client counted the children.
+// the null reference rather than an error, which is what libatspi expects of a hierarchy that may have changed since
+// the client counted the children.
 func (o *nodeObject) getChildAtIndex(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {

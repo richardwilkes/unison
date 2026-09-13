@@ -15,8 +15,9 @@
   startup over the session bus connection the color-scheme watcher already keeps, and then watched, so a screen reader
   started or stopped while the application runs is followed both ways. `NO_AT_BRIDGE=1` is honored on Linux exactly as
   it is for GTK. Until something asks, the cost is the `AccessibilityInfo` each panel carries and one atomic load per
-  pass of the event loop that redrew something: no hierarchy is walked, nothing is allocated, and no goroutine or
-  platform object exists.
+  pass of the event loop that redrew something: no hierarchy is walked and nothing is allocated. No goroutine or
+  platform object exists either on macOS and Windows; Linux pays for the watch it needs to be reachable at all, which
+  holds one goroutine and two match rules on a session bus connection that already existed.
 - Added `Panel.Accessibility`, an `AccessibilityInfo` held by value, which is everything an application says about a
   panel. All of its fields are optional: `Name` is what is announced, overriding whatever name would otherwise be
   derived; `Description` elaborates on it, defaulting to the panel's tooltip text; `Role` says what kind of element the

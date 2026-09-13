@@ -13,7 +13,9 @@ import (
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/accessibility"
 )
 
 func newTestPopup(items ...string) *unison.PopupMenu[string] {
@@ -178,4 +180,67 @@ func TestPopupRemoveAllItems(t *testing.T) {
 	p.RemoveAllItems()
 	c.Equal(0, p.ItemCount())
 	c.Equal(-1, p.SelectedIndex())
+}
+
+// TestPopupMenuAccessibilityReportsWhetherItIsOpen verifies that a popup menu says whether its choices are showing and
+// can be asked to put them away again. It always claimed to be collapsed, whatever was on the screen, so UI
+// Automation's ExpandCollapseState and AT-SPI's STATE_EXPANDED never moved and there was no collapse to ask for.
+func TestPopupMenuAccessibilityReportsWhetherItIsOpen(t *testing.T) {
+	c := check.New(t)
+	var popup *unison.PopupMenu[string]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			popup = unison.NewPopupMenu[string]()
+			popup.AddItem("Light", "Regular", "Bold")
+			popup.Select("Regular")
+			wnd = newHeadlessWindow(t, "popup state", geom.NewRect(10, 10, 300, 150), axColumn(popup))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(popup)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.True(node.Expandable)
+	c.False(node.Expanded, "nothing is showing yet")
+	c.True(node.Actions.Has(accessibility.Expand))
+	c.True(node.Actions.Has(accessibility.Collapse))
+
+	before := axRootChildCount(screen.AccessibilityTree(wnd))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.Expand,
+	}))
+	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(wnd)),
+		"expanding the popup menu should have opened its menu within the window")
+	node = screen.AccessibilityNodeFor(popup)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.True(node.Expanded, "the popup must say its choices are showing while they are")
+
+	// Asking again for what is already there changes nothing, rather than tearing the menu down and building it back.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.Expand,
+	}))
+	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(wnd)))
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.Collapse,
+	}))
+	c.Equal(before, axRootChildCount(screen.AccessibilityTree(wnd)),
+		"collapsing the popup menu should have taken its menu away")
+	node = screen.AccessibilityNodeFor(popup)
+	c.True(node != nil)
+	if node != nil {
+		c.False(node.Expanded)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

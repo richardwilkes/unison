@@ -44,8 +44,8 @@ const (
 		"',arg0='" + BusDestination + "'"
 )
 
-// DisabledByEnvironment returns true if the environment forbids talking to the accessibility bus at all. Nothing else in
-// this package, and nothing in the root package, should reach the bus when it does.
+// DisabledByEnvironment returns true if the environment forbids talking to the accessibility bus at all. Nothing else
+// in this package, and nothing in the root package, should reach the bus when it does.
 //
 // The value is read the way at-spi2-atk and GTK read it, which is with atoi: the leading integer, whatever follows it
 // ignored, and zero for anything that does not begin with one. NO_AT_BRIDGE=00, NO_AT_BRIDGE=false and any other value
@@ -127,7 +127,7 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		go func() { onChange(Enabled(session)) }()
 	}
 	cancelStatus := session.Subscribe(dbus.SignalFilter{
-		Path:      string(BusPath),
+		Path:      BusPath,
 		Interface: dbusPropertiesInterface,
 		Member:    propertiesChanged,
 	}, func(msg *dbus.Message) {
@@ -172,10 +172,13 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		// The bus is delivering now, so nothing that happens from here on can be missed, and the state that was in
 		// effect all along can safely be reported. A watch that has already been canceled reports nothing: the caller
 		// has stopped listening, and for the root package that means accessibility support has been refused outright.
-		select {
-		case <-done:
-		default:
-			onChange(Enabled(session))
+		// Cancellation is checked on both sides of the read, since [Enabled] makes a round trip to the session bus and
+		// the watch can be canceled while it is in flight.
+		if !canceled(done) {
+			enabled := Enabled(session)
+			if !canceled(done) {
+				onChange(enabled)
+			}
 		}
 		<-done
 		for _, rule := range rules {
@@ -195,6 +198,16 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 	}
 }
 
+// canceled reports whether the watch whose done channel this is has been canceled, without ever waiting for it.
+func canceled(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+
 // enabledState is what a PropertiesChanged signal had to say about IsEnabled.
 type enabledState uint8
 
@@ -205,9 +218,9 @@ const (
 	enabledFalse
 )
 
-// enabledFromPropertiesChanged returns the new value of IsEnabled that a PropertiesChanged signal carries, if it carries
-// one. The signal's arguments are the interface name, the properties that changed, and the names of the ones that have
-// changed without a value being sent.
+// enabledFromPropertiesChanged returns the new value of IsEnabled that a PropertiesChanged signal carries, if it
+// carries one. The signal's arguments are the interface name, the properties that changed, and the names of the ones
+// that have changed without a value being sent.
 func enabledFromPropertiesChanged(msg *dbus.Message) enabledState {
 	args, err := msg.Args()
 	if err != nil || len(args) < 2 {

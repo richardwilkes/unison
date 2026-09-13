@@ -314,6 +314,18 @@ func TestNodeState(t *testing.T) {
 	var set StateSet
 	set[0], set[1] = states[0], states[1]
 	c.True(set.Has(StateFocused), "the focused field of the active window is focused")
+	c.False(set.Has(StateEditable), "a field with no text yet has no text states to claim")
+	c.False(set.Has(StateSingleLine))
+
+	// The states that describe text arrive with the text itself, which is also when the object gains the
+	// org.a11y.atspi.Text interface an assistive technology would read it through.
+	typed := mainTree()
+	typed.Generation++
+	typed.Node(4).Text = &accessibility.TextInfo{Text: "Fred", SelStart: 4, SelEnd: 4}
+	ta.Publish(mainWindow, typed, nil, sampleGeometry())
+	states, ok = ta.one(NodePath(4), InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	set[0], set[1] = states[0], states[1]
 	c.True(set.Has(StateEditable))
 	c.True(set.Has(StateSingleLine))
 
@@ -688,6 +700,63 @@ func TestRemoveWindow(t *testing.T) {
 	}
 	ta.RemoveWindow(mainWindow) // Removing a window that is not there changes nothing
 	c.Equal(int32(1), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"))
+}
+
+// windowThatTookTheSlider returns the second window's tree with the main window's slider in it, which is what a panel
+// reparented from one window into another looks like in the window that now holds it.
+func windowThatTookTheSlider() *accessibility.Tree {
+	tree := otherTree()
+	tree.Node(21).Children = append(tree.Node(21).Children, 8)
+	tree.Nodes[8] = &accessibility.Node{
+		ID: 8, Parent: 21, Role: role.Slider, Name: "Volume", HasNumber: true, Number: 4, Max: 10,
+		Bounds: geom.NewRect(0, 20, 100, 20),
+	}
+	return tree
+}
+
+// mainWindowWithoutTheSlider returns the main window's tree without the slider, which is the snapshot it publishes once
+// the node has moved to another window.
+func mainWindowWithoutTheSlider() *accessibility.Tree {
+	tree := mainTree()
+	tree.Generation++
+	tree.Node(1).Children = []accessibility.NodeID{2, 5, 9}
+	delete(tree.Nodes, 8)
+	return tree
+}
+
+// TestPublishingAfterANodeHasMovedToAnotherWindow covers a panel being reparented. The window it joined publishes first
+// — it is the one whose layout changed — and the window it left publishes a snapshot without it afterwards. Dropping
+// the node from the index then would leave its object answering UnknownObject until the window that actually holds it
+// published again, which for a window nothing is happening in may be never.
+func TestPublishingAfterANodeHasMovedToAnotherWindow(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	ta.Publish(otherWindow, windowThatTookTheSlider(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	c.Equal(nodeRef(21), ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Parent"),
+		"the slider belongs to the window that took it")
+
+	without := mainWindowWithoutTheSlider()
+	ta.Publish(mainWindow, without, accessibility.Diff(mainTree(), without), sampleGeometry())
+	c.Equal("Volume", ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Name"),
+		"the node goes on answering for the window that holds it now")
+	c.Equal(nodeRef(21), ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Parent"))
+}
+
+// TestRemovingAWindowANodeHasLeftKeepsTheNode covers the same reparenting the other way round: the window the node came
+// from is closed rather than republished, and the node has to go on answering for the window that took it.
+func TestRemovingAWindowANodeHasLeftKeepsTheNode(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	ta.Publish(otherWindow, windowThatTookTheSlider(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	ta.RemoveWindow(mainWindow)
+	c.Equal("Volume", ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Name"),
+		"a node that moved on does not go away with the window it came from")
+	for _, id := range []accessibility.NodeID{1, 4, 5, 6} {
+		c.Equal(dbus.UnknownObject, ta.errorName(NodePath(id), InterfaceAccessible, "GetRole", ""),
+			"node %d did go away with its window", id)
+	}
 }
 
 func TestAnnounceAndStop(t *testing.T) {

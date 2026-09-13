@@ -601,6 +601,10 @@ func (l *List[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	}
 	node.Multiselectable = l.allowMultiple
 	node.RowCount = len(l.rows)
+	// Pressing the list is not activating it; the default behavior would synthesize a click at the center of the list's
+	// whole frame, which would replace the selection with whatever row happens to sit there — for a scrolled list, one
+	// nowhere near what can be seen.
+	node.Actions = node.Actions.Without(accessibility.Press)
 	if len(l.rows) == 0 {
 		return
 	}
@@ -645,6 +649,10 @@ func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect
 // axDescribeVaryingRows describes the rows worth describing when each row's height is its own. Every row has to be
 // measured to know where the ones after it sit, and measuring means creating the cell, so the cell that was created is
 // handed on to be named from rather than being created a second time.
+//
+// The walk stops as soon as nothing worth describing can be left: creating and laying out a panel for every row of a
+// long list, up to twenty times a second, is exactly what VisibleRect exists to avoid, and is far more than drawing
+// does, which stops at the bottom of the dirty rect.
 func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect) {
 	rect := l.ContentRect(false)
 	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, 0)
@@ -661,6 +669,11 @@ func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect
 			described++
 		}
 		rowRect.Y += rowRect.Height
+		if rowRect.Y > reach.Bottom() && (described >= axMaxSelectedRows || l.Selection.NextSet(row+1) < 0) {
+			// Every row from here down starts below the reach, so none of them can be seen, and either there is no
+			// selected row left to describe or as many of them as will be described have been.
+			break
+		}
 	}
 }
 
@@ -679,21 +692,44 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 		n.RowIndex = row
 		n.Selectable = true
 		n.Selected = selected
-		n.Actions = n.Actions.With(accessibility.Select, accessibility.AddToSelection,
-			accessibility.RemoveFromSelection, accessibility.ScrollIntoView)
+		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView)
+		if l.allowMultiple {
+			// A list that holds one row at a time has nothing to add to or take out of: Select on such a list replaces
+			// whatever was selected, so offering to add to the selection would be offering something that quietly does
+			// the opposite of what it says.
+			n.Actions = n.Actions.With(accessibility.AddToSelection, accessibility.RemoveFromSelection)
+		}
+		if l.DoubleClickCallback != nil {
+			// Pressing a row is opening it, which is what a double-click and the Return key do, so it is offered only
+			// when there is something for it to do.
+			n.Actions = n.Actions.With(accessibility.Press)
+		}
 	})
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Every request that reaches here names
 // one of the rows described by ProvideAccessibility, which arrives as the index that row was keyed by. Selecting a row
 // also scrolls it into view, as the arrow keys do, since an assistive technology moving through the rows selects each
-// one as it goes and expects to see where it has got to.
+// one as it goes and expects to see where it has got to. Pressing a row opens it, which is the gesture a double-click
+// and the Return key stand for.
 func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	row, ok := req.Key.(int)
 	if !ok || row < 0 || row >= len(l.rows) {
 		return false
 	}
 	switch req.Action {
+	case accessibility.Press:
+		if l.DoubleClickCallback == nil {
+			return false
+		}
+		// Both of the gestures this stands for act on the selection: a double-click has already selected the row with
+		// its first click, and the Return key runs against whatever is selected. So the row is selected first when it
+		// was not already, and the callback then finds what it expects.
+		if !l.Selection.State(row) {
+			l.Select(false, row)
+			SafeCall(l.NewSelectionCallback)
+		}
+		SafeCall(l.DoubleClickCallback)
 	case accessibility.Select:
 		l.Select(false, row)
 		SafeCall(l.NewSelectionCallback)

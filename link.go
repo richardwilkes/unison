@@ -58,7 +58,10 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 	// title is underlined has nothing else to tell them the two apart. Pressing it is already handled by the default
 	// behavior for the Press action, which synthesizes the click the mouse callbacks below are waiting for.
 	link.Accessibility.Role = role.Link
-	if target != "" {
+	if target != "" && tooltip == "" {
+		// Only when there is nothing better to say. A description is what an assistive technology reads after the name,
+		// and the snapshot falls back to the tooltip's text for it while it is empty, so naming the target here for a
+		// link that was also given a tooltip would replace words someone chose with a URL.
 		link.Accessibility.Description = target
 	}
 	link.UpdateCursorCallback = func(_ geom.Point) *Cursor {

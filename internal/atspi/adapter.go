@@ -237,7 +237,11 @@ func (a *Adapter) Publish(key WindowKey, tree *accessibility.Tree, events []acce
 	prior := ws.data.Swap(data)
 	if prior != nil {
 		for id := range prior.tree.Nodes {
-			if _, exists := tree.Nodes[id]; !exists {
+			// Only an entry that still points at this window is dropped. A panel can be reparented into another
+			// window, and that window may well have published the node before the one it left publishes a snapshot
+			// without it; taking the entry away then would leave the node's object answering UnknownObject until the
+			// window that actually holds it published again.
+			if _, exists := tree.Nodes[id]; !exists && a.nodeWindow[id] == ws {
 				delete(a.nodeWindow, id)
 			}
 		}
@@ -288,7 +292,11 @@ func (a *Adapter) RemoveWindow(key WindowKey) {
 		}
 		if data := ws.data.Load(); data != nil {
 			for id := range data.tree.Nodes {
-				delete(a.nodeWindow, id)
+				// As in [Adapter.Publish], a node that has since moved to another window that is still published
+				// belongs to that window now, and closing the one it came from must not un-register it.
+				if a.nodeWindow[id] == ws {
+					delete(a.nodeWindow, id)
+				}
 			}
 		}
 	}

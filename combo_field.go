@@ -107,12 +107,16 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 	b.Drawable = dropdownGlyph{field: field}
 	b.SetFocusable(false)
 	b.UpdateCursorCallback = func(_ geom.Point) *Cursor { return ArrowCursor() }
+	// The menu is built afresh on every click, so the one remembered here is the only one that could still be showing,
+	// which is what tells an assistive technology whether the combo field is expanded.
+	var openMenu Menu
 	b.ClickCallback = func() {
 		field.RequestFocus()
 		initialIndex := 0
 		fac := DefaultMenuFactory()
 		m := fac.NewMenu(PopupMenuTemporaryBaseID, "", nil)
 		defer m.Dispose()
+		openMenu = m
 		for i, c := range options {
 			display := displayFor(c)
 			if displayFor(currentValue) == display {
@@ -175,12 +179,20 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 	field.Accessibility.Role = role.ComboBox
 	field.Accessibility.Callback = func(node *accessibility.Node) {
 		node.Expandable = true
-		node.Actions = node.Actions.With(accessibility.Expand, accessibility.ShowContextMenu)
+		node.Expanded = axMenuIsOpen(openMenu)
+		node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse, accessibility.ShowContextMenu)
 	}
 	field.Accessibility.ActionCallback = func(req accessibility.ActionRequest) bool {
 		switch req.Action {
 		case accessibility.Expand, accessibility.ShowContextMenu:
-			b.ClickCallback()
+			// Asking for what is already there changes nothing: clicking again would tear the open menu down and build
+			// it back up, which an assistive technology that was told the field is expanded would not expect.
+			if !axMenuIsOpen(openMenu) {
+				b.ClickCallback()
+			}
+			return true
+		case accessibility.Collapse:
+			axCollapseMenu(field.AsPanel(), openMenu)
 			return true
 		default:
 			return false

@@ -117,8 +117,22 @@ func uiaBuildPatternVtbls() {
 
 // uiaInvokeInvoke implements IInvokeProvider::Invoke, which is a client asking for the one thing the element does:
 // pressing a button, following a link, choosing a menu item, sorting by a column header.
+//
+// The interface requires UIA_Invoke_InvokedEventId to be raised once the element has carried the action out, and this
+// is the only place it can come from: pressing something need not change the snapshot at all — a button that opens a
+// menu, or one whose handler does its work somewhere else entirely — so there may be no publish to carry the news, and
+// a client waiting on Invoked would wait forever.
+//
+// It is raised as soon as the request has been accepted rather than once it has been carried out, because the outcome
+// cannot be seen from here: the request is queued onto the UI thread and the callback the adapter was handed reports
+// nothing back, deliberately, since UI Automation calls in on whichever thread it likes and must not be left waiting
+// on a UI thread that may be inside a modal loop. That is the same optimism the S_OK answered here already carries.
 func uiaInvokeInvoke(this uintptr) uint64 {
-	return uiaPatternAction(this, uiaIfaceInvoke, accessibility.Press)
+	hr := uiaPatternAction(this, uiaIfaceInvoke, accessibility.Press)
+	if hr == COM_S_OK {
+		uiaProviderFromThis(this, uiaIfaceInvoke).raiseEvent(UIA_Invoke_InvokedEventId)
+	}
+	return hr
 }
 
 // uiaToggleToggle implements IToggleProvider::Toggle, which moves a checkable element to its next state. Which state
@@ -305,21 +319,43 @@ func uiaSelectionItemRemoveFromSelection(this uintptr) uint64 {
 // panel with no pattern of its own, so choosing it is pressing it, and it cannot be unchosen at all — a radio group is
 // left without a selection only by the application. Select and AddToSelection therefore become Press, and
 // RemoveFromSelection is refused.
+//
+// Everything else is measured against what the snapshot says the element offers, as every other write path here is.
+// Adding to or removing from a selection means nothing in a container that holds one selection at a time: the widget
+// would replace the selection instead, so a client that was answered S_OK would be told the opposite of what happened.
+// Neither does an action the node does not list. UI Automation's answer for both is UIA_E_INVALIDOPERATION — the
+// operation cannot be performed on this element — rather than UIA_E_NOTSUPPORTED, which would deny the whole pattern.
 func uiaSelectionItemAction(this uintptr, action accessibility.Action) uint64 {
-	p, _, node, hr := uiaPatternNode(this, uiaIfaceSelectionItem)
+	p, tree, node, hr := uiaPatternNode(this, uiaIfaceSelectionItem)
 	if hr != COM_S_OK {
 		return hr
 	}
 	if node.Disabled {
 		return UIA_E_ELEMENTNOTENABLED
 	}
-	if node.Role == role.RadioButton {
+	switch {
+	case node.Role == role.RadioButton:
 		if action == accessibility.RemoveFromSelection {
 			return UIA_E_INVALIDOPERATION
 		}
 		action = accessibility.Press
+	case action != accessibility.Select && !uiaMultipleSelection(tree, node):
+		return UIA_E_INVALIDOPERATION
+	default:
+	}
+	if !node.Actions.Has(action) {
+		return UIA_E_INVALIDOPERATION
 	}
 	return uiaDispatch(p, accessibility.ActionRequest{Action: action})
+}
+
+// uiaMultipleSelection reports whether the container a selection item belongs to holds more than one selection at a
+// time, which is what decides whether AddToSelection and RemoveFromSelection mean anything for that item. The container
+// is the one ISelectionItemProvider::get_SelectionContainer reports, so a client asking about it and a client acting on
+// it are looking at the same element.
+func uiaMultipleSelection(t *accessibility.Tree, n *accessibility.Node) bool {
+	container := t.Node(UIASelectionContainer(t, n.ID))
+	return container != nil && container.Multiselectable
 }
 
 // uiaSelectionItemIsSelected implements ISelectionItemProvider::get_IsSelected.

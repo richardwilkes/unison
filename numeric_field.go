@@ -138,13 +138,13 @@ func (f *NumericField[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node.Number = float64(f.Value())
 	node.Min = float64(f.minimum)
 	node.Max = float64(f.maximum)
-	node.Step = 1
+	node.Step = float64(f.axStep())
 	node.Actions = node.Actions.With(accessibility.Increment, accessibility.Decrement)
 }
 
-// PerformAccessibilityAction carries out a request from an assistive technology. Stepping the value moves it by one,
-// within the range the field allows, and replacing the value takes a number as readily as it takes text; everything
-// else is left to the field.
+// PerformAccessibilityAction carries out a request from an assistive technology. Stepping the value moves it by one
+// step, within the range the field allows, and replacing the value takes a number as readily as it takes text;
+// everything else is left to the field.
 func (f *NumericField[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Increment:
@@ -184,13 +184,29 @@ func (f *NumericField[T]) axSetValue(req accessibility.ActionRequest) bool {
 // value it is allowed to hold.
 func (f *NumericField[T]) axStepValue(up bool) {
 	value := f.Value()
+	step := f.axStep()
 	switch {
 	case up && value < f.maximum:
-		value = min(value+1, f.maximum)
+		value = min(value+step, f.maximum)
 	case !up && value > f.minimum:
-		value = max(value-1, f.minimum)
+		value = max(value-step, f.minimum)
 	}
 	f.SetValue(value)
+}
+
+// axStep returns how far one increment or decrement asked for by an assistive technology moves the value. A field of a
+// whole-number type can only ever move by whole numbers, so one of them is the step whatever its range. A field of a
+// fractional type spanning twenty units or more is almost always counting whole numbers too — 0 to 255 for a color
+// channel, 0 to 359 for a hue — so one is the step there as well; a smaller range needs a fractional step instead, and
+// a twentieth of it gives the same twenty-odd stops a slider over the same range gets. A range of nothing at all still
+// reports a step, since a step of zero would be advertised as a field that cannot be stepped.
+func (f *NumericField[T]) axStep() T {
+	var one T = 1
+	valueRange := f.maximum - f.minimum
+	if one/2 == 0 || valueRange >= 20 || valueRange <= 0 {
+		return one
+	}
+	return valueRange / 20
 }
 
 // SetMinMax sets the minimum and maximum values and then adjusts the minimum text width, if a prototype function has
