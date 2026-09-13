@@ -16,8 +16,10 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
@@ -500,4 +502,89 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 			}
 		}
 	}
+}
+
+// ProvideAccessibility describes the header to assistive technologies. The column headers are described directly, as
+// virtual children keyed by their column index: they are panels, but the header does not hold them as children — it
+// installs one just long enough to draw it or to forward an event to it and then detaches it again — so nothing would
+// otherwise place them in the hierarchy or know where they sit.
+func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.TableHeader
+	}
+	node.ColumnCount = len(h.table.Columns)
+	for col, header := range h.ColumnHeaders {
+		if col >= len(h.table.Columns) {
+			// A header may have fewer column headers than the table has columns, exactly as drawing tolerates.
+			break
+		}
+		panel := header.AsPanel()
+		name := panel.Accessibility.Name
+		if name == "" {
+			// The library's own column header is a label, and asking a label for its text is not the same as asking a
+			// panel for it: every panel answers String() with the name of its type. Anything else is read from the
+			// labels it is built out of.
+			if labeled, ok := header.(*DefaultTableColumnHeader[T]); ok {
+				name = labeled.String()
+			} else {
+				name = axLabelText(panel)
+			}
+		}
+		description := axTooltipText(panel)
+		if description == name {
+			description = ""
+		}
+		state := header.SortState()
+		frame := h.ColumnFrame(col)
+		b.AddVirtualChild(col, func(n *accessibility.Node) {
+			n.Role = role.ColumnHeader
+			n.Name = name
+			n.Description = description
+			n.Bounds = frame
+			n.ColumnIndex = col
+			n.Sort = axSortDirection(state)
+			n.Actions = n.Actions.With(accessibility.ScrollIntoView)
+			if state.Sortable {
+				n.Actions = n.Actions.With(accessibility.Press)
+			}
+		})
+	}
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing a column header sorts the
+// table on that column, which is what clicking it does, flipping the direction when it is already the primary sort key.
+func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	col, ok := req.Key.(int)
+	if !ok || col < 0 || col >= len(h.ColumnHeaders) {
+		return false
+	}
+	switch req.Action {
+	case accessibility.Press:
+		header := h.ColumnHeaders[col]
+		if !header.SortState().Sortable {
+			return false
+		}
+		h.SortOn(header)
+		h.ApplySort()
+		return true
+	case accessibility.ScrollIntoView:
+		h.ScrollRectIntoView(h.ColumnFrame(col))
+		return true
+	default:
+		return false
+	}
+}
+
+// axSortDirection returns the direction to report for a column header's sort state. Only the primary sort column is
+// reported as sorted, since that is the one whose order the rows visibly follow and the one the header draws an
+// indicator for.
+func axSortDirection(state SortState) accessibility.SortDirection {
+	if !state.Sortable || state.Order != 0 {
+		return accessibility.SortNone
+	}
+	if state.Ascending {
+		return accessibility.SortAscending
+	}
+	return accessibility.SortDescending
 }

@@ -16,6 +16,8 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // NumericField holds a numeric value that can be edited.
@@ -114,6 +116,53 @@ func (f *NumericField[T]) tooltipTextForValidation() string {
 		return fmt.Sprintf(i18n.Text("Value must be no more than %s"), f.Format(maximum))
 	}
 	return ""
+}
+
+// ProvideAccessibility describes the field to assistive technologies. It is a text field that holds a number, so
+// everything the field itself has to say is said first and the numeric range it is confined to is added to it.
+func (f *NumericField[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	// Whether the role was left for the widget to decide has to be noticed before the field decides it is a text field.
+	derived := node.Role == role.Auto
+	f.Field.ProvideAccessibility(b)
+	if derived {
+		node.Role = role.SpinButton
+	}
+	node.HasNumber = true
+	node.Number = float64(f.Value())
+	node.Min = float64(f.minimum)
+	node.Max = float64(f.maximum)
+	node.Step = 1
+	node.Actions = node.Actions.With(accessibility.Increment, accessibility.Decrement)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Stepping the value moves it by one,
+// within the range the field allows; everything else is left to the field.
+func (f *NumericField[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Increment:
+		f.axStepValue(true)
+		return true
+	case accessibility.Decrement:
+		f.axStepValue(false)
+		return true
+	default:
+		return f.Field.PerformAccessibilityAction(req)
+	}
+}
+
+// axStepValue moves the value one step up or down, stopping at the end of the range rather than passing it. Value
+// already brings whatever has been typed into range, so a field holding something out of range steps from the nearest
+// value it is allowed to hold.
+func (f *NumericField[T]) axStepValue(up bool) {
+	value := f.Value()
+	switch {
+	case up && value < f.maximum:
+		value = min(value+1, f.maximum)
+	case !up && value > f.minimum:
+		value = max(value-1, f.minimum)
+	}
+	f.SetValue(value)
 }
 
 // SetMinMax sets the minimum and maximum values and then adjusts the minimum text width, if a prototype function has

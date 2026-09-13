@@ -11,8 +11,10 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultScrollBarTheme holds the default ScrollBarTheme values for ScrollBars. Modifying this data will not alter
@@ -255,6 +257,58 @@ func (s *ScrollBar) adjustValueForPoint(pt geom.Point) {
 	} else {
 		s.SetRange((s.maximum-s.extent)*pos/maximum, s.extent, s.maximum)
 	}
+}
+
+// ProvideAccessibility describes the scroll bar to assistive technologies. A bar with nothing to scroll is skipped: it
+// is drawn as an empty track, and announcing it would be announcing a control that cannot do anything.
+func (s *ScrollBar) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.ScrollBar
+	}
+	node.HasNumber = true
+	node.Number = float64(s.value)
+	node.Max = float64(s.MaxValue())
+	node.Step = float64(s.axStep())
+	if s.horizontal {
+		node.Orientation = accessibility.OrientationHorizontal
+	} else {
+		node.Orientation = accessibility.OrientationVertical
+	}
+	node.Ignored = s.MaxValue() == 0
+	// Pressing a scroll bar is not activating it; the default behavior would synthesize a click at the center of the
+	// track, which would scroll to the middle of the content.
+	node.Actions = node.Actions.Without(accessibility.Press).
+		With(accessibility.Increment, accessibility.Decrement, accessibility.SetValue)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology: scrolling by a tenth of what is on
+// screen in either direction, or straight to a value, which is how VoiceOver brings something into view that it has
+// found to lie beyond the edge of a scroll area.
+func (s *ScrollBar) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Increment:
+		s.SetRange(s.value+s.axStep(), s.extent, s.maximum)
+		return true
+	case accessibility.Decrement:
+		s.SetRange(s.value-s.axStep(), s.extent, s.maximum)
+		return true
+	case accessibility.SetValue:
+		s.SetRange(float32(req.Number), s.extent, s.maximum)
+		return true
+	default:
+		return false
+	}
+}
+
+// axStep returns how far one increment or decrement from an assistive technology scrolls: a tenth of what is on
+// screen, which is a line or two of text in a typical view. A bar that has not been given an extent yet still reports
+// a step, so that it is never advertised as a scroll bar that cannot be scrolled.
+func (s *ScrollBar) axStep() float32 {
+	if s.extent < 10 {
+		return 1
+	}
+	return s.extent / 10
 }
 
 func (s *ScrollBar) checkOverThumb(pt geom.Point) {

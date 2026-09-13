@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -253,4 +255,38 @@ func (b *Button) DefaultUpdateCursor(_ geom.Point) *Cursor {
 		return ArrowCursor()
 	}
 	return PointingCursor()
+}
+
+// ProvideAccessibility describes the button to assistive technologies. A button that belongs to a group, or that is
+// sticky, stays in the state a click puts it in rather than springing back, so it is reported as a toggle button and
+// its state is reported along with it. The name is the button's own text; an icon button has none, so it falls back to
+// whatever name has been set for it and then to its tooltip, which is the only thing such a button usually has to say
+// what it does.
+func (b *Button) ProvideAccessibility(builder *AccessibilityBuilder) {
+	node := builder.Node()
+	if node.Role == role.Auto {
+		if b.Sticky || b.group != nil {
+			node.Role = role.ToggleButton
+		} else {
+			node.Role = role.Button
+		}
+	}
+	node.Pressed = b.Pressed || (node.Role == role.ToggleButton && b.group.Selected(b))
+	if node.Name == "" {
+		node.Name = b.Text.String()
+	}
+	if node.Name == "" {
+		node.Name = axTooltipText(b.AsPanel())
+	}
+	node.Actions = node.Actions.With(accessibility.Press)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing the button clicks it, which
+// runs the same animation and callback that a person's click would have.
+func (b *Button) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if req.Action != accessibility.Press {
+		return false
+	}
+	b.Click()
+	return true
 }

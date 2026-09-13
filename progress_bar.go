@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultProgressBarTheme holds the default ProgressBarTheme values for ProgressBars. Modifying this data will not
@@ -172,6 +173,21 @@ func (p *ProgressBar) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		p.redrawPending = true
 		InvokeTaskAfter(p.animationTick, p.TickSpeed)
 	}
+}
+
+// ProvideAccessibility describes the progress bar to assistive technologies. A bar with no maximum is indeterminate:
+// there is no telling how far along it is, only that something is still happening, which is what Busy says. Its value
+// cannot be changed from the outside, so it is reported as read-only.
+func (p *ProgressBar) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.ProgressBar
+	}
+	node.HasNumber = true
+	node.Number = float64(p.current)
+	node.Max = float64(p.maximum)
+	node.ReadOnly = true
+	node.Busy = p.maximum == 0
 }
 
 func (p *ProgressBar) animationTick() {

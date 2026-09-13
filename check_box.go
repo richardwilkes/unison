@@ -11,8 +11,10 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultCheckBoxTheme holds the default CheckBoxTheme values for CheckBoxes. Modifying this data will not alter
@@ -51,6 +53,20 @@ func NewCheckBox() *CheckBox {
 	}
 	c.drawMark = c.drawCheck
 	return &c
+}
+
+// ProvideAccessibility describes the check box to assistive technologies. All three states a check box can be in — on,
+// off and mixed — are reported, since a tri-state box is told apart from a plain one only by having been in the mixed
+// state.
+func (c *CheckBox) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.CheckBox
+	}
+	node.HasCheck = true
+	node.Checked = c.State
+	node.Name = c.axName(node.Name)
+	node.Actions = node.Actions.With(accessibility.Press, accessibility.Toggle)
 }
 
 func (c *CheckBox) drawCheck(canvas *Canvas, rect geom.Rect, thickness float32, fg, bg, edge Ink) {

@@ -147,3 +147,115 @@ func TestButton(t *testing.T) {
 	}
 }
 ```
+
+### Accessibility
+
+Unison describes its windows to the assistive technologies the operating system provides, so a screen reader can read an
+application's controls, follow the keyboard focus, report what is being typed and act on the user's behalf. It speaks
+NSAccessibility on macOS (VoiceOver), UI Automation on Windows (Narrator, NVDA, JAWS) and AT-SPI2 on Linux (Orca), and
+it is pure Go on all three: no C library and no accessibility bridge is involved, and on Linux the D-Bus client the
+accessibility bus needs is part of Unison, so `libdbus` is not required either.
+
+Every widget in the library describes itself, so an application is largely accessible without doing anything. What
+cannot be derived is what has no text to derive it from: a control whose appearance is its only label, such as an
+icon-only `Button` or a `DrawablePanel`, has to be named, and a label that is not simply the sibling preceding the
+control it names has to say what it labels.
+
+```go
+search.Accessibility.Name = "Search"  // Name a control that has no text of its own
+field.Accessibility.LabeledBy = label // Point a control at the label that names it
+```
+
+Everything an application says about a panel goes through its `Accessibility` field, an `AccessibilityInfo` held in the
+panel by value, so its fields are set in place rather than allocated. All of them are optional: `Name` is what is
+announced, overriding whatever name would otherwise be derived; `Description` elaborates on it, defaulting to the
+panel's tooltip text; `Role` says what kind of element the panel is, with `role.Auto` deriving it from the widget and
+`role.None` hiding the panel and promoting its children into its parent; `LabeledBy` names the panel that labels this
+one; `Callback` runs last and may adjust anything on the finished node, which is how a fact with no field of its own,
+such as a heading's level, gets reported; and `ActionCallback` handles requests from an assistive technology for a panel
+with no widget type of its own.
+
+A custom widget describes itself by implementing `AccessibilityProvider`, and carries out what an assistive technology
+asks of it by implementing `AccessibilityActor`. Both are looked for on `Panel.Self`, which a widget's constructor sets
+to the widget itself, so they have to be implemented by the widget type rather than by the embedded `Panel`. The node
+handed to `ProvideAccessibility` already holds everything derivable from the panel alone — its bounds, whether it is
+enabled, focusable and focused, and the actions those imply — so an implementation sets only what it knows better:
+
+```go
+type Rating struct {
+	unison.Panel
+	stars int
+}
+
+func (r *Rating) ProvideAccessibility(b *unison.AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto { // Auto unless the application asked for something else
+		node.Role = role.Slider
+	}
+	node.HasNumber = true
+	node.Number = float64(r.stars)
+	node.Max = 5
+	node.Step = 1
+	node.Actions = node.Actions.With(accessibility.Increment, accessibility.Decrement)
+}
+
+func (r *Rating) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Increment:
+		r.stars = min(r.stars+1, 5)
+	case accessibility.Decrement:
+		r.stars = max(r.stars-1, 0)
+	default:
+		return false
+	}
+	r.MarkForRedraw()
+	return true
+}
+```
+
+A widget that draws more content than it can show at once uses `AccessibilityBuilder.VisibleRect()` to describe only
+what can be seen, and one that draws elements without a panel apiece — the rows and cells of `Table` and `List`, say —
+adds them with `AccessibilityBuilder.AddVirtualChild()`. `AnnounceForAccessibility()` speaks a message that no change to
+a window expresses, such as a background task finishing; it does nothing when no assistive technology is being served,
+so it may be called unconditionally, and it is safe to call from any goroutine.
+
+Until an assistive technology has actually asked for it, none of this costs anything beyond the `AccessibilityInfo` each
+panel carries and one atomic load per pass of the event loop that redrew something: no hierarchy is walked, nothing is
+allocated, and no goroutine or platform object exists. What counts as asking differs by platform. On macOS it is the
+first accessibility query a window's content view receives, which is what VoiceOver or Accessibility Inspector sends on
+reaching the application. On Windows it is the first `WM_GETOBJECT` asking for the UI Automation root object, and events
+are raised only while UI Automation reports a listening client. On Linux it is the accessibility bus launcher's
+`org.a11y.Status.IsEnabled` property, read once at startup over the session bus connection the color-scheme watcher
+already keeps and then watched, so a screen reader started or stopped while the application runs is followed both ways;
+`NO_AT_BRIDGE=1` is honored there exactly as it is for GTK. Setting `UNISON_ACCESSIBILITY=1` turns support on whatever
+the platform reports, which is useful for seeing what a screen reader would be told, `UNISON_ACCESSIBILITY=0` refuses it
+entirely, and the `NoAccessibility()` startup option refuses it from the start. `SetAccessibilityEnabled(false)` turns
+it off while the application runs, shutting down whatever is being served and freeing everything built for it, and
+`SetAccessibilityEnabled(true)` lets the next request start it again, so an application can leave the decision to a
+preference rather than to whatever on the desktop happens to ask.
+
+What an assistive technology would be handed can be asserted on in a headless session, with no display and no screen
+reader involved. `AccessibilityTree()` turns support on if it is not on already, describes the window as it is now and
+hands back the immutable tree a platform adapter would have been given; `AccessibilityNodeFor()` finds the node
+describing one panel within it. `AccessibilityEvents()` drains the events published for a window, `Announcements()`
+drains what `AnnounceForAccessibility()` was asked to speak, and `PerformAccessibilityAction()` makes a request of a
+node exactly as a screen reader would.
+
+```go
+screen.Do(func() { wnd.SetFocus(field) })
+tree := screen.AccessibilityTree(wnd)
+node := screen.AccessibilityNodeFor(field)
+if node.Role != role.TextField || node.Name != "Search" {
+	t.Errorf("expected a text field named Search, got a %v named %q", node.Role, node.Name)
+}
+if tree.Focus != node.ID {
+	t.Error("expected the field to hold the focus")
+}
+if !screen.PerformAccessibilityAction(accessibility.ActionRequest{
+	Node:   node.ID,
+	Action: accessibility.SetValue,
+	Value:  "hello",
+}) {
+	t.Error("expected the field to accept a new value")
+}
+```

@@ -162,6 +162,8 @@ type HeadlessScreen struct {
 	// calls into the errs package.
 	recorded []error
 	stack    []*Window
+	// announcements is what AnnounceForAccessibility asked to have spoken, which Announcements() reports and drains.
+	announcements []string
 	// The cursors that existed before the session started, taken out of the way by beginStartup and put back by
 	// finish(). See beginStartup for why a session must neither adopt nor destroy them.
 	priorCursors                []*Cursor
@@ -359,6 +361,7 @@ func resetStartupOptions() {
 	quittingCallback = nil
 	noGlobalMenuBar = false
 	noPlatformFileDialogs = false
+	noAccessibility = false
 }
 
 // recordError appends err to the list Errors() reports. It is installed as the recovery callback when the application
@@ -375,6 +378,12 @@ func (s *headlessState) recordError(err error) {
 // started, then releases the goroutines waiting on the session. It runs on the UI goroutine after the event loop has
 // exited, which is the last moment at which that state is still exclusively ours.
 func (s *headlessState) finish() {
+	// First, while the window list this walks is still intact. A session that turned accessibility support on must not
+	// leave it on for whatever runs next, and the snapshot count is what the zero-cost tests assert on, so the next
+	// session has to start from zero however this one ended.
+	deactivateAccessibility()
+	axSnapshotCount = 0
+	s.announcements = nil
 	windowList = nil
 	modalStack = nil
 	pendingFrontWindow = nil

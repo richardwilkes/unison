@@ -32,8 +32,10 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/weight"
 	"github.com/yuin/goldmark"
@@ -202,6 +204,10 @@ func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	}
 	m.SetLayout(&FlexLayout{Columns: 1})
 	m.Self = m
+	// The content is rich, readable text rather than a set of controls, which is what a document is. Everything the
+	// markdown is built out of is a panel in its own right, so there is nothing else to tell an assistive technology
+	// here: the headings, links and images below say what they are as they are created.
+	m.Accessibility.Role = role.Document
 	if autoSizingFromParent {
 		m.ParentChangedCallback = m.adjustSizeOnParentChange
 	}
@@ -393,6 +399,11 @@ func (m *Markdown) processHeading() {
 		}
 		p.SetBorder(NewEmptyBorder(insets))
 		p.SetLayout(&FlexLayout{Columns: 1})
+		// The heading is one element to an assistive technology, however many labels the text within it is broken into:
+		// the snapshot builder folds their text into the heading's name rather than describing each of them.
+		p.Accessibility.Role = role.Heading
+		level := min(max(heading.Level, 1), 6)
+		p.Accessibility.Callback = func(node *accessibility.Node) { node.Level = level }
 		m.block.AddChild(p)
 		if id, hasID := heading.AttributeString("id"); hasID {
 			if idBytes, isBytes := id.([]byte); isBytes {
@@ -1252,6 +1263,10 @@ func (m *Markdown) processImage() {
 			secondary = ""
 		}
 		if primary != "" {
+			// The alternative text is what the image is called, which is the only thing about it an assistive technology
+			// can pass on; without it the image is skipped entirely rather than announced as a picture of nothing.
+			panel.Accessibility.Name = primary
+			panel.Accessibility.Description = secondary
 			if secondary != "" {
 				panel.Tooltip = NewTooltipWithSecondaryText(primary, secondary)
 			} else {

@@ -20,6 +20,7 @@ import (
 	"github.com/richardwilkes/unison/enums/gradienttype"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/tilemode"
 )
 
@@ -73,6 +74,8 @@ func NewGradientEditor(gradient *Gradient) *GradientEditor {
 
 	e.bar = NewPanel()
 	e.bar.SetFocusable(true)
+	// The bar is a focusable control that draws its own handles, so it has to say what it is itself.
+	e.bar.Accessibility.Name = i18n.Text("Gradient Stops")
 	e.bar.SetLayoutData(&FlexLayoutData{
 		SizeHint: geom.NewSize(0, gradientBarHeight+gradientHandleHeight/2),
 		HAlign:   align.Fill,
@@ -90,6 +93,15 @@ func NewGradientEditor(gradient *Gradient) *GradientEditor {
 
 	e.SetGradient(gradient)
 	return e
+}
+
+// ProvideAccessibility describes the editor to assistive technologies. It is a group of controls rather than a control
+// in its own right; each field within it says what it is by pointing at the label beside it, so none of them depends on
+// where it happens to sit in the layout.
+func (e *GradientEditor) ProvideAccessibility(b *AccessibilityBuilder) {
+	if node := b.Node(); node.Role == role.Auto {
+		node.Role = role.Group
+	}
 }
 
 // Gradient returns a copy of the gradient being edited.
@@ -140,11 +152,12 @@ func (e *GradientEditor) addStopEditor() {
 	})
 
 	e.removeButton = NewSVGButton(TrashSVG)
+	e.removeButton.Accessibility.Name = i18n.Text("Remove Stop")
 	e.removeButton.Tooltip = NewTooltipWithText(i18n.Text("Remove Stop"))
 	e.removeButton.ClickCallback = func() { e.removeStop(e.selectedStop) }
 	panel.AddChild(e.removeButton)
 
-	e.addLabel(panel, i18n.Text("Position"))
+	positionLabel := e.addLabel(panel, i18n.Text("Position"))
 	e.posField = e.newPercentField(panel, func(v float32) {
 		sel := e.gradient.Stops[e.selectedStop]
 		sel.Location = v
@@ -154,8 +167,11 @@ func (e *GradientEditor) addStopEditor() {
 		e.changed()
 	})
 
-	e.addLabel(panel, i18n.Text("Color"))
+	e.posField.Accessibility.LabeledBy = positionLabel
+
+	colorLabel := e.addLabel(panel, i18n.Text("Color"))
 	e.colorWell = NewWell()
+	e.colorWell.Accessibility.LabeledBy = colorLabel
 	e.colorWell.Mask = ColorWellMask
 	e.colorWell.SetLayoutData(&FlexLayoutData{VAlign: align.Middle})
 	e.colorWell.InkChangedCallback = func() {
@@ -172,6 +188,7 @@ func (e *GradientEditor) addStopEditor() {
 	panel.AddChild(e.colorWell)
 
 	addButton := NewSVGButton(CircledAddSVG)
+	addButton.Accessibility.Name = i18n.Text("Add Stop")
 	addButton.Tooltip = NewTooltipWithText(i18n.Text("Add Stop"))
 	addButton.ClickCallback = e.addStopInLargestGap
 	panel.AddChild(addButton)
@@ -263,6 +280,7 @@ func (e *GradientEditor) addGeometryEditor() {
 	e.AddChild(popupPanel)
 
 	e.typePopup = NewPopupMenu[gradienttype.Enum]()
+	e.typePopup.Accessibility.Name = i18n.Text("Gradient Type")
 	e.typePopup.AddItem(gradienttype.All...)
 	e.typePopup.SelectionChangedCallback = func(popup *PopupMenu[gradienttype.Enum]) {
 		if e.syncing {
@@ -307,6 +325,7 @@ func (e *GradientEditor) addGeometryEditor() {
 	popupPanel.AddChild(e.typePopup)
 
 	e.tileModePopup = NewPopupMenu[tilemode.Enum]()
+	e.tileModePopup.Accessibility.Name = i18n.Text("Tile Mode")
 	e.tileModePopup.AddItem(tilemode.All...)
 	e.tileModePopup.SelectionChangedCallback = func(popup *PopupMenu[tilemode.Enum]) {
 		if e.syncing {
@@ -338,28 +357,34 @@ func (e *GradientEditor) addGeometryEditor() {
 }
 
 func (e *GradientEditor) addPointRow(parent *Panel, accessor func() *geom.Point) (xField, yField *Field) {
-	e.addTrailingLabel(parent, i18n.Text("X"))
+	xLabel := e.addTrailingLabel(parent, i18n.Text("X"))
 	xField = e.newPercentField(parent, func(v float32) { accessor().X = v })
-	e.addTrailingLabel(parent, i18n.Text("Y"))
+	xField.Accessibility.LabeledBy = xLabel
+	yLabel := e.addTrailingLabel(parent, i18n.Text("Y"))
 	yField = e.newPercentField(parent, func(v float32) { accessor().Y = v })
+	yField.Accessibility.LabeledBy = yLabel
 	parent.AddChild(NewLabel())
 	return xField, yField
 }
 
 func (e *GradientEditor) addRadiusRow(parent *Panel) (startField, endField *Field) {
-	e.addTrailingLabel(parent, i18n.Text("Start"))
+	startLabel := e.addTrailingLabel(parent, i18n.Text("Start"))
 	startField = e.newPixelsField(parent, func(v float32) { e.gradient.Radius.Start = v })
-	e.addTrailingLabel(parent, i18n.Text("End"))
+	startField.Accessibility.LabeledBy = startLabel
+	endLabel := e.addTrailingLabel(parent, i18n.Text("End"))
 	endField = e.newPixelsField(parent, func(v float32) { e.gradient.Radius.End = v })
+	endField.Accessibility.LabeledBy = endLabel
 	e.addTrailingLabel(parent, i18n.Text("px"))
 	return startField, endField
 }
 
 func (e *GradientEditor) addAngleRow(parent *Panel) (startField, endField *Field) {
-	e.addTrailingLabel(parent, i18n.Text("Start"))
+	startLabel := e.addTrailingLabel(parent, i18n.Text("Start"))
 	startField = e.newDegreesField(parent, func(v float32) { e.gradient.Angle.Start = v })
-	e.addTrailingLabel(parent, i18n.Text("End"))
+	startField.Accessibility.LabeledBy = startLabel
+	endLabel := e.addTrailingLabel(parent, i18n.Text("End"))
 	endField = e.newDegreesField(parent, func(v float32) { e.gradient.Angle.End = v })
+	endField.Accessibility.LabeledBy = endLabel
 	parent.AddChild(NewLabel())
 	return startField, endField
 }
@@ -376,12 +401,13 @@ func (e *GradientEditor) addLabel(parent *Panel, title string) *Label {
 	return l
 }
 
-func (e *GradientEditor) addTrailingLabel(parent *Panel, title string) {
+func (e *GradientEditor) addTrailingLabel(parent *Panel, title string) *Label {
 	l := NewLabel()
 	l.SetTitle(title)
 	l.SetEnabled(false)
 	l.SetLayoutData(&FlexLayoutData{VAlign: align.Middle})
 	parent.AddChild(l)
+	return l
 }
 
 func (e *GradientEditor) newPercentField(parent *Panel, apply func(v float32)) *Field {

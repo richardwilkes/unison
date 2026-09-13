@@ -12,6 +12,7 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultSeparatorTheme holds the default SeparatorTheme values for Separators. Modifying this data will not alter
@@ -74,6 +75,14 @@ func (s *Separator) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geo
 		maxSize = maxSize.Add(insets)
 	}
 	return minSize, prefSize, maxSize
+}
+
+// ProvideAccessibility describes the separator to assistive technologies, which present it as a break between the
+// groups of things on either side of it rather than as something in its own right.
+func (s *Separator) ProvideAccessibility(b *AccessibilityBuilder) {
+	if node := b.Node(); node.Role == role.Auto {
+		node.Role = role.Separator
+	}
 }
 
 // DefaultDraw provides the default drawing.

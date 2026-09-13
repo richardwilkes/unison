@@ -16,8 +16,10 @@ import (
 	"github.com/richardwilkes/toolbox/v2/collection/bitset"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
@@ -586,6 +588,136 @@ func (l *List[T]) rowAt(y float32) (row int, top float32) {
 		top = 0
 	}
 	return row, top
+}
+
+// ProvideAccessibility describes the list to assistive technologies. The rows have no panels of their own — a cell is
+// created to draw a row and thrown away again — so each one is described directly, as a virtual child keyed by its
+// index. Only the rows that can be seen, plus the ones that are selected, are described: a list may hold far more rows
+// than it shows, and an assistive technology is interested in what is on the screen and in what the selection is.
+func (l *List[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.List
+	}
+	node.Multiselectable = l.allowMultiple
+	node.RowCount = len(l.rows)
+	if len(l.rows) == 0 {
+		return
+	}
+	reach := axReach(b.VisibleRect())
+	if cellHeight := xmath.Ceil(l.Factory.CellHeight()); cellHeight >= 1 {
+		l.axDescribeUniformRows(b, reach, cellHeight)
+		return
+	}
+	l.axDescribeVaryingRows(b, reach)
+}
+
+// axDescribeUniformRows describes the rows worth describing — those within reach of the part that can be seen (see
+// axReach), plus the selection — when every row is the same height, which is when where a row sits is arithmetic rather
+// than a walk through the rows before it.
+func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect, cellHeight float32) {
+	rect := l.ContentRect(false)
+	first, last := 0, -1
+	if !reach.Empty() {
+		first = max(int(xmath.Floor((reach.Y-rect.Y)/cellHeight)), 0)
+		last = min(int(xmath.Ceil((reach.Bottom()-rect.Y)/cellHeight)), len(l.rows)-1)
+	}
+	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, cellHeight)
+	for row := first; row <= last; row++ {
+		rowRect.Y = rect.Y + cellHeight*float32(row)
+		l.axAddRow(b, row, rowRect, nil)
+	}
+	// The selected rows that were not reached above are described as well, however far out of sight they are.
+	described := 0
+	for row := l.Selection.FirstSet(); row >= 0 && described < axMaxSelectedRows; row = l.Selection.NextSet(row + 1) {
+		if row >= len(l.rows) {
+			break
+		}
+		if row >= first && row <= last {
+			continue
+		}
+		rowRect.Y = rect.Y + cellHeight*float32(row)
+		l.axAddRow(b, row, rowRect, nil)
+		described++
+	}
+}
+
+// axDescribeVaryingRows describes the rows worth describing when each row's height is its own. Every row has to be
+// measured to know where the ones after it sit, and measuring means creating the cell, so the cell that was created is
+// handed on to be named from rather than being created a second time.
+func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect) {
+	rect := l.ContentRect(false)
+	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, 0)
+	described := 0
+	for row := range l.rows {
+		cell := l.cell(row)
+		_, pref, _ := cell.Sizes(geom.Size{})
+		rowRect.Height = pref.Ceil().Height
+		switch {
+		case rowRect.Intersects(reach):
+			l.axAddRow(b, row, rowRect, cell)
+		case l.Selection.State(row) && described < axMaxSelectedRows:
+			l.axAddRow(b, row, rowRect, cell)
+			described++
+		}
+		rowRect.Y += rowRect.Height
+	}
+}
+
+// axAddRow describes one row of the list. cell, when not nil, is the cell that was already created for the row, whose
+// text is what the row is named by; one is created if it is nil.
+func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cell *Panel) {
+	if cell == nil {
+		cell = l.cell(row)
+	}
+	name := axLabelText(cell)
+	selected := l.Selection.State(row)
+	b.AddVirtualChild(row, func(n *accessibility.Node) {
+		n.Role = role.ListItem
+		n.Name = name
+		n.Bounds = rect
+		n.RowIndex = row
+		n.Selectable = true
+		n.Selected = selected
+		n.Actions = n.Actions.With(accessibility.Select, accessibility.AddToSelection,
+			accessibility.RemoveFromSelection, accessibility.ScrollIntoView)
+	})
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Every request that reaches here names
+// one of the rows described by ProvideAccessibility, which arrives as the index that row was keyed by. Selecting a row
+// also scrolls it into view, as the arrow keys do, since an assistive technology moving through the rows selects each
+// one as it goes and expects to see where it has got to.
+func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	row, ok := req.Key.(int)
+	if !ok || row < 0 || row >= len(l.rows) {
+		return false
+	}
+	switch req.Action {
+	case accessibility.Select:
+		l.Select(false, row)
+		SafeCall(l.NewSelectionCallback)
+		l.ScrollRectIntoView(l.RowRect(row))
+	case accessibility.AddToSelection:
+		l.Select(true, row)
+		SafeCall(l.NewSelectionCallback)
+		l.ScrollRectIntoView(l.RowRect(row))
+	case accessibility.RemoveFromSelection:
+		if !l.Selection.State(row) {
+			return true
+		}
+		l.Selection.Clear(row)
+		if l.anchor == row {
+			l.anchor = -1
+		}
+		l.MarkForRedraw()
+		SafeCall(l.NewSelectionCallback)
+	case accessibility.ScrollIntoView:
+		l.ScrollRectIntoView(l.RowRect(row))
+	default:
+		return false
+	}
+	return true
 }
 
 // FlashSelection flashes the current selection.

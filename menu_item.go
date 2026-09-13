@@ -14,9 +14,11 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -168,8 +170,15 @@ func (mi *menuItem) newPanel() *Panel {
 	mi.panel = NewPanel()
 	if mi.isSeparator {
 		mi.panel.SetBorder(DefaultMenuItemTheme.SeparatorBorder)
+		mi.panel.Accessibility.Role = role.Separator
 	} else {
 		mi.panel.SetBorder(DefaultMenuItemTheme.ItemBorder)
+		mi.panel.Accessibility.Role = role.MenuItem
+		// Everything else about the item — its title, its key binding, whether it is enabled, checked, or the item the
+		// menu is pointing at — is read when a description is actually being built, since all of it can change while
+		// the menu is open. Both of these only ever run then.
+		mi.panel.Accessibility.Callback = mi.describeForAccessibility
+		mi.panel.Accessibility.ActionCallback = mi.performAccessibilityAction
 	}
 	mi.over = false
 	mi.panel.DrawCallback = mi.paint
@@ -180,6 +189,49 @@ func (mi *menuItem) newPanel() *Panel {
 	mi.panel.MouseUpCallback = mi.mouseUp
 	mi.panel.SetSizer(mi.sizer)
 	return mi.panel
+}
+
+// describeForAccessibility fills in what an assistive technology is told about the item. The item the menu has
+// highlighted is reported as the focused one: while a menu is open the keyboard focus stays wherever it was, since the
+// menu handles keys ahead of it, so what a person is choosing from is what the menu is pointing at.
+//
+// A check state is reported only for an item that has one, which is an item drawing a check mark or a dash. Nothing
+// distinguishes an unchecked checkable item from an ordinary one, here or in the drawing, so neither is announced as
+// something that could be checked.
+func (mi *menuItem) describeForAccessibility(node *accessibility.Node) {
+	node.Name = mi.title
+	node.Disabled = !mi.enabled
+	node.Focused = mi.over
+	node.Actions = node.Actions.With(accessibility.Press)
+	if mi.keyBinding.KeyCode != 0 {
+		node.Shortcut = mi.keyBinding.String()
+	}
+	if mi.subMenu != nil {
+		node.Expandable = true
+		node.Expanded = mi.subMenu.popupPanel != nil
+		node.Actions = node.Actions.With(accessibility.Expand)
+	} else if mi.state != check.Off {
+		node.HasCheck = true
+		node.Checked = mi.state
+	}
+}
+
+// performAccessibilityAction carries out a request from an assistive technology. Pressing an item is choosing it, which
+// runs its handler or opens its sub-menu exactly as clicking it or pressing Return on it would.
+func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press:
+		mi.click()
+		return true
+	case accessibility.Expand:
+		if mi.subMenu == nil {
+			return false
+		}
+		mi.showSubMenu()
+		return true
+	default:
+		return false
+	}
 }
 
 func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {

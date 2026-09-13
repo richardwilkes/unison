@@ -131,6 +131,81 @@ func TestNSNumberRoundTrip(t *testing.T) {
 	})
 }
 
+// TestNSValueRoundTrip proves the NSValue helpers the accessibility adapter hands rects, ranges and points to AppKit
+// with, including the nil-tolerance of the readers.
+func TestNSValueRoundTrip(t *testing.T) {
+	WithPool(func() {
+		for _, r := range []NSRect{
+			{},
+			{Origin: NSPoint{X: 1.5, Y: -2.25}, Size: NSSize{Width: 320, Height: 240}},
+			{Origin: NSPoint{X: -1e6, Y: 1e6}, Size: NSSize{Width: 0.5, Height: 0.25}},
+		} {
+			if got := RectFromNSValue(NSValueFromRect(r)); got != r {
+				t.Errorf("rect round trip of %+v produced %+v", r, got)
+			}
+		}
+		for _, r := range []NSRange{{}, {Location: 6, Length: 5}, {Location: nsNotFound, Length: 0}} {
+			if got := RangeFromNSValue(NSValueFromRange(r)); got != r {
+				t.Errorf("range round trip of %+v produced %+v", r, got)
+			}
+		}
+		pt := NSPoint{X: 3.5, Y: -4.5}
+		if got := objc.Send[NSPoint](NSValueFromPoint(pt), Sel("pointValue")); got != pt {
+			t.Errorf("point round trip of %+v produced %+v", pt, got)
+		}
+		if got := RectFromNSValue(0); got != (NSRect{}) {
+			t.Errorf("RectFromNSValue(0) = %+v, want the zero rect", got)
+		}
+		if got := RangeFromNSValue(0); got != (NSRange{}) {
+			t.Errorf("RangeFromNSValue(0) = %+v, want the zero range", got)
+		}
+	})
+}
+
+// TestNSDictionaryFromPairs proves the userInfo builder: alternating keys and values, an empty dictionary rather than
+// nil for no pairs, and a dangling key dropped rather than paired with nil.
+func TestNSDictionaryFromPairs(t *testing.T) {
+	WithPool(func() {
+		empty := NSDictionaryFromPairs()
+		if empty == 0 {
+			t.Fatal("NSDictionaryFromPairs() returned nil")
+		}
+		if got := objc.Send[uint64](empty, Sel("count")); got != 0 {
+			t.Errorf("empty dictionary count = %d, want 0", got)
+		}
+		dict := NSDictionaryFromPairs(
+			NSStringFromGo("one"), NSStringFromGo("first"),
+			NSStringFromGo("two"), NSNumberFromInt64(2),
+			NSStringFromGo("dangling"),
+		)
+		if got := objc.Send[uint64](dict, Sel("count")); got != 2 {
+			t.Errorf("dictionary count = %d, want 2 (the dangling key must be dropped)", got)
+		}
+		if got := GoStringFromNSString(dict.Send(Sel("objectForKey:"), NSStringFromGo("one"))); got != "first" {
+			t.Errorf("dictionary[one] = %q, want %q", got, "first")
+		}
+		if got := Int64FromNSNumber(dict.Send(Sel("objectForKey:"), NSStringFromGo("two"))); got != 2 {
+			t.Errorf("dictionary[two] = %d, want 2", got)
+		}
+	})
+}
+
+// TestAppKitString proves the cached constant lookup returns AppKit's own object and keeps returning the same one.
+func TestAppKitString(t *testing.T) {
+	first := AppKitString("NSAccessibilityGroupRole")
+	if first == 0 {
+		t.Fatal("AppKitString returned nil for NSAccessibilityGroupRole")
+	}
+	if second := AppKitString("NSAccessibilityGroupRole"); second != first {
+		t.Errorf("AppKitString returned %#x then %#x for the same symbol", first, second)
+	}
+	WithPool(func() {
+		if got := GoStringFromNSString(first); got != "AXGroup" {
+			t.Errorf("NSAccessibilityGroupRole = %q, want AXGroup", got)
+		}
+	})
+}
+
 func TestNSURLFilePathRoundTrip(t *testing.T) {
 	WithPool(func() {
 		// Note: only normalization-stable characters here (ASCII, CJK). macOS decomposes path strings to NFD, so

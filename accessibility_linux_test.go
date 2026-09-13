@@ -1,0 +1,373 @@
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package unison
+
+import (
+	"bufio"
+	"errors"
+	"net"
+	"runtime/debug"
+	"slices"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xio"
+	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/internal/atspi"
+	"github.com/richardwilkes/unison/internal/dbus"
+)
+
+// These tests cover the part of the Linux accessibility wiring that can be exercised without an accessibility bus and a
+// real screen reader: the decision about whether to serve one at all, what that decision costs an application nothing
+// is watching, and the conversion that puts a node's window-local bounds where AT-SPI expects them. Everything past the
+// point where the bus is dialed belongs to internal/atspi, which is tested in full on every platform, and the rest is
+// checked by hand with Orca and accerciser.
+
+// a11yTestTimeout is how long these tests wait for something that should happen at once.
+const a11yTestTimeout = 2 * time.Second
+
+// a11yTestBusName is the unique name the fake session bus hands out in reply to Hello.
+const a11yTestBusName = ":1.99"
+
+// dbusPath is the path of a D-Bus daemon's own object.
+const dbusPath dbus.ObjectPath = "/org/freedesktop/DBus"
+
+// dbusPropertiesInterface is the interface every object's properties are read through.
+const dbusPropertiesInterface = "org.freedesktop.DBus.Properties"
+
+// saveA11yState records the process-wide accessibility state these tests change and puts it back afterwards. None of
+// them may call t.Parallel, since all of that state is shared.
+func saveA11yState(t *testing.T) {
+	t.Helper()
+	priorNo, priorEnv := noAccessibility, accessibilityEnv
+	priorAdapter, priorCancel := linuxA11y, linuxA11yCancelWatch
+	hadWatch := priorCancel != nil
+	t.Cleanup(func() {
+		if !hadWatch && linuxA11yCancelWatch != nil {
+			linuxA11yCancelWatch()
+		}
+		noAccessibility, accessibilityEnv = priorNo, priorEnv
+		linuxA11y, linuxA11yCancelWatch = priorAdapter, priorCancel
+	})
+	noAccessibility = false
+	accessibilityEnv = 0
+	linuxA11y = nil
+	linuxA11yCancelWatch = nil
+	t.Setenv("NO_AT_BRIDGE", "")
+}
+
+// TestLinuxA11yMode covers the decision that is made before the session bus is consulted at all. Only the ordinary
+// case, where the desktop is asked, may reach the bus.
+func TestLinuxA11yMode(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	for i, d := range []struct {
+		noBridge string
+		expected linuxA11yStartMode
+		env      int8
+		refused  bool
+	}{
+		{expected: linuxA11yAsk},
+		{env: 1, expected: linuxA11yForced},
+		{env: -1, expected: linuxA11yRefused},
+		{refused: true, expected: linuxA11yRefused},
+		{noBridge: "1", expected: linuxA11yRefused},
+		{noBridge: "yes", expected: linuxA11yRefused},
+		// NO_AT_BRIDGE=0 is not an instruction to stay away, and neither is an unset one.
+		{noBridge: "0", expected: linuxA11yAsk},
+		// The desktop's instruction wins over this application's request for support.
+		{noBridge: "1", env: 1, expected: linuxA11yRefused},
+	} {
+		accessibilityEnv = d.env
+		noAccessibility = d.refused
+		t.Setenv("NO_AT_BRIDGE", d.noBridge)
+		c.Equal(d.expected, linuxA11yMode(), "case %d", i)
+	}
+}
+
+// TestLinuxA11yStatusInitWithoutSessionBus is half of the zero-cost-when-inactive test for this platform: a machine
+// with no session bus has nothing to ask and nothing that could ever answer, so nothing is started, nothing is watched
+// and nothing is retried.
+func TestLinuxA11yStatusInitWithoutSessionBus(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	snapshots := axSnapshotCount
+	wasActive := IsAccessibilityActive()
+	t.Cleanup(dbus.SetSessionForTest(nil, errors.New("there is no session bus")))
+	linuxA11yStatusInit()
+	c.Nil(linuxA11y, "no adapter should have been created")
+	c.Nil(linuxA11yCancelWatch, "nothing should be being watched")
+	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
+	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
+}
+
+// TestLinuxA11yStatusInitIsRefusedByEnvironment is the other half: an application that has been told to stay away from
+// the accessibility bus must not even reach for the session bus, which is checked by making any attempt to use it fail
+// the test.
+func TestLinuxA11yStatusInitIsRefusedByEnvironment(t *testing.T) {
+	for name, refuse := range map[string]func(t *testing.T){
+		"NO_AT_BRIDGE":         func(t *testing.T) { t.Helper(); t.Setenv("NO_AT_BRIDGE", "1") },
+		"UNISON_ACCESSIBILITY": func(_ *testing.T) { accessibilityEnv = -1 },
+		"NoAccessibility":      func(_ *testing.T) { noAccessibility = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := check.New(t)
+			saveA11yState(t)
+			restore := dbus.SetSessionForTest(nil, errors.New("the session bus must not be reached"))
+			t.Cleanup(restore)
+			refuse(t)
+			linuxA11yStatusInit()
+			c.Nil(linuxA11y)
+			c.Nil(linuxA11yCancelWatch, "a refusal must not watch anything")
+		})
+	}
+}
+
+// TestLinuxA11yStatusInitAsksOnceAndWatches is the rest of the zero-cost-when-inactive test: on a desktop where nothing
+// is listening, the whole cost of accessibility support is one property read and two match rules on the session
+// connection the color-scheme watcher already holds. Nothing is dialed, nothing is exported and no snapshot is built.
+func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	snapshots := axSnapshotCount
+	wasActive := IsAccessibilityActive()
+	bus := newFakeSessionBus(t)
+	t.Cleanup(dbus.SetSessionForTest(bus.conn, nil))
+
+	linuxA11yStatusInit()
+
+	c.Equal(1, bus.isEnabledReads(), "the launcher's IsEnabled property should have been read exactly once")
+	c.Nil(linuxA11y, "nothing is listening, so no adapter should have been created")
+	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
+	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
+	c.NotNil(linuxA11yCancelWatch, "the launcher should be being watched")
+	rules := bus.waitForRules(2)
+	c.True(slices.ContainsFunc(rules, func(rule string) bool {
+		return strings.Contains(rule, "member='PropertiesChanged'") && strings.Contains(rule, "path='/org/a11y/bus'")
+	}), "the launcher's own property changes should be watched: %v", rules)
+	c.True(slices.ContainsFunc(rules, func(rule string) bool {
+		return strings.Contains(rule, "member='NameOwnerChanged'") && strings.Contains(rule, "arg0='org.a11y.Bus'")
+	}), "the launcher appearing should be watched, since some desktops only start it on demand: %v", rules)
+
+	// Nothing is left on the bus once the watch is dropped.
+	linuxA11yCancelWatch()
+	linuxA11yCancelWatch = nil
+	c.Equal(0, len(bus.waitForRules(0)))
+}
+
+// TestLinuxA11yHooksAreInertWithoutAnAdapter covers the case the environment override creates: snapshot building can be
+// turned on without an accessibility bus to publish to, and every path out of the root package must then do nothing.
+func TestLinuxA11yHooksAreInertWithoutAnAdapter(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	w := &Window{}
+	w.nativeAccessibilityPublish(&accessibility.Tree{}, nil)
+	w.nativeAccessibilityGeometryChanged()
+	w.nativeAccessibilityShutdown()
+	w.x11RefreshAccessibilityGeometry()
+	nativeAccessibilityAnnounce("nobody is listening")
+	linuxSetA11yEnabled(false) // Turning support off when it was never on does nothing
+	linuxA11yTerminate()
+	c.Nil(linuxA11y)
+}
+
+// TestLinuxA11yGeometryFor verifies the geometry a window hands the adapter. Unlike Windows, where the origin of a
+// window rect is already in the raw global pixel space, an X11 window's position is divided by the backing scale on the
+// way out of nativeContentRect, so Window.accessibilityGeometry multiplying it back is what recovers the device pixels
+// the X server, and therefore AT-SPI, works in.
+func TestLinuxA11yGeometryFor(t *testing.T) {
+	c := check.New(t)
+	// A window whose content area the X server puts at (200,100) on a 2x display: its logical content origin is
+	// (100,50), and the origin reported to AT-SPI has to be the device pixels again.
+	geometry := linuxA11yGeometryFor(geom.NewPoint(100, 50).MulPt(geom.NewPoint(2, 2)), geom.NewPoint(2, 2))
+	c.Equal(geom.NewPoint(200, 100), geometry.Origin)
+	c.Equal(geom.NewPoint(2, 2), geometry.Scale)
+	// A window on a display to the left of the primary one has a negative origin, which must survive the conversion.
+	geometry = linuxA11yGeometryFor(geom.NewPoint(-1920, 0), geom.NewPoint(1, 1))
+	c.Equal(geom.NewPoint(-1920, 0), geometry.Origin)
+	c.Equal(geom.NewPoint(1, 1), geometry.Scale)
+}
+
+// TestLinuxToolkitVersionFrom verifies the version reported to an assistive technology. Unison is normally one of the
+// modules the application depends on; the main module's version is right only when the binary being run is Unison's
+// own.
+func TestLinuxToolkitVersionFrom(t *testing.T) {
+	c := check.New(t)
+	c.Equal(unknownToolkitVersion, linuxToolkitVersionFrom(nil))
+	c.Equal(unknownToolkitVersion, linuxToolkitVersionFrom(&debug.BuildInfo{}))
+	c.Equal("v1.2.3", linuxToolkitVersionFrom(&debug.BuildInfo{
+		Main: debug.Module{Path: "example.com/app", Version: "v9.9.9"},
+		Deps: []*debug.Module{
+			{Path: "example.com/other", Version: "v0.1.0"},
+			{Path: unisonModulePath, Version: "v1.2.3"},
+		},
+	}))
+	c.Equal("v4.5.6", linuxToolkitVersionFrom(&debug.BuildInfo{
+		Deps: []*debug.Module{
+			{Path: unisonModulePath, Version: "v1.2.3", Replace: &debug.Module{
+				Path:    unisonModulePath,
+				Version: "v4.5.6",
+			}},
+		},
+	}))
+	c.Equal("v7.8.9", linuxToolkitVersionFrom(&debug.BuildInfo{
+		Main: debug.Module{Path: unisonModulePath, Version: "v7.8.9"},
+	}))
+	// The version a real build reports has to be something, whatever the binary was built from.
+	c.NotEqual("", linuxToolkitVersion())
+}
+
+// fakeSessionBus is the least of a D-Bus daemon that the startup path needs: it hands out a name, records match rules,
+// and answers the accessibility bus launcher's IsEnabled property with "nothing is listening". A call it does not know
+// about fails, which is how a test learns that something reached for more of the bus than it should have.
+//
+// It is a cut-down cousin of the fake peer in internal/atspi, which cannot be shared because it lives in that package's
+// tests.
+type fakeSessionBus struct {
+	t      *testing.T
+	conn   *dbus.Conn
+	in     *bufio.Reader
+	side   net.Conn
+	rules  []string
+	lock   sync.Mutex
+	reads  int
+	serial uint32
+}
+
+// newFakeSessionBus connects a session bus that answers on the far end of a pipe. Both ends are closed when the test
+// finishes.
+func newFakeSessionBus(t *testing.T) *fakeSessionBus {
+	t.Helper()
+	c := check.New(t)
+	clientSide, busSide := net.Pipe()
+	conn, err := dbus.Connect(clientSide)
+	c.NoError(err)
+	b := &fakeSessionBus{t: t, conn: conn, side: busSide, in: bufio.NewReader(busSide)}
+	go b.run()
+	t.Cleanup(func() {
+		conn.Close()
+		xio.CloseIgnoringErrors(busSide)
+	})
+	c.NoError(conn.Hello())
+	return b
+}
+
+// run answers messages until the connection goes away.
+func (b *fakeSessionBus) run() {
+	for {
+		msg, err := dbus.Decode(b.in)
+		if err != nil {
+			return
+		}
+		if msg.Type != dbus.TypeMethodCall {
+			continue
+		}
+		switch {
+		case msg.Path == dbusPath && msg.Member == "Hello":
+			b.reply(msg, "s", a11yTestBusName)
+		case msg.Path == dbusPath && (msg.Member == "AddMatch" || msg.Member == "RemoveMatch"):
+			b.match(msg)
+		case msg.Path == atspi.BusPath && msg.Interface == dbusPropertiesInterface && msg.Member == "Get":
+			b.isEnabled(msg)
+		default:
+			b.write(dbus.NewError(msg, dbus.ServiceUnknown, "the fake session bus has no "+msg.Member))
+		}
+	}
+}
+
+// match records or forgets a match rule.
+func (b *fakeSessionBus) match(msg *dbus.Message) {
+	args, err := msg.Args()
+	if err != nil || len(args) != 1 {
+		b.write(dbus.NewError(msg, dbus.InvalidArgs, "a match rule is required"))
+		return
+	}
+	rule, ok := args[0].(string)
+	if !ok {
+		b.write(dbus.NewError(msg, dbus.InvalidArgs, "a match rule is required"))
+		return
+	}
+	b.lock.Lock()
+	if msg.Member == "AddMatch" {
+		b.rules = append(b.rules, rule)
+	} else if i := slices.Index(b.rules, rule); i >= 0 {
+		b.rules = slices.Delete(b.rules, i, i+1)
+	}
+	b.lock.Unlock()
+	b.reply(msg, "")
+}
+
+// isEnabled answers the accessibility bus launcher's IsEnabled property with false, counting the reads so that a test
+// can insist there was only one.
+func (b *fakeSessionBus) isEnabled(msg *dbus.Message) {
+	args, err := msg.Args()
+	if err != nil || len(args) != 2 || args[0] != atspi.StatusInterface || args[1] != "IsEnabled" {
+		b.write(dbus.NewError(msg, dbus.InvalidArgs, "only IsEnabled may be read"))
+		return
+	}
+	b.lock.Lock()
+	b.reads++
+	b.lock.Unlock()
+	b.reply(msg, "v", dbus.Variant{Sig: "b", Value: false})
+}
+
+// isEnabledReads returns how many times the launcher's IsEnabled property has been read.
+func (b *fakeSessionBus) isEnabledReads() int {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	return b.reads
+}
+
+// waitForRules returns the match rules in place once there are the expected number of them, or whatever there is when
+// waiting has gone on too long. The rules are asked for from a goroutine of the watch's own, so they are not
+// necessarily in place by the time the call that started the watch has returned.
+func (b *fakeSessionBus) waitForRules(expected int) []string {
+	b.t.Helper()
+	deadline := time.Now().Add(a11yTestTimeout)
+	for {
+		b.lock.Lock()
+		rules := slices.Clone(b.rules)
+		b.lock.Unlock()
+		if len(rules) == expected || time.Now().After(deadline) {
+			return rules
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// reply answers a method call.
+func (b *fakeSessionBus) reply(call *dbus.Message, sig dbus.Signature, args ...any) {
+	reply := dbus.NewReply(call)
+	if len(args) != 0 {
+		if err := reply.SetBodyWithSignature(sig, args...); err != nil {
+			b.t.Errorf("the fake session bus could not build a reply to %s: %v", call, err)
+			return
+		}
+	}
+	b.write(reply)
+}
+
+// write sends a message to the connection under test.
+func (b *fakeSessionBus) write(msg *dbus.Message) {
+	b.lock.Lock()
+	b.serial++
+	msg.Serial = b.serial
+	b.lock.Unlock()
+	data, err := msg.Encode()
+	if err != nil {
+		b.t.Errorf("the fake session bus could not encode %s: %v", msg, err)
+		return
+	}
+	_, _ = b.side.Write(data) //nolint:errcheck // The connection under test has gone away, which is not this end's problem
+}

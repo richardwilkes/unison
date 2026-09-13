@@ -80,6 +80,7 @@ type Window struct {
 	surface                     *surface
 	glCtx                       *apiGLContext
 	root                        *rootPanel
+	ax                          *windowAccessibility
 	focus                       *Panel
 	cursor                      *Cursor
 	lastDropTarget              *Panel
@@ -466,6 +467,12 @@ func (w *Window) Dispose() {
 func (w *Window) destroy() {
 	if w == nil {
 		return
+	}
+	if w.ax != nil {
+		// Before the platform window goes away, since an adapter's teardown talks to it. One nil check is all this
+		// costs a window no assistive technology ever asked about.
+		w.apiAccessibilityShutdown()
+		w.ax = nil
 	}
 	if w == wndWithCurrentCtx {
 		w.releaseGLCtxCurrent()

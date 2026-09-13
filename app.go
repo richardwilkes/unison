@@ -199,6 +199,7 @@ func start() error {
 		initTermLock.Unlock()
 	}()
 	applyCPURenderingEnvRequest()
+	applyAccessibilityEnvRequest()
 	err = apiBeginStartup()
 	return err
 }
@@ -218,12 +219,20 @@ func finishProcessingEvents() {
 	apiWithAutoreleasePool(func() {
 		processNextTask()
 		if len(redrawSet) > 0 {
+			// One atomic load per pass that has redraws is the whole cost of accessibility support to an application no
+			// assistive technology is watching. It is read once here rather than per window so that a pass cannot
+			// describe some of its windows and not others, and so that the common answer — false — is paid for once.
+			active := accessibilityActive.Load()
 			set := redrawSet
 			redrawSet = make(map[*Window]struct{})
 			for wnd := range set {
 				switch {
 				case wnd.IsVisible():
 					wnd.draw()
+					if active {
+						// After the draw, so that what is described is what was just put on the screen.
+						wnd.publishAccessibility()
+					}
 				case wnd.IsValid():
 					// Hidden, but not disposed, so keep the request pending until the window becomes visible. Disposed
 					// windows are dropped, since they can never be drawn again.
@@ -241,6 +250,12 @@ func finishStartup() {
 	codecs.Register()
 	RebuildDynamicColors()
 	apiLateInit()
+	if accessibilityEnv > 0 {
+		// The environment has asked for accessibility support whatever the platform reports, so turn it on here rather
+		// than waiting for an assistive technology that may never query us. Anything the platform adapters needed in
+		// order to be asked at all has been set up by apiLateInit above.
+		activateAccessibility()
+	}
 	SafeCall(startupFinishedCallback)
 	apiFinalFinishStartup()
 }

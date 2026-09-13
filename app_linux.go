@@ -68,6 +68,9 @@ func nativeLateInit() {
 			}
 		})
 	})
+	// Last, so that it rides on the session bus connection the color-scheme support above has already established. See
+	// accessibility_linux.go for what it costs an application nothing is watching.
+	linuxA11yStatusInit()
 }
 
 // linuxRecomputeDarkMode recombines the portal and XSETTINGS sources into the cached dark-mode state, returning whether
@@ -106,6 +109,9 @@ func nativeFinalFinishStartup() {
 }
 
 func nativeTerminate() error {
+	// Before the X11 connection goes away, since the last resort for finding the accessibility bus reads a property
+	// from the root window.
+	linuxA11yTerminate()
 	if x11Conn != nil {
 		// Withdraw the connection from nativePostEmptyEvent before closing it. A goroutine that loaded the pointer just
 		// before the swap may still call PostEmptyEvent concurrently with (or after) Close, which is safe: it becomes

@@ -1,0 +1,528 @@
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package w32
+
+import (
+	"testing"
+
+	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
+	checkenum "github.com/richardwilkes/unison/enums/check"
+	"github.com/richardwilkes/unison/enums/role"
+)
+
+// These tests cover what the control patterns ask of a snapshot. They run on every platform, which is the point of
+// keeping the questions in uia_patterns.go: the Windows-only tests then have only the COM left to check.
+
+// patternTree builds a window holding one of every control that supports a pattern:
+//
+//	1 window                                   focused
+//	├─  2 button        "Press me"
+//	├─  3 button        "No"                    disabled
+//	├─  4 check box     "Mixed"                 check mixed
+//	├─  5 toggle button "Bold"                  pressed
+//	├─  6 radio button  "First"                 checked
+//	├─  7 radio button  "Second"
+//	├─  8 text field    "Name"                  text "Gandalf", no separate value
+//	├─  9 text field    "Secret"                protected
+//	├─ 10 text field    "Fixed"                 value "fixed", read-only
+//	├─ 11 slider                                5 of 0..10, step 1
+//	├─ 12 slider                                disabled
+//	├─ 13 progress bar                          3 of 0..10
+//	├─ 14 popup button  "Red"                   expandable
+//	├─ 15 combo box     "Text"                  not expandable, so a leaf
+//	├─ 16 color well    "#ff0000"
+//	└─ 17 label         "Just text"             supports no pattern at all
+func patternTree() *accessibility.Tree {
+	return newTestTree(1, 8,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Window", Focused: true, Bounds: geom.NewRect(0, 0, 200, 400),
+			Children: []accessibility.NodeID{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17},
+		},
+		&accessibility.Node{
+			ID: 2, Role: role.Button, Name: "Press me", Focusable: true,
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		},
+		&accessibility.Node{
+			ID: 3, Role: role.Button, Name: "No", Disabled: true,
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		},
+		&accessibility.Node{
+			ID: 4, Role: role.CheckBox, Name: "Mixed", HasCheck: true, Checked: checkenum.Mixed,
+			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Toggle),
+		},
+		&accessibility.Node{
+			ID: 5, Role: role.ToggleButton, Name: "Bold", Pressed: true,
+			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Toggle),
+		},
+		&accessibility.Node{
+			ID: 6, Role: role.RadioButton, Name: "First", HasCheck: true, Checked: checkenum.On,
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		},
+		&accessibility.Node{
+			ID: 7, Role: role.RadioButton, Name: "Second", HasCheck: true,
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		},
+		&accessibility.Node{
+			ID: 8, Role: role.TextField, Name: "Name", Focusable: true, Focused: true,
+			Text:    &accessibility.TextInfo{Text: "Gandalf", SelStart: 7, SelEnd: 7},
+			Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetValue),
+		},
+		&accessibility.Node{
+			ID: 9, Role: role.TextField, Name: "Secret", Protected: true, Value: "hunter2",
+			Actions: accessibility.ActionSet(0).With(accessibility.SetValue),
+		},
+		&accessibility.Node{
+			ID: 10, Role: role.TextField, Name: "Fixed", Value: "fixed", ReadOnly: true,
+			Actions: accessibility.ActionSet(0).With(accessibility.SetValue),
+		},
+		&accessibility.Node{
+			ID: 11, Role: role.Slider, HasNumber: true, Number: 5, Max: 10, Step: 1,
+			Orientation: accessibility.OrientationHorizontal,
+			Actions: accessibility.ActionSet(0).With(accessibility.SetValue, accessibility.Increment,
+				accessibility.Decrement),
+		},
+		&accessibility.Node{
+			ID: 12, Role: role.Slider, Disabled: true, HasNumber: true, Number: 1, Max: 4, Step: 1,
+			Actions: accessibility.ActionSet(0).With(accessibility.SetValue),
+		},
+		&accessibility.Node{ID: 13, Role: role.ProgressBar, HasNumber: true, Number: 3, Max: 10, Step: 1},
+		&accessibility.Node{
+			ID: 14, Role: role.PopupButton, Name: "Colors", Value: "Red", Expandable: true,
+			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Expand),
+		},
+		&accessibility.Node{
+			ID: 15, Role: role.ComboBox, Name: "Style", Value: "Text",
+			Actions: accessibility.ActionSet(0).With(accessibility.SetValue, accessibility.Expand),
+		},
+		&accessibility.Node{
+			ID: 16, Role: role.ColorWell, Name: "Ink", Value: "#ff0000",
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		},
+		&accessibility.Node{ID: 17, Role: role.Label, Name: "Just text"},
+	)
+}
+
+// listTree builds the two selection containers whose items are not rows:
+//
+//	1 window
+//	├─ 2 list                      multiselectable
+//	│  ├─ 3 list item   row 0      selected
+//	│  ├─ 4 group [ignored]
+//	│  │  └─ 5 list item row 1     selected
+//	│  └─ 6 list item   row 2
+//	└─ 7 tab list
+//	   ├─ 8 tab                    selected
+//	   └─ 9 tab
+//
+// The ignored group is there so that a selection has to be gathered through it: an ignored node has no provider, so its
+// children are what a client sees.
+func listTree() *accessibility.Tree {
+	itemActions := accessibility.ActionSet(0).With(accessibility.Select, accessibility.AddToSelection,
+		accessibility.RemoveFromSelection, accessibility.ScrollIntoView)
+	return newTestTree(1, 3,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Window", Focused: true, Bounds: geom.NewRect(0, 0, 200, 200),
+			Children: []accessibility.NodeID{2, 7},
+		},
+		&accessibility.Node{
+			ID: 2, Role: role.List, Name: "Choices", Multiselectable: true, RowCount: 3,
+			Bounds: geom.NewRect(0, 0, 200, 100), Children: []accessibility.NodeID{3, 4, 6},
+		},
+		&accessibility.Node{
+			ID: 3, Role: role.ListItem, Name: "One", RowIndex: 0, Selectable: true, Selected: true,
+			Bounds: geom.NewRect(0, 0, 200, 20), Actions: itemActions,
+		},
+		&accessibility.Node{
+			ID: 4, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 20, 200, 20),
+			Children: []accessibility.NodeID{5},
+		},
+		&accessibility.Node{
+			ID: 5, Role: role.ListItem, Name: "Two", RowIndex: 1, Selectable: true, Selected: true,
+			Bounds: geom.NewRect(0, 20, 200, 20), Actions: itemActions,
+		},
+		&accessibility.Node{
+			ID: 6, Role: role.ListItem, Name: "Three", RowIndex: 2, Selectable: true,
+			Bounds: geom.NewRect(0, 40, 200, 20), Actions: itemActions,
+		},
+		&accessibility.Node{
+			ID: 7, Role: role.TabList, Bounds: geom.NewRect(0, 100, 200, 100),
+			Children: []accessibility.NodeID{8, 9},
+		},
+		&accessibility.Node{
+			ID: 8, Role: role.Tab, Name: "First", Selectable: true, Selected: true,
+			Bounds:  geom.NewRect(0, 100, 100, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Select),
+		},
+		&accessibility.Node{
+			ID: 9, Role: role.Tab, Name: "Second", Selectable: true, Bounds: geom.NewRect(100, 100, 100, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Select),
+		},
+	)
+}
+
+// tableTree builds a table and the header that describes its columns, laid out the way a scroll panel lays them out:
+//
+//	1 window
+//	└─ 2 scroll area
+//	   ├─  3 table header
+//	   │   ├─ 4 column header  column 0  "Name"
+//	   │   └─ 5 column header  column 1  "Size"
+//	   └─  6 table                       5 rows, 2 columns, multiselectable
+//	       ├─ 7 row     row 1  selected, expandable and expanded
+//	       │  ├─  8 cell  row 1 column 0
+//	       │  └─  9 cell  row 1 column 1
+//	       └─ 10 row    row 2
+//	          ├─ 11 cell  row 2 column 0
+//	          └─ 12 cell  row 2 column 1
+//
+// The header is nowhere inside the table, which is the situation UIATableColumnHeaders exists for. Rows 0, 3 and 4 are
+// deliberately absent: a table publishes only the rows in its viewport, so most of a large one is not there to be
+// handed over.
+func tableTree() *accessibility.Tree {
+	rowActions := accessibility.ActionSet(0).With(accessibility.Select, accessibility.AddToSelection,
+		accessibility.RemoveFromSelection, accessibility.ScrollIntoView, accessibility.Expand,
+		accessibility.Collapse)
+	return newTestTree(1, 6,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Window", Focused: true, Bounds: geom.NewRect(0, 0, 200, 200),
+			Children: []accessibility.NodeID{2},
+		},
+		&accessibility.Node{
+			ID: 2, Role: role.ScrollArea, Bounds: geom.NewRect(0, 0, 200, 200),
+			Children: []accessibility.NodeID{3, 6},
+		},
+		&accessibility.Node{
+			ID: 3, Role: role.TableHeader, Bounds: geom.NewRect(0, 0, 200, 20),
+			Children: []accessibility.NodeID{4, 5},
+		},
+		&accessibility.Node{
+			ID: 4, Role: role.ColumnHeader, Name: "Name", ColumnIndex: 0, Sort: accessibility.SortAscending,
+			Bounds:  geom.NewRect(0, 0, 100, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		},
+		&accessibility.Node{
+			ID: 5, Role: role.ColumnHeader, Name: "Size", ColumnIndex: 1, Bounds: geom.NewRect(100, 0, 100, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		},
+		&accessibility.Node{
+			ID: 6, Role: role.Table, Name: "Files", Multiselectable: true, RowCount: 5, ColumnCount: 2,
+			Bounds: geom.NewRect(0, 20, 200, 180), Children: []accessibility.NodeID{7, 10},
+		},
+		&accessibility.Node{
+			ID: 7, Role: role.Row, Name: "unison", RowIndex: 1, Level: 1, Selectable: true, Selected: true,
+			Expandable: true, Expanded: true, Bounds: geom.NewRect(0, 20, 200, 20), Actions: rowActions,
+			Children: []accessibility.NodeID{8, 9},
+		},
+		&accessibility.Node{
+			ID: 8, Role: role.Cell, Name: "unison", RowIndex: 1, ColumnIndex: 0,
+			Bounds: geom.NewRect(0, 20, 100, 20),
+		},
+		&accessibility.Node{
+			ID: 9, Role: role.Cell, Name: "4 KB", RowIndex: 1, ColumnIndex: 1,
+			Bounds: geom.NewRect(100, 20, 100, 20),
+		},
+		&accessibility.Node{
+			ID: 10, Role: role.Row, Name: "doc.go", RowIndex: 2, Level: 2, Selectable: true,
+			Bounds: geom.NewRect(0, 40, 200, 20), Actions: rowActions,
+			Children: []accessibility.NodeID{11, 12},
+		},
+		&accessibility.Node{
+			ID: 11, Role: role.Cell, Name: "doc.go", RowIndex: 2, ColumnIndex: 0,
+			Bounds: geom.NewRect(0, 40, 100, 20),
+		},
+		&accessibility.Node{
+			ID: 12, Role: role.Cell, Name: "1 KB", RowIndex: 2, ColumnIndex: 1,
+			Bounds: geom.NewRect(100, 40, 100, 20),
+		},
+	)
+}
+
+// TestUIASelectionItemRole verifies which role a selection container selects among, which is what decides where
+// GetSelection looks.
+func TestUIASelectionItemRole(t *testing.T) {
+	c := check.New(t)
+	c.Equal(role.ListItem, UIASelectionItemRole(role.List))
+	c.Equal(role.Tab, UIASelectionItemRole(role.TabList))
+	c.Equal(role.Row, UIASelectionItemRole(role.Table))
+	c.Equal(role.Row, UIASelectionItemRole(role.Tree))
+	for _, r := range []role.Enum{role.Window, role.Group, role.Row, role.ListItem, role.Cell, role.RadioButton} {
+		c.Equal(role.None, UIASelectionItemRole(r), "role %s selects nothing", r.Key())
+	}
+}
+
+// TestUIAIsSelected verifies the state a selection item reports. A radio button has no selected state of its own:
+// being the chosen one of its group is being checked.
+func TestUIAIsSelected(t *testing.T) {
+	c := check.New(t)
+	tree := patternTree()
+	c.True(UIAIsSelected(tree.Node(6)))
+	c.False(UIAIsSelected(tree.Node(7)))
+	list := listTree()
+	c.True(UIAIsSelected(list.Node(3)))
+	c.False(UIAIsSelected(list.Node(6)))
+	c.False(UIAIsSelected(nil))
+
+	// A radio button that is selected without being checked, which the builder never produces, still reports what the
+	// check state says.
+	tree.Nodes[6].Checked = checkenum.Off
+	tree.Nodes[6].Selected = true
+	c.False(UIAIsSelected(tree.Node(6)))
+}
+
+// TestUIASelection verifies the set of elements a container reports as selected, including that an ignored node between
+// the container and an item is spliced away rather than hiding it.
+func TestUIASelection(t *testing.T) {
+	c := check.New(t)
+	list := listTree()
+	c.Equal([]accessibility.NodeID{3, 5}, UIASelection(list, 2))
+	c.Equal([]accessibility.NodeID{8}, UIASelection(list, 7))
+	c.Nil(UIASelection(list, 3), "a list item is not a selection container")
+	c.Nil(UIASelection(list, 1), "a window is not a selection container")
+	c.Nil(UIASelection(list, 999))
+	c.Nil(UIASelection(nil, 2))
+
+	// Nothing selected is an empty answer rather than a missing one, which the provider reports as an empty array.
+	list.Nodes[3].Selected = false
+	list.Nodes[5].Selected = false
+	c.Nil(UIASelection(list, 2))
+
+	table := tableTree()
+	c.Equal([]accessibility.NodeID{7}, UIASelection(table, 6))
+	table.Nodes[10].Selected = true
+	c.Equal([]accessibility.NodeID{7, 10}, UIASelection(table, 6))
+}
+
+// TestUIASelectionNested verifies that a container reports its own selection and not a nested container's: a table
+// inside a cell has rows of its own, and each table has to answer for the rows it holds.
+func TestUIASelectionNested(t *testing.T) {
+	c := check.New(t)
+	tree := tableTree()
+	tree.Nodes[12].Children = []accessibility.NodeID{13}
+	tree.Nodes[13] = &accessibility.Node{
+		ID: 13, Parent: 12, Role: role.Table, Name: "Inner", RowCount: 1, ColumnCount: 1,
+		Children: []accessibility.NodeID{14},
+	}
+	tree.Nodes[14] = &accessibility.Node{
+		ID: 14, Parent: 13, Role: role.Row, Name: "Deep", RowIndex: 0, Selectable: true, Selected: true,
+	}
+	c.Equal([]accessibility.NodeID{7}, UIASelection(tree, 6))
+	c.Equal([]accessibility.NodeID{14}, UIASelection(tree, 13))
+
+	// A hierarchical table nests its rows under one another, and every one of them belongs to the same table.
+	nested := tableTree()
+	nested.Nodes[10].Children = append(nested.Nodes[10].Children, 13)
+	nested.Nodes[13] = &accessibility.Node{
+		ID: 13, Parent: 10, Role: role.Row, Name: "Child", RowIndex: 3, Level: 3, Selectable: true, Selected: true,
+	}
+	c.Equal([]accessibility.NodeID{7, 13}, UIASelection(nested, 6))
+}
+
+// TestUIASelectionContainer verifies which element a selection item says it belongs to, including that a radio button
+// says none: its group is a layout panel with no pattern of its own.
+func TestUIASelectionContainer(t *testing.T) {
+	c := check.New(t)
+	list := listTree()
+	c.Equal(accessibility.NodeID(2), UIASelectionContainer(list, 3))
+	c.Equal(accessibility.NodeID(2), UIASelectionContainer(list, 5), "through an ignored group")
+	c.Equal(accessibility.NodeID(7), UIASelectionContainer(list, 8))
+	c.Equal(accessibility.NodeID(0), UIASelectionContainer(list, 1))
+	c.Equal(accessibility.NodeID(0), UIASelectionContainer(list, 999))
+
+	table := tableTree()
+	c.Equal(accessibility.NodeID(6), UIASelectionContainer(table, 7))
+
+	tree := patternTree()
+	c.Equal(accessibility.NodeID(0), UIASelectionContainer(tree, 6), "a radio button reports no container")
+	c.Equal(accessibility.NodeID(0), UIASelectionContainer(tree, 2))
+}
+
+// TestUIAContainingGrid verifies which element a cell says it belongs to.
+func TestUIAContainingGrid(t *testing.T) {
+	c := check.New(t)
+	table := tableTree()
+	c.Equal(accessibility.NodeID(6), UIAContainingGrid(table, 8))
+	c.Equal(accessibility.NodeID(6), UIAContainingGrid(table, 12))
+	c.Equal(accessibility.NodeID(6), UIAContainingGrid(table, 7), "a row is inside the grid too")
+	c.Equal(accessibility.NodeID(0), UIAContainingGrid(table, 6), "a table is not inside itself")
+	c.Equal(accessibility.NodeID(0), UIAContainingGrid(table, 4))
+	c.Equal(accessibility.NodeID(0), UIAContainingGrid(listTree(), 3))
+}
+
+// TestUIAGridItem verifies the cell lookup a client walking a table by row and column goes through. A cell the snapshot
+// does not hold is reported as nothing, which is the normal answer for a table that publishes only its viewport.
+func TestUIAGridItem(t *testing.T) {
+	c := check.New(t)
+	table := tableTree()
+	c.Equal(accessibility.NodeID(8), UIAGridItem(table, 6, 1, 0))
+	c.Equal(accessibility.NodeID(9), UIAGridItem(table, 6, 1, 1))
+	c.Equal(accessibility.NodeID(11), UIAGridItem(table, 6, 2, 0))
+	c.Equal(accessibility.NodeID(12), UIAGridItem(table, 6, 2, 1))
+	c.Equal(accessibility.NodeID(0), UIAGridItem(table, 6, 0, 0), "a row outside the viewport is not published")
+	c.Equal(accessibility.NodeID(0), UIAGridItem(table, 6, 1, 5))
+	c.Equal(accessibility.NodeID(0), UIAGridItem(table, 6, -1, 0))
+	c.Equal(accessibility.NodeID(0), UIAGridItem(table, 6, 1, -1))
+	c.Equal(accessibility.NodeID(0), UIAGridItem(table, 999, 1, 0))
+	c.Equal(accessibility.NodeID(0), UIAGridItem(nil, 6, 1, 0))
+
+	// The row is found by the index it recorded rather than by its position among the rows published, which is what
+	// keeps the answer right while scrolled.
+	table.Nodes[7].RowIndex = 30
+	table.Nodes[8].RowIndex = 30
+	c.Equal(accessibility.NodeID(0), UIAGridItem(table, 6, 1, 0))
+	c.Equal(accessibility.NodeID(8), UIAGridItem(table, 6, 30, 0))
+
+	// A hierarchical table nests its rows, and a nested row's cells are reachable the same way.
+	nested := tableTree()
+	nested.Nodes[10].Children = append(nested.Nodes[10].Children, 13)
+	nested.Nodes[13] = &accessibility.Node{
+		ID: 13, Parent: 10, Role: role.Row, Name: "Child", RowIndex: 3, Children: []accessibility.NodeID{14},
+	}
+	nested.Nodes[14] = &accessibility.Node{ID: 14, Parent: 13, Role: role.Cell, Name: "Deep", ColumnIndex: 1}
+	c.Equal(accessibility.NodeID(14), UIAGridItem(nested, 6, 3, 1))
+}
+
+// TestUIATableColumnHeaders verifies how the header that describes a table's columns is found, which takes a search
+// because the two are separate panels with nothing in the snapshot linking them.
+func TestUIATableColumnHeaders(t *testing.T) {
+	c := check.New(t)
+	table := tableTree()
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(table, 6), "found by proximity")
+	c.Nil(UIATableColumnHeaders(table, 999))
+	c.Nil(UIATableColumnHeaders(nil, 6))
+	c.Nil(UIATableColumnHeaders(table, 2), "a scroll area has no columns")
+
+	// An explicit link, in either direction, is used before proximity is considered.
+	controlled := tableTree()
+	controlled.Nodes[3].Controls = []accessibility.NodeID{6}
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(controlled, 6))
+	controlling := tableTree()
+	controlling.Nodes[6].Controls = []accessibility.NodeID{3}
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(controlling, 6))
+
+	// A header buried in a layout panel is still the header; an ignored header is not, since it has no provider.
+	buried := tableTree()
+	buried.Nodes[2].Children = []accessibility.NodeID{13, 6}
+	buried.Nodes[13] = &accessibility.Node{
+		ID: 13, Parent: 2, Role: role.Group, Ignored: true, Children: []accessibility.NodeID{3},
+	}
+	buried.Nodes[3].Parent = 13
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(buried, 6))
+	buried.Nodes[3].Ignored = true
+	c.Nil(UIATableColumnHeaders(buried, 6))
+
+	// Two tables sharing an ancestor cannot be told apart by proximity, so neither claims a header. Naming one
+	// explicitly settles it.
+	two := tableTree()
+	two.Nodes[2].Children = []accessibility.NodeID{3, 6, 13}
+	two.Nodes[13] = &accessibility.Node{ID: 13, Parent: 2, Role: role.Table, Name: "Other", RowCount: 1}
+	c.Nil(UIATableColumnHeaders(two, 6))
+	c.Nil(UIATableColumnHeaders(two, 13))
+	two.Nodes[6].Controls = []accessibility.NodeID{3}
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(two, 6))
+	c.Nil(UIATableColumnHeaders(two, 13))
+
+	// A table with no header anywhere in the window reports none rather than reaching for something unrelated.
+	alone := tableTree()
+	delete(alone.Nodes, 3)
+	delete(alone.Nodes, 4)
+	delete(alone.Nodes, 5)
+	alone.Nodes[2].Children = []accessibility.NodeID{6}
+	c.Nil(UIATableColumnHeaders(alone, 6))
+
+	// The search widens to the next ancestor when the nearest one holds no header at all.
+	sibling := tableTree()
+	sibling.Nodes[1].Children = []accessibility.NodeID{3, 2}
+	sibling.Nodes[3].Parent = 1
+	sibling.Nodes[2].Children = []accessibility.NodeID{6}
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(sibling, 6))
+}
+
+// TestUIAColumnHeaderItem verifies which header a cell says describes its column, including the fallback for a snapshot
+// that never filled the headers' column indexes in.
+func TestUIAColumnHeaderItem(t *testing.T) {
+	c := check.New(t)
+	table := tableTree()
+	c.Equal(accessibility.NodeID(4), UIAColumnHeaderItem(table, 8))
+	c.Equal(accessibility.NodeID(5), UIAColumnHeaderItem(table, 9))
+	c.Equal(accessibility.NodeID(4), UIAColumnHeaderItem(table, 11))
+	c.Equal(accessibility.NodeID(5), UIAColumnHeaderItem(table, 12))
+	c.Equal(accessibility.NodeID(0), UIAColumnHeaderItem(table, 999))
+	c.Equal(accessibility.NodeID(0), UIAColumnHeaderItem(table, 4), "a header has no header")
+
+	// Headers whose column indexes were never filled in are taken by position instead.
+	unindexed := tableTree()
+	unindexed.Nodes[5].ColumnIndex = 0
+	c.Equal(accessibility.NodeID(4), UIAColumnHeaderItem(unindexed, 8))
+	c.Equal(accessibility.NodeID(5), UIAColumnHeaderItem(unindexed, 9))
+
+	// A column with no header at all, and a cell whose column is beyond every header.
+	short := tableTree()
+	delete(short.Nodes, 5)
+	short.Nodes[3].Children = []accessibility.NodeID{4}
+	c.Equal(accessibility.NodeID(0), UIAColumnHeaderItem(short, 9))
+}
+
+// TestUIAValueString verifies the text the Value pattern reports, and that a password reports nothing.
+func TestUIAValueString(t *testing.T) {
+	c := check.New(t)
+	tree := patternTree()
+	c.Equal("Gandalf", UIAValueString(tree.Node(8)), "a text control's content is its value")
+	c.Equal("fixed", UIAValueString(tree.Node(10)))
+	c.Equal("Red", UIAValueString(tree.Node(14)))
+	c.Equal("#ff0000", UIAValueString(tree.Node(16)))
+	c.Equal("", UIAValueString(tree.Node(9)), "a password reports nothing")
+	c.Equal("", UIAValueString(tree.Node(17)))
+	c.Equal("", UIAValueString(nil))
+
+	// An explicit value wins over the text, since a widget that fills in both means the value.
+	tree.Nodes[8].Value = "Mithrandir"
+	c.Equal("Mithrandir", UIAValueString(tree.Node(8)))
+}
+
+// TestUIAValueReadOnly verifies when the Value pattern says the value cannot be changed.
+func TestUIAValueReadOnly(t *testing.T) {
+	c := check.New(t)
+	tree := patternTree()
+	c.False(UIAIsValueReadOnly(tree.Node(8)), "a text field takes a new value")
+	c.False(UIAIsValueReadOnly(tree.Node(15)), "so does a combo box")
+	c.True(UIAIsValueReadOnly(tree.Node(10)), "not one the snapshot marks read-only")
+	c.True(UIAIsValueReadOnly(tree.Node(14)), "a popup button reports its choice but does not take one")
+	c.True(UIAIsValueReadOnly(tree.Node(16)), "nor does a color well")
+	c.True(UIAIsValueReadOnly(nil))
+
+	tree.Nodes[8].Disabled = true
+	c.True(UIAIsValueReadOnly(tree.Node(8)))
+	tree.Nodes[8].Disabled = false
+	tree.Nodes[8].Actions = tree.Nodes[8].Actions.Without(accessibility.SetValue)
+	c.True(UIAIsValueReadOnly(tree.Node(8)), "a node that offers no SetValue action cannot take one")
+
+	document := &accessibility.Node{
+		ID: 1, Role: role.Document, Actions: accessibility.ActionSet(0).With(accessibility.SetValue),
+	}
+	c.True(UIAIsValueReadOnly(document), "a document is there to be read")
+}
+
+// TestUIARangeValueReadOnly verifies when the RangeValue pattern says the value cannot be changed.
+func TestUIARangeValueReadOnly(t *testing.T) {
+	c := check.New(t)
+	tree := patternTree()
+	c.False(UIAIsRangeValueReadOnly(tree.Node(11)), "a slider takes a new value")
+	c.True(UIAIsRangeValueReadOnly(tree.Node(12)), "a disabled one does not")
+	c.True(UIAIsRangeValueReadOnly(tree.Node(13)), "nor does a progress bar, ever")
+	c.True(UIAIsRangeValueReadOnly(nil))
+
+	scrollBar := &accessibility.Node{
+		ID: 1, Role: role.ScrollBar, HasNumber: true, Number: 5, Max: 10,
+		Actions: accessibility.ActionSet(0).With(accessibility.Increment, accessibility.Decrement),
+	}
+	c.True(UIAIsRangeValueReadOnly(scrollBar), "a scroll bar is moved a step at a time, not set")
+}

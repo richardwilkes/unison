@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 var _ Layout = &dockHeader{}
@@ -74,6 +75,10 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	for _, dockable := range dc.Dockables() {
 		d.AddChild(newDockTab(dockable))
 	}
+	// The overflow button's own title is a count of the tabs it is hiding, which says nothing about what pressing it
+	// does, and the maximize/restore button has only an icon; both are named for an assistive technology instead. The
+	// maximize/restore button's name follows the state it is in, so it is set alongside the icon and the tooltip.
+	d.overflowButton.Accessibility.Name = i18n.Text("More Tabs")
 	d.overflowButton.ClickCallback = d.handleOverflowPopup
 	d.AddChild(d.overflowButton)
 	d.AddChild(d.maximizeRestoreButton)
@@ -371,6 +376,7 @@ func (d *dockHeader) adjustToMaximizedState() {
 		SVG:  WindowRestoreSVG,
 		Size: geom.NewSize(fSize, fSize),
 	}
+	d.maximizeRestoreButton.Accessibility.Name = i18n.Text("Restore")
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Restore"))
 }
 
@@ -381,6 +387,7 @@ func (d *dockHeader) adjustToRestoredState() {
 		SVG:  WindowMaximizeSVG,
 		Size: geom.NewSize(fSize, fSize),
 	}
+	d.maximizeRestoreButton.Accessibility.Name = i18n.Text("Maximize")
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))
 }
 
@@ -398,4 +405,12 @@ func (d *dockHeader) handleOverflowPopup() {
 		}
 	}
 	m.Popup(d.overflowButton.RectToRoot(d.overflowButton.ContentRect(true)), 0)
+}
+
+// ProvideAccessibility describes the header to assistive technologies. It is the list of tabs for its container; the
+// tabs themselves, and the buttons beside them, describe themselves as its children.
+func (d *dockHeader) ProvideAccessibility(b *AccessibilityBuilder) {
+	if node := b.Node(); node.Role == role.Auto {
+		node.Role = role.TabList
+	}
 }

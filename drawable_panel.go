@@ -13,6 +13,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DrawablePanel provides a Panel that displays a Drawable.
@@ -39,6 +40,18 @@ func (d *DrawablePanel) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize
 	}
 	prefSize = d.Drawable.LogicalSize().Add(border).ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
+}
+
+// ProvideAccessibility describes the panel to assistive technologies. There is nothing in a drawable that says what it
+// shows, so a panel that has not been given a name is skipped rather than announced as an image of nothing.
+func (d *DrawablePanel) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.Image
+	}
+	if node.Name == "" && xreflect.IsNil(d.Accessibility.LabeledBy) {
+		node.Ignored = true
+	}
 }
 
 // DefaultDraw provides the default drawing.

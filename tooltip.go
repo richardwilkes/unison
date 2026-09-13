@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
@@ -59,6 +60,9 @@ type tooltipSequencer struct {
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
+	// A tooltip panel becomes part of a window's description only while it is showing, and what it is then is a tooltip
+	// rather than the anonymous group a bare panel would be taken for.
+	tip.Accessibility.Role = role.Tooltip
 	tip.DrawCallback = func(canvas *Canvas, _ geom.Rect) {
 		r := tip.ContentRect(true)
 		paint := DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
@@ -70,6 +74,10 @@ func NewTooltipBase() *Panel {
 // NewTooltipWithText creates a standard text tooltip panel.
 func NewTooltipWithText(text string) *Panel {
 	tip := NewTooltipBase()
+	// Naming the tooltip panel rather than leaving its text to be gathered from the labels below means a panel's
+	// accessible description is the text as it was written, complete with the line breaks a label per line would have
+	// thrown away.
+	tip.Accessibility.Name = text
 	tip.SetLayout(&FlexLayout{
 		Columns:  1,
 		HSpacing: StdHSpacing,
@@ -89,6 +97,7 @@ func NewTooltipWithText(text string) *Panel {
 func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 	tip := NewTooltipWithText(primary)
 	if secondary != "" {
+		tip.Accessibility.Description = secondary
 		font := DefaultTooltipTheme.SecondaryTextFont
 		if font == nil {
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()

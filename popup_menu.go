@@ -15,10 +15,12 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/slant"
 )
 
@@ -446,6 +448,31 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repe
 		return true
 	}
 	return false
+}
+
+// ProvideAccessibility describes the popup menu to assistive technologies. The choices themselves are not part of the
+// description: they exist only while the menu is open, as a native menu on the platforms that have one and as panels
+// within the window elsewhere, and either way they are described then rather than now.
+func (p *PopupMenu[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.PopupButton
+	}
+	node.Value = p.Text()
+	node.Expandable = true
+	node.Actions = node.Actions.With(accessibility.Press, accessibility.Expand)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing the popup menu, or asking it
+// to expand, shows its choices.
+func (p *PopupMenu[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press, accessibility.Expand:
+		p.Click()
+		return true
+	default:
+		return false
+	}
 }
 
 // DefaultUpdateCursor provides the default cursor for popup menus.

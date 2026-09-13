@@ -13,6 +13,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -83,6 +84,18 @@ func (t *Tag) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size
 	prefSize.Width += t.SideInset * 2
 	prefSize = prefSize.ConstrainForHint(hint)
 	return prefSize, prefSize, prefSize
+}
+
+// ProvideAccessibility describes the tag to assistive technologies. A tag is a bubble around a word or two, so what
+// reaches an assistive technology is just that text: the bubble itself is decoration.
+func (t *Tag) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.Label
+	}
+	if node.Name == "" {
+		node.Name = t.Text.String()
+	}
 }
 
 // DefaultDraw provides the default drawing.

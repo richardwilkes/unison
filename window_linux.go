@@ -957,6 +957,12 @@ func (w *Window) nativeUpdateRegisteredDragTypes(types []*uti.DataType) {
 }
 
 func (w *Window) nativeDestroy() {
+	if w.ax != nil {
+		// The window is identified on the accessibility bus by its X11 window id, so it has to be taken out of the
+		// accessibility tree while that id is still valid. Window.destroy has normally done this already; a window torn
+		// down by any other path has not, and doing it twice does nothing.
+		w.apiAccessibilityShutdown()
+	}
 	w.glCtx.nativeDestroy()
 	if w.wnd.gc != 0 {
 		x11Conn.FreeGC(w.wnd.gc)
@@ -1147,6 +1153,9 @@ func x11ProcessEvent(e x11.Event) {
 				w.wnd.lastY = float32(y)
 				w.moved()
 			}
+			// A window that has moved or been resized reports its contents somewhere else on the screen, and a resize
+			// does not always come with a redraw to publish a fresh snapshot from.
+			w.x11RefreshAccessibilityGeometry()
 		}
 	case *x11.ClientMessageEvent:
 		if w := x11FindWindow(ev.Window); w != nil {

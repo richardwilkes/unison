@@ -1,0 +1,141 @@
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package unison
+
+import (
+	"log/slog"
+
+	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
+	"github.com/richardwilkes/unison/internal/cocoa"
+)
+
+// The macOS side of accessibility support: this file connects the snapshots the root package publishes to the
+// NSAccessibility adapter in internal/cocoa, and connects the requests that come back from an assistive technology to
+// the UI thread.
+//
+// Nothing here runs until an assistive technology queries a window's content view. That query reaches
+// macAccessibilityActivate, which is the only thing on this platform that turns snapshot building on; before it happens
+// no window has an adapter and no tree has been built. Once it has happened the window stays described for the rest of
+// its life: macOS gives no notification that the last assistive technology has gone away, so there is nothing to
+// deactivate on.
+
+// macInitAccessibilityCallbacks installs the two callbacks the Cocoa accessibility adapter reaches the root package
+// through. It is called once, from nativeLateInit, and installs nothing but function pointers: no snapshot is built and
+// no adapter is created until an assistive technology asks something.
+func macInitAccessibilityCallbacks() {
+	cocoa.AccessibilityActivateCallback = macAccessibilityActivate
+	cocoa.AccessibilityActionCallback = func(macWnd cocoa.Window, req accessibility.ActionRequest) {
+		w := macFindWindow(macWnd)
+		if w == nil {
+			slog.Warn("received accessibility action callback for unknown window", "window", macWnd)
+			return
+		}
+		// A request that merely moves the focus, the selection or the view is carried out on the spot: the adapter is
+		// called on the main thread, which is the UI thread, from within the run loop, so this is no different from
+		// handling a key press — and VoiceOver reads the result straight after asking, so the frame of the row it just
+		// selected or scrolled to has to be the scrolled one by then. Anything that activates something is queued
+		// instead, since it may run application code that opens a modal dialog, and VoiceOver must not be left waiting
+		// for that.
+		if onUIThread() && w.axActionRunsInline(req) {
+			w.performAccessibilityAction(req)
+			return
+		}
+		InvokeTask(func() { w.performAccessibilityAction(req) })
+	}
+}
+
+// axActionIsNavigation reports whether an action only moves the focus, the selection or the view — the requests an
+// assistive technology makes as it travels through a window, whose effect it expects to read back immediately — as
+// opposed to one that activates something, which may run arbitrary application code, up to and including a modal
+// dialog, and so must never be carried out while the assistive technology is waiting for an answer.
+func axActionIsNavigation(action accessibility.Action) bool {
+	switch action {
+	case accessibility.Focus, accessibility.ScrollIntoView, accessibility.Select, accessibility.AddToSelection,
+		accessibility.RemoveFromSelection, accessibility.Expand, accessibility.Collapse, accessibility.SetTextSelection:
+		return true
+	default:
+		return false
+	}
+}
+
+// axActionRunsInline reports whether a request may be carried out while the assistive technology that made it waits
+// for the answer: the navigation requests (see axActionIsNavigation), and setting or stepping a scroll bar, which is
+// how VoiceOver scrolls something into view before it reads where that something is. Everything else may run arbitrary
+// application code and is queued instead.
+func (w *Window) axActionRunsInline(req accessibility.ActionRequest) bool {
+	if axActionIsNavigation(req.Action) {
+		return true
+	}
+	switch req.Action {
+	case accessibility.SetValue, accessibility.Increment, accessibility.Decrement:
+		if w.ax != nil && w.ax.last != nil {
+			if n := w.ax.last.Node(req.Node); n != nil && n.Role == role.ScrollBar {
+				return true
+			}
+		}
+	default:
+	}
+	return false
+}
+
+// macAccessibilityActivate answers the first accessibility query a window's content view receives. Snapshot building is
+// turned on for the whole application and this window is described immediately, synchronously, since the query that
+// caused this has nothing else to be answered from. It reports whether the window now has an adapter to answer with.
+func macAccessibilityActivate(macWnd cocoa.Window) bool {
+	w := macFindWindow(macWnd)
+	if w == nil || !w.IsValid() || w.root == nil {
+		return false
+	}
+	if !activateAccessibility() {
+		return false
+	}
+	if w.ax == nil {
+		w.ax = &windowAccessibility{}
+	}
+	w.publishAccessibilityNow()
+	return w.wnd.ax != nil
+}
+
+// nativeAccessibilityPublish hands a freshly built snapshot, and the events describing how it differs from the one
+// before it, to the platform's assistive-technology adapter.
+func (w *Window) nativeAccessibilityPublish(tree *accessibility.Tree, events []accessibility.Event) {
+	if w.wnd.view == 0 {
+		return
+	}
+	if w.wnd.ax == nil {
+		w.wnd.ax = cocoa.NewAXAdapter(w.wnd.view)
+	}
+	w.wnd.ax.Publish(tree, events)
+}
+
+// nativeAccessibilityGeometryChanged is a no-op on macOS: the adapter reports frames by converting each node's
+// window-local bounds through the content view and the window every time it is asked, so a window that has moved,
+// resized or changed backing scale needs nothing recomputed.
+func (*Window) nativeAccessibilityGeometryChanged() {
+}
+
+// nativeAccessibilityShutdown releases everything the adapter holds for this window.
+func (w *Window) nativeAccessibilityShutdown() {
+	if w.wnd.ax != nil {
+		w.wnd.ax.Shutdown()
+		w.wnd.ax = nil
+	}
+}
+
+// nativeAccessibilityAnnounce asks the platform's assistive technology to speak text.
+// nativeAccessibilityEnabledChanged has nothing to do on this platform: support starts on the next query the content
+// view receives, which activation refuses or allows as it stands at the time, and stopping has already shut every
+// adapter down.
+func nativeAccessibilityEnabledChanged(_ bool) {}
+
+func nativeAccessibilityAnnounce(text string) {
+	cocoa.AXAnnounce(text)
+}

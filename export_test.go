@@ -22,3 +22,10 @@ func SetDragTableDataForTest(data any) {
 func (t *Table[T]) AddHitRectForTest(rect geom.Rect, row T) {
 	t.hitRects = append(t.hitRects, t.newTableHitRect(rect, row))
 }
+
+// AccessibilitySnapshotCountForTest returns how many accessibility snapshots have been built in this process, which is
+// how an external test verifies that an application no assistive technology is watching builds none at all. The count is
+// reset when a headless session ends, so each session starts from zero.
+func AccessibilitySnapshotCountForTest() uint64 {
+	return axSnapshotCount
+}

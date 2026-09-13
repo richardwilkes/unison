@@ -13,8 +13,11 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -78,6 +81,23 @@ func (r *RadioButton) Group() *Group {
 // SetGroup sets the group that this button is a part of. Should only be called by the Group.
 func (r *RadioButton) SetGroup(group *Group) {
 	r.group = group
+}
+
+// ProvideAccessibility describes the radio button to assistive technologies. A radio button is checked when it is the
+// one selected within its group, so a button that belongs to no group is never checked, however often it is clicked.
+func (r *RadioButton) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.RadioButton
+	}
+	node.HasCheck = true
+	if r.group.Selected(r) {
+		node.Checked = check.On
+	} else {
+		node.Checked = check.Off
+	}
+	node.Name = r.axName(node.Name)
+	node.Actions = node.Actions.With(accessibility.Press)
 }
 
 func (r *RadioButton) drawRadio(canvas *Canvas, rect geom.Rect, thickness float32, fg, bg, edge Ink) {

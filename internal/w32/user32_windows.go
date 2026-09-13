@@ -281,6 +281,7 @@ const (
 	WM_ERASEBKGND                  = 20
 	WM_SETCURSOR                   = 32
 	WM_GETMINMAXINFO               = 36
+	WM_GETOBJECT                   = 61
 	WM_COPYGLOBALDATA              = 73
 	WM_COPYDATA                    = 74
 	WM_SETICON                     = 128

@@ -513,6 +513,50 @@ func registerMacContentViewClass() {
 			Cmd: Sel("doCommandBySelector:"),
 			Fn:  func(_ objc.ID, _, _ objc.SEL) {},
 		},
+		{
+			// The content view stands in for the window's root node, and a node that carries no information of its own is
+			// spliced out of what an assistive technology sees, so the view reports itself as one: an ignored group whose
+			// children are the root node's children. Both answers are constants, which is what keeps them off the
+			// activation path — AppKit asks every view in a window for its role while merely deciding what to ask next,
+			// and turning snapshot building on because of that would defeat the whole point of activating lazily.
+			Cmd: Sel("isAccessibilityElement"),
+			Fn:  func(_ objc.ID, _ objc.SEL) bool { return false },
+		},
+		{
+			Cmd: Sel("accessibilityRole"),
+			Fn:  func(_ objc.ID, _ objc.SEL) objc.ID { return AppKitString(axRoleGroup) },
+		},
+		{
+			// The three selectors below are the only ones that can activate accessibility support: each of them is a
+			// question that cannot be answered without a description of the window, so an assistive technology asking one
+			// has proved it is there. Everything else about the hierarchy is asked of the elements the adapter hands out,
+			// which exist only once one of these has run.
+			Cmd: Sel("accessibilityChildren"),
+			Fn: func(self objc.ID, _ objc.SEL) objc.ID {
+				if children, ok := axViewChildren(View(self)); ok {
+					return children
+				}
+				return SendSuper(self, macContentViewClass, Sel("accessibilityChildren"))
+			},
+		},
+		{
+			Cmd: Sel("accessibilityFocusedUIElement"),
+			Fn: func(self objc.ID, _ objc.SEL) objc.ID {
+				if element, ok := axViewFocusedElement(View(self)); ok {
+					return element
+				}
+				return SendSuper(self, macContentViewClass, Sel("accessibilityFocusedUIElement"))
+			},
+		},
+		{
+			Cmd: Sel("accessibilityHitTest:"),
+			Fn: func(self objc.ID, _ objc.SEL, pt NSPoint) objc.ID {
+				if element, ok := axViewHitTest(View(self), pt); ok {
+					return element
+				}
+				return SendSuper(self, macContentViewClass, Sel("accessibilityHitTest:"), pt)
+			},
+		},
 	})
 	if err != nil {
 		macContentViewClassErr = errs.NewWithCause("NewView: unable to register content view class", err)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -128,6 +129,28 @@ func (c *checkRadioBase) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _re
 		return true
 	}
 	return false
+}
+
+// axName returns the name a check box or a radio button reports to an assistive technology, which is the title beside
+// its mark unless something has already supplied a better one. current is the name resolved so far.
+func (c *checkRadioBase) axName(current string) string {
+	if current != "" {
+		return current
+	}
+	return c.Text.String()
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing or toggling a check box or a
+// radio button clicks it, which is what moves it to its next state, and runs the same animation and callback a person's
+// click would have.
+func (c *checkRadioBase) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press, accessibility.Toggle:
+		c.Click()
+		return true
+	default:
+		return false
+	}
 }
 
 // DefaultUpdateCursor provides the default cursor for check boxes.

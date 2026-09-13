@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -28,11 +29,15 @@ type headlessWindow struct {
 	w  *Window
 	// frame holds a premultiplied copy of the pixels the window last presented, i.e. what would be on the screen. It
 	// is nil until the window has been drawn at least once.
-	frame     *image.RGBA
-	cursor    *Cursor
+	frame  *image.RGBA
+	cursor *Cursor
+	// axTree is the most recent accessibility description published for this window, and axEvents the events published
+	// with it that a test has yet to read. Both stay nil for a window no assistive technology was ever served for.
+	axTree    *accessibility.Tree
 	title     string
 	icons     []*image.NRGBA
 	dragTypes []*uti.DataType
+	axEvents  []accessibility.Event
 	rect      geom.Rect
 	// restoreRect is the content rect to go back to when a maximized window is restored.
 	restoreRect geom.Rect

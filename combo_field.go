@@ -15,7 +15,9 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // NewComboField creates a Field with a dropdown button embedded at its right end. Clicking the button (or pressing the
@@ -165,6 +167,25 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 	}
 
 	field.InstallAccessoryPanel(b)
+
+	// The field and its dropdown button are one control as far as a person is concerned, so that is what is described:
+	// the field is a combo box that can be expanded, and the button beside it is not exposed at all. The field's own
+	// description of itself fills in everything else about it.
+	b.Accessibility.Role = role.None
+	field.Accessibility.Role = role.ComboBox
+	field.Accessibility.Callback = func(node *accessibility.Node) {
+		node.Expandable = true
+		node.Actions = node.Actions.With(accessibility.Expand, accessibility.ShowContextMenu)
+	}
+	field.Accessibility.ActionCallback = func(req accessibility.ActionRequest) bool {
+		switch req.Action {
+		case accessibility.Expand, accessibility.ShowContextMenu:
+			b.ClickCallback()
+			return true
+		default:
+			return false
+		}
+	}
 
 	setDisplay(initial)
 

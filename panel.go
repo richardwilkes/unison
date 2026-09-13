@@ -55,13 +55,17 @@ type Panel struct {
 	data                                map[string]any
 	RefKey                              string
 	children                            []*Panel
-	frame                               geom.Rect
-	scale                               geom.Point
-	NeedsLayout                         bool
-	focusable                           bool
-	disabled                            bool
-	Hidden                              bool
-	TooltipImmediate                    bool
+	// Accessibility is what this panel exposes to assistive technologies. Every field of it is optional, and nothing
+	// reads it unless an assistive technology is actually being served, so a panel that ignores it costs nothing beyond
+	// the space it occupies. Set its fields in place: p.Accessibility.Name = "Search".
+	Accessibility    AccessibilityInfo
+	frame            geom.Rect
+	scale            geom.Point
+	NeedsLayout      bool
+	focusable        bool
+	disabled         bool
+	Hidden           bool
+	TooltipImmediate bool
 }
 
 // NewPanel creates a new panel.

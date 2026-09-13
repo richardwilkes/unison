@@ -1,0 +1,715 @@
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package atspi
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
+	"github.com/richardwilkes/unison/internal/dbus"
+)
+
+const (
+	// testToolkitVersion is the version the adapter under test reports as both its own and the toolkit's.
+	testToolkitVersion = "1.2.3"
+	// mainWindow and otherWindow are the two windows the adapter tests publish.
+	mainWindow  WindowKey = 1
+	otherWindow WindowKey = 2
+	// testShortcut is the key binding the slider reports for its default action.
+	testShortcut = "Ctrl+V"
+)
+
+// mainTree is the window the adapter tests work over:
+//
+//	1 window "Test Window"          (0,0 200x150)   active
+//	├─ 2 group        [ignored]      (0,0 200x60)
+//	│  ├─ 3 label "Name:"            (10,10 40x20)
+//	│  └─ 4 text field "Fred"        (60,10 100x20)  focused, labeled by 3, controls 5
+//	├─ 5 list         [multi-select] (0,60 200x60)
+//	│  ├─ 6 list item "One"          (0,60 200x20)   selected
+//	│  └─ 7 list item "Two"          (0,80 200x20)
+//	├─ 8 slider "Volume"             (0,120 200x20)  0..10, at 4
+//	└─ 9 progress bar "Progress"     (0,140 200x10)  0..1, at 0.5
+func mainTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Test Window", Focused: true, Bounds: geom.NewRect(0, 0, 200, 150),
+			Children: []accessibility.NodeID{2, 5, 8, 9},
+		},
+		&accessibility.Node{
+			ID: 2, Parent: 1, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 200, 60),
+			Children: []accessibility.NodeID{3, 4},
+		},
+		&accessibility.Node{ID: 3, Parent: 2, Role: role.Label, Name: "Name:", Bounds: geom.NewRect(10, 10, 40, 20)},
+		&accessibility.Node{
+			ID: 4, Parent: 2, Role: role.TextField, Value: "Fred", Placeholder: "Your name", Focusable: true,
+			Focused: true, Bounds: geom.NewRect(60, 10, 100, 20), LabeledBy: []accessibility.NodeID{3},
+			Controls: []accessibility.NodeID{5}, Actions: accessibility.ActionSet(0).With(accessibility.Focus),
+		},
+		&accessibility.Node{
+			ID: 5, Parent: 1, Role: role.List, Name: "Items", Multiselectable: true,
+			Bounds: geom.NewRect(0, 60, 200, 60), Children: []accessibility.NodeID{6, 7},
+		},
+		&accessibility.Node{
+			ID: 6, Parent: 5, Role: role.ListItem, Name: "One", Selectable: true, Selected: true,
+			Bounds:  geom.NewRect(0, 60, 200, 20),
+			Actions: selectionActions(),
+		},
+		&accessibility.Node{
+			ID: 7, Parent: 5, Role: role.ListItem, Name: "Two", Selectable: true,
+			Bounds:  geom.NewRect(0, 80, 200, 20),
+			Actions: selectionActions(),
+		},
+		&accessibility.Node{
+			ID: 8, Parent: 1, Role: role.Slider, Name: "Volume", Value: "4", Shortcut: testShortcut,
+			Focusable: true, HasNumber: true, Number: 4, Min: 0, Max: 10, Step: 1,
+			Orientation: accessibility.OrientationHorizontal, Bounds: geom.NewRect(0, 120, 200, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Increment,
+				accessibility.Decrement, accessibility.SetValue, accessibility.ShowContextMenu,
+				accessibility.ScrollIntoView, accessibility.Focus),
+		},
+		&accessibility.Node{
+			ID: 9, Parent: 1, Role: role.ProgressBar, Name: "Progress", Value: "50%", HasNumber: true, Number: 0.5,
+			Min: 0, Max: 1, Bounds: geom.NewRect(0, 140, 200, 10),
+		},
+	)
+}
+
+// otherTree is a second window, whose list allows only one selection at a time:
+//
+//	20 dialog "Pick One"            (0,0 100x60)
+//	└─ 21 list                      (0,0 100x60)
+//	   └─ 22 list item "Only"       (0,0 100x20)
+func otherTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 20, Role: role.Dialog, Name: "Pick One", Bounds: geom.NewRect(0, 0, 100, 60),
+			Children: []accessibility.NodeID{21},
+		},
+		&accessibility.Node{
+			ID: 21, Parent: 20, Role: role.List, Bounds: geom.NewRect(0, 0, 100, 60),
+			Children: []accessibility.NodeID{22},
+		},
+		&accessibility.Node{
+			ID: 22, Parent: 21, Role: role.ListItem, Name: "Only", Selectable: true,
+			Bounds:  geom.NewRect(0, 0, 100, 20),
+			Actions: selectionActions(),
+		},
+	)
+}
+
+// selectionActions is what a row that can be selected, added to a selection and taken out of one supports.
+func selectionActions() accessibility.ActionSet {
+	return accessibility.ActionSet(0).With(accessibility.Select, accessibility.AddToSelection,
+		accessibility.RemoveFromSelection)
+}
+
+// testAdapter is an adapter whose peer is a fake registry, along with the requests it has handed on.
+type testAdapter struct {
+	*Adapter
+	peer     *testPeer
+	c        check.Checker
+	requests chan accessibility.ActionRequest
+}
+
+// newTestAdapter starts an adapter against a fake registry and publishes the main window.
+func newTestAdapter(t *testing.T) *testAdapter {
+	t.Helper()
+	c := check.New(t)
+	p := newTestPeer(t, registryAnswers)
+	requests := make(chan accessibility.ActionRequest, 16)
+	a, err := Start(Config{
+		Action:         func(req accessibility.ActionRequest) { requests <- req },
+		ToolkitVersion: testToolkitVersion,
+		conn:           p.client,
+	})
+	c.NoError(err)
+	ta := &testAdapter{Adapter: a, peer: p, c: c, requests: requests}
+	ta.embedCall()
+	a.Publish(mainWindow, mainTree(), nil, sampleGeometry())
+	return ta
+}
+
+// embedCall returns the Embed call the adapter made when it started, checking that it named the application root.
+func (ta *testAdapter) embedCall() *dbus.Message {
+	msg := ta.peer.nextCall()
+	ta.c.Equal(RegistryDestination, msg.Destination)
+	ta.c.Equal(RootPath, msg.Path)
+	ta.c.Equal(InterfaceSocket, msg.Interface)
+	ta.c.Equal("Embed", msg.Member)
+	args, err := msg.Args()
+	ta.c.NoError(err)
+	ta.c.Equal([]any{rootRef()}, args)
+	return msg
+}
+
+// nextRequest returns the next request the adapter handed to the action callback.
+func (ta *testAdapter) nextRequest(t *testing.T) accessibility.ActionRequest {
+	t.Helper()
+	select {
+	case req := <-ta.requests:
+		return req
+	case <-time.After(testTimeout):
+		t.Fatal("timed out waiting for an action request")
+		return accessibility.ActionRequest{}
+	}
+}
+
+// noRequest fails the test if the adapter handed anything to the action callback.
+func (ta *testAdapter) noRequest(t *testing.T) {
+	t.Helper()
+	select {
+	case req := <-ta.requests:
+		t.Fatalf("nothing should have been requested, but %v of node %d was", req.Action, req.Node)
+	default:
+	}
+}
+
+// values makes a call on one of the adapter's objects and returns the values of the reply.
+func (ta *testAdapter) values(path dbus.ObjectPath, iface, member string, sig dbus.Signature,
+	args ...any,
+) []any {
+	return ta.peer.replyValues(ta.peer.call(path, iface, member, sig, args...))
+}
+
+// one makes a call that replies with a single value and returns it.
+func (ta *testAdapter) one(path dbus.ObjectPath, iface, member string, sig dbus.Signature, args ...any) any {
+	values := ta.values(path, iface, member, sig, args...)
+	ta.c.Equal(1, len(values), "%s.%s must reply with one value", iface, member)
+	return values[0]
+}
+
+// errorName makes a call that is expected to fail and returns the name of the error it failed with.
+func (ta *testAdapter) errorName(path dbus.ObjectPath, iface, member string, sig dbus.Signature,
+	args ...any,
+) string {
+	reply := ta.peer.call(path, iface, member, sig, args...)
+	ta.c.Equal(dbus.TypeError, reply.Type, "the call should have failed, but got %s", reply)
+	return reply.ErrorName
+}
+
+// rootRef is the reference to the application root as the fake bus's name makes it.
+func rootRef() dbus.ObjectRef {
+	return dbus.ObjectRef{Name: testBusName, Path: RootPath}
+}
+
+// nodeRef is the reference to one node as the fake bus's name makes it.
+func nodeRef(id accessibility.NodeID) dbus.ObjectRef {
+	return dbus.ObjectRef{Name: testBusName, Path: NodePath(id)}
+}
+
+// desktopRef is the reference the fake registry hands back from Embed.
+func desktopRef() dbus.ObjectRef {
+	return dbus.ObjectRef{Name: testPeerName, Path: testDesktopPath}
+}
+
+func TestStartExportsTheApplication(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(desktopRef(), ta.peer.getProperty(RootPath, InterfaceAccessible, "Parent"),
+		"the desktop the registry handed back becomes the application's parent")
+	c.Equal(xos.AppName, ta.peer.getProperty(RootPath, InterfaceAccessible, "Name"))
+	c.Equal(int32(1), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"))
+	c.Equal([]dbus.ObjectRef{nodeRef(1)}, ta.one(RootPath, InterfaceAccessible, "GetChildren", ""))
+	c.Equal(nodeRef(1), ta.one(RootPath, InterfaceAccessible, "GetChildAtIndex", "i", int32(0)))
+	c.Equal(nullReference(), ta.one(RootPath, InterfaceAccessible, "GetChildAtIndex", "i", int32(1)))
+	c.Equal(int32(-1), ta.one(RootPath, InterfaceAccessible, "GetIndexInParent", ""))
+	c.Equal(uint32(RoleApplication), ta.one(RootPath, InterfaceAccessible, "GetRole", ""))
+	c.Equal("application", ta.one(RootPath, InterfaceAccessible, "GetRoleName", ""))
+	c.Equal("application", ta.one(RootPath, InterfaceAccessible, "GetLocalizedRoleName", ""))
+	c.Equal(rootRef(), ta.one(RootPath, InterfaceAccessible, "GetApplication", ""))
+	c.Equal([]string{InterfaceAccessible, InterfaceApplication},
+		ta.one(RootPath, InterfaceAccessible, "GetInterfaces", ""))
+	c.Equal([]any{}, ta.one(RootPath, InterfaceAccessible, "GetRelationSet", ""))
+	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}},
+		ta.one(RootPath, InterfaceAccessible, "GetAttributes", ""))
+	states, ok := ta.one(RootPath, InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	c.Equal(rootStates().Words(), states)
+}
+
+func TestApplicationInterface(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(toolkitName, ta.peer.getProperty(RootPath, InterfaceApplication, "ToolkitName"))
+	c.Equal(testToolkitVersion, ta.peer.getProperty(RootPath, InterfaceApplication, "Version"))
+	c.Equal(testToolkitVersion, ta.peer.getProperty(RootPath, InterfaceApplication, "ToolkitVersion"))
+	c.Equal(atspiVersion, ta.peer.getProperty(RootPath, InterfaceApplication, "AtspiVersion"))
+
+	// The registry sets the application's id as soon as it has been embedded, and expects to be able to read it back.
+	c.Equal(int32(0), ta.peer.getProperty(RootPath, InterfaceApplication, "Id"))
+	reply := ta.peer.setProperty(RootPath, InterfaceApplication, "Id", dbus.Variant{Sig: "i", Value: int32(17)})
+	c.Equal(dbus.TypeMethodReturn, reply.Type, "unexpected reply: %s", reply)
+	c.Equal(int32(17), ta.peer.getProperty(RootPath, InterfaceApplication, "Id"))
+
+	c.Equal(currentLocale(), ta.one(RootPath, InterfaceApplication, "GetLocale", "u", uint32(2)))
+	c.Equal(dbus.NotSupported, ta.errorName(RootPath, InterfaceApplication, "GetApplicationBusAddress", ""),
+		"unison has no private accessibility bus to offer")
+}
+
+func TestNodeAccessible(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal("Test Window", ta.peer.getProperty(NodePath(1), InterfaceAccessible, "Name"))
+	c.Equal("Name:", ta.peer.getProperty(NodePath(3), InterfaceAccessible, "Name"))
+	c.Equal(rootRef(), ta.peer.getProperty(NodePath(1), InterfaceAccessible, "Parent"),
+		"a window's parent is the application")
+	c.Equal(nodeRef(1), ta.peer.getProperty(NodePath(4), InterfaceAccessible, "Parent"),
+		"the ignored group between them is passed over")
+	c.Equal(nodeRef(5), ta.peer.getProperty(NodePath(6), InterfaceAccessible, "Parent"))
+	c.Equal(int32(5), ta.peer.getProperty(NodePath(1), InterfaceAccessible, "ChildCount"))
+	c.Equal(int32(0), ta.peer.getProperty(NodePath(3), InterfaceAccessible, "ChildCount"))
+	c.Equal("4", ta.peer.getProperty(NodePath(4), InterfaceAccessible, "AccessibleId"))
+	c.Equal("", ta.peer.getProperty(NodePath(4), InterfaceAccessible, "HelpText"))
+	c.Equal(currentLocale(), ta.peer.getProperty(NodePath(4), InterfaceAccessible, "Locale"))
+
+	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(5), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""),
+		"the ignored group is replaced by its own children")
+	c.Equal(nodeRef(4), ta.one(NodePath(1), InterfaceAccessible, "GetChildAtIndex", "i", int32(1)))
+	c.Equal(nullReference(), ta.one(NodePath(1), InterfaceAccessible, "GetChildAtIndex", "i", int32(99)))
+	c.Equal(nullReference(), ta.one(NodePath(1), InterfaceAccessible, "GetChildAtIndex", "i", int32(-1)))
+	c.Equal(int32(1), ta.one(NodePath(4), InterfaceAccessible, "GetIndexInParent", ""))
+	c.Equal(int32(0), ta.one(NodePath(1), InterfaceAccessible, "GetIndexInParent", ""),
+		"a window reports where it sits among the application's windows")
+
+	c.Equal(uint32(RoleEntry), ta.one(NodePath(4), InterfaceAccessible, "GetRole", ""))
+	c.Equal("entry", ta.one(NodePath(4), InterfaceAccessible, "GetRoleName", ""))
+	c.Equal(uint32(RoleFrame), ta.one(NodePath(1), InterfaceAccessible, "GetRole", ""))
+	c.Equal(rootRef(), ta.one(NodePath(6), InterfaceAccessible, "GetApplication", ""))
+	c.Equal([]string{InterfaceAccessible, InterfaceAction, InterfaceComponent, InterfaceValue},
+		ta.one(NodePath(8), InterfaceAccessible, "GetInterfaces", ""))
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: placeholderTextAttribute, Value: "Your name"},
+	}, ta.one(NodePath(4), InterfaceAccessible, "GetAttributes", ""))
+}
+
+func TestNodeState(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	states, ok := ta.one(NodePath(4), InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	c.Equal(2, len(states), "a state set is always two words")
+	expected := States(mainTree().Node(4), true)
+	c.Equal(expected.Words(), states)
+	var set StateSet
+	set[0], set[1] = states[0], states[1]
+	c.True(set.Has(StateFocused), "the focused field of the active window is focused")
+	c.True(set.Has(StateEditable))
+	c.True(set.Has(StateSingleLine))
+
+	// The same field in a window that is not the active one is focusable but not focused.
+	ta.Publish(otherWindow, otherTree(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	dialogStates, ok := ta.one(NodePath(20), InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	set[0], set[1] = dialogStates[0], dialogStates[1]
+	c.False(set.Has(StateActive), "the second window was not published as the active one")
+}
+
+func TestNodeRelationSet(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal([]any{
+		dbus.Struct{uint32(RelationLabelledBy), []dbus.ObjectRef{nodeRef(3)}},
+		dbus.Struct{uint32(RelationControllerFor), []dbus.ObjectRef{nodeRef(5)}},
+	}, ta.one(NodePath(4), InterfaceAccessible, "GetRelationSet", ""))
+	c.Equal([]any{dbus.Struct{uint32(RelationLabelFor), []dbus.ObjectRef{nodeRef(4)}}},
+		ta.one(NodePath(3), InterfaceAccessible, "GetRelationSet", ""),
+		"the label is told what it labels")
+	c.Equal([]any{dbus.Struct{uint32(RelationControlledBy), []dbus.ObjectRef{nodeRef(4)}}},
+		ta.one(NodePath(5), InterfaceAccessible, "GetRelationSet", ""))
+	c.Equal([]any{}, ta.one(NodePath(6), InterfaceAccessible, "GetRelationSet", ""))
+}
+
+func TestPathsThatHaveNoObject(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	for _, path := range []dbus.ObjectPath{
+		NodePath(2),   // An ignored node is not reported at all
+		NodePath(404), // A node that was never published
+		NullPath,
+		"/org/a11y/atspi/accessible/nonsense",
+	} {
+		c.Equal(dbus.UnknownObject, ta.errorName(path, InterfaceAccessible, "GetRole", ""),
+			"%s must have no object", path)
+	}
+}
+
+func TestComponentExtents(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(dbus.Struct{int32(220), int32(70), int32(200), int32(40)},
+		ta.one(NodePath(4), InterfaceComponent, "GetExtents", "u", uint32(CoordScreen)))
+	c.Equal(dbus.Struct{int32(120), int32(20), int32(200), int32(40)},
+		ta.one(NodePath(4), InterfaceComponent, "GetExtents", "u", uint32(CoordWindow)))
+	c.Equal(dbus.Struct{int32(0), int32(0), int32(400), int32(40)},
+		ta.one(NodePath(6), InterfaceComponent, "GetExtents", "u", uint32(CoordParent)))
+	c.Equal([]any{int32(220), int32(70)},
+		ta.values(NodePath(4), InterfaceComponent, "GetPosition", "u", uint32(CoordScreen)))
+	c.Equal([]any{int32(120), int32(20)},
+		ta.values(NodePath(4), InterfaceComponent, "GetPosition", "u", uint32(CoordWindow)))
+	c.Equal([]any{int32(200), int32(40)}, ta.values(NodePath(4), InterfaceComponent, "GetSize", ""))
+
+	// A window that has moved reports its nodes somewhere else on the screen, without being published again.
+	ta.SetGeometry(mainWindow, Geometry{Origin: geom.NewPoint(0, 0), Scale: geom.NewPoint(1, 1)})
+	c.Equal(dbus.Struct{int32(60), int32(10), int32(100), int32(20)},
+		ta.one(NodePath(4), InterfaceComponent, "GetExtents", "u", uint32(CoordScreen)))
+	ta.SetGeometry(otherWindow, sampleGeometry()) // A window that is not there changes nothing
+}
+
+func TestComponentMiscellany(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(uint32(LayerWindow), ta.one(NodePath(1), InterfaceComponent, "GetLayer", ""))
+	c.Equal(uint32(LayerWidget), ta.one(NodePath(4), InterfaceComponent, "GetLayer", ""))
+	c.Equal(int16(0), ta.one(NodePath(4), InterfaceComponent, "GetMDIZOrder", ""))
+	c.Equal(1.0, ta.one(NodePath(4), InterfaceComponent, "GetAlpha", ""))
+	c.Equal(true, ta.one(NodePath(4), InterfaceComponent, "Contains", "iiu", int32(220), int32(70),
+		uint32(CoordScreen)))
+	c.Equal(false, ta.one(NodePath(4), InterfaceComponent, "Contains", "iiu", int32(0), int32(0),
+		uint32(CoordScreen)))
+	for _, member := range []string{"SetExtents", "SetPosition", "SetSize", "ScrollToPoint"} {
+		var sig dbus.Signature
+		var args []any
+		switch member {
+		case "SetExtents":
+			sig, args = "iiiiu", []any{int32(0), int32(0), int32(10), int32(10), uint32(CoordScreen)}
+		case "SetPosition":
+			sig, args = "iiu", []any{int32(0), int32(0), uint32(CoordScreen)}
+		case "SetSize":
+			sig, args = "ii", []any{int32(10), int32(10)}
+		default:
+			sig, args = "uii", []any{uint32(CoordScreen), int32(0), int32(0)}
+		}
+		c.Equal(false, ta.one(NodePath(4), InterfaceComponent, member, sig, args...),
+			"%s must report that it did nothing", member)
+	}
+}
+
+func TestComponentAccessibleAtPoint(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	// The middle of the first row, in each of the three coordinate spaces.
+	c.Equal(nodeRef(6), ta.one(NodePath(1), InterfaceComponent, "GetAccessibleAtPoint", "iiu", int32(300),
+		int32(190), uint32(CoordScreen)))
+	c.Equal(nodeRef(6), ta.one(NodePath(1), InterfaceComponent, "GetAccessibleAtPoint", "iiu", int32(200),
+		int32(140), uint32(CoordWindow)))
+	c.Equal(nodeRef(6), ta.one(NodePath(5), InterfaceComponent, "GetAccessibleAtPoint", "iiu", int32(200),
+		int32(140), uint32(CoordParent)), "the list's own coordinates are relative to its parent, the window")
+	c.Equal(nullReference(), ta.one(NodePath(6), InterfaceComponent, "GetAccessibleAtPoint", "iiu", int32(300),
+		int32(190), uint32(CoordScreen)), "a row has nothing inside it")
+	c.Equal(nullReference(), ta.one(NodePath(5), InterfaceComponent, "GetAccessibleAtPoint", "iiu", int32(220),
+		int32(70), uint32(CoordScreen)), "the text field is not inside the list")
+	c.Equal(nullReference(), ta.one(NodePath(1), InterfaceComponent, "GetAccessibleAtPoint", "iiu", int32(-1),
+		int32(-1), uint32(CoordScreen)))
+}
+
+func TestComponentGrabFocusAndScrollTo(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(true, ta.one(NodePath(8), InterfaceComponent, "GrabFocus", ""))
+	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.Focus}, ta.nextRequest(t))
+	c.Equal(false, ta.one(NodePath(3), InterfaceComponent, "GrabFocus", ""), "a label cannot take the focus")
+	ta.noRequest(t)
+	c.Equal(true, ta.one(NodePath(8), InterfaceComponent, "ScrollTo", "u", uint32(0)))
+	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.ScrollIntoView}, ta.nextRequest(t))
+	c.Equal(false, ta.one(NodePath(4), InterfaceComponent, "ScrollTo", "u", uint32(0)),
+		"a node that cannot be scrolled into view says so")
+	ta.noRequest(t)
+}
+
+func TestActionInterface(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(int32(4), ta.peer.getProperty(NodePath(8), InterfaceAction, "NActions"))
+	c.Equal([]any{
+		dbus.Struct{"click", "", testShortcut},
+		dbus.Struct{"increment", "", ""},
+		dbus.Struct{"decrement", "", ""},
+		dbus.Struct{"menu", "", ""},
+	}, ta.one(NodePath(8), InterfaceAction, "GetActions", ""))
+	c.Equal("click", ta.one(NodePath(8), InterfaceAction, "GetName", "i", int32(0)))
+	c.Equal("click", ta.one(NodePath(8), InterfaceAction, "GetLocalizedName", "i", int32(0)))
+	c.Equal("", ta.one(NodePath(8), InterfaceAction, "GetDescription", "i", int32(0)))
+	c.Equal(testShortcut, ta.one(NodePath(8), InterfaceAction, "GetKeyBinding", "i", int32(0)))
+	c.Equal("", ta.one(NodePath(8), InterfaceAction, "GetKeyBinding", "i", int32(1)))
+	c.Equal("menu", ta.one(NodePath(8), InterfaceAction, "GetName", "i", int32(3)))
+
+	c.Equal(true, ta.one(NodePath(8), InterfaceAction, "DoAction", "i", int32(1)))
+	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.Increment}, ta.nextRequest(t))
+	c.Equal(true, ta.one(NodePath(8), InterfaceAction, "DoAction", "i", int32(0)))
+	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.Press}, ta.nextRequest(t))
+
+	for _, index := range []int32{-1, 4, 99} {
+		c.Equal(dbus.InvalidArgs, ta.errorName(NodePath(8), InterfaceAction, "DoAction", "i", index),
+			"action %d is out of range", index)
+	}
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(3), InterfaceAction, "DoAction", "i", int32(0)),
+		"a label has nothing to do")
+}
+
+func TestValueInterface(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(0.0, ta.peer.getProperty(NodePath(8), InterfaceValue, "MinimumValue"))
+	c.Equal(10.0, ta.peer.getProperty(NodePath(8), InterfaceValue, "MaximumValue"))
+	c.Equal(1.0, ta.peer.getProperty(NodePath(8), InterfaceValue, "MinimumIncrement"))
+	c.Equal(4.0, ta.peer.getProperty(NodePath(8), InterfaceValue, "CurrentValue"))
+	c.Equal("4", ta.peer.getProperty(NodePath(8), InterfaceValue, "Text"))
+
+	reply := ta.peer.setProperty(NodePath(8), InterfaceValue, "CurrentValue", dbus.Variant{Sig: "d", Value: 7.5})
+	c.Equal(dbus.TypeMethodReturn, reply.Type, "unexpected reply: %s", reply)
+	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.SetValue, Number: 7.5}, ta.nextRequest(t))
+	c.Equal(4.0, ta.peer.getProperty(NodePath(8), InterfaceValue, "CurrentValue"),
+		"the published value only changes when the next snapshot arrives")
+
+	// A progress bar has a value, but nothing can be done about it.
+	c.Equal(0.5, ta.peer.getProperty(NodePath(9), InterfaceValue, "CurrentValue"))
+	reply = ta.peer.setProperty(NodePath(9), InterfaceValue, "CurrentValue", dbus.Variant{Sig: "d", Value: 0.9})
+	c.Equal(dbus.TypeError, reply.Type, "unexpected reply: %s", reply)
+	c.Equal(dbus.NotSupported, reply.ErrorName)
+	ta.noRequest(t)
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(3), dbusPropertiesInterface, "Get", "ss", InterfaceValue,
+		"CurrentValue"), "a label has no value at all")
+}
+
+func TestSelectionInterface(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.Equal(int32(1), ta.peer.getProperty(NodePath(5), InterfaceSelection, "NSelectedChildren"))
+	c.Equal(nodeRef(6), ta.one(NodePath(5), InterfaceSelection, "GetSelectedChild", "i", int32(0)))
+	c.Equal(nullReference(), ta.one(NodePath(5), InterfaceSelection, "GetSelectedChild", "i", int32(1)))
+	c.Equal(true, ta.one(NodePath(5), InterfaceSelection, "IsChildSelected", "i", int32(0)))
+	c.Equal(false, ta.one(NodePath(5), InterfaceSelection, "IsChildSelected", "i", int32(1)))
+	c.Equal(false, ta.one(NodePath(5), InterfaceSelection, "IsChildSelected", "i", int32(99)))
+
+	// The list allows more than one selection, so asking for another child adds it.
+	c.Equal(true, ta.one(NodePath(5), InterfaceSelection, "SelectChild", "i", int32(1)))
+	c.Equal(accessibility.ActionRequest{Node: 7, Action: accessibility.AddToSelection}, ta.nextRequest(t))
+	c.Equal(true, ta.one(NodePath(5), InterfaceSelection, "DeselectChild", "i", int32(0)))
+	c.Equal(accessibility.ActionRequest{Node: 6, Action: accessibility.RemoveFromSelection}, ta.nextRequest(t))
+	c.Equal(true, ta.one(NodePath(5), InterfaceSelection, "DeselectSelectedChild", "i", int32(0)))
+	c.Equal(accessibility.ActionRequest{Node: 6, Action: accessibility.RemoveFromSelection}, ta.nextRequest(t))
+	c.Equal(false, ta.one(NodePath(5), InterfaceSelection, "SelectChild", "i", int32(99)))
+	c.Equal(false, ta.one(NodePath(5), InterfaceSelection, "DeselectChild", "i", int32(99)))
+	c.Equal(false, ta.one(NodePath(5), InterfaceSelection, "DeselectSelectedChild", "i", int32(99)))
+	c.Equal(false, ta.one(NodePath(5), InterfaceSelection, "SelectAll", ""))
+	c.Equal(false, ta.one(NodePath(5), InterfaceSelection, "ClearSelection", ""))
+	ta.noRequest(t)
+
+	// A list that allows only one selection at a time replaces it instead.
+	ta.Publish(otherWindow, otherTree(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	c.Equal(int32(0), ta.peer.getProperty(NodePath(21), InterfaceSelection, "NSelectedChildren"))
+	c.Equal(true, ta.one(NodePath(21), InterfaceSelection, "SelectChild", "i", int32(0)))
+	c.Equal(accessibility.ActionRequest{Node: 22, Action: accessibility.Select}, ta.nextRequest(t))
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(6), InterfaceSelection, "SelectAll", ""),
+		"a row is not a container of selectable things")
+}
+
+func TestCacheGetItems(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	items, ok := ta.one(CachePath, InterfaceCache, "GetItems", "").([]any)
+	c.True(ok)
+	// The application root plus every reported node of the one published window: the ignored group is left out.
+	c.Equal(9, len(items))
+	c.Equal(dbus.Struct{
+		rootRef(), rootRef(), desktopRef(), int32(-1), int32(1),
+		[]string{InterfaceAccessible, InterfaceApplication},
+		xos.AppName, uint32(RoleApplication), "",
+		rootStates().Words(),
+	}, items[0])
+	c.Equal(dbus.Struct{
+		nodeRef(1), rootRef(), rootRef(), int32(0), int32(5),
+		[]string{InterfaceAccessible, InterfaceComponent},
+		"Test Window", uint32(RoleFrame), "",
+		States(mainTree().Node(1), true).Words(),
+	}, items[1], "the window itself comes first, and its parent is the application")
+	c.Equal(dbus.Struct{
+		nodeRef(4), rootRef(), nodeRef(1), int32(1), int32(0),
+		[]string{InterfaceAccessible, InterfaceComponent},
+		"", uint32(RoleEntry), "",
+		States(mainTree().Node(4), true).Words(),
+	}, items[3], "the text field's parent is the window, since the group between them is ignored")
+
+	// A second window adds its own nodes, and the root reports one more child.
+	ta.Publish(otherWindow, otherTree(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	items, ok = ta.one(CachePath, InterfaceCache, "GetItems", "").([]any)
+	c.True(ok)
+	c.Equal(12, len(items))
+	first, ok := items[0].(dbus.Struct)
+	c.True(ok)
+	c.Equal(int32(2), first[4], "the application now has two windows")
+}
+
+func TestIntrospection(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	for _, one := range []struct {
+		path     dbus.ObjectPath
+		expected []string
+	}{
+		{
+			path: RootPath,
+			expected: []string{
+				InterfaceAccessible, InterfaceApplication, "GetApplicationBusAddress",
+				"org.freedesktop.DBus.Introspectable", dbusPropertiesInterface, "org.freedesktop.DBus.Peer",
+			},
+		},
+		{
+			path: CachePath,
+			expected: []string{
+				InterfaceCache, "GetItems", "AddAccessible", "RemoveAccessible",
+				`<arg type="a((so)(so)(so)iiassusau)" direction="out"/>`,
+			},
+		},
+		{
+			path: NodePath(8),
+			expected: []string{
+				InterfaceAccessible, InterfaceAction, InterfaceComponent, InterfaceValue,
+				`<property name="CurrentValue" type="d" access="readwrite"/>`,
+				`<method name="GetExtents">`,
+			},
+		},
+		{
+			path:     NodePath(5),
+			expected: []string{InterfaceSelection, "NSelectedChildren"},
+		},
+	} {
+		xml, ok := ta.one(one.path, "org.freedesktop.DBus.Introspectable", "Introspect", "").(string)
+		c.True(ok)
+		for _, want := range one.expected {
+			c.True(strings.Contains(xml, want), "the introspection of %s must mention %s", one.path, want)
+		}
+	}
+}
+
+func TestTheObjectsAgreeWithWhatIsAdvertised(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	tree := mainTree()
+	tree.Walk(func(n *accessibility.Node) bool {
+		if n.Ignored {
+			return true
+		}
+		advertised, ok := ta.one(NodePath(n.ID), InterfaceAccessible, "GetInterfaces", "").([]string)
+		c.True(ok)
+		xml, ok := ta.one(NodePath(n.ID), "org.freedesktop.DBus.Introspectable", "Introspect", "").(string)
+		c.True(ok)
+		// Whatever a node says it implements must actually be there, in the same order, so that a client that walks
+		// the introspection and one that asks the shorter question see the same object.
+		implemented := make([]string, 0, len(advertised))
+		for _, line := range strings.Split(xml, "\n") {
+			name, found := strings.CutPrefix(strings.TrimSpace(line), `<interface name="`)
+			if !found {
+				continue
+			}
+			if name, _, found = strings.Cut(name, `"`); found && strings.HasPrefix(name, "org.a11y.") {
+				implemented = append(implemented, name)
+			}
+		}
+		c.Equal(advertised, implemented, "node %d advertises interfaces it does not implement", n.ID)
+		return true
+	})
+}
+
+func TestPublishReplacesTheSnapshot(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	// The same window again, with the second row gone and the first one renamed.
+	tree := mainTree()
+	list := tree.Node(5)
+	list.Children = []accessibility.NodeID{6}
+	delete(tree.Nodes, 7)
+	tree.Node(6).Name = "Only"
+	tree.Generation = 2
+	ta.Publish(mainWindow, tree, nil, sampleGeometry())
+
+	c.Equal("Only", ta.peer.getProperty(NodePath(6), InterfaceAccessible, "Name"))
+	c.Equal(int32(1), ta.peer.getProperty(NodePath(5), InterfaceAccessible, "ChildCount"))
+	c.Equal(dbus.UnknownObject, ta.errorName(NodePath(7), InterfaceAccessible, "GetRole", ""),
+		"a node that has left the tree has no object")
+	c.Equal(int32(1), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"),
+		"publishing a window again does not add it twice")
+
+	ta.Publish(mainWindow, nil, nil, sampleGeometry()) // Publishing nothing changes nothing
+	c.Equal("Only", ta.peer.getProperty(NodePath(6), InterfaceAccessible, "Name"))
+}
+
+func TestRemoveWindow(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	ta.Publish(otherWindow, otherTree(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	c.Equal(int32(2), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"))
+	c.Equal(int32(1), ta.one(NodePath(20), InterfaceAccessible, "GetIndexInParent", ""))
+
+	ta.RemoveWindow(mainWindow)
+	c.Equal(int32(1), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"))
+	c.Equal([]dbus.ObjectRef{nodeRef(20)}, ta.one(RootPath, InterfaceAccessible, "GetChildren", ""))
+	c.Equal(int32(0), ta.one(NodePath(20), InterfaceAccessible, "GetIndexInParent", ""),
+		"the window that is left has moved up")
+	for _, id := range []accessibility.NodeID{1, 4, 5, 6} {
+		c.Equal(dbus.UnknownObject, ta.errorName(NodePath(id), InterfaceAccessible, "GetRole", ""),
+			"node %d went away with its window", id)
+	}
+	ta.RemoveWindow(mainWindow) // Removing a window that is not there changes nothing
+	c.Equal(int32(1), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"))
+}
+
+func TestAnnounceAndStop(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	// An announcement is a signal, which TestAnnouncementsComeFromTheApplication looks at; here it only has to be
+	// harmless, as does one with nothing to say.
+	ta.Announce("Saved")
+	ta.Announce("")
+
+	ta.Stop()
+	msg := ta.peer.nextCall()
+	c.Equal("Unembed", msg.Member)
+	c.Equal(InterfaceSocket, msg.Interface)
+	args, err := msg.Args()
+	c.NoError(err)
+	c.Equal([]any{rootRef()}, args)
+}
+
+func TestStartWithoutAnAddress(t *testing.T) {
+	clearAccessibilityEnvironment(t)
+	c := check.New(t)
+	a, err := Start(Config{})
+	c.HasError(err, "there is nowhere to connect to")
+	c.Nil(a)
+}

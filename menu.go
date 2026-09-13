@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 var _ Menu = &menu{}
@@ -268,8 +269,11 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	p.Self = p
 	if forBar {
 		p.SetBorder(DefaultMenuTheme.BarBorder)
+		p.Accessibility.Role = role.MenuBar
 	} else {
 		p.SetBorder(DefaultMenuTheme.MenuBorder)
+		p.Accessibility.Role = role.Menu
+		p.Accessibility.Name = m.Title()
 	}
 	content := NewPanel()
 	if m.updater != nil {

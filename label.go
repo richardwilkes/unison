@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -86,6 +87,29 @@ func (l *Label) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Si
 func (l *Label) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.OnBackgroundInk, l.BackgroundInk,
 		l.Drawable, l.Side, l.Gap, !l.Enabled())
+}
+
+// ProvideAccessibility describes the label to assistive technologies. A label holding only a drawable is an image,
+// named by whatever alternative text has been set for it, and one holding nothing at all is skipped entirely: a label
+// used purely for spacing has nothing to say. An explicitly set role is left alone, which is how NewLink turns a label
+// into a link and how Markdown turns one into a heading.
+func (l *Label) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	text := l.String()
+	if node.Role == role.Auto {
+		switch {
+		case text != "":
+			node.Role = role.Label
+		case l.Drawable != nil:
+			node.Role = role.Image
+		default:
+			node.Role = role.Label
+			node.Ignored = node.Name == "" && xreflect.IsNil(l.Accessibility.LabeledBy)
+		}
+	}
+	if node.Name == "" {
+		node.Name = text
+	}
 }
 
 // LabelContentSizes returns the preferred size of a label, as well as the preferred size of the text within the label.

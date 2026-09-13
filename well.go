@@ -17,13 +17,16 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/blendmode"
 	"github.com/richardwilkes/unison/enums/imgfmt"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // WellMask is used to limit the types of ink permitted in the ink well.
@@ -355,4 +358,42 @@ func (w *Well) DefaultUpdateCursor(_ geom.Point) *Cursor {
 		return ArrowCursor()
 	}
 	return PointingCursor()
+}
+
+// ProvideAccessibility describes the well to assistive technologies. Its value is what the well is holding, which is a
+// color's own textual form when it has one and the kind of ink it is otherwise, since a gradient or a pattern has no
+// short way of being written down.
+func (w *Well) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.ColorWell
+	}
+	node.Value = axInkDescription(w.ink)
+	node.Actions = node.Actions.With(accessibility.Press)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing the well clicks it, which by
+// default brings up the dialog for choosing an ink.
+func (w *Well) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if req.Action != accessibility.Press {
+		return false
+	}
+	w.Click()
+	return true
+}
+
+// axInkDescription returns how an ink is announced to an assistive technology.
+func axInkDescription(ink Ink) string {
+	switch typed := ink.(type) {
+	case Color:
+		return typed.String()
+	case *Color:
+		return typed.String()
+	case *Gradient:
+		return i18n.Text("gradient")
+	case *Pattern:
+		return i18n.Text("pattern")
+	default:
+		return ""
+	}
 }
