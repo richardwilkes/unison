@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/role"
@@ -150,9 +151,13 @@ func UIAControlType(n *accessibility.Node) ControlTypeID {
 		return UIA_ListControlTypeId
 	case role.ListItem:
 		return UIA_ListItemControlTypeId
-	case role.Table:
-		return UIA_TableControlTypeId
-	case role.Tree:
+	case role.Table, role.Tree:
+		// Both report DataGrid, rather than the flat one reporting Table. The two roles describe the same widget:
+		// UIAPatterns hands out Grid, Table and Selection for either, and both build the same Row and Cell children.
+		// Table[T] chooses between them from whether its model has any hierarchy, which SyncToModel recomputes on every
+		// sync, so reporting different control types would have the first row that can hold children turn a widget a
+		// client had been calling a table into a data grid. DataGrid is the one of the pair whose documented pattern
+		// set includes Selection, which is exactly what these nodes advertise.
 		return UIA_DataGridControlTypeId
 	case role.Row, role.Cell:
 		return UIA_DataItemControlTypeId
@@ -188,10 +193,26 @@ func UIAControlType(n *accessibility.Node) ControlTypeID {
 // The set says which pattern interfaces exist, not which of their methods will work. A disabled button still supports
 // Invoke; invoking it fails with UIA_E_ELEMENTNOTENABLED. Declaring the pattern and refusing the operation is what
 // lets a client describe a control correctly while it is unusable.
+//
+// ScrollItem is the one pattern that comes from what the node can do rather than from what it is. Every node in a
+// snapshot carries the ScrollIntoView action — a disabled one keeps it when it keeps nothing else — and the pattern's
+// single method does nothing but dispatch that action, so any node offering it can be brought into view: a cell
+// scrolled off to the side, a column header, a tab, a menu item, a control inside a scroll area. The other two adapters
+// answer the same way, from the same action; see Component.ScrollTo in internal/atspi and AXScrollToVisible in
+// internal/cocoa.
 func UIAPatterns(n *accessibility.Node) PatternSet {
 	if n == nil {
 		return 0
 	}
+	patterns := uiaRolePatterns(n)
+	if n.Actions.Has(accessibility.ScrollIntoView) {
+		patterns |= PatternScrollItem
+	}
+	return patterns
+}
+
+// uiaRolePatterns returns the patterns a node's role and state alone call for, which is everything but ScrollItem.
+func uiaRolePatterns(n *accessibility.Node) PatternSet {
 	switch n.Role {
 	case role.Window, role.Dialog:
 		return PatternWindow
@@ -206,12 +227,20 @@ func UIAPatterns(n *accessibility.Node) PatternSet {
 		return PatternToggle
 	case role.RadioButton:
 		// A radio button is a selection item rather than a toggle, which is how a client knows to announce "n of m"
-		// alongside the state.
+		// alongside the state. The numbers themselves come from UIAPositionInSet, since the group a radio button
+		// belongs to is a layout panel with no pattern to report a container through.
 		return PatternSelectionItem
-	case role.TextField, role.TextArea, role.Document:
+	case role.TextField, role.TextArea:
 		return PatternValue
 	case role.SpinButton:
-		return PatternValue | PatternRangeValue
+		// The range is gated the way the progress bar's is: an obscured numeric field never fills in a number, a
+		// minimum, a maximum or a step, and IRangeValueProvider answering zero for all four would have a screen reader
+		// read a PIN field as "0". The Value pattern stays, as it does for any other protected field, and answers with
+		// the empty string UIAValueString gives every protected node.
+		if n.HasNumber {
+			return PatternValue | PatternRangeValue
+		}
+		return PatternValue
 	case role.ComboBox:
 		return PatternValue | PatternExpandCollapse
 	case role.PopupButton:
@@ -228,19 +257,14 @@ func UIAPatterns(n *accessibility.Node) PatternSet {
 	case role.List, role.TabList:
 		return PatternSelection
 	case role.ListItem, role.Tab:
-		patterns := PatternSelectionItem
-		if n.Role == role.ListItem {
-			patterns |= PatternScrollItem
-		}
-		return patterns
+		return PatternSelectionItem
 	case role.Table, role.Tree:
 		return PatternGrid | PatternTable | PatternSelection
 	case role.Row:
-		patterns := PatternSelectionItem | PatternScrollItem
 		if n.Expandable {
-			patterns |= PatternExpandCollapse
+			return PatternSelectionItem | PatternExpandCollapse
 		}
-		return patterns
+		return PatternSelectionItem
 	case role.Cell:
 		return PatternGridItem | PatternTableItem
 	case role.MenuItem:
@@ -253,8 +277,13 @@ func UIAPatterns(n *accessibility.Node) PatternSet {
 		}
 		return patterns
 	default:
-		// Group, TabPanel, ScrollArea, TableHeader, Label, Heading, Image, Separator, MenuBar, Menu, Tooltip and
-		// Toolbar all present themselves through their properties and their children alone.
+		// Group, TabPanel, ScrollArea, TableHeader, Label, Heading, Image, Separator, MenuBar, Menu, Tooltip, Document
+		// and Toolbar all present themselves through their properties and their children alone.
+		//
+		// A Document looks as though it should report a value, since UI Automation's document control type usually
+		// carries the Text pattern and a value alongside it. The only thing that produces the role here is Markdown,
+		// which fills in neither Value nor Text, so the pattern would hand a client an empty string as the whole
+		// content of the document instead of letting it fall through to the child elements that actually hold it.
 		//
 		// A Menu is the one of those that looks as though it should expand: the role belongs to the panel of an open
 		// menu, which nothing ever collapses and which never reports Expandable, so ExpandCollapse would be a pattern
@@ -309,6 +338,36 @@ func uiaNamesAnother(t *accessibility.Tree, id accessibility.NodeID) bool {
 		}
 	}
 	return false
+}
+
+// UIAHasKeyboardFocus reports whether a node answers the HasKeyboardFocus property with true. At most one element of a
+// fragment ever does: the one the snapshot's Focus names, or the root when nothing inside the window holds the focus at
+// all. A client handed two elements that both claim the keyboard has no way to decide which of them the user is
+// actually on, and the root claiming it while reporting IsKeyboardFocusable false — which it always does, since a root
+// is never focusable — is a pair that cannot be made sense of at all.
+//
+// The root's own Focused flag is not the answer for it, because it means something different there: on the root it says
+// the window is active, not that the window itself is where typing goes. That is also the second half of this property
+// for every other element — a node holds the focus within its window whether or not that window has it, and only the
+// active window's focused element really has the keyboard — so an inactive window answers false everywhere. It is the
+// same answer IRawElementProviderFragmentRoot::GetFocus gives.
+func UIAHasKeyboardFocus(t *accessibility.Tree, n *accessibility.Node) bool {
+	if t == nil || n == nil || !uiaRootFocused(t) {
+		return false
+	}
+	if t.Focus != 0 {
+		return n.ID == t.Focus
+	}
+	return n.ID == t.Root
+}
+
+// uiaRootFocused reports whether the window a snapshot describes is the active one.
+func uiaRootFocused(t *accessibility.Tree) bool {
+	if t == nil {
+		return false
+	}
+	root := t.Node(t.Root)
+	return root != nil && root.Focused
 }
 
 // UIAHeadingLevel returns the value of the HeadingLevel property for a node. Only a heading has one; everything else
@@ -378,11 +437,23 @@ func UIAExpandCollapseState(n *accessibility.Node) ExpandCollapseState {
 // UIAItemStatus returns the value of the ItemStatus property for a node, which is how a sorted column header tells a
 // client which way it is sorted. A node that is not a sort key has no item status, reported as the empty string so that
 // the provider answers VT_EMPTY.
+//
+// UI Automation has no enumeration for this: the property is free text, and a screen reader speaks it exactly as it is
+// given, so it is a translated phrase rather than the name the SortDirection enumeration goes by. The other two
+// adapters have machine-readable answers to give instead — AT-SPI's sort attribute and AppKit's
+// accessibilitySortDirection — and pass the direction along untranslated.
 func UIAItemStatus(n *accessibility.Node) string {
-	if n == nil || n.Sort == accessibility.SortNone {
+	if n == nil {
 		return ""
 	}
-	return n.Sort.String()
+	switch n.Sort {
+	case accessibility.SortAscending:
+		return i18n.Text("Sorted ascending")
+	case accessibility.SortDescending:
+		return i18n.Text("Sorted descending")
+	default:
+		return ""
+	}
 }
 
 // UIAWindowInteractionState returns the value of the WindowInteractionState property for a fragment root. A window the
@@ -506,8 +577,14 @@ func UIAHitTest(t *accessibility.Tree, pt geom.Point) accessibility.NodeID {
 //
 // Rows and list items are numbered from what the snapshot recorded, not from what is in the tree: a table exposes only
 // the rows in its viewport, so counting siblings would tell the user they are on row 3 of 12 while scrolled to the
-// bottom of a thousand. Everything else numbered — tabs and menu items — is fully present in the tree, so its position
-// comes from counting siblings that share its role.
+// bottom of a thousand. Everything else numbered — tabs, menu items and radio buttons — is fully present in the tree,
+// so its position comes from counting siblings that share its role.
+//
+// A radio button is numbered because that is the "n of m" a client announces alongside the state, which is the whole
+// reason it is given the SelectionItem pattern rather than the Toggle one. Counting siblings is also the only way to
+// number it: its group is a layout panel the snapshot marks Ignored, so there is no container to ask, which is why
+// UIASelectionContainer reports none for it. The Cocoa adapter answers accessibilityIndex for a radio button the same
+// way.
 func UIAPositionInSet(t *accessibility.Tree, n *accessibility.Node) (position, size int) {
 	if t == nil || n == nil || n.Ignored {
 		return 0, 0
@@ -518,7 +595,7 @@ func UIAPositionInSet(t *accessibility.Tree, n *accessibility.Node) (position, s
 		}
 	}
 	switch n.Role {
-	case role.Row, role.ListItem, role.Tab, role.MenuItem:
+	case role.Row, role.ListItem, role.Tab, role.MenuItem, role.RadioButton:
 		return t.PositionInSet(n.ID)
 	default:
 		return 0, 0
@@ -666,6 +743,9 @@ func (r UIARaise) String() string {
 //   - Duplicates are dropped. One text edit arrives as a value change and as the deletion and the insertion that made
 //     it, and all three ask for the same value property, so without this a client would hear about one edit three
 //     times.
+//   - A menu or a tooltip joining or leaving the tree raises the event UI Automation has for that, over and above the
+//     structure change: those events are what tell a screen reader to enter and leave menu mode and to read a tip that
+//     has just appeared. See menuOrTooltip.
 //
 // The first publish of a window is the one case that produces a call with no event behind it: a dialog announces
 // itself with Window_WindowOpened, which is how a screen reader knows to read the whole dialog out. Diff reports
@@ -791,7 +871,9 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 		})
 	case accessibility.NodeAdded:
 		d.added(event.Node)
+		d.menuOrTooltip(d.cur, event.Node, true)
 	case accessibility.NodeRemoved:
+		d.menuOrTooltip(d.old, event.Node, false)
 		d.removed(event.Node)
 	case accessibility.BoundsChanged:
 		if event.Node == d.cur.Focus || event.Node == d.cur.Root {
@@ -807,14 +889,49 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 		d.property(event.Node, UIA_ControlTypePropertyId)
 	case accessibility.WindowActivated:
 		d.focus(d.cur.Focus)
-	case accessibility.Announcement:
-		if event.New != "" {
-			d.add(UIARaise{Kind: UIARaiseNotify, Node: d.cur.Root, Text: event.New})
-		}
 	default:
 		// WindowDeactivated has no UI Automation equivalent: the window that became active raises the events that
 		// matter.
 	}
+}
+
+// menuOrTooltip records the event a menu or a tooltip joining or leaving the tree asks for. UI Automation reports both
+// as events of their own rather than as anything a client could read from a property: MenuOpened and MenuClosed are
+// what tell a screen reader to enter and leave menu mode, and ToolTipOpened is the only way a tip that has just
+// appeared is announced at all, since nothing about it is focused and nothing names it. A structure change alone says
+// none of that. t is the tree the node is in — the current one when it joined, the previous one when it left.
+//
+// The closing event cannot be raised on the node itself: it has left the tree, so it has no provider a client could ask
+// anything of. It goes to the nearest ancestor that survived, which is the window in every layout the toolkit builds —
+// an open menu's panel and the tooltip panel both hang directly off the root.
+func (d *uiaDecider) menuOrTooltip(t *accessibility.Tree, id accessibility.NodeID, joined bool) {
+	n := t.Node(id)
+	if n == nil || n.Ignored {
+		return
+	}
+	var opened, closed EventID
+	switch n.Role {
+	case role.Menu:
+		opened, closed = UIA_MenuOpenedEventId, UIA_MenuClosedEventId
+	case role.Tooltip:
+		opened, closed = UIA_ToolTipOpenedEventId, UIA_ToolTipClosedEventId
+	default:
+		return
+	}
+	if joined {
+		d.event(id, opened)
+		return
+	}
+	d.event(d.survivor(n.Parent), closed)
+}
+
+// survivor returns the nearest ancestor of a departed node, taken from the previous tree, that the current tree still
+// holds, or the fragment root when there is none. It is what an event about something that is gone is raised on.
+func (d *uiaDecider) survivor(id accessibility.NodeID) accessibility.NodeID {
+	if parent := d.target(d.old, id); parent != 0 && d.cur.Node(parent) != nil {
+		return parent
+	}
+	return d.cur.Root
 }
 
 // patterns returns the patterns the node with the given id supports in the current tree.
@@ -893,6 +1010,14 @@ func (d *uiaDecider) state(event accessibility.Event) {
 		if patterns.Has(PatternExpandCollapse) {
 			d.property(n.ID, UIA_ExpandCollapseExpandCollapseStatePropertyId)
 		}
+	case accessibility.StateMultiselectable:
+		// The Selection pattern's CanSelectMultiple. A container that changes whether it holds more than one selection
+		// at a time changes what AddToSelection and RemoveFromSelection mean for every item in it — and what each of
+		// those items' own selection changes are reported as, since selectionItem asks the container — so a client that
+		// was never told would keep answering from the stale one.
+		if patterns.Has(PatternSelection) {
+			d.property(n.ID, UIA_SelectionCanSelectMultiplePropertyId)
+		}
 	case accessibility.StateProtected:
 		// A field that became, or stopped being, a password field changes what every client may read from it, and the
 		// provider answers the property for every element, so it is reported for every element too.
@@ -920,7 +1045,7 @@ func (d *uiaDecider) state(event accessibility.Event) {
 			Change: StructureChangeType_ChildrenInvalidated,
 		})
 	default:
-		// Selectable, Multiselectable and Busy have no property a client watches for.
+		// Selectable and Busy have no property a client watches for.
 	}
 }
 

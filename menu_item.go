@@ -95,6 +95,7 @@ type menuItem struct {
 	isSeparator bool
 	enabled     bool
 	over        bool
+	checkable   bool
 }
 
 func (mi *menuItem) Factory() MenuFactory {
@@ -164,6 +165,9 @@ func (mi *menuItem) CheckState() check.Enum {
 
 func (mi *menuItem) SetCheckState(s check.Enum) {
 	mi.state = s
+	// Remembered so that an item that has been unchecked is still described as something with a check state. Nothing
+	// about the item itself says it is checkable, since an unchecked item draws exactly as a plain command does.
+	mi.checkable = true
 }
 
 func (mi *menuItem) newPanel() *Panel {
@@ -196,9 +200,10 @@ func (mi *menuItem) newPanel() *Panel {
 // the menu bar happens with no menu open at all, so the snapshot picks the one item that stands for the focus and marks
 // it, along with the focusable that has to accompany it. See axSnapshot.openMenuFocus.
 //
-// A check state is reported only for an item that has one, which is an item drawing a check mark or a dash. Nothing
-// distinguishes an unchecked checkable item from an ordinary one, here or in the drawing, so neither is announced as
-// something that could be checked.
+// A check state is reported for an item that has ever been given one, whether or not it is showing a mark now. An item
+// that has been unchecked draws nothing to tell it from an ordinary command, but it is still a thing with two states,
+// and an assistive technology that stopped saying so the moment it was turned off would leave the person who had just
+// turned it off with nothing to hear and no way back.
 func (mi *menuItem) describeForAccessibility(node *accessibility.Node) {
 	node.Name = mi.title
 	node.Disabled = !mi.enabled
@@ -209,15 +214,17 @@ func (mi *menuItem) describeForAccessibility(node *accessibility.Node) {
 	if mi.subMenu != nil {
 		node.Expandable = true
 		node.Expanded = mi.subMenu.popupPanel != nil
-		node.Actions = node.Actions.With(accessibility.Expand)
-	} else if mi.state != check.Off {
+		node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse)
+	} else if mi.checkable {
 		node.HasCheck = true
 		node.Checked = mi.state
 	}
 }
 
 // performAccessibilityAction carries out a request from an assistive technology. Pressing an item is choosing it, which
-// runs its handler or opens its sub-menu exactly as clicking it or pressing Return on it would.
+// runs its handler or opens its sub-menu exactly as clicking it or pressing Return on it would. Collapsing an item
+// takes its sub-menu away again, along with anything opened from within it, which is what moving the pointer back onto
+// the item or pressing Escape in the sub-menu does.
 func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Press:
@@ -228,6 +235,16 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 			return false
 		}
 		mi.showSubMenu()
+		return true
+	case accessibility.Collapse:
+		if mi.subMenu == nil {
+			return false
+		}
+		if wnd := mi.panel.Window(); wnd != nil {
+			// Everything above the menu this item sits in goes, which is the item's own sub-menu and whatever was
+			// opened from that. The menu the item belongs to stays, since the item is still there to be chosen from.
+			wnd.root.closeMenuStackStoppingAt(mi.menu)
+		}
 		return true
 	default:
 		return false

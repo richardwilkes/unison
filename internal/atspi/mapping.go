@@ -190,12 +190,15 @@ func RoleName(r Role) string {
 // org.a11y.atspi.Accessible.GetInterfaces reports them. Accessible and Component are always there, since every node has
 // a name, a role and a place on the screen.
 func Interfaces(n *accessibility.Node) []string {
-	list := make([]string, 0, 7)
+	list := make([]string, 0, 8)
 	list = append(list, InterfaceAccessible)
 	if hasActions(n) {
 		list = append(list, InterfaceAction)
 	}
 	list = append(list, InterfaceComponent)
+	if supportsEditableText(n) {
+		list = append(list, InterfaceEditableText)
+	}
 	if supportsSelection(n.Role) {
 		list = append(list, InterfaceSelection)
 	}
@@ -212,6 +215,15 @@ func Interfaces(n *accessibility.Node) []string {
 		list = append(list, InterfaceValue)
 	}
 	return list
+}
+
+// supportsEditableText returns true if a node's text can be changed through org.a11y.atspi.EditableText, which is the
+// only way AT-SPI has of typing into a control: the Text interface moves the caret and the selection but never changes
+// a character. A node qualifies when it carries text and offers to have it replaced, which is what
+// [accessibility.ReplaceText] and [accessibility.SetValue] mean, and [States] gives exactly those nodes
+// ATSPI_STATE_EDITABLE.
+func supportsEditableText(n *accessibility.Node) bool {
+	return n.Text != nil && (n.Actions.Has(accessibility.ReplaceText) || n.Actions.Has(accessibility.SetValue))
 }
 
 // supportsSelection returns true if a role's children are selected one or more at a time, which is what
@@ -247,8 +259,10 @@ func supportsTableCell(r role.Enum) bool {
 // States returns the states of the node. windowActive reports whether the window the node belongs to is the active one,
 // which the root of a published tree says through its Focused field: AT-SPI expects ATSPI_STATE_FOCUSED on the focused
 // object of the active window only, and an assistive technology that sees it anywhere else follows the focus into a
-// window the user is not looking at.
-func States(n *accessibility.Node, windowActive bool) StateSet {
+// window the user is not looking at. isRoot reports whether the node is that root, which is the one node whose Focused
+// field means the window is active rather than that the node holds the keyboard focus. Only the tree can say which node
+// that is: a panel inside a window may report a window role of its own.
+func States(n *accessibility.Node, windowActive, isRoot bool) StateSet {
 	var set StateSet
 	set = set.With(StateVisible)
 	if !n.Offscreen {
@@ -262,7 +276,7 @@ func States(n *accessibility.Node, windowActive bool) StateSet {
 	if n.Focusable {
 		set = set.With(StateFocusable)
 	}
-	if n.Focused && windowActive && !n.Role.IsWindow() {
+	if n.Focused && windowActive && !isRoot {
 		set = set.With(StateFocused)
 	}
 	if n.Busy {
@@ -306,11 +320,13 @@ func States(n *accessibility.Node, windowActive bool) StateSet {
 		case check.Off:
 		}
 	}
-	return set.With(roleStates(n)...)
+	return set.With(roleStates(n, isRoot)...)
 }
 
-// roleStates returns the states that a node has because of its role rather than because of one of its flags.
-func roleStates(n *accessibility.Node) []StateBit {
+// roleStates returns the states that a node has because of its role rather than because of one of its flags. isRoot is
+// what [States] was told, since the states that describe a top-level window belong to the window itself rather than to
+// a panel within it that happens to report a window role.
+func roleStates(n *accessibility.Node, isRoot bool) []StateBit {
 	states := make([]StateBit, 0, 4)
 	switch n.Role {
 	case role.Window, role.Dialog:
@@ -319,7 +335,7 @@ func roleStates(n *accessibility.Node) []StateBit {
 			// that a fixed-size dialog can be would have it offer the user a way to do something that does nothing.
 			states = append(states, StateResizable)
 		}
-		if n.Focused {
+		if n.Focused && isRoot {
 			states = append(states, StateActive)
 		}
 	case role.ToggleButton, role.DisclosureTriangle:
@@ -513,9 +529,10 @@ func isSetMember(r role.Enum) bool {
 }
 
 // layerFor returns the layer a node is in: a top-level window is in the window layer, and everything inside one is in
-// the widget layer.
-func layerFor(n *accessibility.Node) Layer {
-	if n.Role.IsWindow() {
+// the widget layer. isRoot is what says which is which, since a panel inside a window may report a window role of its
+// own — a nested dialog does — while the only top-level window in a published tree is its root.
+func layerFor(isRoot bool) Layer {
+	if isRoot {
 		return LayerWindow
 	}
 	return LayerWidget

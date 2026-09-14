@@ -15,13 +15,10 @@ import (
 	"unsafe"
 )
 
-// The OLE automation allocator's two BSTR entry points live here rather than with the rest of oleaut32.dll, so that
-// every place a BSTR can come into existence sits next to the comment on SysAllocString explaining who owns the result.
-// A hygiene test in w32_test.go checks that no other file in the package reaches for them.
-var (
-	sysAllocStringProc    = oleaut32.NewProc("SysAllocString")
-	sysAllocStringLenProc = oleaut32.NewProc("SysAllocStringLen")
-)
+// The OLE automation allocator's BSTR entry point lives here rather than with the rest of oleaut32.dll, so that the
+// one place a BSTR can come into existence sits next to the comment on SysAllocStringLen explaining who owns the
+// result. A hygiene test in w32_test.go checks that no other file in the package reaches for it.
+var sysAllocStringLenProc = oleaut32.NewProc("SysAllocStringLen")
 
 // VARIANT is the OLE automation tagged union, in its 64-bit layout: a 2-byte type tag, six reserved bytes, and a
 // 16-byte union that every value this package stores fits in the first eight bytes of. The size is asserted by
@@ -149,25 +146,14 @@ func bstrChars(str BSTR) *uint16 {
 	return *(**uint16)(unsafe.Pointer(&str))
 }
 
-// SysAllocString allocates a BSTR holding a copy of the NUL-terminated UTF-16 string chars points at, or a zero BSTR if
-// chars is nil. This is a callee-allocates contract: the OLE automation allocator owns the memory and the caller owns
-// the reference, which must end up either in something that takes ownership, such as a VARIANT, or in a call to
-// SysFreeString.
-//
-// This and SysAllocStringLen are the only two BSTR allocators in the package, and a hygiene test in w32_test.go keeps
-// them that way. Concentrating them here is what makes the ownership rule above auditable: a reader can see every place
-// a BSTR is born without searching the package, and the rest of the package allocates through NewBSTR.
-//
-// https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysallocstring
-func SysAllocString(chars *uint16) BSTR {
-	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	r, _, _ := sysAllocStringProc.Call(uintptr(unsafe.Pointer(chars)))
-	return BSTR(r)
-}
-
 // SysAllocStringLen allocates a BSTR holding a copy of count UTF-16 code units from chars, appending the terminating
-// NUL itself. chars may be nil when count is zero, which allocates a valid empty BSTR. The same callee-allocates
-// ownership rule as SysAllocString applies.
+// NUL itself. chars may be nil when count is zero, which allocates a valid empty BSTR. This is a callee-allocates
+// contract: the OLE automation allocator owns the memory and the caller owns the reference, which must end up either in
+// something that takes ownership, such as a VARIANT, or in a call to SysFreeString.
+//
+// It is the only BSTR allocator in the package, and a hygiene test in w32_test.go keeps it that way. Concentrating
+// allocation here is what makes the ownership rule above auditable: a reader can see every place a BSTR is born without
+// searching the package, and the rest of the package allocates through NewBSTR.
 //
 // https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-sysallocstringlen
 func SysAllocStringLen(chars *uint16, count int) BSTR {

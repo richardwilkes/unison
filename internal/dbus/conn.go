@@ -253,7 +253,10 @@ func (c *Conn) Dropped() int {
 }
 
 // Call sends a method call and waits up to five seconds for the reply. An ERROR reply is returned as an [Error], never
-// as the reply message.
+// as the reply message. A message that already carries [FlagNoReplyExpected] is sent without waiting for anything, and
+// a nil reply and a nil error come back as soon as it has been written, exactly as [Conn.CallWithFlags] with that flag
+// does: the flag tells the receiver not to answer, so there is nothing to wait for no matter which of the two asked for
+// it. Check the reply for nil, not just the error, if the message may carry it.
 func (c *Conn) Call(msg *Message) (*Message, error) {
 	return c.CallWithFlags(msg, 0)
 }
@@ -635,11 +638,17 @@ func (c *Conn) dispatchSignal(msg *Message) {
 // standard interfaces that every object implements.
 func (c *Conn) dispatchMethodCall(msg *Message) {
 	obj := c.objectAt(msg.Path)
-	call := &Call{conn: c, Message: msg, obj: obj}
 	if obj == nil {
-		call.Error(UnknownObject, fmt.Sprintf("no object is exported at %s", msg.Path))
-		return
+		// A path that has objects only below it is answered by a placeholder rather than refused, so that a client can
+		// walk down to them: without it nothing could, since introspection is the only way to find them and the path
+		// it has to introspect is the one that has no object. See [nodeObject].
+		if !c.hasDescendants(msg.Path) {
+			(&Call{conn: c, Message: msg}).Error(UnknownObject, fmt.Sprintf("no object is exported at %s", msg.Path))
+			return
+		}
+		obj = nodeObject{}
 	}
+	call := &Call{conn: c, Message: msg, obj: obj}
 	ifaces, ok := call.interfaces()
 	if !ok {
 		return
@@ -647,7 +656,7 @@ func (c *Conn) dispatchMethodCall(msg *Message) {
 	iface, method, ifaceFound := findMethod(ifaces, msg.Interface, msg.Member)
 	if method == nil {
 		var builtinFound bool
-		if iface, method, builtinFound = findMethod(builtinInterfaces, msg.Interface, msg.Member); method == nil {
+		if iface, method, builtinFound = findMethod(call.builtins(), msg.Interface, msg.Member); method == nil {
 			if msg.Interface != "" && !ifaceFound && !builtinFound {
 				call.Error(UnknownInterface, fmt.Sprintf("%s does not implement %s", msg.Path, msg.Interface))
 				return
@@ -669,7 +678,7 @@ func (c *Conn) dispatchMethodCall(msg *Message) {
 	}
 	xos.SafeCall(func() { handle(call) }, func(err error) {
 		errs.Log(err, "call", msg.String())
-		call.Error(Failed, err.Error())
+		call.Error(Failed, publicErrorMessage(err))
 	})
 }
 
@@ -680,7 +689,7 @@ func (call *Call) interfaces() (ifaces []*Interface, ok bool) {
 	ok = true
 	xos.SafeCall(func() { ifaces = call.obj.Interfaces() }, func(err error) {
 		errs.Log(err, "call", call.Message.String())
-		call.Error(Failed, err.Error())
+		call.Error(Failed, publicErrorMessage(err))
 		ifaces, ok = nil, false
 	})
 	return ifaces, ok
@@ -736,6 +745,32 @@ func (c *Conn) childNodes(path ObjectPath) []string {
 	}
 	c.mu.Unlock()
 	return slices.Sorted(maps.Keys(names))
+}
+
+// hasDescendants returns true if anything is exported below the path, which is what makes a path with no object of its
+// own worth answering at all. It is [Conn.childNodes] without the names, since the names are not needed to decide that
+// and every unknown path a peer asks about pays for this.
+func (c *Conn) hasDescendants(path ObjectPath) bool {
+	prefix := string(path)
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	below := func(candidate ObjectPath) bool {
+		return len(candidate) > len(prefix) && strings.HasPrefix(string(candidate), prefix)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for exported := range c.objects {
+		if below(exported) {
+			return true
+		}
+	}
+	for _, one := range c.subtrees {
+		if below(one.prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // fail ends the connection, if it has not already ended, recording why.

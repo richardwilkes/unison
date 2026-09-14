@@ -100,7 +100,16 @@ func NewTooltipWithText(text string) *Panel {
 func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 	tip := NewTooltipWithText(primary)
 	if secondary != "" {
-		tip.Accessibility.Description = secondary
+		// The secondary text is part of what the tooltip says, so it is part of the tooltip's name, exactly as the
+		// second line of a two-line primary text would be. Keeping it apart from the name would put it somewhere
+		// nothing could reach: the panel a tooltip belongs to takes its accessible description from the tooltip's name,
+		// and the labels the text is drawn with say nothing of their own, so the secondary line would be heard only in
+		// the moment the tooltip itself happened to be showing.
+		if tip.Accessibility.Name == "" {
+			tip.Accessibility.Name = secondary
+		} else {
+			tip.Accessibility.Name += "\n" + secondary
+		}
 		font := DefaultTooltipTheme.SecondaryTextFont
 		if font == nil {
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()
@@ -111,8 +120,8 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 			l := NewLabel()
 			l.LabelTheme = DefaultTooltipTheme.Label
 			l.Font = font
-			// The secondary text is already the tooltip's description, so its labels are hidden for the same reason the
-			// primary text's are.
+			// The secondary text is already part of the tooltip's name, so its labels are hidden for the same reason
+			// the primary text's are.
 			l.Accessibility.Role = role.None
 			l.SetTitle(str)
 			tip.AddChild(l)

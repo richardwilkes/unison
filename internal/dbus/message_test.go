@@ -26,6 +26,17 @@ const (
 	eventInterface  = "org.a11y.atspi.Event.Object"
 )
 
+// withoutWireSize checks that a decoded message recorded the number of bytes it arrived as, then strips that from it so
+// that it can be compared with the message it was built from. The wire size is a property of those bytes rather than of
+// the message, and re-encoding drops whatever header fields the decoder did not understand, so it is not part of what a
+// round trip has to preserve; see [Message.size].
+func withoutWireSize(t *testing.T, m *Message, wire int) *Message {
+	t.Helper()
+	check.New(t).Equal(wire, m.wireSize)
+	m.wireSize = 0
+	return m
+}
+
 func TestEncodeHello(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -42,7 +53,7 @@ func TestDecodeHello(t *testing.T) {
 	want, data := helloMessage()
 	m, err := Decode(bytes.NewReader(data))
 	c.NoError(err)
-	c.Equal(want, m)
+	c.Equal(want, withoutWireSize(t, m, len(data)))
 	c.Equal("method call #1 to org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.Hello", m.String())
 }
 
@@ -90,7 +101,7 @@ func TestMessageRoundTrip(t *testing.T) {
 			c.NoError(err)
 			decoded, err := Decode(bytes.NewReader(data))
 			c.NoError(err)
-			c.Equal(one, decoded)
+			c.Equal(one, withoutWireSize(t, decoded, len(data)))
 			again, err := decoded.Encode()
 			c.NoError(err)
 			c.Equal(data, again)
@@ -218,16 +229,64 @@ func TestDecodeRejectsMalformedHeaderFields(t *testing.T) {
 		t.Run(one.name, func(t *testing.T) {
 			t.Parallel()
 			c := check.New(t)
-			_, err := Decode(bytes.NewReader(encodeWithFields(t, one.fields)))
+			_, err := Decode(bytes.NewReader(encodeWithFields(t, TypeMethodCall, one.fields)))
 			c.HasError(err)
 		})
+	}
+}
+
+func TestDecodeRejectsMessagesMissingRequiredFields(t *testing.T) {
+	t.Parallel()
+	var (
+		path        = Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}}
+		iface       = Struct{byte(fieldInterface), Variant{Sig: "s", Value: eventInterface}}
+		member      = Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}}
+		replySerial = Struct{byte(fieldReplySerial), Variant{Sig: "u", Value: uint32(1)}}
+		errorName   = Struct{byte(fieldErrorName), Variant{Sig: "s", Value: Failed}}
+	)
+	// Every type but the method call used to reach validateRequiredFields only through Encode, which is the one
+	// direction that cannot be driven by a peer; these are the messages that arrive from one.
+	for _, one := range []struct {
+		name    string
+		fields  []any
+		msgType Type
+	}{
+		{name: "method return without a reply serial", msgType: TypeMethodReturn},
+		{name: "error without an error name", msgType: TypeError, fields: []any{replySerial}},
+		{name: "error without a reply serial", msgType: TypeError, fields: []any{errorName}},
+		{name: "signal without an interface", msgType: TypeSignal, fields: []any{path, member}},
+		{name: "signal without a path", msgType: TypeSignal, fields: []any{iface, member}},
+		{name: "signal without a member", msgType: TypeSignal, fields: []any{path, iface}},
+		{name: "method call without a path", msgType: TypeMethodCall, fields: []any{member}},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := Decode(bytes.NewReader(encodeWithFields(t, one.msgType, one.fields)))
+			check.New(t).HasError(err)
+		})
+	}
+	// The same messages with the fields they require do decode, so each case above is about the missing field rather
+	// than about anything else in the message.
+	c := check.New(t)
+	for _, one := range []struct {
+		name    string
+		fields  []any
+		msgType Type
+	}{
+		{name: "method return", msgType: TypeMethodReturn, fields: []any{replySerial}},
+		{name: "error", msgType: TypeError, fields: []any{replySerial, errorName}},
+		{name: "signal", msgType: TypeSignal, fields: []any{path, iface, member}},
+		{name: "method call", msgType: TypeMethodCall, fields: []any{path, member}},
+	} {
+		_, err := Decode(bytes.NewReader(encodeWithFields(t, one.msgType, one.fields)))
+		c.NoError(err, one.name)
 	}
 }
 
 func TestDecodeIgnoresUnknownHeaderFields(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	data := encodeWithFields(t, []any{
+	data := encodeWithFields(t, TypeMethodCall, []any{
 		Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
 		Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
 		Struct{byte(fieldUnixFDs), Variant{Sig: "u", Value: uint32(0)}},
@@ -242,7 +301,7 @@ func TestDecodeIgnoresUnknownHeaderFields(t *testing.T) {
 func TestDecodeRejectsNonNULPaddingBeforeTheBody(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	data := encodeWithFields(t, []any{
+	data := encodeWithFields(t, TypeMethodCall, []any{
 		Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
 		Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
 	})
@@ -257,14 +316,14 @@ func TestDecodeRejectsNonNULPaddingBeforeTheBody(t *testing.T) {
 	c.True(errors.Is(err, errPaddingNotNUL))
 }
 
-// encodeWithFields builds a method call whose header field array holds exactly the given fields, bypassing the checks
-// that [Message.Encode] applies.
-func encodeWithFields(t *testing.T, fields []any) []byte {
+// encodeWithFields builds a message of the given type whose header field array holds exactly the given fields,
+// bypassing the checks that [Message.Encode] applies.
+func encodeWithFields(t *testing.T, msgType Type, fields []any) []byte {
 	t.Helper()
 	c := check.New(t)
 	var e encoder
 	e.putByte('l')
-	e.putByte(byte(TypeMethodCall))
+	e.putByte(byte(msgType))
 	e.putByte(0)
 	e.putByte(protocolVersion)
 	e.putUint32(0)
@@ -272,6 +331,60 @@ func encodeWithFields(t *testing.T, fields []any) []byte {
 	c.NoError(e.value(headerFieldsSignature, fields))
 	e.align(8)
 	return e.buf
+}
+
+// paddedMember is the member name of the signals that [paddedSignal] builds.
+const paddedMember = "Padded"
+
+// paddedSignal encodes a signal that carries padding bytes of the given size in a header field that the specification
+// requires the decoder to ignore, plus a body of a few bytes. Nothing ever looks at the padding, but the message keeps
+// every byte of it alive: the body is a slice of the buffer the whole message was read into.
+func paddedSignal(t *testing.T, serial uint32, padding int) []byte {
+	t.Helper()
+	c := check.New(t)
+	body, err := Marshal("s", "x")
+	c.NoError(err)
+	var e encoder
+	e.putByte('l')
+	e.putByte(byte(TypeSignal))
+	e.putByte(0)
+	e.putByte(protocolVersion)
+	e.putUint32(uint32(len(body)))
+	e.putUint32(serial)
+	c.NoError(e.value(headerFieldsSignature, []any{
+		Struct{byte(fieldPath), Variant{Sig: "o", Value: testPath}},
+		Struct{byte(fieldInterface), Variant{Sig: "s", Value: eventInterface}},
+		Struct{byte(fieldMember), Variant{Sig: "s", Value: paddedMember}},
+		Struct{byte(fieldSender), Variant{Sig: "s", Value: testDestination}},
+		Struct{byte(fieldSignature), Variant{Sig: "g", Value: Signature("s")}},
+		// Everything from 32 up is unknown and must be ignored, which is what makes it somewhere to put bytes that no
+		// part of the decoded message will ever account for.
+		Struct{byte(42), Variant{Sig: "ay", Value: make([]byte, padding)}},
+	}))
+	e.align(8)
+	return append(e.buf, body...)
+}
+
+func TestADecodedMessageIsChargedWhatItKeepsAlive(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	const padding = 1 << 20
+	data := paddedSignal(t, 1, padding)
+	m, err := Decode(bytes.NewReader(data))
+	c.NoError(err)
+	c.Equal(paddedMember, m.Member)
+	// The decoded parts of the message add up to a few dozen bytes, but its body is a slice of the buffer the whole
+	// message was read into, so the megabyte the decoder ignored stays alive for as long as the message does. Charging
+	// a queue only what the parts add up to is what let a peer pin megabytes per message while the bound that is meant
+	// to stop exactly that counted a few dozen bytes.
+	c.True(len(m.Body) < 16, "expected a small body, but it was %d bytes", len(m.Body))
+	c.Equal(len(data), m.wireSize)
+	c.True(m.size() >= len(data), "expected a message of %d bytes to be charged at least that, but it was charged %d",
+		len(data), m.size())
+	// A message that was built rather than decoded holds nothing but its own parts, so it is charged for those alone.
+	built := NewSignal(testPath, eventInterface, paddedMember)
+	c.NoError(built.SetBody("x"))
+	c.True(built.size() < 128, "expected a small message to be charged a small size, but it was %d", built.size())
 }
 
 func TestEncodeErrors(t *testing.T) {
@@ -521,7 +634,7 @@ func TestDecodeUnknownMessageType(t *testing.T) {
 	c.NoError(err)
 	decoded, err := Decode(bytes.NewReader(data))
 	c.NoError(err)
-	c.Equal(m, decoded)
+	c.Equal(m, withoutWireSize(t, decoded, len(data)))
 }
 
 func TestDecodeDistinguishesEndOfStreamFromTruncation(t *testing.T) {
@@ -545,7 +658,7 @@ func TestDecodeBigEndianHeader(t *testing.T) {
 	c.Equal(data, toBigEndian(littleEndian, ""))
 	m, err := Decode(bytes.NewReader(data))
 	c.NoError(err)
-	c.Equal(want, m)
+	c.Equal(want, withoutWireSize(t, m, len(data)))
 	// Re-encoding a message that arrived big-endian produces the little-endian form, since that is the only encoding
 	// this package emits.
 	encoded, err := m.Encode()

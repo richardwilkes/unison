@@ -33,8 +33,10 @@ import (
 // events between them and is tested on any platform. This file does nothing but make them.
 
 // The UI Automation entry points the adapter calls, held in variables so that the Windows tests can record what would
-// have been raised instead of needing a live UI Automation client, which no unit test can arrange. Nothing but a test
-// ever replaces them, and each is restored when that test finishes.
+// have been raised instead of needing a live UI Automation client, which no unit test can arrange. The last one is not
+// a raise at all but the one call that asks UI Automation for something — the host provider a fragment root reports —
+// and is here for the same reason: a test has no window for it to answer about. Nothing but a test ever replaces them,
+// and each is restored when that test finishes.
 var (
 	uiaClientsAreListening                 = UiaClientsAreListening
 	uiaRaiseAutomationEvent                = UiaRaiseAutomationEvent
@@ -43,6 +45,7 @@ var (
 	uiaRaiseNotificationEvent              = UiaRaiseNotificationEvent
 	uiaDisconnectProvider                  = UiaDisconnectProvider
 	uiaReturnRawElementProvider            = UiaReturnRawElementProvider
+	uiaHostProviderFromHwnd                = UiaHostProviderFromHwnd
 )
 
 // uiaAnnouncementActivity names the activity every announcement this toolkit makes belongs to. A client that groups or
@@ -176,6 +179,10 @@ func (p *UIAProvider) raisedPropertyValue(tree *accessibility.Tree, propertyID P
 		value.SetI4(int32(UIAExpandCollapseState(node)))
 	case UIA_SelectionItemIsSelectedPropertyId:
 		value.SetBool(UIAIsSelected(node))
+	case UIA_SelectionCanSelectMultiplePropertyId:
+		// The Selection pattern's, read through ISelectionProvider::get_CanSelectMultiple rather than through
+		// GetPropertyValue, so propertyValue has nothing to say about it either.
+		value.SetBool(node.Multiselectable)
 	case UIA_WindowIsModalPropertyId:
 		// The Window pattern's, so it is answered here rather than by propertyValue, which a client never reads it
 		// through: it asks IWindowProvider::get_IsModal instead.

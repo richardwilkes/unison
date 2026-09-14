@@ -51,7 +51,7 @@ func TestSignatureValidateRejects(t *testing.T) {
 		{name: "unterminated struct", sig: "(i"},
 		{name: "unopened struct", sig: "i)"},
 		{name: "empty struct", sig: "()"},
-		{name: "dict entry outside an array", sig: "{ss}"},
+		{name: "dict entry outside an array", sig: stringEntrySig},
 		{name: "dict entry with a container key", sig: "a{(i)s}"},
 		{name: "dict entry with a variant key", sig: "a{vs}"},
 		{name: "dict entry with one type", sig: "a{s}"},
@@ -105,10 +105,23 @@ func TestObjectPathValidate(t *testing.T) {
 		c.NoError(one.Validate(), "%q should be valid", one)
 		c.Equal(string(one), one.String())
 	}
-	for _, one := range []ObjectPath{"", "a", "a/b", "/a/", "//", "/a//b", "/a-b", "/a.b", "/a b"} {
+	for _, one := range []ObjectPath{
+		"", "a", "a/b", "/a/", "//", "///", "/a//b", "/a/b//", "/a-b", "/a.b", "/a b", "/a/b-c/d",
+	} {
 		c.HasError(one.Validate(), "%q should be invalid", one)
 	}
+	// The path is validated in place rather than split into its elements, since the decoder calls this on as much as
+	// MaxArraySize bytes of whatever a peer chose to send, and an error message repeats only the start of it.
+	long := ObjectPath("/" + strings.Repeat("a", 200) + "-")
+	err := long.Validate()
+	c.HasError(err)
+	c.True(len(err.Error()) < 150, "expected the error to name only the start of a long path, but it was %d bytes",
+		len(err.Error()))
 }
+
+// namedDict is a dictionary under a name of its own, which is what a package that wants to hang methods off one
+// declares; nothing about it says it is anything other than a slice of dict entries.
+type namedDict []DictEntry
 
 func TestSignatureOf(t *testing.T) {
 	t.Parallel()
@@ -151,6 +164,19 @@ func TestSignatureOf(t *testing.T) {
 		{name: "map of maps", value: map[string]map[string]string{}, want: "a{sa{ss}}"},
 		{name: "map with interface values", value: map[string]any{"a": "b"}, want: stringDictSig},
 		{name: "named slice", value: []Variant{}, want: "av"},
+		// A dict entry is a complete type only as the element type of an array, which is the one place Array accepts
+		// it: an empty a{sv} is the most common empty container AT-SPI sends, and an empty Dict cannot say what its
+		// keys and values would have been.
+		{name: "explicit empty dictionary", value: Array{Elem: "{sv}"}, want: propertiesSig},
+		{
+			name:  "explicit dictionary",
+			value: Array{Elem: stringEntrySig, Values: []any{DictEntry{Key: "a", Value: "b"}}},
+			want:  stringDictSig,
+		},
+		// A named slice of dict entries is a dictionary however it was named, and the key and value types come from
+		// the entries, since the Go type alone cannot supply them.
+		{name: "named dictionary type", value: namedDict{{Key: "a", Value: "b"}}, want: stringDictSig},
+		{name: "array of dict entries", value: [1]DictEntry{{Key: "a", Value: "b"}}, want: stringDictSig},
 		// A Dict is a slice of dict entries, so its element type cannot be derived without a value to look at. An
 		// empty want means that an error is expected.
 		{name: "slice of dicts", value: []Dict{}, want: ""},
@@ -167,6 +193,25 @@ func TestSignatureOf(t *testing.T) {
 			c.Equal(one.want, sig)
 		})
 	}
+}
+
+func TestEmptyDictionaryWhereTheSignatureIsDerived(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// An empty a{sv} has no values to derive a signature from, so the element type has to be stated; this is the shape
+	// that says it, and it has to work everywhere a signature is derived rather than supplied.
+	m := NewSignal(testPath, eventInterface, "Empty")
+	m.Serial = 1
+	c.NoError(m.SetBody("insert", Array{Elem: "{sv}"}))
+	c.Equal(Signature("s"+propertiesSig), m.Signature)
+	args, err := m.Args()
+	c.NoError(err)
+	c.Equal([]any{"insert", Dict{}}, args)
+	data, err := Marshal("v", Array{Elem: "{sv}"})
+	c.NoError(err)
+	values, err := Unmarshal("v", data)
+	c.NoError(err)
+	c.Equal([]any{Variant{Sig: propertiesSig, Value: Dict{}}}, values)
 }
 
 func TestSignatureOfDictChecksEveryEntry(t *testing.T) {
@@ -221,6 +266,10 @@ func TestSignatureOfRejects(t *testing.T) {
 		{name: "channel", value: make(chan int)},
 		{name: "struct type", value: struct{ A int32 }{}},
 		{name: "array with a bad element type", value: Array{Elem: "ss"}},
+		{name: "array with no element type", value: Array{}},
+		{name: "array with a malformed dict entry element type", value: Array{Elem: "{s}"}},
+		{name: "empty named dictionary type", value: namedDict{}},
+		{name: "named dictionary with mixed values", value: namedDict{{Key: "a", Value: "b"}, {Key: "c", Value: 1}}},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			t.Parallel()

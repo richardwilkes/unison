@@ -66,8 +66,9 @@ var (
 	accessibilityActive atomic.Bool
 	// accessibilityEnv is what AccessibilityEnvKey asked for: 1 to force activation at startup, -1 to refuse it, and 0
 	// when the variable was absent or unparsable. Parsed once during start(), so it is written before anything can read
-	// it and never written again.
-	accessibilityEnv int8
+	// it and never written again. It is atomic because the goroutine that runs start() is not the one that reads it
+	// through AccessibilityEnabled, which documents that it may be called from anywhere.
+	accessibilityEnv atomic.Int32
 	// noAccessibility is set by the NoAccessibility startup option and by SetAccessibilityEnabled, and refuses
 	// activation just as a false AccessibilityEnvKey does. It is atomic because AccessibilityEnabled reports what it
 	// holds and, like the SetAccessibilityEnabled that writes it, may be called from any goroutine; only the UI thread
@@ -76,8 +77,8 @@ var (
 	// axNextID is the process-wide source of node ids. Ids are handed out from one counter rather than one per window,
 	// so a NodeID identifies a node without needing to be qualified by the window it belongs to. UI thread only.
 	axNextID uint64
-	// axSnapshotCount counts the trees built in this process, which is what the zero-cost-when-inactive tests assert on.
-	// UI thread only.
+	// axSnapshotCount counts the trees built in this process, which is what the zero-cost-when-inactive tests assert
+	// on. UI thread only.
 	axSnapshotCount uint64
 )
 
@@ -226,7 +227,8 @@ func (b *AccessibilityBuilder) IDFor(p Paneler) accessibility.NodeID {
 //
 // fill is called with a node that has nothing but its identity filled in. Set its Bounds in the panel's own
 // coordinates; they are converted afterwards, and the child is marked Offscreen when none of it can be seen, exactly
-// as a real child is.
+// as a real child is. A node left with no Role is described as role.Group, since neither role.Auto nor role.None means
+// anything for a child that exists only because a widget described it.
 //
 // Zero is returned, and nothing is added, when the key has already been used during this description, since a key names
 // one child and not two. Reusing one — a table whose rows hand back the same tid.TID, or the same key added under two
@@ -248,20 +250,31 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 	if parentNode == nil {
 		return 0
 	}
-	id := b.virtualID(key)
-	if b.snapshot.tree.Nodes[id] != nil {
+	if existing := b.existingVirtualID(key); existing != 0 && b.snapshot.tree.Nodes[existing] != nil {
 		// The key named a node that is already in this tree, so it already has a parent listing it among its children.
 		// Describing it a second time would replace what it said the first time and list its id twice among its
 		// siblings, which is what every position counted out of that list — the index within the parent, what
 		// Tree.PositionInSet answers, and the events the next Diff produces — would then be wrong about. Refusing
 		// leaves the mistake where a widget can see it rather than burying it in the tree.
+		//
+		// The id is looked up rather than allocated, so a refused key neither uses up a virtual child nor renews the
+		// generation the sweep of abandoned keys reads: a mistake must not make the panel look busier than it is.
 		return 0
 	}
+	id := b.virtualID(key)
 	node := &accessibility.Node{
 		ID:     id,
 		Parent: parent,
 	}
 	fill(node)
+	if node.Role == role.Auto || node.Role == role.None {
+		// A published tree holds neither of these. Auto means "work the role out from the widget", and for a child a
+		// widget invented there is nothing to work it out from; None means "do not describe this panel", which is an
+		// instruction about a panel rather than about something that exists only because a widget described it. Both
+		// become Group, which is what the builder resolves Auto to for a real panel, so that an adapter is never handed
+		// a role the schema says cannot occur.
+		node.Role = role.Group
+	}
 	if !b.panel.Enabled() {
 		// A virtual child has no existence apart from the panel that described it, and every request aimed at one is
 		// carried out by that panel, so a disabled panel's children cannot be acted on either — the rows of a disabled
@@ -293,16 +306,29 @@ func (b *AccessibilityBuilder) addCellPanel(parent accessibility.NodeID, key acc
 		return
 	}
 	saved := b.snapshot.cell
+	// Restored with a defer because the description of a cell runs application code — a row building its panels, a
+	// widget describing itself — and a panic partway through is caught by the SafeCall around the table's own
+	// ProvideAccessibility, well outside this call. Everything described after that would otherwise still be treated as
+	// part of this cell: identified by a key of the table's rather than by its own panel, with every request about it
+	// sent to the table.
+	defer func() { b.snapshot.cell = saved }()
 	if persistent {
 		b.snapshot.cell = nil
 	} else {
 		b.snapshot.cell = &axCellContext{builder: b, key: key}
 	}
 	b.snapshot.visit(p, parent, b.clip)
-	b.snapshot.cell = saved
 }
 
-// virtualID returns the stable node id this panel uses for key, allocating one the first time key is seen.
+// existingVirtualID returns the node id this panel has already handed out for key, or zero if it has not handed one
+// out. Nothing is allocated, nothing is counted and nothing is marked as still in use, so asking about a key that turns
+// out not to be usable leaves no trace.
+func (b *AccessibilityBuilder) existingVirtualID(key any) accessibility.NodeID {
+	return b.panel.Accessibility.virtual[key].id
+}
+
+// virtualID returns the stable node id this panel uses for key, allocating one the first time key is seen, and records
+// the key as one this snapshot is using.
 func (b *AccessibilityBuilder) virtualID(key any) accessibility.NodeID {
 	if b.panel.Accessibility.virtual == nil {
 		b.panel.Accessibility.virtual = make(map[any]axVirtualEntry)
@@ -358,7 +384,7 @@ func SetAccessibilityEnabled(enabled bool) {
 //
 // It is safe to call from any goroutine, as is SetAccessibilityEnabled.
 func AccessibilityEnabled() bool {
-	return !noAccessibility.Load() && accessibilityEnv >= 0
+	return !noAccessibility.Load() && accessibilityEnv.Load() >= 0
 }
 
 // IsAccessibilityActive returns true if an assistive technology is being served, which is when snapshots of each
@@ -386,7 +412,7 @@ func AnnounceForAccessibility(text string) {
 // applyAccessibilityEnvRequest records what AccessibilityEnvKey asks for. This runs during startup, before any window
 // can exist, so that what it decides is in place before the first thing that could consult it.
 func applyAccessibilityEnvRequest() {
-	accessibilityEnv = 0
+	accessibilityEnv.Store(0)
 	v, ok := os.LookupEnv(AccessibilityEnvKey)
 	if !ok {
 		return
@@ -396,10 +422,10 @@ func applyAccessibilityEnvRequest() {
 		return
 	}
 	if on {
-		accessibilityEnv = 1
+		accessibilityEnv.Store(1)
 		slog.Info("accessibility support was requested via the environment", "var", AccessibilityEnvKey)
 	} else {
-		accessibilityEnv = -1
+		accessibilityEnv.Store(-1)
 		slog.Info("accessibility support was refused via the environment", "var", AccessibilityEnvKey)
 	}
 }
@@ -412,7 +438,7 @@ func applyAccessibilityEnvRequest() {
 // sitting idle when an assistive technology starts up would not be described until something else happened to make it
 // redraw.
 func activateAccessibility() bool {
-	if noAccessibility.Load() || accessibilityEnv < 0 {
+	if noAccessibility.Load() || accessibilityEnv.Load() < 0 {
 		return false
 	}
 	if !accessibilityActive.Swap(true) {
@@ -435,6 +461,39 @@ func deactivateAccessibility() {
 			wnd.apiAccessibilityShutdown()
 			wnd.ax = nil
 		}
+	}
+}
+
+// axMarkForPublish marks a window for redraw when an assistive technology is being served, for a change that alters
+// what the window's description says without necessarily changing anything that is drawn. A description is published
+// after a window has been drawn, so a change nothing repaints for — the focus moving between two panels that do not
+// draw themselves any differently for holding it, or a window becoming the active one while its focus is empty — would
+// otherwise sit unreported until something unrelated happened to redraw the window, which may be never.
+//
+// An application nothing is listening to pays one atomic load for each of these.
+func (w *Window) axMarkForPublish() {
+	if accessibilityActive.Load() {
+		w.MarkForRedraw()
+	}
+}
+
+// axWindowHidden takes a window that is no longer on the screen out of the description an assistive technology holds,
+// where the platform calls for that.
+//
+// A hidden or minimized window is not drawn, so nothing is published for it and the last description of it would
+// otherwise stand for as long as it existed — on AT-SPI, where the application says for itself what windows it has,
+// that leaves a window a person cannot see listed as showing and visible. There everything built for the window is
+// released rather than merely suspended, since a window that is hidden may never be shown again; showing it again draws
+// it, which publishes it afresh, and an adapter takes a window it has been told about before back exactly as it took it
+// the first time. On macOS and Windows the system lists the application's windows itself and a hidden one simply drops
+// out of the list, so what was built is kept and the assistive technology finds the elements it already knows when the
+// window comes back.
+func (w *Window) axWindowHidden() {
+	if w.ax == nil {
+		return
+	}
+	if w.apiAccessibilityWindowHidden() {
+		w.ax = nil
 	}
 }
 

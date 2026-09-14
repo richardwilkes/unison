@@ -33,7 +33,6 @@ const (
 	RoleChanged                           // The node's Role changed; Old and New hold the role keys
 	WindowActivated                       // The window became the active one
 	WindowDeactivated                     // The window stopped being the active one
-	Announcement                          // Event.New holds text to speak; never produced by Diff
 )
 
 // String implements fmt.Stringer.
@@ -73,8 +72,6 @@ func (e EventKind) String() string {
 		return "window-activated"
 	case WindowDeactivated:
 		return "window-deactivated"
-	case Announcement:
-		return "announcement"
 	default:
 		return "EventKind(" + strconv.FormatUint(uint64(e), 10) + ")"
 	}
@@ -157,7 +154,7 @@ type Event struct {
 	// Old is the previous value, for the kinds that report one. StateChanged reports "true" or "false", except for
 	// StateChecked, which reports the check state's key.
 	Old string
-	// New is the current value, for the kinds that report one, and the text to speak for an Announcement.
+	// New is the current value, for the kinds that report one.
 	New string
 	// Node is the node the event concerns. For NodeRemoved it names a node that is no longer in the new tree.
 	Node NodeID

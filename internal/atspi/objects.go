@@ -49,12 +49,15 @@ func (a *Adapter) resolve(path dbus.ObjectPath) dbus.Object {
 // Interfaces implements [dbus.Object]. Both the membership of the list and its order match what
 // org.a11y.atspi.Accessible.GetInterfaces reports, which [Interfaces] decides.
 func (o *nodeObject) Interfaces() []*dbus.Interface {
-	list := make([]*dbus.Interface, 0, 7)
+	list := make([]*dbus.Interface, 0, 8)
 	list = append(list, o.accessibleInterface())
 	if actions := nodeActions(o.node); len(actions) != 0 {
 		list = append(list, o.actionInterface(actions))
 	}
 	list = append(list, o.componentInterface())
+	if supportsEditableText(o.node) {
+		list = append(list, o.editableTextInterface())
+	}
 	if supportsSelection(o.node.Role) {
 		list = append(list, o.selectionInterface())
 	}
@@ -81,7 +84,7 @@ func (o *nodeObject) reference() dbus.ObjectRef {
 // parentReference returns the reference to the object that holds this one. The parent of a window's root is the
 // application, not a node.
 func (o *nodeObject) parentReference() dbus.ObjectRef {
-	if o.node.ID == o.data.tree.Root {
+	if o.isRoot() {
 		return o.a.rootReference()
 	}
 	return o.a.reference(o.data.parent(o.node.ID))
@@ -95,7 +98,7 @@ func (o *nodeObject) children() []accessibility.NodeID {
 // indexInParent returns where this node sits among the reported children of its parent. A window's root reports its
 // position among the application's windows instead.
 func (o *nodeObject) indexInParent() int {
-	if o.node.ID == o.data.tree.Root {
+	if o.isRoot() {
 		return o.a.windowIndex(o.window())
 	}
 	return o.data.indexInParent(o.node.ID)
@@ -106,9 +109,16 @@ func (o *nodeObject) window() *windowState {
 	return o.a.windowFor(o.node.ID)
 }
 
-// states returns the node's states, taking into account whether its window is the active one.
+// states returns the node's states, taking into account whether its window is the active one and whether the node is
+// the window itself.
 func (o *nodeObject) states() StateSet {
-	return States(o.node, o.data.active())
+	return States(o.node, o.data.active(), o.isRoot())
+}
+
+// isRoot reports whether this node is the window its snapshot describes, as distinct from a node within one that
+// reports a window role of its own.
+func (o *nodeObject) isRoot() bool {
+	return o.node.ID == o.data.tree.Root
 }
 
 // callArgs unmarshals the arguments of a call, answering it with an InvalidArgs error and returning false if they

@@ -11,6 +11,7 @@ package unison_test
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -670,5 +671,194 @@ func TestNumericFieldAccessibilityStepFollowsTheRange(t *testing.T) {
 	var count int
 	screen.Do(func() { count = wholeNarrow.Value() })
 	c.Equal(3, count)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axPercentFormat writes a fraction out as a percentage, which is a field whose text is nothing like the number behind
+// it.
+func axPercentFormat(value float64) string {
+	return strconv.FormatFloat(value*100, 'f', -1, 64) + "%"
+}
+
+// axPercentExtract reads a percentage the way axPercentFormat wrote it, and tolerates the trailing sign being left off,
+// as a person typing into the field would.
+func axPercentExtract(s string) (float64, error) {
+	value, err := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(s), "%"), 64)
+	if err != nil {
+		return 0, err
+	}
+	return value / 100, nil
+}
+
+// TestNumericFieldAccessibilitySetValuePrefersTheNumber verifies that a spin button asked to take a new value takes the
+// number it was sent rather than the text, when the text is nothing more than that number written out. Both macOS and
+// Windows send the pair that way, so a field that shows its values as anything but bare digits — a percentage here —
+// would otherwise be set to whatever those digits mean when read back through its own Extract, and would skip the clamp
+// to its range besides. Text that says something the number does not is still what is used.
+func TestNumericFieldAccessibilitySetValuePrefersTheNumber(t *testing.T) {
+	c := check.New(t)
+	var field *unison.NumericField[float64]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewNumericField(0.5, 0, 1, axPercentFormat, axPercentExtract, nil)
+			wnd = newHeadlessWindow(t, "percent", geom.NewRect(10, 10, 300, 150), axColumn(field))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(field)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.Equal(role.SpinButton, node.Role)
+	c.Equal("50%", node.Value, "the field shows its value the way it formats it")
+	c.Equal(0.5, node.Number)
+
+	// What both platforms send: the number, and the same number written out as its text.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.SetValue,
+		Number: 0.25,
+		Value:  "0.25",
+	}))
+	var value float64
+	screen.Do(func() { value = field.Value() })
+	c.Equal(0.25, value, "the number is what was asked for, not the text read back as a percentage")
+	c.Equal("25%", screen.AccessibilityNodeFor(field).Value, "which is shown the way the field formats it")
+
+	// A number outside the range is brought into it, exactly as a typed one is.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.SetValue,
+		Number: 9,
+		Value:  "9",
+	}))
+	screen.Do(func() { value = field.Value() })
+	c.Equal(float64(1), value, "a value past the maximum should have been clamped to it")
+
+	// Text that says something the number does not is the person's own formatting, so it is what is used.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.SetValue,
+		Number: 0.25,
+		Value:  "30%",
+	}))
+	screen.Do(func() { value = field.Value() })
+	c.Equal(0.3, value, "the text was not the number written out, so the text is what was meant")
+
+	// Nothing but text, which is what AT-SPI sends.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.SetValue,
+		Value:  "10%",
+	}))
+	screen.Do(func() { value = field.Value() })
+	c.Equal(0.1, value)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestNumericFieldAccessibilityRangeChangePublishes verifies that widening a field's range reaches an assistive
+// technology. Nothing else about the field need change when it does — the value it is showing may still format to the
+// same text — and a window is only described again once it has been drawn, so without a redraw the old range would
+// stand until something unrelated happened to cause one.
+func TestNumericFieldAccessibilityRangeChangePublishes(t *testing.T) {
+	c := check.New(t)
+	var field *unison.NumericField[int]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewNumericField(5, 0, 10, strconv.Itoa, strconv.Atoi, nil)
+			wnd = newHeadlessWindow(t, "range", geom.NewRect(10, 10, 300, 150), axColumn(field))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(field)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.Equal(float64(10), node.Max)
+
+	screen.Do(func() { field.SetMinMax(0, 100) })
+	screen.Sync()
+	node = screen.AccessibilityNodeFor(field)
+	c.True(node != nil)
+	if node != nil {
+		c.Equal(float64(100), node.Max, "the new range should have been published")
+		c.Equal("5", node.Value, "the value it was showing is unchanged, which is why nothing else would have redrawn")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldAccessibilityCaretFollowsTheSelection verifies that the caret a field reports is the end of the selection
+// that moves: extending a selection to the left with shift+Left or shift+Home leaves the caret at its start, which is
+// where the person is and where an assistive technology draws its own cursor, while the end it was extended from stays
+// put.
+func TestFieldAccessibilityCaretFollowsTheSelection(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.SetText("abcdef")
+			wnd = newHeadlessWindow(t, "caret", geom.NewRect(10, 10, 300, 150), axColumn(field))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+	screen.Click(screen.PanelCenter(field))
+	screen.Do(func() { field.SetSelectionTo(3) })
+	screen.Sync()
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(field)
+	c.True(node != nil && node.Text != nil)
+	if node == nil || node.Text == nil {
+		return
+	}
+	c.Equal(3, node.Text.SelStart)
+	c.Equal(3, node.Text.SelEnd)
+	c.Equal(3, node.Text.Caret, "a caret with nothing selected is both ends of the selection")
+
+	// Extending to the left moves the start, and the caret goes with it.
+	screen.KeyPress(unison.KeyLeft, mod.Shift)
+	screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(field)
+	c.True(node != nil && node.Text != nil)
+	if node == nil || node.Text == nil {
+		return
+	}
+	c.Equal(2, node.Text.SelStart)
+	c.Equal(3, node.Text.SelEnd)
+	c.True(node.Text.SelStart <= node.Text.SelEnd, "the selection is always reported in order")
+	c.Equal(2, node.Text.Caret, "a selection extended backwards has its caret at the start")
+
+	screen.KeyPress(unison.KeyHome, mod.Shift)
+	screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(field)
+	c.True(node != nil && node.Text != nil)
+	if node == nil || node.Text == nil {
+		return
+	}
+	c.Equal(0, node.Text.SelStart)
+	c.Equal(3, node.Text.SelEnd)
+	c.Equal(0, node.Text.Caret, "shift+Home leaves the caret at the start of the line")
+
+	// Extending forwards from a fresh caret puts it at the end instead.
+	screen.Do(func() { field.SetSelectionTo(1) })
+	screen.KeyPress(unison.KeyRight, mod.Shift)
+	screen.KeyPress(unison.KeyRight, mod.Shift)
+	screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(field)
+	c.True(node != nil && node.Text != nil)
+	if node == nil || node.Text == nil {
+		return
+	}
+	c.Equal(1, node.Text.SelStart)
+	c.Equal(3, node.Text.SelEnd)
+	c.Equal(3, node.Text.Caret, "a selection extended forwards has its caret at the end")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

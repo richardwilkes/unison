@@ -12,9 +12,9 @@ package dbus
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/xml"
 	"errors"
 	"fmt"
-	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -132,7 +132,11 @@ func (call *Call) reply(sig Signature, args ...any) {
 		return
 	}
 	msg := NewReply(call.Message)
-	if len(args) != 0 {
+	// A handler that answers with no values at all when the method declares a reply is a mismatch, not an empty reply:
+	// marshaling nothing against a non-empty signature fails, which is exactly what should happen, since a reply whose
+	// body does not match what the method promised is rejected by GDBus and libatspi as having the wrong number of
+	// arguments and leaves the caller with no idea why.
+	if len(args) != 0 || sig != "" {
 		var err error
 		if sig == "" {
 			err = msg.SetBody(args...)
@@ -141,7 +145,7 @@ func (call *Call) reply(sig Signature, args ...any) {
 		}
 		if err != nil {
 			errs.Log(errs.NewWithCause("dbus: unable to marshal a reply", err), "call", call.Message.String())
-			call.conn.Enqueue(NewError(call.Message, Failed, err.Error()))
+			call.conn.Enqueue(NewError(call.Message, Failed, publicErrorMessage(err)))
 			return
 		}
 	}
@@ -167,7 +171,17 @@ func (call *Call) failWith(err error) {
 		call.Error(dbusErr.Name, dbusErr.Message)
 		return
 	}
-	call.Error(Failed, err.Error())
+	call.Error(Failed, publicErrorMessage(err))
+}
+
+// publicErrorMessage returns the part of an error that may be sent to a peer. An error from errs renders as its message
+// followed by its call stack, and every path that answers a call with one is reachable by anyone on the bus, so sending
+// the whole of it publishes our own source paths and line numbers in a multi-kilobyte string. Everything up to the
+// first newline is the message, including whatever wrapped it, and is all that goes out; whoever is answering the call
+// logs the rest, which is where it is of some use.
+func publicErrorMessage(err error) string {
+	message, _, _ := strings.Cut(err.Error(), "\n")
+	return message
 }
 
 // builtinInterfaces are the standard interfaces that every exported object answers. The handlers are method expressions
@@ -202,12 +216,19 @@ func init() {
 			},
 		},
 	}
+	nodeInterfaces = []*Interface{
+		interfaceNamed(builtinInterfaces, introspectableInterface),
+		interfaceNamed(builtinInterfaces, peerInterface),
+	}
 }
 
 // validateInterfaces checks everything an object declares about itself, so that an object that could not be described
 // or dispatched is refused when it is exported rather than producing an introspection document that no client can
 // parse, a call that can never be answered, or a property that can neither be read nor written.
 func validateInterfaces(ifaces []*Interface) error {
+	if name := duplicateName(ifaces, func(iface *Interface) string { return iface.Name }); name != "" {
+		return fmt.Errorf("dbus: %s is declared more than once", name)
+	}
 	for _, iface := range ifaces {
 		if err := validateInterfaceName("interface name", iface.Name); err != nil {
 			return err
@@ -225,8 +246,26 @@ func validateInterfaces(ifaces []*Interface) error {
 	return nil
 }
 
+// duplicateName returns the first name that nameOf yields more than once, or an empty string if there is none. A
+// duplicate is refused rather than accepted, since neither half of what it would produce is right: dispatch silently
+// resolves to whichever was declared first, while the introspection document describes both.
+func duplicateName[T any](items []T, nameOf func(T) string) string {
+	seen := make(map[string]struct{}, len(items))
+	for _, one := range items {
+		name := nameOf(one)
+		if _, exists := seen[name]; exists {
+			return name
+		}
+		seen[name] = struct{}{}
+	}
+	return ""
+}
+
 // validateMethods checks the names and signatures of one interface's methods.
 func validateMethods(iface *Interface) error {
+	if name := duplicateName(iface.Methods, func(method *Method) string { return method.Name }); name != "" {
+		return fmt.Errorf("dbus: %s declares the method %q more than once", iface.Name, name)
+	}
 	for _, method := range iface.Methods {
 		if validateMemberName(method.Name) != nil {
 			return fmt.Errorf("dbus: %s declares the invalid method name %q", iface.Name, method.Name)
@@ -245,6 +284,9 @@ func validateMethods(iface *Interface) error {
 
 // validateSignals checks the names and signatures of one interface's signals.
 func validateSignals(iface *Interface) error {
+	if name := duplicateName(iface.Signals, func(signal *Signal) string { return signal.Name }); name != "" {
+		return fmt.Errorf("dbus: %s declares the signal %q more than once", iface.Name, name)
+	}
 	for _, signal := range iface.Signals {
 		if validateMemberName(signal.Name) != nil {
 			return fmt.Errorf("dbus: %s declares the invalid signal name %q", iface.Name, signal.Name)
@@ -259,6 +301,9 @@ func validateSignals(iface *Interface) error {
 // validateProperties checks the names and types of one interface's properties, and that each of them can actually be
 // used: one with neither a getter nor a setter could only ever be answered with an error.
 func validateProperties(iface *Interface) error {
+	if name := duplicateName(iface.Properties, func(prop *Property) string { return prop.Name }); name != "" {
+		return fmt.Errorf("dbus: %s declares the property %q more than once", iface.Name, name)
+	}
 	for _, prop := range iface.Properties {
 		if validateMemberName(prop.Name) != nil {
 			return fmt.Errorf("dbus: %s declares the invalid property name %q", iface.Name, prop.Name)
@@ -397,7 +442,7 @@ func (call *Call) getProperty() {
 		return
 	}
 	if prop.Get == nil {
-		call.Error(UnknownProperty, fmt.Sprintf("%s.%s cannot be read", name, member))
+		call.Error(UnknownProperty, call.propertyName(name, member)+" cannot be read")
 		return
 	}
 	value, err := prop.Get()
@@ -410,8 +455,8 @@ func (call *Call) getProperty() {
 
 // getAllProperties implements org.freedesktop.DBus.Properties.GetAll. An empty interface name asks for the properties
 // of every interface, while one the object does not implement is an UnknownInterface error rather than an empty
-// dictionary. A property whose getter fails is left out rather than failing the whole call, which is what the clients
-// that use GetAll to fill a cache expect.
+// dictionary. A property whose getter fails, or whose value does not match the type it declares, is left out rather
+// than failing the whole call, which is what the clients that use GetAll to fill a cache expect.
 func (call *Call) getAllProperties() {
 	args, err := call.Args()
 	if err != nil {
@@ -450,7 +495,28 @@ func (call *Call) getAllProperties() {
 			dict = append(dict, DictEntry{Key: prop.Name, Value: Variant{Sig: prop.Sig, Value: value}})
 		}
 	}
+	// A getter that succeeds but hands back something its declared type cannot describe would take the whole reply
+	// down with it, losing every sibling property along with the one that is wrong, so the dictionary is marshaled
+	// here: the fast path pays one encode, and only a dictionary that will not encode is picked over entry by entry.
+	if _, err = Marshal(propertiesSignature, dict); err != nil {
+		dict = call.marshalableProperties(dict)
+	}
 	call.Reply(dict)
+}
+
+// marshalableProperties returns the entries of a property dictionary that can actually be marshaled, logging the ones
+// that cannot, which are the ones whose value does not match the type their property declares.
+func (call *Call) marshalableProperties(dict Dict) Dict {
+	result := make(Dict, 0, len(dict))
+	for _, entry := range dict {
+		if _, err := Marshal(propertiesSignature, Dict{entry}); err != nil {
+			errs.Log(errs.NewWithCause("dbus: unable to marshal a property", err), "path",
+				string(call.Message.Path), "property", entry.Key)
+			continue
+		}
+		result = append(result, entry)
+	}
+	return result
 }
 
 // setProperty implements org.freedesktop.DBus.Properties.Set.
@@ -486,11 +552,12 @@ func (call *Call) setProperty() {
 		return
 	}
 	if prop.Set == nil {
-		call.Error(PropertyReadOnly, fmt.Sprintf("%s.%s cannot be changed", name, member))
+		call.Error(PropertyReadOnly, call.propertyName(name, member)+" cannot be changed")
 		return
 	}
 	if variant.Sig != prop.Sig {
-		call.Error(InvalidArgs, fmt.Sprintf("%s.%s is a %s, not a %s", name, member, prop.Sig, variant.Sig))
+		call.Error(InvalidArgs, fmt.Sprintf("%s is a %s, not a %s", call.propertyName(name, member), prop.Sig,
+			variant.Sig))
 		return
 	}
 	if err = prop.Set(variant.Value); err != nil {
@@ -498,6 +565,16 @@ func (call *Call) setProperty() {
 		return
 	}
 	call.Reply()
+}
+
+// propertyName names a property for an error message. An empty interface name asks for every interface to be searched,
+// so there is no interface to name and the object path stands in for it, exactly as [Call.propertyError] does; without
+// it a property that the caller reached without naming an interface is reported as ".WriteOnly cannot be read".
+func (call *Call) propertyName(iface, member string) string {
+	if iface == "" {
+		return string(call.Message.Path) + "." + member
+	}
+	return iface + "." + member
 }
 
 // propertyError answers a property call that named something that does not exist. An empty interface name asks for
@@ -517,20 +594,6 @@ func (call *Call) propertyError(name, member string, unknownInterface bool) {
 	}
 }
 
-// EmitPropertiesChanged emits the org.freedesktop.DBus.Properties.PropertiesChanged signal for an object. changed holds
-// the properties whose new values are being announced, and invalidated names the ones whose values have changed but are
-// not being sent. Either may be empty. It never blocks.
-func (c *Conn) EmitPropertiesChanged(path ObjectPath, iface string, changed map[string]Variant, invalidated []string) {
-	dict := make(Dict, 0, len(changed))
-	for _, name := range slices.Sorted(maps.Keys(changed)) {
-		dict = append(dict, DictEntry{Key: name, Value: changed[name]})
-	}
-	if invalidated == nil {
-		invalidated = []string{}
-	}
-	c.EmitWithSignature(path, propertiesInterface, "PropertiesChanged", "sa{sv}as", iface, dict, invalidated)
-}
-
 // introspect implements org.freedesktop.DBus.Introspectable.Introspect. [Conn.Export] refuses an object whose names or
 // signatures would need escaping, and path elements are limited to letters, digits and underscores by
 // [ObjectPath.Validate], but an object handed out by a [Conn.ExportSubtree] resolver is never seen until it is used, so
@@ -543,19 +606,45 @@ func (call *Call) introspect() {
 	}
 	var sb strings.Builder
 	sb.WriteString(introspectPrologue)
-	for _, iface := range own {
-		writeInterfaceXML(&sb, effectiveInterface(iface))
-	}
-	for _, iface := range builtinInterfaces {
-		if !hasInterface(own, iface.Name) {
-			writeInterfaceXML(&sb, iface)
+	// A placeholder for a path that has objects only below it is described by that list of children alone: it has no
+	// interfaces of its own, and the two it answers exist only so that a client can walk down to the real objects.
+	if _, placeholder := call.obj.(nodeObject); !placeholder {
+		for _, iface := range own {
+			writeInterfaceXML(&sb, effectiveInterface(iface))
+		}
+		for _, iface := range builtinInterfaces {
+			if !hasInterface(own, iface.Name) {
+				writeInterfaceXML(&sb, iface)
+			}
 		}
 	}
 	for _, name := range call.conn.childNodes(call.Message.Path) {
-		sb.WriteString(`  <node name="` + xmlEscaper.Replace(name) + "\"/>\n")
+		sb.WriteString(`  <node name="` + escapeXML(name) + "\"/>\n")
 	}
 	sb.WriteString("</node>\n")
 	call.Reply(sb.String())
+}
+
+// nodeObject stands in for a path that has no object of its own but does have objects exported below it, which is what
+// every path above a subtree looks like: with only /org/a11y/atspi/accessible exported, /, /org, /org/a11y and
+// /org/a11y/atspi are all such paths, and answering them with UnknownObject leaves busctl and d-feet unable to walk
+// down to anything at all. It answers only Introspectable, whose document is the list of its children, and Peer, which
+// is about the connection rather than the object; anything else is honestly reported as not being there.
+type nodeObject struct{}
+
+// Interfaces implements [Object].
+func (nodeObject) Interfaces() []*Interface { return nil }
+
+// nodeInterfaces are the standard interfaces that a [nodeObject] answers.
+var nodeInterfaces []*Interface
+
+// builtins returns the standard interfaces the call's object answers, which is all of them for a real object and only
+// the ones that make sense for a placeholder.
+func (call *Call) builtins() []*Interface {
+	if _, placeholder := call.obj.(nodeObject); placeholder {
+		return nodeInterfaces
+	}
+	return builtinInterfaces
 }
 
 // effectiveInterface returns the interface as it actually behaves. An object that declares one of the standard
@@ -587,15 +676,25 @@ func withMissingMembers[T any](own, builtin []T, nameOf func(T) string) []T {
 	return result
 }
 
-// xmlEscaper turns the characters that may not appear literally inside an XML attribute value into the entity
-// references that stand for them, so that no name or signature can end an attribute early and inject markup of its own.
-var xmlEscaper = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;")
+// escapeXML returns the text as it may appear inside an XML attribute value, so that no name or signature can end an
+// attribute early and inject markup of its own. It is [xml.EscapeText] rather than a replacer of the five
+// metacharacters because XML 1.0 forbids most control characters outright: escaping only the metacharacters would
+// leave a name holding one of those in a document that no parser will accept, and only [Conn.Export] rejects such a
+// name, so an object handed out by a [Conn.ExportSubtree] resolver could still produce one. Those are replaced with
+// U+FFFD instead.
+func escapeXML(text string) string {
+	var sb strings.Builder
+	if err := xml.EscapeText(&sb, []byte(text)); err != nil {
+		return "" // A strings.Builder never fails to be written to, but a name that will not escape has no place here
+	}
+	return sb.String()
+}
 
 // writeInterfaceXML writes the introspection document's description of one interface.
 func writeInterfaceXML(sb *strings.Builder, iface *Interface) {
-	sb.WriteString(`  <interface name="` + xmlEscaper.Replace(iface.Name) + "\">\n")
+	sb.WriteString(`  <interface name="` + escapeXML(iface.Name) + "\">\n")
 	for _, method := range iface.Methods {
-		name := xmlEscaper.Replace(method.Name)
+		name := escapeXML(method.Name)
 		if method.In == "" && method.Out == "" {
 			sb.WriteString(`    <method name="` + name + "\"/>\n")
 			continue
@@ -606,7 +705,7 @@ func writeInterfaceXML(sb *strings.Builder, iface *Interface) {
 		sb.WriteString("    </method>\n")
 	}
 	for _, signal := range iface.Signals {
-		name := xmlEscaper.Replace(signal.Name)
+		name := escapeXML(signal.Name)
 		if signal.Sig == "" {
 			sb.WriteString(`    <signal name="` + name + "\"/>\n")
 			continue
@@ -627,8 +726,8 @@ func writeInterfaceXML(sb *strings.Builder, iface *Interface) {
 		case prop.Set != nil:
 			access = "readwrite"
 		}
-		sb.WriteString(`    <property name="` + xmlEscaper.Replace(prop.Name) + `" type="` +
-			xmlEscaper.Replace(string(prop.Sig)) + `" access="` + access + "\"/>\n")
+		sb.WriteString(`    <property name="` + escapeXML(prop.Name) + `" type="` + escapeXML(string(prop.Sig)) +
+			`" access="` + access + "\"/>\n")
 	}
 	sb.WriteString("  </interface>\n")
 }
@@ -641,7 +740,7 @@ func writeArgsXML(sb *strings.Builder, sig Signature, direction string) {
 		return // A declared signature that will not parse is a programming error, and there is nothing to say here
 	}
 	for _, one := range types {
-		sb.WriteString(`      <arg type="` + xmlEscaper.Replace(string(one)) + `"`)
+		sb.WriteString(`      <arg type="` + escapeXML(string(one)) + `"`)
 		if direction != "" {
 			sb.WriteString(` direction="` + direction + `"`)
 		}

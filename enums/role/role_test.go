@@ -32,14 +32,6 @@ func TestMembership(t *testing.T) {
 			members: []role.Enum{role.TextField, role.TextArea, role.SpinButton, role.ComboBox, role.Document},
 		},
 		{
-			name: "IsContainer",
-			fn:   role.Enum.IsContainer,
-			members: []role.Enum{
-				role.Window, role.Dialog, role.Group, role.ScrollArea, role.List, role.Table, role.Tree,
-				role.TableHeader, role.TabList, role.TabPanel, role.MenuBar, role.Menu, role.Document, role.Toolbar,
-			},
-		},
-		{
 			name:    "IsRowLike",
 			fn:      role.Enum.IsRowLike,
 			members: []role.Enum{role.ListItem, role.Row},
@@ -66,7 +58,6 @@ func TestAutoAndNoneAreNeverClassified(t *testing.T) {
 	c := check.New(t)
 	for _, e := range []role.Enum{role.Auto, role.None} {
 		c.False(e.IsText(), e.Key())
-		c.False(e.IsContainer(), e.Key())
 		c.False(e.IsRowLike(), e.Key())
 		c.False(e.IsWindow(), e.Key())
 	}

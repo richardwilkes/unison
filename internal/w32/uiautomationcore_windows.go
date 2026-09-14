@@ -18,8 +18,8 @@ import (
 // Bindings for the UI Automation provider API. A (*LazyProc).Call panics when the export cannot be found, so anything
 // that can be reached on a system without the API must check with Find first.
 //
-// UiaRaiseNotificationEvent arrived in Windows 10 1709 and UiaDisconnectProvider and UiaDisconnectAllProviders are
-// newer than the rest of the provider API, so any of those may genuinely be missing even where the DLL is present.
+// UiaRaiseNotificationEvent arrived in Windows 10 1709 and UiaDisconnectProvider is newer than the rest of the provider
+// API, so either may genuinely be missing even where the DLL is present.
 // UiaClientsAreListening checks because it stands in for a presence test on the whole API: everything it gates is
 // reached only after it has answered true. UiaReturnRawElementProvider checks because the adapter calls it on the
 // teardown path — UIAWindow.Destroy withdraws the window's provider with it — and an adapter exists whenever
@@ -31,9 +31,7 @@ import (
 var (
 	uiautomationcore                           = windows.NewLazySystemDLL("uiautomationcore.dll")
 	uiaClientsAreListeningProc                 = uiautomationcore.NewProc("UiaClientsAreListening")
-	uiaDisconnectAllProvidersProc              = uiautomationcore.NewProc("UiaDisconnectAllProviders")
 	uiaDisconnectProviderProc                  = uiautomationcore.NewProc("UiaDisconnectProvider")
-	uiaGetReservedNotSupportedValueProc        = uiautomationcore.NewProc("UiaGetReservedNotSupportedValue")
 	uiaHostProviderFromHwndProc                = uiautomationcore.NewProc("UiaHostProviderFromHwnd")
 	uiaRaiseAutomationEventProc                = uiautomationcore.NewProc("UiaRaiseAutomationEvent")
 	uiaRaiseAutomationPropertyChangedEventProc = uiautomationcore.NewProc("UiaRaiseAutomationPropertyChangedEvent")
@@ -192,34 +190,4 @@ func UiaDisconnectProvider(provider unsafe.Pointer) uintptr {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	r, _, _ := uiaDisconnectProviderProc.Call(uintptr(provider))
 	return r
-}
-
-// UiaDisconnectAllProviders tells UI Automation to drop every reference it holds to every provider in this process. It
-// is the blunt version of UiaDisconnectProvider, for shutdown.
-//
-// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcoreapi/nf-uiautomationcoreapi-uiadisconnectallproviders
-func UiaDisconnectAllProviders() uintptr {
-	if uiaDisconnectAllProvidersProc.Find() != nil {
-		return uintptr(COM_E_NOTIMPL)
-	}
-	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	r, _, _ := uiaDisconnectAllProvidersProc.Call()
-	return r
-}
-
-// UiaGetReservedNotSupportedValue returns the process-wide sentinel a provider puts in a VARIANT to say that it does
-// not supply a property at all, as opposed to supplying an empty value for it. Clients use the distinction to decide
-// whether to fall back to the host provider.
-//
-// The sentinel is a singleton owned by UI Automation, but the reference count still matters: add a reference before
-// storing it in a VARIANT that UI Automation Core is going to clear.
-//
-// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcoreapi/nf-uiautomationcoreapi-uiagetreservednotsupportedvalue
-func UiaGetReservedNotSupportedValue() (notSupported *Unknown, hr uintptr) {
-	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
-	r, _, _ := uiaGetReservedNotSupportedValueProc.Call(uintptr(unsafe.Pointer(&notSupported)))
-	if !hresultSucceeded(r) {
-		return nil, r
-	}
-	return notSupported, r
 }

@@ -102,6 +102,10 @@ type Message struct {
 	ReplySerial uint32
 	Type        Type
 	Flags       Flags
+	// wireSize is how many bytes a decoded message arrived as, which is more than its parts add up to: Body is a slice
+	// of the buffer the whole message was read into, so that buffer, header field array and all, stays alive for as
+	// long as the message does. It is zero for a message that was built rather than decoded. See [Message.size].
+	wireSize int
 }
 
 // NewMethodCall creates a method call message. An empty interface is permitted, though it is only unambiguous when the
@@ -270,10 +274,13 @@ func (m *Message) String() string {
 
 // size is roughly how many bytes the message occupies, which is what a connection's queues are bounded by. The body
 // dominates everything else a message holds, so the fixed header stands in for the parts of the header that are not
-// worth adding up exactly.
+// worth adding up exactly. A decoded message is charged the whole buffer it arrived as rather than the length of its
+// body, since that is what it actually keeps alive: a peer that pads the header field array with an ignorable unknown
+// field would otherwise be accounted a few dozen bytes while pinning megabytes, and the byte bound on the queues would
+// stop bounding anything.
 func (m *Message) size() int {
 	return fixedHeaderSize + len(m.Path) + len(m.Interface) + len(m.Member) + len(m.ErrorName) + len(m.Destination) +
-		len(m.Sender) + len(m.Signature) + len(m.Body)
+		len(m.Sender) + len(m.Signature) + max(len(m.Body), m.wireSize)
 }
 
 // Encode marshals the message into its wire representation. The header fields are written in the order Path,
@@ -455,9 +462,10 @@ func Decode(r io.Reader) (*Message, error) {
 	}
 	data := buf.Bytes()
 	m := &Message{
-		Type:   Type(fixed[1]),
-		Flags:  Flags(fixed[2]),
-		Serial: order.Uint32(fixed[8:12]),
+		Type:     Type(fixed[1]),
+		Flags:    Flags(fixed[2]),
+		Serial:   order.Uint32(fixed[8:12]),
+		wireSize: int(total),
 	}
 	// The header field array starts with its length, which is part of the fixed header.
 	d := decoder{data: data, pos: 12, bigEndian: bigEndian}
@@ -509,6 +517,9 @@ func (m *Message) convertBody() error {
 		return err
 	}
 	m.Body = body
+	// The buffer the message was read into is no longer referenced by anything, so the body is all that is left to
+	// account for; see [Message.size].
+	m.wireSize = 0
 	return nil
 }
 

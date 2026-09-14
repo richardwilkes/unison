@@ -221,7 +221,7 @@ func TestStatesOfEveryRole(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	for _, one := range role.All {
-		set := States(&accessibility.Node{Role: one}, true)
+		set := States(&accessibility.Node{Role: one}, true, false)
 		c.True(set.Has(StateVisible), "%s must be visible", one.Key())
 		c.True(set.Has(StateShowing), "%s must be showing", one.Key())
 		c.True(set.Has(StateEnabled), "%s must be enabled", one.Key())
@@ -240,7 +240,7 @@ func TestStatesOfTheCommonFlags(t *testing.T) {
 		Busy:      true,
 		Invalid:   true,
 		ReadOnly:  true,
-	}, true)
+	}, true, false)
 	c.False(set.Has(StateShowing), "an offscreen node is not showing")
 	c.True(set.Has(StateVisible), "an offscreen node is still visible")
 	c.False(set.Has(StateEnabled))
@@ -254,48 +254,64 @@ func TestStatesOfFocus(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	focused := &accessibility.Node{Role: role.Button, Focusable: true, Focused: true}
-	set := States(focused, true)
+	set := States(focused, true, false)
 	c.True(set.Has(StateFocusable))
 	c.True(set.Has(StateFocused))
-	c.False(States(focused, false).Has(StateFocused), "only the active window has a focused object")
-	c.True(States(focused, false).Has(StateFocusable))
+	c.False(States(focused, false, false).Has(StateFocused), "only the active window has a focused object")
+	c.True(States(focused, false, false).Has(StateFocusable))
 }
 
 func TestStatesOfAWindow(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	set := States(&accessibility.Node{Role: role.Window, Focused: true, Modal: true, Resizable: true}, true)
+	set := States(&accessibility.Node{Role: role.Window, Focused: true, Modal: true, Resizable: true}, true, true)
 	c.True(set.Has(StateActive))
 	c.True(set.Has(StateResizable))
 	c.True(set.Has(StateModal))
 	c.False(set.Has(StateFocused), "a window reports being active rather than focused")
-	c.False(States(&accessibility.Node{Role: role.Dialog}, false).Has(StateActive))
+	c.False(States(&accessibility.Node{Role: role.Dialog}, false, true).Has(StateActive))
 	// A window created with NotResizableWindowOption, and a dialog, which is most often one of those.
-	c.False(States(&accessibility.Node{Role: role.Window, Focused: true}, true).Has(StateResizable),
+	c.False(States(&accessibility.Node{Role: role.Window, Focused: true}, true, true).Has(StateResizable),
 		"a fixed size window must not claim it can be resized")
-	c.False(States(&accessibility.Node{Role: role.Dialog}, true).Has(StateResizable))
-	c.True(States(&accessibility.Node{Role: role.Dialog, Resizable: true}, true).Has(StateResizable))
+	c.False(States(&accessibility.Node{Role: role.Dialog}, true, true).Has(StateResizable))
+	c.True(States(&accessibility.Node{Role: role.Dialog, Resizable: true}, true, true).Has(StateResizable))
+}
+
+// TestStatesOfADialogWithinAWindow covers the node that is not the window it is in although it says it is one: a panel
+// laid out as a dialog inside another window reports role.Dialog, and only the tree knows which node is really the
+// window. Reading the role instead would have such a panel claim to be the active window while the focus it holds went
+// unreported, which is the one state an assistive technology follows above all others.
+func TestStatesOfADialogWithinAWindow(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	nested := &accessibility.Node{Role: role.Dialog, Focusable: true, Focused: true, Resizable: true}
+	set := States(nested, true, false)
+	c.False(set.Has(StateActive), "only the window itself is the active one")
+	c.True(set.Has(StateFocused), "and everything else that is focused within it holds the focus")
+	c.True(set.Has(StateResizable))
+	c.Equal(LayerWidget, layerFor(false), "a dialog inside a window is in the widget layer")
+	c.Equal(LayerWindow, layerFor(true))
 }
 
 func TestStatesOfCheckables(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	on := States(&accessibility.Node{Role: role.CheckBox, HasCheck: true, Checked: checkenum.On}, true)
+	on := States(&accessibility.Node{Role: role.CheckBox, HasCheck: true, Checked: checkenum.On}, true, false)
 	c.True(on.Has(StateCheckable))
 	c.True(on.Has(StateChecked))
 	c.False(on.Has(StateIndeterminate))
-	mixed := States(&accessibility.Node{Role: role.CheckBox, HasCheck: true, Checked: checkenum.Mixed}, true)
+	mixed := States(&accessibility.Node{Role: role.CheckBox, HasCheck: true, Checked: checkenum.Mixed}, true, false)
 	c.True(mixed.Has(StateIndeterminate))
 	c.False(mixed.Has(StateChecked))
-	off := States(&accessibility.Node{Role: role.CheckBox, HasCheck: true, Checked: checkenum.Off}, true)
+	off := States(&accessibility.Node{Role: role.CheckBox, HasCheck: true, Checked: checkenum.Off}, true, false)
 	c.True(off.Has(StateCheckable))
 	c.False(off.Has(StateChecked))
 	c.False(off.Has(StateIndeterminate))
-	pressed := States(&accessibility.Node{Role: role.ToggleButton, Pressed: true}, true)
+	pressed := States(&accessibility.Node{Role: role.ToggleButton, Pressed: true}, true, false)
 	c.True(pressed.Has(StateCheckable))
 	c.True(pressed.Has(StateChecked))
 	c.True(pressed.Has(StatePressed))
-	up := States(&accessibility.Node{Role: role.ToggleButton}, true)
+	up := States(&accessibility.Node{Role: role.ToggleButton}, true, false)
 	c.True(up.Has(StateCheckable))
 	c.False(up.Has(StateChecked))
 	c.False(up.Has(StatePressed))
@@ -304,26 +320,27 @@ func TestStatesOfCheckables(t *testing.T) {
 func TestStatesOfTextControls(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	field := States(&accessibility.Node{Role: role.TextField, Text: &accessibility.TextInfo{}}, true)
+	field := States(&accessibility.Node{Role: role.TextField, Text: &accessibility.TextInfo{}}, true, false)
 	c.True(field.Has(StateSingleLine))
 	c.True(field.Has(StateSelectableText))
 	c.True(field.Has(StateEditable))
 	c.False(field.Has(StateMultiLine))
-	locked := States(&accessibility.Node{Role: role.TextField, ReadOnly: true, Text: &accessibility.TextInfo{}}, true)
+	locked := States(&accessibility.Node{Role: role.TextField, ReadOnly: true, Text: &accessibility.TextInfo{}}, true,
+		false)
 	c.False(locked.Has(StateEditable))
 	c.True(locked.Has(StateReadOnly))
-	area := States(&accessibility.Node{Role: role.TextArea, Text: &accessibility.TextInfo{}}, true)
+	area := States(&accessibility.Node{Role: role.TextArea, Text: &accessibility.TextInfo{}}, true, false)
 	c.True(area.Has(StateMultiLine))
 	c.True(area.Has(StateEditable))
 	c.False(area.Has(StateSingleLine))
-	document := States(&accessibility.Node{Role: role.Document, Text: &accessibility.TextInfo{}}, true)
+	document := States(&accessibility.Node{Role: role.Document, Text: &accessibility.TextInfo{}}, true, false)
 	c.True(document.Has(StateMultiLine))
 	c.True(document.Has(StateSelectableText))
 	c.False(document.Has(StateEditable), "a document is never editable")
-	combo := States(&accessibility.Node{Role: role.ComboBox, Text: &accessibility.TextInfo{}}, true)
+	combo := States(&accessibility.Node{Role: role.ComboBox, Text: &accessibility.TextInfo{}}, true, false)
 	c.True(combo.Has(StateHasPopup))
 	c.True(combo.Has(StateEditable))
-	c.True(States(&accessibility.Node{Role: role.PopupButton}, true).Has(StateHasPopup))
+	c.True(States(&accessibility.Node{Role: role.PopupButton}, true, false).Has(StateHasPopup))
 }
 
 // TestStatesOfTextControlsWithNoText covers the state set of a text control whose content this process will not hand
@@ -336,7 +353,7 @@ func TestStatesOfTextControlsWithNoText(t *testing.T) {
 	password := &accessibility.Node{Role: role.TextField, Protected: true}
 	c.Equal(RolePasswordText, MapRole(password))
 	c.False(slices.Contains(Interfaces(password), InterfaceText), "a protected field hands over no text")
-	set := States(password, true)
+	set := States(password, true, false)
 	for _, one := range []struct {
 		name  string
 		state StateBit
@@ -348,7 +365,7 @@ func TestStatesOfTextControlsWithNoText(t *testing.T) {
 		c.False(set.Has(one.state), "a node with no text interface must not claim %s", one.name)
 	}
 	c.True(set.Has(StateVisible), "everything else about it is still reported")
-	spin := States(&accessibility.Node{Role: role.SpinButton, Protected: true}, true)
+	spin := States(&accessibility.Node{Role: role.SpinButton, Protected: true}, true, false)
 	c.False(spin.Has(StateSelectableText))
 	c.False(spin.Has(StateEditable))
 }
@@ -356,26 +373,26 @@ func TestStatesOfTextControlsWithNoText(t *testing.T) {
 func TestStatesOfCollections(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	list := States(&accessibility.Node{Role: role.List, Multiselectable: true}, true)
+	list := States(&accessibility.Node{Role: role.List, Multiselectable: true}, true, false)
 	c.True(list.Has(StateMultiselectable))
-	item := States(&accessibility.Node{Role: role.ListItem, Selectable: true, Selected: true}, true)
+	item := States(&accessibility.Node{Role: role.ListItem, Selectable: true, Selected: true}, true, false)
 	c.True(item.Has(StateSelectable))
 	c.True(item.Has(StateSelected))
-	row := States(&accessibility.Node{Role: role.Row, Expandable: true}, true)
+	row := States(&accessibility.Node{Role: role.Row, Expandable: true}, true, false)
 	c.True(row.Has(StateExpandable))
 	c.True(row.Has(StateCollapsed))
 	c.False(row.Has(StateExpanded))
-	open := States(&accessibility.Node{Role: role.Row, Expandable: true, Expanded: true}, true)
+	open := States(&accessibility.Node{Role: role.Row, Expandable: true, Expanded: true}, true, false)
 	c.True(open.Has(StateExpanded))
 	c.False(open.Has(StateCollapsed))
-	small := States(&accessibility.Node{Role: role.Table, RowCount: manageDescendantsRowThreshold}, true)
+	small := States(&accessibility.Node{Role: role.Table, RowCount: manageDescendantsRowThreshold}, true, false)
 	c.False(small.Has(StateManagesDescendants), "a table this size is walked child by child")
-	big := States(&accessibility.Node{Role: role.Table, RowCount: manageDescendantsRowThreshold + 1}, true)
+	big := States(&accessibility.Node{Role: role.Table, RowCount: manageDescendantsRowThreshold + 1}, true, false)
 	c.True(big.Has(StateManagesDescendants))
 	c.True(States(&accessibility.Node{
 		Role:     role.Tree,
 		RowCount: manageDescendantsRowThreshold + 1,
-	}, true).Has(StateManagesDescendants))
+	}, true, false).Has(StateManagesDescendants))
 }
 
 func TestStatesOfOrientedControls(t *testing.T) {
@@ -384,16 +401,16 @@ func TestStatesOfOrientedControls(t *testing.T) {
 	horizontal := States(&accessibility.Node{
 		Role:        role.Slider,
 		Orientation: accessibility.OrientationHorizontal,
-	}, true)
+	}, true, false)
 	c.True(horizontal.Has(StateHorizontal))
 	c.False(horizontal.Has(StateVertical))
 	vertical := States(&accessibility.Node{
 		Role:        role.ScrollBar,
 		Orientation: accessibility.OrientationVertical,
-	}, true)
+	}, true, false)
 	c.True(vertical.Has(StateVertical))
 	c.False(vertical.Has(StateHorizontal))
-	neither := States(&accessibility.Node{Role: role.Slider}, true)
+	neither := States(&accessibility.Node{Role: role.Slider}, true, false)
 	c.False(neither.Has(StateHorizontal))
 	c.False(neither.Has(StateVertical))
 }
@@ -457,9 +474,8 @@ func TestAttributesOfARowAndItsCells(t *testing.T) {
 func TestLayerFor(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	c.Equal(LayerWindow, layerFor(&accessibility.Node{Role: role.Window}))
-	c.Equal(LayerWindow, layerFor(&accessibility.Node{Role: role.Dialog}))
-	c.Equal(LayerWidget, layerFor(&accessibility.Node{Role: role.Button}))
+	c.Equal(LayerWindow, layerFor(true))
+	c.Equal(LayerWidget, layerFor(false))
 }
 
 func TestNodeActionOrder(t *testing.T) {

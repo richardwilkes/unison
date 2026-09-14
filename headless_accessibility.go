@@ -23,11 +23,21 @@ import (
 // technology running does, so a test that never asks for it pays nothing and can assert as much. EnableAccessibility
 // and AccessibilityTree are the two ways of asking.
 
+// headlessMaxAXEvents bounds how many published events one window holds for a test that has not read them. A real
+// adapter turns each batch into platform notifications as it arrives and keeps nothing, so this backlog exists only
+// here; a test that enables accessibility support and then runs a long interaction without reading the events must not
+// be able to grow it for the life of the session. The newest are the ones kept, since they describe what the test is
+// about to assert on.
+const headlessMaxAXEvents = 4096
+
 // accessibilityPublish adopts the tree as what this window currently looks like to an assistive technology and records
 // the events describing how it got there.
 func (hw *headlessWindow) accessibilityPublish(tree *accessibility.Tree, events []accessibility.Event) {
 	hw.axTree = tree
 	hw.axEvents = append(hw.axEvents, events...)
+	if extra := len(hw.axEvents) - headlessMaxAXEvents; extra > 0 {
+		hw.axEvents = append(hw.axEvents[:0], hw.axEvents[extra:]...)
+	}
 }
 
 // accessibilityGeometryChanged does nothing. The platforms that need it recompute the screen coordinates they hand out
@@ -80,6 +90,9 @@ func (s *HeadlessScreen) AccessibilityTree(w *Window) *accessibility.Tree {
 // so a test asserts on what happened between two points rather than on everything that ever has. Enable accessibility
 // support first, with EnableAccessibility or AccessibilityTree; a window nothing has ever been published for has no
 // events.
+//
+// Only the most recent headlessMaxAXEvents are kept, so a test that runs a long interaction before asking may find the
+// beginning of it gone. Ask between the steps that matter rather than once at the end.
 func (s *HeadlessScreen) AccessibilityEvents(w *Window) []accessibility.Event {
 	var events []accessibility.Event
 	s.Do(func() {
@@ -111,10 +124,15 @@ func (s *HeadlessScreen) PerformAccessibilityAction(req accessibility.ActionRequ
 			if w.ax == nil {
 				continue
 			}
-			if _, ok := w.ax.targets[req.Node]; ok {
-				handled = w.performAccessibilityAction(req)
+			if _, ok := w.ax.targets[req.Node]; !ok {
+				continue
+			}
+			if handled = w.performAccessibilityAction(req); handled {
 				return
 			}
+			// The window that last described the node refused to act on it, which is what a window says about a panel
+			// that has since been reparented into another one and that it has not been described without since. The
+			// search goes on rather than dropping the request on the floor.
 		}
 	})
 	return handled
@@ -132,6 +150,14 @@ func (s *HeadlessScreen) AccessibilityNodeFor(p Paneler) *accessibility.Node {
 		}
 		panel := p.AsPanel()
 		if panel == nil {
+			return
+		}
+		// The id is this panel's only when the panel is the one it was handed out to. An id that arrived by having
+		// another panel's AccessibilityInfo assigned onto this one describes that other panel, and answering with the
+		// node for it would be a quiet lie about the panel that was asked about. The builder replaces such an id the
+		// next time the panel is described, but a panel that is never described — one that is hidden, or hides itself
+		// with role.None — keeps it. See axIDFor.
+		if panel.Accessibility.id == 0 || panel.Accessibility.owner != panel {
 			return
 		}
 		if w := panel.Window(); w != nil && w.ax != nil {

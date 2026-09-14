@@ -316,3 +316,209 @@ func TestTableAccessibilityLongTableKeepsTheSelectionInSight(t *testing.T) {
 		"a row that is neither visible nor selected is not described at all")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// axIndexOfChild returns where a node sits among a parent's children, or -1 if it is not one of them.
+func axIndexOfChild(parent, child *accessibility.Node) int {
+	if parent == nil || child == nil {
+		return -1
+	}
+	for i, id := range parent.Children {
+		if id == child.ID {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestTableAccessibilityOutOfSequenceRowsBringTheirAncestors verifies that a row described although the row before it
+// was not arrives with the rows it hangs beneath. An assistive technology reads the nesting of a table from the levels
+// of the rows and the order they come in, so a selected row that turned up far below everything else described would
+// otherwise be read as a child of whatever container happened to precede it. Such a row is described by name alone,
+// since nobody can see it: building its cells would mean asking the model for a panel per column for every row of a
+// selection that may run to hundreds.
+func TestTableAccessibilityOutOfSequenceRowsBringTheirAncestors(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			first := newTableTestRow("first")
+			firstChildren := make([]*tableTestRow, 60)
+			for i := range firstChildren {
+				firstChildren[i] = newTableTestRow("a" + strconv.Itoa(i))
+			}
+			first.SetChildren(firstChildren)
+			first.SetOpen(true)
+			second := newTableTestRow("second")
+			second.SetChildren([]*tableTestRow{
+				newTableTestRow("b0"),
+				newTableTestRow("b1"),
+				newTableTestRow("b2"),
+			})
+			second.SetOpen(true)
+			table = axNewTable(first, second)
+			// The third child of the second container, far below anything that can be seen and in a different part of
+			// the model from the rows that can.
+			table.SelectByIndex(64)
+			wnd = newHeadlessWindow(t, "ancestors", geom.NewRect(10, 10, 400, 400),
+				axColumn(axScroller(table, geom.NewSize(300, 100))))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(table)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	rows := axTableRows(tree, node)
+	selected := rows["b2"]
+	c.True(selected != nil, "the selected row is described however far out of sight it is")
+	if selected == nil {
+		return
+	}
+	c.True(selected.Selected)
+	c.True(selected.Offscreen)
+	c.Equal(2, selected.Level, "it is a child of the container it belongs to")
+	c.Equal(0, len(selected.Children), "a row nobody can see is described by name alone, without its cells")
+
+	container := rows["second"]
+	c.True(container != nil, "the container the selected row hangs beneath is described along with it")
+	if container == nil {
+		return
+	}
+	c.Equal(1, container.Level)
+	c.True(axIndexOfChild(node, container) < axIndexOfChild(node, selected),
+		"a container has to come before the rows it discloses")
+	c.True(rows["b0"] == nil, "a row that is neither visible nor selected nor an ancestor is not described")
+
+	// A row that can be seen is described in full, cells and all.
+	visible := rows["first"]
+	c.True(visible != nil)
+	if visible != nil {
+		c.True(len(visible.Children) > 0, "a visible row still holds its disclosure triangle and cells")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityCellReachesContentUnderADisabledWrapper verifies that a cell holding a disabled panel with an
+// enabled widget inside it offers what that widget can do and then does it. Being enabled is a panel's own property
+// rather than something it passes down, so a click lands on the widget just as it would if nothing around it were
+// disabled, and a request from an assistive technology must reach it too rather than being advertised and then refused.
+func TestTableAccessibilityCellReachesContentUnderADisabledWrapper(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	var box *unison.CheckBox
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			box = unison.NewCheckBox()
+			box.ClickAnimationTime = 0
+			box.SetTitle("Done")
+			row := newTableTestRow("r0")
+			row.cellFactory = func(_, col int) unison.Paneler {
+				if col != 0 {
+					return unison.NewPanel()
+				}
+				wrapper := unison.NewPanel()
+				wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
+				wrapper.SetEnabled(false)
+				box.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Middle})
+				wrapper.AddChild(box)
+				return wrapper
+			}
+			table = axNewTable(row)
+			wnd = newHeadlessWindow(t, "disabled wrapper", geom.NewRect(10, 10, 500, 200), table)
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(table)
+	c.True(node != nil)
+	rows := axChildNodes(tree, node)
+	c.Equal(1, len(rows))
+	if len(rows) != 1 {
+		return
+	}
+	cells := axChildNodes(tree, rows[0])
+	c.True(len(cells) > 0)
+	if len(cells) == 0 {
+		return
+	}
+	c.True(cells[0].Actions.Has(accessibility.Press), "the cell offers the press its content can take")
+	c.True(cells[0].Actions.Has(accessibility.Toggle))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   cells[0].ID,
+		Action: accessibility.Press,
+	}), "what the cell offered must be something it will actually do")
+	var state checkenum.Enum
+	screen.Do(func() { state = box.State })
+	c.Equal(checkenum.On, state, "the press should have reached the check box inside the disabled wrapper")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityCellPressLandsWhereAClickWould verifies that a press a cell passes on reaches the widget a
+// click would have landed on. A panel is drawn before its children, so the widgets within a cell sit on top of the
+// panel holding them; a cell panel that handles both halves of a click itself must therefore be offered the press after
+// what it holds rather than before it, or a click on the button in a cell would do one thing and a press of that same
+// cell another.
+func TestTableAccessibilityCellPressLandsWhereAClickWould(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	wrapperPresses := 0
+	buttonClicks := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			row := newTableTestRow("r0")
+			row.cellFactory = func(_, col int) unison.Paneler {
+				wrapper := unison.NewPanel()
+				wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
+				wrapper.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+				wrapper.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+					wrapperPresses++
+					return true
+				}
+				if col != 0 {
+					return wrapper
+				}
+				button := unison.NewButton()
+				button.ClickAnimationTime = 0
+				button.SetTitle("Go")
+				button.ClickCallback = func() { buttonClicks++ }
+				button.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Middle})
+				wrapper.AddChild(button)
+				return wrapper
+			}
+			table = axNewTable(row)
+			wnd = newHeadlessWindow(t, "cell order", geom.NewRect(10, 10, 500, 200), table)
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(table)
+	c.True(node != nil)
+	rows := axChildNodes(tree, node)
+	c.Equal(1, len(rows))
+	if len(rows) != 1 {
+		return
+	}
+	cells := axChildNodes(tree, rows[0])
+	c.True(len(cells) > 0)
+	if len(cells) == 0 {
+		return
+	}
+	c.True(cells[0].Actions.Has(accessibility.Press))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   cells[0].ID,
+		Action: accessibility.Press,
+	}))
+	var clicks, presses int
+	screen.Do(func() {
+		clicks = buttonClicks
+		presses = wrapperPresses
+	})
+	c.Equal(1, clicks, "the press should have reached the button drawn on top of the cell's own panel")
+	c.Equal(0, presses, "the panel beneath it must not have taken the press first")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

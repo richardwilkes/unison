@@ -503,21 +503,6 @@ func TestUIARaiseAnnouncement(t *testing.T) {
 	c.Equal(0, r.count())
 }
 
-// TestUIARaiseAnnouncementFromEvent verifies that an announcement the snapshot carries as an event reaches the same
-// call. The root package can either ask the adapter directly or let one ride along with a publish, and a client must
-// not be able to tell the difference.
-func TestUIARaiseAnnouncementFromEvent(t *testing.T) {
-	c := check.New(t)
-	w, r := newRecordingUIAWindow(t, eventTree(), true)
-	cur := eventTree()
-	cur.Generation = 2
-	w.Publish(cur, []accessibility.Event{{Kind: accessibility.Announcement, New: "Copied"}})
-	c.Equal(1, r.count())
-	c.Equal(UIARaiseNotify, r.at(0).Kind)
-	c.Equal(w.RootUnknown(), r.at(0).Provider)
-	c.Equal("Copied", r.at(0).Text)
-}
-
 // TestUIARaiseWindowOpened verifies that a dialog announces itself as it appears, which is how a screen reader knows to
 // read the whole thing out, and that an ordinary window does not.
 func TestUIARaiseWindowOpened(t *testing.T) {
@@ -604,12 +589,16 @@ func TestUIADestroyDescribesTheWindowOneLastTime(t *testing.T) {
 // TestUIARaisedPropertyVariantTypes verifies the type each property a change can be reported for is carried in. A
 // client reads a VARIANT by its type tag, so a property reported as the wrong type is a property it cannot read at all,
 // and every one of these is a type UI Automation documents for that property rather than a choice.
+//
+// Every property UIADecideRaises can ask for belongs here, the ones this method answers itself rather than leaving to
+// propertyValue included — the control patterns' own properties, modality among them — since nothing else covers those
+// at all.
 func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 	c := check.New(t)
 	tree := newTestTree(1, 2,
 		&accessibility.Node{
 			ID: 1, Role: role.Window, Name: "Window", Focused: true, Bounds: geom.NewRect(0, 0, 200, 100),
-			Children: []accessibility.NodeID{2, 3, 4, 5, 6},
+			Children: []accessibility.NodeID{2, 3, 4, 5, 6, 7},
 		},
 		&accessibility.Node{
 			ID: 2, Role: role.TextField, Name: "Field", Description: "Type here", Focusable: true, Focused: true,
@@ -624,8 +613,9 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 		},
 		&accessibility.Node{ID: 5, Role: role.ListItem, Selectable: true, Selected: true, Expandable: true},
 		&accessibility.Node{ID: 6, Role: role.ColumnHeader, Sort: accessibility.SortAscending},
+		&accessibility.Node{ID: 7, Role: role.List, Multiselectable: true},
 	)
-	w := newTestUIAWindow(tree)
+	w := newTestUIAWindow(t, tree)
 	for i, one := range []struct {
 		check    func(value *VARIANT)
 		node     accessibility.NodeID
@@ -665,8 +655,20 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 		{node: 5, property: UIA_SelectionItemIsSelectedPropertyId, expected: VT_BOOL, check: func(value *VARIANT) {
 			c.True(uiaVariantBool(value))
 		}},
+		{node: 1, property: UIA_WindowIsModalPropertyId, expected: VT_BOOL, check: func(value *VARIANT) {
+			c.False(uiaVariantBool(value))
+		}},
+		{node: 2, property: UIA_IsPasswordPropertyId, expected: VT_BOOL, check: func(value *VARIANT) {
+			c.False(uiaVariantBool(value))
+		}},
+		{node: 7, property: UIA_SelectionCanSelectMultiplePropertyId, expected: VT_BOOL, check: func(value *VARIANT) {
+			c.True(uiaVariantBool(value))
+		}},
 		{node: 3, property: UIA_ToggleToggleStatePropertyId, expected: VT_I4, check: func(value *VARIANT) {
 			c.Equal(int32(ToggleState_On), uiaVariantInt32(value))
+		}},
+		{node: 2, property: UIA_ControlTypePropertyId, expected: VT_I4, check: func(value *VARIANT) {
+			c.Equal(int32(UIA_EditControlTypeId), uiaVariantInt32(value))
 		}},
 		{
 			node: 5, property: UIA_ExpandCollapseExpandCollapseStatePropertyId, expected: VT_I4,

@@ -237,6 +237,44 @@ func (b *fakeBus) call(path ObjectPath, iface, member string, sig Signature, arg
 	return reply
 }
 
+// writeRaw sends bytes to the connection under test exactly as they are, for the messages that [Message.Encode] would
+// not produce.
+func (b *fakeBus) writeRaw(data []byte) {
+	b.t.Helper()
+	if _, err := b.side.Write(data); err != nil {
+		b.t.Fatalf("the fake bus could not write %d bytes: %v", len(data), err)
+	}
+}
+
+// callNoReply makes a method call on an object that the connection under test exports, telling it that no reply is
+// expected, and returns a function that reports whether it was answered anyway.
+func (b *fakeBus) callNoReply(path ObjectPath, iface, member string, sig Signature, args ...any) func() bool {
+	b.t.Helper()
+	msg := NewMethodCall("", path, iface, member)
+	msg.Sender = testDestination
+	msg.Flags = FlagNoReplyExpected
+	if len(args) != 0 {
+		b.c.NoError(msg.SetBodyWithSignature(sig, args...))
+	}
+	ch := make(chan *Message, 1)
+	b.mu.Lock()
+	b.serial++
+	msg.Serial = b.serial
+	b.replies[msg.Serial] = ch
+	b.mu.Unlock()
+	data, err := msg.Encode()
+	b.c.NoError(err)
+	b.writeRaw(data)
+	return func() bool {
+		select {
+		case <-ch:
+			return true
+		default:
+			return false
+		}
+	}
+}
+
 // nextCall returns the next method call the connection under test made to something other than the bus.
 func (b *fakeBus) nextCall() *Message {
 	b.t.Helper()
@@ -761,6 +799,62 @@ func TestIncomingQueueIsBoundedByBytes(t *testing.T) {
 	// maxQueued messages arrive, so only the bound on their total size can stop the backlog from growing.
 	for range 2 + maxQueuedBytes/len(payload) {
 		b.emit(testPath, eventInterface, "Flood", "ay", payload)
+	}
+	c.True(b.client.Dropped() > 0, "expected some messages to have been dropped")
+}
+
+func TestConnEndsWhenAMessageCannotBeDecoded(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	lost := make(chan error, 1)
+	b.client.OnDisconnect(func(err error) { lost <- err })
+	wait := callAsync(t, b.client, greet(c, "hello"))
+	b.nextCall() // In flight, and never answered
+
+	// Anything else on a shared bus may write nonsense, and there is nothing to be done with a stream that no longer
+	// makes sense but end it: the framing is lost, so there is no way to find where the next message would start.
+	b.writeRaw([]byte("Xnot a message at all, whatever else it may be"))
+	err, ok := awaitOne(lost)
+	if !ok {
+		t.Fatal("timed out waiting for the disconnect notification")
+	}
+	c.HasError(err)
+	c.Contains(err.Error(), "unable to read a message")
+	c.Contains(err.Error(), "not a valid endianness flag")
+	// The call that was in flight fails rather than waiting for the five seconds it is otherwise given.
+	reply, callErr := wait()
+	c.Nil(reply)
+	c.HasError(callErr)
+	// Everything afterwards reports the failure too.
+	c.HasError(b.client.Send(greet(c, "hello")))
+}
+
+func TestIncomingQueueIsBoundedByWhatAMessageKeepsAlive(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	defer close(release)
+	b.client.Subscribe(SignalFilter{Member: paddedMember}, func(_ *Message) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-release
+	})
+	const padding = 1 << 20
+	b.writeRaw(paddedSignal(t, 1, padding))
+	if _, ok := awaitOne(entered); !ok {
+		t.Fatal("timed out waiting for the handler to be called")
+	}
+	// The dispatcher is now wedged in the handler, so everything that follows piles up behind it. Each of these
+	// messages decodes to a few dozen bytes of parts and a body of six, yet holds a megabyte: charging the queue only
+	// what the parts add up to let far more than the byte bound in, which is the whole of what keeps a peer that
+	// floods while a handler is blocked costing messages rather than memory.
+	for i := range 2 + maxQueuedBytes/padding {
+		b.writeRaw(paddedSignal(t, uint32(2+i), padding))
 	}
 	c.True(b.client.Dropped() > 0, "expected some messages to have been dropped")
 }

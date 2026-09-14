@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
 )
 
@@ -476,4 +477,363 @@ func TestAccessibilityAnnouncements(t *testing.T) {
 		c.Equal("saved", announcements[0])
 	}
 	c.Equal(0, len(screen.Announcements()), "reading the announcements should have emptied the list")
+}
+
+// axHasEvent reports whether the events hold one of the given kind naming the given node.
+func axHasEvent(events []accessibility.Event, kind accessibility.EventKind, node accessibility.NodeID) bool {
+	for _, event := range events {
+		if event.Kind == kind && event.Node == node {
+			return true
+		}
+	}
+	return false
+}
+
+// axFocusablePanel returns a plain panel that can take the keyboard focus and says what it is. It draws nothing, so it
+// looks exactly the same whether or not it holds the focus, which is what makes it the right thing to move the focus
+// between here: a widget that repaints its focus border — a Field does — would mark the window for redraw on its own
+// and hide whether the focus move itself did.
+func axFocusablePanel(name string) *unison.Panel {
+	panel := unison.NewPanel()
+	panel.SetFocusable(true)
+	panel.Accessibility.Name = name
+	panel.Accessibility.Role = role.Button
+	return panel
+}
+
+// TestAccessibilityFocusMoveIsPublishedWithoutARedraw verifies that moving the keyboard focus is always reported. A
+// description is published after a window has been drawn, and nothing obliges a panel to draw itself any differently
+// for holding the focus, so a move between two panels that do not repaint for it would otherwise sit unreported until
+// something unrelated happened to redraw the window — which may be never.
+func TestAccessibilityFocusMoveIsPublishedWithoutARedraw(t *testing.T) {
+	c := check.New(t)
+	var first, second *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			first = axFocusablePanel("First")
+			second = axFocusablePanel("Second")
+			wnd = newHeadlessWindow(t, "focus moves", geom.NewRect(20, 20, 240, 120), axColumn(first, second))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	firstNode := screen.AccessibilityNodeFor(first)
+	secondNode := screen.AccessibilityNodeFor(second)
+	c.True(firstNode != nil && secondNode != nil)
+	if firstNode == nil || secondNode == nil {
+		return
+	}
+	screen.Do(func() { wnd.SetFocus(first) })
+	screen.AccessibilityEvents(wnd)
+
+	// Nothing here asks for a tree: what is being checked is that the move published one by itself.
+	screen.Do(func() { wnd.SetFocus(second) })
+	events := screen.AccessibilityEvents(wnd)
+	c.True(axHasEvent(events, accessibility.FocusChanged, secondNode.ID),
+		"moving the focus between two panels that do not repaint should have been reported: %v", events)
+
+	screen.Do(func() { wnd.SetFocus(nil) })
+	events = screen.AccessibilityEvents(wnd)
+	c.True(axHasEvent(events, accessibility.FocusChanged, 0), "the focus going nowhere should have been reported: %v",
+		events)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityWindowActivationIsPublishedWithoutARedraw verifies the same thing for the window itself. A window
+// whose content holds nothing that can take the focus repaints nothing when it becomes, or stops being, the active one,
+// and an assistive technology has to be told which window the person is in.
+func TestAccessibilityWindowActivationIsPublishedWithoutARedraw(t *testing.T) {
+	c := check.New(t)
+	var first, second *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			first = newHeadlessWindow(t, "first", geom.NewRect(10, 10, 200, 100), unison.NewPanel())
+			second = newHeadlessWindow(t, "second", geom.NewRect(260, 10, 200, 100), unison.NewPanel())
+		}))
+	c.NotNil(first)
+	c.NotNil(second)
+
+	screen.Do(func() { first.ToFront() })
+	firstTree := screen.AccessibilityTree(first)
+	secondTree := screen.AccessibilityTree(second)
+	c.True(firstTree != nil && secondTree != nil)
+	if firstTree == nil || secondTree == nil {
+		return
+	}
+	c.True(firstTree.Node(firstTree.Root).Focused, "the window that was brought to the front is the active one")
+	screen.AccessibilityEvents(first)
+	screen.AccessibilityEvents(second)
+
+	screen.Do(func() { second.ToFront() })
+	firstEvents := screen.AccessibilityEvents(first)
+	secondEvents := screen.AccessibilityEvents(second)
+	c.True(axHasEvent(firstEvents, accessibility.WindowDeactivated, firstTree.Root),
+		"the window that lost the focus should have said so: %v", firstEvents)
+	c.True(axHasEvent(secondEvents, accessibility.WindowActivated, secondTree.Root),
+		"the window that took the focus should have said so: %v", secondEvents)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityHiddenWindowLeavesTheDescription verifies that a window taken off the screen is withdrawn from what
+// an assistive technology holds rather than left standing as the last thing said about it. AT-SPI has only what the
+// application publishes, so a window hidden after it was described would otherwise go on being listed as showing.
+func TestAccessibilityHiddenWindowLeavesTheDescription(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var panel *unison.Panel
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			panel = axFocusablePanel("Content")
+			wnd = newHeadlessWindow(t, "hidden", geom.NewRect(20, 20, 240, 120), axColumn(panel))
+		}))
+	c.NotNil(wnd)
+
+	c.True(screen.AccessibilityTree(wnd) != nil)
+	c.True(screen.AccessibilityNodeFor(panel) != nil)
+
+	// Asked for through the panel rather than through AccessibilityTree, which would describe the window again and put
+	// back the very thing being checked for.
+	screen.Do(func() { wnd.Hide() })
+	c.True(screen.AccessibilityNodeFor(panel) == nil, "a window that has been hidden should no longer be described")
+
+	screen.Do(func() { wnd.Show() })
+	c.True(screen.AccessibilityNodeFor(panel) != nil, "showing the window again should describe it afresh")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityDisabledFocusFallsBack verifies what is published when the panel holding the keyboard focus is
+// disabled. The window does not move the focus — SetEnabled does not, and a key press is merely not delivered — so the
+// panel really does hold it, but a node that says it is focused while saying it cannot take the focus is a pair no
+// assistive technology can make sense of. The focus is reported on the nearest thing above it that can be used instead.
+func TestAccessibilityDisabledFocusFallsBack(t *testing.T) {
+	c := check.New(t)
+	var control, group *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			control = axFocusablePanel("Control")
+			group = axColumn(control)
+			group.Accessibility.Name = "Group"
+			wnd = newHeadlessWindow(t, "disabled focus", geom.NewRect(20, 20, 240, 120), group)
+		}))
+	c.NotNil(wnd)
+
+	screen.Do(func() { wnd.SetFocus(control) })
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	controlNode := screen.AccessibilityNodeFor(control)
+	c.True(controlNode != nil)
+	if tree == nil || controlNode == nil {
+		return
+	}
+	c.Equal(controlNode.ID, tree.Focus, "the panel holding the focus is where it is reported while it can be used")
+
+	screen.Do(func() { control.SetEnabled(false) })
+	tree = screen.AccessibilityTree(wnd)
+	controlNode = screen.AccessibilityNodeFor(control)
+	groupNode := screen.AccessibilityNodeFor(group)
+	c.True(controlNode != nil && groupNode != nil)
+	if tree == nil || controlNode == nil || groupNode == nil {
+		return
+	}
+	var stillFocused bool
+	screen.Do(func() { stillFocused = control.Is(wnd.CurrentFocus()) })
+	c.True(stillFocused, "the window keeps the focus where it was, which is what makes this worth describing")
+	c.True(controlNode.Disabled)
+	c.False(controlNode.Focused, "a disabled node must not report that it holds the focus")
+	c.Equal(groupNode.ID, tree.Focus, "the focus falls back to the nearest ancestor that can be used")
+	c.True(groupNode.Focused)
+	c.False(groupNode.Focusable, "which is not to say a person could tab to it")
+	c.False(groupNode.Ignored, "and it must be a node an assistive technology is actually shown")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityUndescribedFocusFallsBack verifies the same fallback for a focus panel that is not in the tree at
+// all. A panel that hides itself with role.None still takes the focus and still receives keys, and a tree that says the
+// focus went nowhere tells an assistive technology the person is not anywhere.
+func TestAccessibilityUndescribedFocusFallsBack(t *testing.T) {
+	c := check.New(t)
+	var control, group *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			control = axFocusablePanel("Control")
+			control.Accessibility.Role = role.None
+			// Deliberately anonymous, so that the node the focus falls back to is one the tree would otherwise have
+			// told an assistive technology to look past.
+			group = axColumn(control)
+			wnd = newHeadlessWindow(t, "undescribed focus", geom.NewRect(20, 20, 240, 120), group)
+		}))
+	c.NotNil(wnd)
+
+	screen.Do(func() { wnd.SetFocus(control) })
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	groupNode := screen.AccessibilityNodeFor(group)
+	c.True(groupNode != nil)
+	if tree == nil || groupNode == nil {
+		return
+	}
+	c.True(screen.AccessibilityNodeFor(control) == nil, "the panel holding the focus is not described at all")
+	c.Equal(groupNode.ID, tree.Focus, "so the focus is reported on the nearest ancestor that is")
+	c.True(groupNode.Focused)
+	c.False(groupNode.Ignored, "and that ancestor must be a node an assistive technology is shown")
+	c.True(tree.Focus != tree.Root, "and never on the window, which reports whether the window is active")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityFocusableAnonymousPanelIsNotScaffolding verifies that a panel which can be focused or clicked is
+// reported however anonymous it is. A custom drawing widget that sets neither a role nor a name is exactly the element
+// an assistive technology has to be able to reach, and a node it is told to look past is one it is not shown at all —
+// which would leave the focus landing on something it does not have.
+func TestAccessibilityFocusableAnonymousPanelIsNotScaffolding(t *testing.T) {
+	c := check.New(t)
+	var canvas, clickable, plain *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			canvas = unison.NewPanel()
+			canvas.SetFocusable(true)
+			clickable = unison.NewPanel()
+			clickable.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+			clickable.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool { return true }
+			plain = unison.NewPanel()
+			wnd = newHeadlessWindow(t, "anonymous", geom.NewRect(20, 20, 240, 160),
+				axColumn(canvas, clickable, plain))
+		}))
+	c.NotNil(wnd)
+
+	screen.Do(func() { wnd.SetFocus(canvas) })
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	canvasNode := screen.AccessibilityNodeFor(canvas)
+	clickableNode := screen.AccessibilityNodeFor(clickable)
+	plainNode := screen.AccessibilityNodeFor(plain)
+	c.True(canvasNode != nil && clickableNode != nil && plainNode != nil)
+	if tree == nil || canvasNode == nil || clickableNode == nil || plainNode == nil {
+		return
+	}
+	c.False(canvasNode.Ignored, "a panel that can take the focus is part of what the window holds")
+	c.False(clickableNode.Ignored, "and so is one that can be pressed")
+	c.True(plainNode.Ignored, "while one that can do neither, and says nothing, is scaffolding")
+	c.Equal(canvasNode.ID, tree.Focus)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityCallbackKeepsWhatItSaidAboutIgnored verifies that a callback has the last word on whether a node is
+// skipped. Naming an otherwise anonymous group is one of the things callbacks are for, and the name is what the
+// scaffolding heuristic reads, so a callback that names a group and asks for it to be skipped anyway must not have its
+// choice reversed by the re-reading its own name provoked.
+func TestAccessibilityCallbackKeepsWhatItSaidAboutIgnored(t *testing.T) {
+	c := check.New(t)
+	var named, hidden, plain *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			named = unison.NewPanel()
+			named.Accessibility.Callback = func(n *accessibility.Node) { n.Name = "Toolbar" }
+			hidden = unison.NewPanel()
+			hidden.Accessibility.Callback = func(n *accessibility.Node) {
+				n.Name = "Spacer"
+				n.Ignored = true
+			}
+			plain = unison.NewPanel()
+			plain.Accessibility.Name = "Shown"
+			plain.Accessibility.Callback = func(n *accessibility.Node) { n.Ignored = true }
+			wnd = newHeadlessWindow(t, "callbacks", geom.NewRect(20, 20, 240, 160), axColumn(named, hidden, plain))
+		}))
+	c.NotNil(wnd)
+
+	c.True(screen.AccessibilityTree(wnd) != nil)
+	namedNode := screen.AccessibilityNodeFor(named)
+	hiddenNode := screen.AccessibilityNodeFor(hidden)
+	plainNode := screen.AccessibilityNodeFor(plain)
+	c.True(namedNode != nil && hiddenNode != nil && plainNode != nil)
+	if namedNode == nil || hiddenNode == nil || plainNode == nil {
+		return
+	}
+	c.Equal("Toolbar", namedNode.Name)
+	c.False(namedNode.Ignored, "a group the callback named is no longer anonymous, so it is no longer scaffolding")
+	c.Equal("Spacer", hiddenNode.Name)
+	c.True(hiddenNode.Ignored, "a callback that names a group and asks for it to be skipped must be obeyed")
+	c.True(plainNode.Ignored, "as must one that asks for a node nothing else would have skipped")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityPressHonorsADeclinedPress verifies that a panel which declines the press does not receive the
+// release. Window.mouseDown remembers which panel to deliver the release to only when the press was accepted, so a
+// panel that returns false — letting the press go to its parent — never sees the matching release from a real click.
+func TestAccessibilityPressHonorsADeclinedPress(t *testing.T) {
+	c := check.New(t)
+	var declines *unison.Panel
+	var downs, ups int
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			declines = unison.NewPanel()
+			declines.Accessibility.Name = "Declines"
+			declines.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
+				downs++
+				return false
+			}
+			declines.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+				ups++
+				return true
+			}
+			wnd = newHeadlessWindow(t, "declined press", geom.NewRect(20, 20, 240, 120), axColumn(declines))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(declines)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.True(node.Actions.Has(accessibility.Press), "a panel that handles both halves of a click offers the press")
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.Press,
+	}), "a press the panel declined must not be reported as carried out")
+	var pressed, released int
+	screen.Do(func() { pressed, released = downs, ups })
+	c.Equal(1, pressed)
+	c.Equal(0, released, "no real click would have delivered a release after a press that was declined")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityNodeForChecksOwnership verifies that the node a panel is asked about is the panel's own. An
+// identity that arrived by having another panel's AccessibilityInfo assigned onto this one describes that other panel,
+// and a panel that is never described — one that hides itself with role.None — keeps such an identity, since the
+// builder only replaces it while describing it.
+func TestAccessibilityNodeForChecksOwnership(t *testing.T) {
+	c := check.New(t)
+	var described, copied *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			described = axFocusablePanel("Described")
+			copied = unison.NewPanel()
+			wnd = newHeadlessWindow(t, "ownership", geom.NewRect(20, 20, 240, 120), axColumn(described, copied))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(described)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	screen.Do(func() {
+		// What an application might write meaning only to copy the name across, onto a panel that is then never
+		// described and so never has the identity taken back off it.
+		copied.Accessibility = described.Accessibility
+		copied.Accessibility.Role = role.None
+	})
+	screen.AccessibilityTree(wnd)
+	c.True(screen.AccessibilityNodeFor(copied) == nil,
+		"a panel must not be answered for with the node describing another one")
+	c.True(screen.AccessibilityNodeFor(described) != nil, "while the panel the identity belongs to keeps it")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

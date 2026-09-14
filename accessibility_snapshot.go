@@ -43,6 +43,12 @@ import (
 // tree must be given the current one rather than one from up to this long ago.
 const axPublishThrottle = 50 * time.Millisecond
 
+// axThrottleHeadless makes a headless session honor the publish throttle, which it otherwise bypasses. Nothing but the
+// internal tests sets it: the throttled path — the queued re-publish, and what becomes of it when the window or the
+// support behind it goes away while it is in flight — has nothing else that could drive it, since every test runs
+// headless. UI thread only.
+var axThrottleHeadless bool
+
 // windowAccessibility is a window's accessibility state. It is nil until the window is first described, and is dropped
 // again when accessibility support is deactivated or the window is destroyed, so nothing here exists for a window that
 // no assistive technology has ever asked about.
@@ -58,6 +64,14 @@ type windowAccessibility struct {
 	generation uint64
 	// publishQueued reports that a publish was throttled and a task has been scheduled to perform it.
 	publishQueued bool
+	// adapterFailed reports that the platform's assistive-technology adapter could not be created for this window, so
+	// that neither building one nor describing the window is attempted again: there is nothing to publish to, and the
+	// reason there is not — on macOS, the accessibility element class failing to register — is a property of the
+	// process rather than of this moment, so every later attempt would fail in the same way. A window being described
+	// runs through the publish path as often as every axPublishThrottle, which would turn one failure into a steady
+	// stream of them. The flag goes away with the rest of this state when the window is taken out of the description,
+	// so a fresh activation tries once more.
+	adapterFailed bool
 }
 
 // axTarget is what one node was built from: the panel that described it and, for a virtual child such as a table row,
@@ -186,6 +200,14 @@ func (s *axSnapshot) buildRoot() {
 	}
 	s.visit(root.tooltipPanel, node.ID, clip)
 	s.visit(root.contentPanel, node.ID, clip)
+	s.resolveFocus()
+}
+
+// resolveFocus decides which node, if any, the window reports the keyboard focus on. A node the focus panel was
+// described as has already claimed it during the walk; what is left to decide is the two cases where it did not — an
+// open menu, which takes the focus away from wherever it actually is, and a focus panel that is not in the tree or is
+// in it disabled, which has to fall back to something that is.
+func (s *axSnapshot) resolveFocus() {
 	if id := s.openMenuFocus(); id != 0 {
 		s.focus = id
 		if item := s.tree.Nodes[id]; item != nil {
@@ -197,6 +219,44 @@ func (s *axSnapshot) buildRoot() {
 			item.Focusable = true
 		}
 		s.clearDisplacedFocus(id)
+		return
+	}
+	if s.focus == 0 {
+		s.fallbackFocus()
+	}
+}
+
+// fallbackFocus reports the focus on the nearest ancestor of the focus panel that an assistive technology can be shown,
+// for a window whose focus panel could not claim it for itself.
+//
+// There are several ways that happens, and they amount to the same thing. The panel may not be in the tree at all: it
+// hides itself with role.None, it is inside a Heading or a Label, whose children are folded into the name and never
+// visited, or it was hidden while holding the focus. Or it may be in the tree but disabled, which is published without
+// the focus. Either way something in the window really does hold the keyboard focus, and a tree that says the focus is
+// nowhere makes an assistive technology stop following the window: it has been told the person is not anywhere.
+//
+// The root is not an answer. It reports whether the window is active, which is a different question, and naming it
+// would make the focus appear to jump out to the window itself. A disabled ancestor is not one either, for the reason
+// the disabled focus panel was refused. Focusable is not invented for the node that is chosen — a person cannot tab to
+// it, and an assistive technology that offered to move the focus there would be refused — but Ignored is cleared:
+// scaffolding is what a tree says about a node nothing needs to reach, and the node the focus is reported on is by
+// definition one an assistive technology must be able to reach.
+func (s *axSnapshot) fallbackFocus() {
+	if s.focusPanel == nil {
+		return
+	}
+	for p := s.focusPanel.Parent(); p != nil; p = p.Parent() {
+		if p.Accessibility.id == 0 || p.Accessibility.owner != p {
+			continue
+		}
+		node := s.tree.Nodes[p.Accessibility.id]
+		if node == nil || node.ID == s.tree.Root || node.Disabled {
+			continue
+		}
+		node.Focused = true
+		node.Ignored = false
+		s.focus = node.ID
+		return
 	}
 }
 
@@ -324,18 +384,18 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 			node.Description = tip
 		}
 	}
-	// Whether the node is scaffolding is decided here and then again once the callback has run, since a callback that
-	// gives an otherwise anonymous group the name it was missing — which is one of the things callbacks are for — would
-	// otherwise leave it marked for every assistive technology to skip. The callback has the last word either way: a
-	// value it set itself is not reconsidered, and neither is one the widget asked for.
+	// Whether the node is scaffolding is decided after the callback has run, since a callback that gives an otherwise
+	// anonymous group the name it was missing — which is one of the things callbacks are for — would otherwise leave it
+	// marked for every assistive technology to skip.
+	//
+	// Both the widget and the callback outrank the heuristic. The node reaches the callback carrying whatever the
+	// widget asked for, so a callback that changes the flag has said something the heuristic must not undo, while one
+	// that leaves it alone has said nothing about it at all. Setting it to the value the widget had already chosen is
+	// the one case the two cannot be told apart, and reading that as agreement rather than as an instruction costs
+	// nothing: the heuristic can only turn the flag on, and the widget had already turned it on.
 	widgetIgnored := node.Ignored
-	node.Ignored = widgetIgnored || axIsScaffolding(node)
 	if p.Accessibility.Callback != nil {
-		ignored := node.Ignored
 		SafeCall(func() { p.Accessibility.Callback(node) })
-		if node.Ignored == ignored {
-			node.Ignored = widgetIgnored || axIsScaffolding(node)
-		}
 	}
 	if node.Disabled {
 		// Every request that would act on a disabled node is refused, so advertising one would offer an assistive
@@ -343,6 +403,16 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		// worse than one that does not mention it. Applied after the widget and the callback have had their say, since
 		// either may be the only one that knows the node is disabled. See axDisabledActions.
 		node.Actions &= axDisabledActions
+		// The window does not move the keyboard focus when the panel holding it is disabled, so the panel really can
+		// be both. What is published is not: a node that says it holds the focus while saying it cannot take it is the
+		// pair an assistive technology cannot make sense of, and there is nothing a person could do with the control
+		// anyway. The focus falls back to the nearest ancestor that can be used; see axSnapshot.fallbackFocus.
+		node.Focused = false
+	}
+	// Decided after the two above, so that what the node is judged on is what it finally offers and says rather than
+	// what it offered before being disabled stripped it back.
+	if node.Ignored == widgetIgnored {
+		node.Ignored = widgetIgnored || axIsScaffolding(node)
 	}
 	if node.Focused && s.focus == 0 {
 		s.focus = node.ID
@@ -359,20 +429,39 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 // front-to-back order, since index 0 is drawn last and so sits on top.
 func (s *axSnapshot) visitChildren(p *Panel, parent accessibility.NodeID, clip geom.Rect) {
 	for i, child := range p.Children() {
-		if s.cell != nil {
-			s.cell.path = append(s.cell.path, i)
-		}
-		s.visit(child, parent, clip)
-		if s.cell != nil {
-			s.cell.path = s.cell.path[:len(s.cell.path)-1]
-		}
+		s.visitChild(child, i, parent, clip)
 	}
+}
+
+// visitChild describes one child, at the given index among its parent's children, as a child of parent.
+//
+// It is a function of its own so that the position within a table cell, which is part of how the nodes describing the
+// panels inside one are identified, can be given back with a defer. Describing a panel runs application code, and a
+// panic partway through is caught well outside this call, by the SafeCall around the ProvideAccessibility of whatever
+// is being described; without the defer everything described afterwards would be keyed by a position several levels too
+// deep.
+func (s *axSnapshot) visitChild(child *Panel, index int, parent accessibility.NodeID, clip geom.Rect) {
+	// Held rather than read back through s.cell, which the description of a nested cell replaces and restores.
+	if cell := s.cell; cell != nil {
+		cell.path = append(cell.path, index)
+		defer func() { cell.path = cell.path[:len(cell.path)-1] }()
+	}
+	s.visit(child, parent, clip)
 }
 
 // axIsScaffolding reports whether a node is a grouping panel with nothing to say about itself, which makes it part of
 // how the window is put together rather than part of what it holds. Such a node stays in the tree so that hit testing
 // and coordinate clipping still work, but an assistive technology is told to look past it.
+//
+// Anything that can be focused or acted on is part of what the window holds however anonymous it is. A custom canvas
+// that takes the keyboard focus and responds to a click, and that sets neither a role nor a name, is precisely an
+// element an assistive technology has to be able to reach — and a node it is told to look past is one it is not shown
+// at all, which would leave the focus landing on something it does not have. Scrolling into view does not count, since
+// every node offers that.
 func axIsScaffolding(node *accessibility.Node) bool {
+	if node.Focusable || node.Actions.Without(accessibility.ScrollIntoView) != 0 {
+		return false
+	}
 	return node.Role == role.Group && node.Name == "" && node.Description == ""
 }
 
@@ -523,7 +612,7 @@ func (w *Window) publishAccessibility() {
 	if w.ax == nil {
 		w.ax = &windowAccessibility{}
 	}
-	if activeHeadless() == nil {
+	if activeHeadless() == nil || axThrottleHeadless {
 		if elapsed := time.Since(w.ax.lastPublish); elapsed < axPublishThrottle {
 			if !w.ax.publishQueued {
 				w.ax.publishQueued = true
@@ -548,6 +637,11 @@ func (w *Window) publishThrottledAccessibility() {
 
 // publishAccessibilityNow describes the window and publishes it, without regard to the throttle.
 func (w *Window) publishAccessibilityNow() {
+	if w.ax.adapterFailed {
+		// There is nothing to publish to and there never will be, so describing the window would be work with nowhere
+		// to go. See windowAccessibility.adapterFailed.
+		return
+	}
 	w.ax.lastPublish = time.Now()
 	tree := w.buildAccessibilityTree()
 	events := accessibility.Diff(w.ax.last, tree)

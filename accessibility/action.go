@@ -41,6 +41,12 @@ const (
 // ActionSet can use, and the bound every ActionSet method range-checks against.
 const lastAction = ReplaceText
 
+// An ActionSet is a uint32, so the highest action must fit in bits 0 through 31. Go evaluates a shift wider than the
+// value being shifted to zero rather than refusing it, so an action added past that bound would not fail to compile:
+// With would quietly add nothing, Has would quietly answer false, and every node would simply stop advertising it. This
+// declaration is what fails instead, since the constant expression underflows Action the moment lastAction passes 31.
+const _ = uint(31 - lastAction)
+
 // String implements fmt.Stringer.
 func (a Action) String() string {
 	switch a {

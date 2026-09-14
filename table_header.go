@@ -504,19 +504,15 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 	}
 }
 
-// axTitledLabel is satisfied by *Label and by anything that embeds one, such as a table column header. Nothing else in
-// the library pairs a String() with a SetTitle() that takes nothing but the text, which is what makes it a workable
-// stand-in for "was built out of a label" — a plain type assertion to fmt.Stringer would match every panel there is,
-// since Panel answers String() with the name of its type.
-type axTitledLabel interface {
-	String() string
-	SetTitle(text string)
-}
-
 // ProvideAccessibility describes the header to assistive technologies. The column headers are described directly, as
 // virtual children keyed by their column index: they are panels, but the header does not hold them as children — it
 // installs one just long enough to draw it or to forward an event to it and then detaches it again — so nothing would
 // otherwise place them in the hierarchy or know where they sit.
+//
+// A column header that is nothing but a label has nothing within it to describe: what it has to say is its text, which
+// is the name of the column. Anything else — a header built around a button, or one holding a filter control beside its
+// title — is described with its content beneath it, since an assistive technology has to be able to reach whatever is
+// in there and act on it. Such a header takes its name from that content when it has none of its own.
 func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	if node.Role == role.Auto {
@@ -534,16 +530,17 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			break
 		}
 		panel := header.AsPanel()
+		// A column header built around a label — the library's own is, and so is a custom one written the way the
+		// documentation describes, by embedding a *Label and pointing Self at itself — is named by that label's text.
+		// Asking a label for its text is not the same as asking a panel for it: every panel answers String() with the
+		// name of its own type, so a header built around anything else with a title of its own would be announced as
+		// the name of the Go type it was written as. Anything that is not a label is read from the labels it is built
+		// out of, and then, failing that, from whatever its content turns out to be called.
+		label := axLabelOf(panel)
 		name := panel.Accessibility.Name
 		if name == "" {
-			// A column header built around a label — the library's own is, and so is a custom one written the way the
-			// documentation describes, by embedding a *Label and pointing Self at itself — is named by that label's
-			// text. Asking a label for its text is not the same as asking a panel for it, since every panel answers
-			// String() with the name of its type, so the label is recognized by a pairing of methods only Label has
-			// rather than by the concrete type, which a custom header would not match. Anything else is read from the
-			// labels it is built out of.
-			if labeled, ok := header.(axTitledLabel); ok {
-				name = labeled.String()
+			if label != nil {
+				name = label.String()
 			} else {
 				name = axLabelText(panel)
 			}
@@ -554,7 +551,7 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 		}
 		state := header.SortState()
 		frame := h.ColumnFrame(col)
-		b.AddVirtualChild(col, func(n *accessibility.Node) {
+		colID := b.AddVirtualChild(col, func(n *accessibility.Node) {
 			n.Role = role.ColumnHeader
 			n.Name = name
 			n.Description = description
@@ -566,12 +563,34 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 				n.Actions = n.Actions.With(accessibility.Press)
 			}
 		})
+		if colID == 0 || (label != nil && len(panel.Children()) == 0) {
+			continue
+		}
+		h.installCell(panel, frame)
+		b.addColumnHeaderPanel(colID, col, panel)
+		h.uninstallCell(panel)
+		if name == "" {
+			if content := b.snapshot.tree.UnignoredChildren(colID); len(content) == 1 {
+				// The header holds one thing, and whatever that is called is what the column is called. A header
+				// holding more than one has nothing to single out, so it stays unnamed rather than being named after
+				// an arbitrary piece of itself.
+				if only := b.snapshot.tree.Node(content[0]); only != nil {
+					if colNode := b.snapshot.tree.Node(colID); colNode != nil {
+						colNode.Name = only.Name
+					}
+				}
+			}
+		}
 	}
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Pressing a column header sorts the
 // table on that column, which is what clicking it does, flipping the direction when it is already the primary sort key.
+// A request aimed at something within a column header is passed on to it.
 func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if key, isPanel := req.Key.(axCellPanelKey); isPanel {
+		return h.axPerformInColumnHeader(key, req)
+	}
 	col, ok := req.Key.(int)
 	if !ok || col < 0 || col >= len(h.ColumnHeaders) {
 		return false
@@ -591,6 +610,26 @@ func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequ
 	default:
 		return false
 	}
+}
+
+// axPerformInColumnHeader carries out a request aimed at a panel inside one of the column headers. The header is
+// installed at its column's frame, exactly as it is to hand it a mouse event, so that the panel the request is for
+// exists where it was described and can reach its window; the panel is then found at the position within the header it
+// was described at.
+func (h *TableHeader[T]) axPerformInColumnHeader(key axCellPanelKey, req accessibility.ActionRequest) bool {
+	col := key.Cell.Col
+	if col < 0 || col >= len(h.ColumnHeaders) {
+		return false
+	}
+	panel := h.ColumnHeaders[col].AsPanel()
+	h.installCell(panel, h.ColumnFrame(col))
+	handled := false
+	if target := axPanelAtPath(panel, key.Path); target != nil {
+		handled = target.axDispatchAction(req, false)
+	}
+	h.uninstallCell(panel)
+	h.MarkForRedraw()
+	return handled
 }
 
 // axSortDirection returns the direction to report for a column header's sort state. Only the primary sort column is

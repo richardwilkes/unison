@@ -33,23 +33,41 @@ import (
 func macInitAccessibilityCallbacks() {
 	cocoa.AccessibilityActivateCallback = macAccessibilityActivate
 	cocoa.AccessibilityActionCallback = func(macWnd cocoa.Window, req accessibility.ActionRequest) {
+		// Finding the window is itself UI-thread work: the search is over windowList, which every window opening and
+		// closing rewrites there. AppKit delivers accessibility callbacks on the main thread, which is the UI thread,
+		// so this is the ordinary case; a call from anywhere else hands the whole thing over rather than reading that
+		// list where it stands.
+		if !onUIThread() {
+			InvokeTask(func() { macPerformAccessibilityAction(macWnd, req) })
+			return
+		}
 		w := macFindWindow(macWnd)
 		if w == nil {
 			slog.Warn("received accessibility action callback for unknown window", "window", macWnd)
 			return
 		}
 		// A request that merely moves the focus, the selection or the view is carried out on the spot: the adapter is
-		// called on the main thread, which is the UI thread, from within the run loop, so this is no different from
-		// handling a key press — and VoiceOver reads the result straight after asking, so the frame of the row it just
-		// selected or scrolled to has to be the scrolled one by then. Anything that activates something is queued
-		// instead, since it may run application code that opens a modal dialog, and VoiceOver must not be left waiting
-		// for that.
-		if onUIThread() && w.axActionRunsInline(req) {
+		// called on the main thread from within the run loop, so this is no different from handling a key press — and
+		// VoiceOver reads the result straight after asking, so the frame of the row it just selected or scrolled to has
+		// to be the scrolled one by then. Anything that activates something is queued instead, since it may run
+		// application code that opens a modal dialog, and VoiceOver must not be left waiting for that.
+		if w.axActionRunsInline(req) {
 			w.performAccessibilityAction(req)
 			return
 		}
 		InvokeTask(func() { w.performAccessibilityAction(req) })
 	}
+}
+
+// macPerformAccessibilityAction finds the window a request names and carries the request out. UI thread only; it is
+// what a request that arrived on some other thread is handed to the UI thread as.
+func macPerformAccessibilityAction(macWnd cocoa.Window, req accessibility.ActionRequest) {
+	w := macFindWindow(macWnd)
+	if w == nil {
+		slog.Warn("received accessibility action callback for unknown window", "window", macWnd)
+		return
+	}
+	w.performAccessibilityAction(req)
 }
 
 // axActionIsNavigation reports whether an action only moves the focus, the selection or the view — the requests an
@@ -117,12 +135,20 @@ func macAccessibilityActivate(macWnd cocoa.Window) bool {
 
 // nativeAccessibilityPublish hands a freshly built snapshot, and the events describing how it differs from the one
 // before it, to the platform's assistive-technology adapter.
+//
+// An adapter that could not be created is not asked for again. The only way that happens is the accessibility element
+// class failing to register, which is a property of the process rather than of this window or this moment, so every
+// later attempt would fail in the same way — and a window being described runs through here as often as every
+// axPublishThrottle, which would turn one failure into a steady stream of them.
 func (w *Window) nativeAccessibilityPublish(tree *accessibility.Tree, events []accessibility.Event) {
-	if w.wnd.view == 0 {
+	if w.wnd.view == 0 || w.ax == nil || w.ax.adapterFailed {
 		return
 	}
 	if w.wnd.ax == nil {
-		w.wnd.ax = cocoa.NewAXAdapter(w.wnd.view)
+		if w.wnd.ax = cocoa.NewAXAdapter(w.wnd.view); w.wnd.ax == nil {
+			w.ax.adapterFailed = true
+			return
+		}
 	}
 	w.wnd.ax.Publish(tree, events)
 }
@@ -141,6 +167,14 @@ func (w *Window) nativeAccessibilityShutdown() {
 	}
 }
 
+// nativeAccessibilityWindowHidden keeps the adapter of a window that has been hidden or minimized. AppKit lists the
+// application's windows itself, so a window that is off the screen drops out of what an assistive technology sees
+// without anything being withdrawn, and keeping the elements means VoiceOver finds the ones it already knows, its
+// cursor included, when the window is shown again.
+func (*Window) nativeAccessibilityWindowHidden() bool {
+	return false
+}
+
 // nativeAccessibilityEnabledChanged turns support back on for an application the environment forced it on for, and
 // otherwise has nothing to do on this platform: support starts again on the next query a content view receives, which
 // activation refuses or allows as it stands at the time, and stopping has already shut every adapter down.
@@ -150,7 +184,7 @@ func (w *Window) nativeAccessibilityShutdown() {
 // leave it describing nothing at all. Linux restores a forced-on application the same way, through linuxA11yStatusInit,
 // and the promise SetAccessibilityEnabled makes is that the three platforms end up where they started.
 func nativeAccessibilityEnabledChanged(enabled bool) {
-	if enabled && accessibilityEnv > 0 {
+	if enabled && accessibilityEnv.Load() > 0 {
 		activateAccessibility()
 	}
 }

@@ -320,6 +320,9 @@ func (w *Window) gainedFocus() {
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
+	// A window may become the active one without anything in it drawing differently — it may hold nothing that can take
+	// the focus at all — and an assistive technology has to be told which window the person is now in.
+	w.axMarkForPublish()
 	SafeCall(w.GainedFocusCallback)
 	w.mouseEnter(w.MouseLocation(), 0)
 	if w.apiCursorInContentArea() {
@@ -334,6 +337,9 @@ func (w *Window) lostFocus() {
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
+	// As in gainedFocus: the window no longer being the active one is worth describing whether or not anything in it
+	// looks any different for it.
+	w.axMarkForPublish()
 	SafeCall(w.LostFocusCallback)
 	w.root.postLostFocus(w)
 	if len(w.pressedKeys) != 0 {
@@ -761,6 +767,10 @@ func (w *Window) SetFocus(target Paneler) {
 				SafeCall(newFocus.GainedFocusCallback)
 			}
 			w.notifyOfFocusChangeInHierarchy(oldFocus, newFocus)
+			// Where the focus is is the single most important thing an assistive technology is told, and a panel is
+			// under no obligation to draw itself differently for holding it, so the window is described again whether
+			// or not anything repainted. See Window.axMarkForPublish.
+			w.axMarkForPublish()
 		}
 	}
 }
@@ -771,6 +781,8 @@ func (w *Window) removeFocus() {
 		SafeCall(oldFocus.LostFocusCallback)
 		w.focus = nil
 		w.notifyOfFocusChangeInHierarchy(oldFocus, nil)
+		// The focus going nowhere has to be described as surely as it moving does. See Window.axMarkForPublish.
+		w.axMarkForPublish()
 	}
 }
 
@@ -870,6 +882,9 @@ func (w *Window) Show() {
 func (w *Window) Hide() {
 	if w.IsValid() {
 		w.apiHide()
+		// A window that has gone off the screen has to be taken out of what an assistive technology has been told, and
+		// the event loop does that for the windows it finds it cannot draw. See Window.axMarkForPublish.
+		w.axMarkForPublish()
 	}
 }
 
@@ -926,6 +941,9 @@ func (w *Window) IsMinimized() bool {
 func (w *Window) Minimize() {
 	if w.IsValid() {
 		w.apiMinimize()
+		// As in Hide: a window that has just been minimized, or restored, is described again rather than being left as
+		// whatever it was last said to be.
+		w.axMarkForPublish()
 	}
 }
 
@@ -1015,7 +1033,8 @@ func (w *Window) draw() {
 		w.lastDrawDuration = time.Since(start)
 		if pixels := w.surface.rasterPixmap(); pixels != nil {
 			// The window may have a live GL context even though rendering fell back to the CPU (the fallback was
-			// triggered while preparing this window's canvas). Destroy it so it cannot obscure the CPU-rendered content.
+			// triggered while preparing this window's canvas). Destroy it so it cannot obscure the CPU-rendered
+			// content.
 			w.discardGLCtx()
 			w.apiPresentCPUPixels(pixels)
 		} else {

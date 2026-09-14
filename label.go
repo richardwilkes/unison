@@ -66,6 +66,13 @@ func (l *Label) String() string {
 	return l.Text.String()
 }
 
+// axLabel returns the label itself. It is what axLabelOf recognizes a label by, and it is unexported so that only a
+// widget built by embedding a Label — which promotes this along with everything else the label offers — can be taken
+// for one. A widget that merely has a title of its own cannot claim to be a label by accident.
+func (l *Label) axLabel() *Label {
+	return l
+}
+
 // SetTitle sets the text of the label to the specified text. The theme's TextDecoration will be used, so any
 // changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
 // .Text field.

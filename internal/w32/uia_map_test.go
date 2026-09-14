@@ -46,7 +46,7 @@ func newTestTree(root, focus accessibility.NodeID, nodes ...*accessibility.Node)
 //	1 window                          (0,0 200x200)  focused
 //	├─ 2 group   [ignored]            (0,0 200x100)
 //	│  ├─ 3 group   [ignored]         (0,0 200x50)
-//	│  │  ├─ 4 button                 (0,0 50x20)
+//	│  │  ├─ 4 button                 (0,0 50x20)    focused, pressable
 //	│  │  └─ 5 button                 (50,0 50x20)
 //	│  └─ 6 label                     (0,50 100x20)   labels 4
 //	└─ 7 group                        (0,100 200x100)
@@ -72,6 +72,7 @@ func sampleTree() *accessibility.Tree {
 		&accessibility.Node{
 			ID: 4, Role: role.Button, Name: "One", Focusable: true, Focused: true,
 			Bounds: geom.NewRect(0, 0, 50, 20), LabeledBy: []accessibility.NodeID{6},
+			Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.Press),
 		},
 		&accessibility.Node{ID: 5, Role: role.Button, Name: "Two", Bounds: geom.NewRect(50, 0, 50, 20)},
 		&accessibility.Node{ID: 6, Role: role.Label, Name: "One", Bounds: geom.NewRect(0, 50, 100, 20)},
@@ -115,7 +116,7 @@ func TestUIAControlType(t *testing.T) {
 		role.Separator:          UIA_SeparatorControlTypeId,
 		role.List:               UIA_ListControlTypeId,
 		role.ListItem:           UIA_ListItemControlTypeId,
-		role.Table:              UIA_TableControlTypeId,
+		role.Table:              UIA_DataGridControlTypeId,
 		role.Tree:               UIA_DataGridControlTypeId,
 		role.Row:                UIA_DataItemControlTypeId,
 		role.Cell:               UIA_DataItemControlTypeId,
@@ -144,6 +145,8 @@ func TestUIAControlType(t *testing.T) {
 }
 
 // TestUIAPatterns verifies the role-to-patterns table, including the handful of roles whose patterns depend on state.
+// Every node here is given no actions at all, so that the role's own answer is what is being checked;
+// TestUIAPatternsScrollItem covers the one pattern that comes from the action set instead.
 func TestUIAPatterns(t *testing.T) {
 	c := check.New(t)
 	for i, one := range []struct {
@@ -173,8 +176,16 @@ func TestUIAPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.RadioButton}, patterns: PatternSelectionItem},
 		{node: &accessibility.Node{Role: role.TextField}, patterns: PatternValue},
 		{node: &accessibility.Node{Role: role.TextArea}, patterns: PatternValue},
-		{node: &accessibility.Node{Role: role.Document}, patterns: PatternValue},
-		{node: &accessibility.Node{Role: role.SpinButton}, patterns: PatternValue | PatternRangeValue},
+		// A document carries no value: the only thing that produces the role never fills one in, so the pattern would
+		// answer a client with an empty string as the whole content of the document.
+		{node: &accessibility.Node{Role: role.Document}},
+		// A spin button has a range only once it has a number, exactly as a progress bar does: an obscured numeric
+		// field fills in none of them, and the pattern would report a PIN field as zero.
+		{node: &accessibility.Node{Role: role.SpinButton}, patterns: PatternValue},
+		{
+			node:     &accessibility.Node{Role: role.SpinButton, HasNumber: true},
+			patterns: PatternValue | PatternRangeValue,
+		},
 		{node: &accessibility.Node{Role: role.ComboBox}, patterns: PatternValue | PatternExpandCollapse},
 		{node: &accessibility.Node{Role: role.PopupButton}, patterns: PatternValue | PatternExpandCollapse},
 		{node: &accessibility.Node{Role: role.Slider}, patterns: PatternRangeValue},
@@ -183,14 +194,14 @@ func TestUIAPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.ProgressBar, HasNumber: true}, patterns: PatternRangeValue},
 		{node: &accessibility.Node{Role: role.List}, patterns: PatternSelection},
 		{node: &accessibility.Node{Role: role.TabList}, patterns: PatternSelection},
-		{node: &accessibility.Node{Role: role.ListItem}, patterns: PatternSelectionItem | PatternScrollItem},
+		{node: &accessibility.Node{Role: role.ListItem}, patterns: PatternSelectionItem},
 		{node: &accessibility.Node{Role: role.Tab}, patterns: PatternSelectionItem},
 		{node: &accessibility.Node{Role: role.Table}, patterns: PatternGrid | PatternTable | PatternSelection},
 		{node: &accessibility.Node{Role: role.Tree}, patterns: PatternGrid | PatternTable | PatternSelection},
-		{node: &accessibility.Node{Role: role.Row}, patterns: PatternSelectionItem | PatternScrollItem},
+		{node: &accessibility.Node{Role: role.Row}, patterns: PatternSelectionItem},
 		{
 			node:     &accessibility.Node{Role: role.Row, Expandable: true},
-			patterns: PatternSelectionItem | PatternScrollItem | PatternExpandCollapse,
+			patterns: PatternSelectionItem | PatternExpandCollapse,
 		},
 		{node: &accessibility.Node{Role: role.Cell}, patterns: PatternGridItem | PatternTableItem},
 		{node: &accessibility.Node{Role: role.Menu}},
@@ -204,6 +215,26 @@ func TestUIAPatterns(t *testing.T) {
 		c.Equal(one.patterns, UIAPatterns(one.node), "case %d (%s)", i, one.node.Role.Key())
 	}
 	c.Equal(PatternSet(0), UIAPatterns(nil))
+}
+
+// TestUIAPatternsScrollItem verifies that the ScrollItem pattern follows the ScrollIntoView action rather than the
+// role. Every node in a snapshot carries that action — a disabled one keeps it when it keeps nothing else — and the
+// pattern's only method does nothing but dispatch it, so anything a client may want to talk about can be brought into
+// view: a cell scrolled off to the side, a column header, a tab, a menu item.
+func TestUIAPatternsScrollItem(t *testing.T) {
+	c := check.New(t)
+	scrollable := accessibility.ActionSet(0).With(accessibility.ScrollIntoView)
+	for _, r := range []role.Enum{
+		role.Cell, role.ColumnHeader, role.Tab, role.MenuItem, role.Row, role.ListItem, role.Button, role.Group,
+	} {
+		with := UIAPatterns(&accessibility.Node{Role: r, Actions: scrollable})
+		c.True(with.Has(PatternScrollItem), "role %s", r.Key())
+		c.False(UIAPatterns(&accessibility.Node{Role: r}).Has(PatternScrollItem), "role %s without it", r.Key())
+	}
+
+	// The pattern is all a disabled row has left, which is what lets a screen reader scroll through a disabled table.
+	c.Equal(PatternSelectionItem|PatternScrollItem,
+		UIAPatterns(&accessibility.Node{Role: role.Row, Disabled: true, Actions: scrollable}))
 }
 
 // TestPatternSet verifies the bookkeeping around the pattern bitset: that every pattern a provider implements can be
@@ -243,6 +274,175 @@ func TestPatternSet(t *testing.T) {
 	c.Equal("", PatternSet(0).String())
 }
 
+// TestUIAIdentifierValues pins the numeric value of every UI Automation identifier this package declares. Nothing else
+// does: the mapping tests compare one symbol against another, so a transposed value — DataGrid's 50028 written where
+// DataItem's 50029 belongs, or one property id given another's number — would pass the whole suite while making a
+// screen reader describe elements as the wrong kind of thing, or read a property no client asked for.
+//
+// A client resolves none of these by name, so the numbers are the entire interface. They are the values in the Windows
+// SDK's uiautomationcoreapi.h and uiautomationcore.idl, which is where a reader checks them.
+func TestUIAIdentifierValues(t *testing.T) {
+	c := check.New(t)
+
+	// Control types, the value of UIA_ControlTypePropertyId.
+	c.Equal(ControlTypeID(50000), UIA_ButtonControlTypeId)
+	c.Equal(ControlTypeID(50002), UIA_CheckBoxControlTypeId)
+	c.Equal(ControlTypeID(50003), UIA_ComboBoxControlTypeId)
+	c.Equal(ControlTypeID(50004), UIA_EditControlTypeId)
+	c.Equal(ControlTypeID(50005), UIA_HyperlinkControlTypeId)
+	c.Equal(ControlTypeID(50006), UIA_ImageControlTypeId)
+	c.Equal(ControlTypeID(50007), UIA_ListItemControlTypeId)
+	c.Equal(ControlTypeID(50008), UIA_ListControlTypeId)
+	c.Equal(ControlTypeID(50009), UIA_MenuControlTypeId)
+	c.Equal(ControlTypeID(50010), UIA_MenuBarControlTypeId)
+	c.Equal(ControlTypeID(50011), UIA_MenuItemControlTypeId)
+	c.Equal(ControlTypeID(50012), UIA_ProgressBarControlTypeId)
+	c.Equal(ControlTypeID(50013), UIA_RadioButtonControlTypeId)
+	c.Equal(ControlTypeID(50014), UIA_ScrollBarControlTypeId)
+	c.Equal(ControlTypeID(50015), UIA_SliderControlTypeId)
+	c.Equal(ControlTypeID(50016), UIA_SpinnerControlTypeId)
+	c.Equal(ControlTypeID(50018), UIA_TabControlTypeId)
+	c.Equal(ControlTypeID(50019), UIA_TabItemControlTypeId)
+	c.Equal(ControlTypeID(50020), UIA_TextControlTypeId)
+	c.Equal(ControlTypeID(50021), UIA_ToolBarControlTypeId)
+	c.Equal(ControlTypeID(50022), UIA_ToolTipControlTypeId)
+	c.Equal(ControlTypeID(50023), UIA_TreeControlTypeId)
+	c.Equal(ControlTypeID(50024), UIA_TreeItemControlTypeId)
+	c.Equal(ControlTypeID(50025), UIA_CustomControlTypeId)
+	c.Equal(ControlTypeID(50026), UIA_GroupControlTypeId)
+	c.Equal(ControlTypeID(50028), UIA_DataGridControlTypeId)
+	c.Equal(ControlTypeID(50029), UIA_DataItemControlTypeId)
+	c.Equal(ControlTypeID(50030), UIA_DocumentControlTypeId)
+	c.Equal(ControlTypeID(50032), UIA_WindowControlTypeId)
+	c.Equal(ControlTypeID(50033), UIA_PaneControlTypeId)
+	c.Equal(ControlTypeID(50034), UIA_HeaderControlTypeId)
+	c.Equal(ControlTypeID(50035), UIA_HeaderItemControlTypeId)
+	c.Equal(ControlTypeID(50036), UIA_TableControlTypeId)
+	c.Equal(ControlTypeID(50038), UIA_SeparatorControlTypeId)
+
+	// Control patterns, which a client asks for by identifier through GetPatternProvider.
+	c.Equal(PatternID(10000), UIA_InvokePatternId)
+	c.Equal(PatternID(10001), UIA_SelectionPatternId)
+	c.Equal(PatternID(10002), UIA_ValuePatternId)
+	c.Equal(PatternID(10003), UIA_RangeValuePatternId)
+	c.Equal(PatternID(10004), UIA_ScrollPatternId)
+	c.Equal(PatternID(10005), UIA_ExpandCollapsePatternId)
+	c.Equal(PatternID(10006), UIA_GridPatternId)
+	c.Equal(PatternID(10007), UIA_GridItemPatternId)
+	c.Equal(PatternID(10009), UIA_WindowPatternId)
+	c.Equal(PatternID(10010), UIA_SelectionItemPatternId)
+	c.Equal(PatternID(10012), UIA_TablePatternId)
+	c.Equal(PatternID(10013), UIA_TableItemPatternId)
+	c.Equal(PatternID(10014), UIA_TextPatternId)
+	c.Equal(PatternID(10015), UIA_TogglePatternId)
+	c.Equal(PatternID(10017), UIA_ScrollItemPatternId)
+	c.Equal(PatternID(10024), UIA_TextPattern2Id)
+
+	// Events, every one of which is raised by identifier.
+	c.Equal(EventID(20000), UIA_ToolTipOpenedEventId)
+	c.Equal(EventID(20001), UIA_ToolTipClosedEventId)
+	c.Equal(EventID(20002), UIA_StructureChangedEventId)
+	c.Equal(EventID(20003), UIA_MenuOpenedEventId)
+	c.Equal(EventID(20004), UIA_AutomationPropertyChangedEventId)
+	c.Equal(EventID(20005), UIA_AutomationFocusChangedEventId)
+	c.Equal(EventID(20007), UIA_MenuClosedEventId)
+	c.Equal(EventID(20009), UIA_Invoke_InvokedEventId)
+	c.Equal(EventID(20010), UIA_SelectionItem_ElementAddedToSelectionEventId)
+	c.Equal(EventID(20011), UIA_SelectionItem_ElementRemovedFromSelectionEventId)
+	c.Equal(EventID(20012), UIA_SelectionItem_ElementSelectedEventId)
+	c.Equal(EventID(20014), UIA_Text_TextSelectionChangedEventId)
+	c.Equal(EventID(20015), UIA_Text_TextChangedEventId)
+	c.Equal(EventID(20016), UIA_Window_WindowOpenedEventId)
+	c.Equal(EventID(20017), UIA_Window_WindowClosedEventId)
+	c.Equal(EventID(20024), UIA_LiveRegionChangedEventId)
+	c.Equal(EventID(20035), UIA_NotificationEventId)
+
+	// Properties, both the element-wide ones and the ones belonging to a control pattern.
+	c.Equal(PropertyID(30000), UIA_RuntimeIdPropertyId)
+	c.Equal(PropertyID(30001), UIA_BoundingRectanglePropertyId)
+	c.Equal(PropertyID(30002), UIA_ProcessIdPropertyId)
+	c.Equal(PropertyID(30003), UIA_ControlTypePropertyId)
+	c.Equal(PropertyID(30004), UIA_LocalizedControlTypePropertyId)
+	c.Equal(PropertyID(30005), UIA_NamePropertyId)
+	c.Equal(PropertyID(30006), UIA_AcceleratorKeyPropertyId)
+	c.Equal(PropertyID(30007), UIA_AccessKeyPropertyId)
+	c.Equal(PropertyID(30008), UIA_HasKeyboardFocusPropertyId)
+	c.Equal(PropertyID(30009), UIA_IsKeyboardFocusablePropertyId)
+	c.Equal(PropertyID(30010), UIA_IsEnabledPropertyId)
+	c.Equal(PropertyID(30011), UIA_AutomationIdPropertyId)
+	c.Equal(PropertyID(30012), UIA_ClassNamePropertyId)
+	c.Equal(PropertyID(30013), UIA_HelpTextPropertyId)
+	c.Equal(PropertyID(30016), UIA_IsControlElementPropertyId)
+	c.Equal(PropertyID(30017), UIA_IsContentElementPropertyId)
+	c.Equal(PropertyID(30018), UIA_LabeledByPropertyId)
+	c.Equal(PropertyID(30019), UIA_IsPasswordPropertyId)
+	c.Equal(PropertyID(30020), UIA_NativeWindowHandlePropertyId)
+	c.Equal(PropertyID(30022), UIA_IsOffscreenPropertyId)
+	c.Equal(PropertyID(30023), UIA_OrientationPropertyId)
+	c.Equal(PropertyID(30024), UIA_FrameworkIdPropertyId)
+	c.Equal(PropertyID(30026), UIA_ItemStatusPropertyId)
+	c.Equal(PropertyID(30103), UIA_IsDataValidForFormPropertyId)
+	c.Equal(PropertyID(30104), UIA_ControllerForPropertyId)
+	c.Equal(PropertyID(30105), UIA_DescribedByPropertyId)
+	c.Equal(PropertyID(30107), UIA_ProviderDescriptionPropertyId)
+	c.Equal(PropertyID(30135), UIA_LiveSettingPropertyId)
+	c.Equal(PropertyID(30152), UIA_PositionInSetPropertyId)
+	c.Equal(PropertyID(30153), UIA_SizeOfSetPropertyId)
+	c.Equal(PropertyID(30154), UIA_LevelPropertyId)
+	c.Equal(PropertyID(30159), UIA_FullDescriptionPropertyId)
+	c.Equal(PropertyID(30173), UIA_HeadingLevelPropertyId)
+	c.Equal(PropertyID(30174), UIA_IsDialogPropertyId)
+	c.Equal(PropertyID(30045), UIA_ValueValuePropertyId)
+	c.Equal(PropertyID(30046), UIA_ValueIsReadOnlyPropertyId)
+	c.Equal(PropertyID(30047), UIA_RangeValueValuePropertyId)
+	c.Equal(PropertyID(30048), UIA_RangeValueIsReadOnlyPropertyId)
+	c.Equal(PropertyID(30049), UIA_RangeValueMinimumPropertyId)
+	c.Equal(PropertyID(30050), UIA_RangeValueMaximumPropertyId)
+	c.Equal(PropertyID(30051), UIA_RangeValueLargeChangePropertyId)
+	c.Equal(PropertyID(30052), UIA_RangeValueSmallChangePropertyId)
+	c.Equal(PropertyID(30059), UIA_SelectionSelectionPropertyId)
+	c.Equal(PropertyID(30060), UIA_SelectionCanSelectMultiplePropertyId)
+	c.Equal(PropertyID(30061), UIA_SelectionIsSelectionRequiredPropertyId)
+	c.Equal(PropertyID(30062), UIA_GridRowCountPropertyId)
+	c.Equal(PropertyID(30063), UIA_GridColumnCountPropertyId)
+	c.Equal(PropertyID(30064), UIA_GridItemRowPropertyId)
+	c.Equal(PropertyID(30065), UIA_GridItemColumnPropertyId)
+	c.Equal(PropertyID(30066), UIA_GridItemRowSpanPropertyId)
+	c.Equal(PropertyID(30067), UIA_GridItemColumnSpanPropertyId)
+	c.Equal(PropertyID(30068), UIA_GridItemContainingGridPropertyId)
+	c.Equal(PropertyID(30070), UIA_ExpandCollapseExpandCollapseStatePropertyId)
+	c.Equal(PropertyID(30073), UIA_WindowCanMaximizePropertyId)
+	c.Equal(PropertyID(30074), UIA_WindowCanMinimizePropertyId)
+	c.Equal(PropertyID(30075), UIA_WindowWindowVisualStatePropertyId)
+	c.Equal(PropertyID(30076), UIA_WindowWindowInteractionStatePropertyId)
+	c.Equal(PropertyID(30077), UIA_WindowIsModalPropertyId)
+	c.Equal(PropertyID(30078), UIA_WindowIsTopmostPropertyId)
+	c.Equal(PropertyID(30079), UIA_SelectionItemIsSelectedPropertyId)
+	c.Equal(PropertyID(30080), UIA_SelectionItemSelectionContainerPropertyId)
+	c.Equal(PropertyID(30081), UIA_TableRowHeadersPropertyId)
+	c.Equal(PropertyID(30082), UIA_TableColumnHeadersPropertyId)
+	c.Equal(PropertyID(30083), UIA_TableRowOrColumnMajorPropertyId)
+	c.Equal(PropertyID(30084), UIA_TableItemRowHeaderItemsPropertyId)
+	c.Equal(PropertyID(30085), UIA_TableItemColumnHeaderItemsPropertyId)
+	c.Equal(PropertyID(30086), UIA_ToggleToggleStatePropertyId)
+
+	// Heading levels, which are identifiers of their own rather than plain integers.
+	c.Equal(HeadingLevelID(80050), HeadingLevel_None)
+	c.Equal(HeadingLevelID(80051), HeadingLevel1)
+	c.Equal(HeadingLevelID(80052), HeadingLevel2)
+	c.Equal(HeadingLevelID(80053), HeadingLevel3)
+	c.Equal(HeadingLevelID(80054), HeadingLevel4)
+	c.Equal(HeadingLevelID(80055), HeadingLevel5)
+	c.Equal(HeadingLevelID(80056), HeadingLevel6)
+	c.Equal(HeadingLevelID(80057), HeadingLevel7)
+	c.Equal(HeadingLevelID(80058), HeadingLevel8)
+	c.Equal(HeadingLevelID(80059), HeadingLevel9)
+
+	// The two bare integers UI Automation defines: the WM_GETOBJECT lParam and the runtime-id prefix.
+	c.Equal(int32(-25), UiaRootObjectId)
+	c.Equal(int32(3), UiaAppendRuntimeId)
+}
+
 // TestUIAViews verifies which nodes belong to the control and content views. The interesting case is a label: it stays
 // in the content view while it names nothing, and drops out once another node says it is labeled by it, because that
 // node already reports the label's text as its own name.
@@ -270,6 +470,36 @@ func TestUIAViews(t *testing.T) {
 	c.False(UIAIsContentElement(lone, lone.Node(3)))
 	c.False(UIAIsContentElement(lone, lone.Node(4)))
 	c.False(UIAIsContentElement(lone, lone.Node(5)))
+}
+
+// TestUIAHasKeyboardFocus verifies that exactly one element of a fragment claims the keyboard focus, and only while the
+// window is the active one.
+//
+// The root is the trap: its Focused flag says the window is active rather than that the window itself is where typing
+// goes, so answering the property from that flag would have the root claim the focus alongside the control that really
+// has it — while reporting that it cannot be focused at all, since a root is never focusable.
+func TestUIAHasKeyboardFocus(t *testing.T) {
+	c := check.New(t)
+	tree := sampleTree()
+	c.True(UIAHasKeyboardFocus(tree, tree.Node(4)), "the node the snapshot's Focus names")
+	c.False(UIAHasKeyboardFocus(tree, tree.Node(1)), "the root, while something inside the window has the focus")
+	c.False(UIAHasKeyboardFocus(tree, tree.Node(5)))
+
+	// An inactive window holds no keyboard focus anywhere, however its nodes are marked.
+	inactive := sampleTree()
+	inactive.Node(1).Focused = false
+	c.False(UIAHasKeyboardFocus(inactive, inactive.Node(4)))
+	c.False(UIAHasKeyboardFocus(inactive, inactive.Node(1)))
+
+	// With nothing inside the window focused, the root is where the keyboard is.
+	bare := sampleTree()
+	bare.Focus = 0
+	bare.Node(4).Focused = false
+	c.True(UIAHasKeyboardFocus(bare, bare.Node(1)))
+	c.False(UIAHasKeyboardFocus(bare, bare.Node(4)), "a stale Focused flag does not decide it; the tree's Focus does")
+
+	c.False(UIAHasKeyboardFocus(nil, tree.Node(4)))
+	c.False(UIAHasKeyboardFocus(tree, nil))
 }
 
 // TestUIAHeadingLevel verifies that only headings report a level, that the nine UI Automation levels are numbered from
@@ -341,10 +571,12 @@ func TestUIAItemStatus(t *testing.T) {
 	c := check.New(t)
 	c.Equal("", UIAItemStatus(nil))
 	c.Equal("", UIAItemStatus(&accessibility.Node{Role: role.ColumnHeader}))
-	c.Equal("ascending", UIAItemStatus(&accessibility.Node{
+	// The value is free text a screen reader speaks exactly as it is given, so it is a translated phrase rather than
+	// the name the SortDirection enumeration goes by.
+	c.Equal("Sorted ascending", UIAItemStatus(&accessibility.Node{
 		Role: role.ColumnHeader, Sort: accessibility.SortAscending,
 	}))
-	c.Equal("descending", UIAItemStatus(&accessibility.Node{
+	c.Equal("Sorted descending", UIAItemStatus(&accessibility.Node{
 		Role: role.ColumnHeader, Sort: accessibility.SortDescending,
 	}))
 }
@@ -462,8 +694,22 @@ func TestUIAPositionInSet(t *testing.T) {
 	c.Equal(0, position)
 	c.Equal(0, size)
 
-	// A row whose recorded index is out of step with the container's count falls back to counting siblings, which is
-	// also what a list with no recorded count does.
+	// A snapshot that reports a row past the end of its container — or before the start of it — is not trusted to
+	// number it: a stale RowIndex would otherwise have a client announce "row 700 of 500", which is worse than no
+	// position at all. Counting siblings is what is left, and the row is the only one of its kind published here.
+	for _, rowIndex := range []int{500, 700, -1} {
+		stale := newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
+			&accessibility.Node{ID: 2, Role: role.Table, RowCount: 500, Children: []accessibility.NodeID{3}},
+			&accessibility.Node{ID: 3, Role: role.Row, RowIndex: rowIndex},
+		)
+		position, size = UIAPositionInSet(stale, stale.Node(3))
+		c.Equal(1, position, "row index %d", rowIndex)
+		c.Equal(1, size, "row index %d", rowIndex)
+	}
+
+	// A row whose container records no count at all falls back to counting siblings too, which is also what a list
+	// does.
 	list := newTestTree(1, 0,
 		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
 		&accessibility.Node{ID: 2, Role: role.List, Children: []accessibility.NodeID{3, 4, 5}},
@@ -484,6 +730,20 @@ func TestUIAPositionInSet(t *testing.T) {
 	position, size = UIAPositionInSet(tabs, tabs.Node(4))
 	c.Equal(2, position)
 	c.Equal(2, size)
+
+	// A radio button is numbered the same way, which is the "n of m" a client announces alongside the state and the
+	// whole reason the role is given the SelectionItem pattern. Its group is an ignored layout panel, so the siblings
+	// counted are the ones the window sees.
+	radios := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.Group, Ignored: true, Children: []accessibility.NodeID{3, 4, 5}},
+		&accessibility.Node{ID: 3, Role: role.RadioButton, HasCheck: true, Checked: checkenum.On},
+		&accessibility.Node{ID: 4, Role: role.RadioButton, HasCheck: true},
+		&accessibility.Node{ID: 5, Role: role.RadioButton, HasCheck: true},
+	)
+	position, size = UIAPositionInSet(radios, radios.Node(4))
+	c.Equal(2, position)
+	c.Equal(3, size)
 
 	position, size = UIAPositionInSet(nil, nil)
 	c.Equal(0, position)
@@ -590,8 +850,8 @@ func TestUIADecideRaisesWindowOpened(t *testing.T) {
 	c.Equal([]UIARaise{raiseEvent(2, UIA_AutomationFocusChangedEventId)},
 		UIADecideRaises(nil, window, accessibility.Diff(nil, window)))
 
-	// Every publish after the first one has a previous snapshot to compare against, and announces nothing: a dialog that
-	// said it had opened on every redraw would be read out again each time.
+	// Every publish after the first one has a previous snapshot to compare against, and announces nothing: a dialog
+	// that said it had opened on every redraw would be read out again each time.
 	next := eventTree()
 	next.Node(1).Role = role.Dialog
 	next.Node(2).Name = "Renamed"
@@ -690,7 +950,7 @@ func TestUIADecideRaisesText(t *testing.T) {
 			{Kind: accessibility.TextInserted, Node: 2, Start: 5, Length: 1, New: "!"},
 		}))
 
-	// A label has no value pattern, so an edit to it reports nothing rather than an event a client cannot follow up.
+	// A button has no value pattern, so an edit to it reports nothing rather than an event a client cannot follow up.
 	c.Nil(UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
 		{Kind: accessibility.TextInserted, Node: 10, Start: 0, Length: 1, New: "x"},
 		{Kind: accessibility.TextSelectionChanged, Node: 10},
@@ -740,6 +1000,12 @@ func TestUIADecideRaisesStates(t *testing.T) {
 		{state: accessibility.StateProtected, node: 2, expected: []UIARaise{
 			raiseProperty(2, UIA_IsPasswordPropertyId),
 		}},
+		// CanSelectMultiple belongs to the Selection pattern, so a container reports it and an element with no such
+		// pattern does not.
+		{state: accessibility.StateMultiselectable, node: 4, expected: []UIARaise{
+			raiseProperty(4, UIA_SelectionCanSelectMultiplePropertyId),
+		}},
+		{state: accessibility.StateMultiselectable, node: 2},
 		{state: accessibility.StateBusy, node: 1},
 		{state: accessibility.StateReadOnly, node: 1},
 	} {
@@ -1029,6 +1295,85 @@ func TestUIADecideRaisesIgnoredFlip(t *testing.T) {
 		}))
 }
 
+// menuTree builds a window with a button, optionally with an open menu or a tooltip hanging off the root the way the
+// root panel really holds them: both are children of the window itself rather than of whatever they belong to.
+func menuTree(extra ...*accessibility.Node) *accessibility.Tree {
+	nodes := []*accessibility.Node{
+		{ID: 1, Role: role.Window, Name: "Window", Focused: true},
+		{ID: 2, Role: role.Button, Name: "File"},
+	}
+	children := []accessibility.NodeID{2}
+	for _, n := range extra {
+		nodes = append(nodes, n)
+		children = append(children, n.ID)
+	}
+	nodes[0].Children = children
+	return newTestTree(1, 2, nodes...)
+}
+
+// TestUIADecideRaisesMenu verifies that a menu appearing and disappearing raises the two events UI Automation has for
+// exactly that, over and above whatever structure change the node asks for. They are what tell a screen reader to enter
+// and leave menu mode; a structure change and a focus move say nothing of the kind.
+func TestUIADecideRaisesMenu(t *testing.T) {
+	c := check.New(t)
+	menu := func() []*accessibility.Node {
+		return []*accessibility.Node{
+			{ID: 3, Role: role.Menu, Children: []accessibility.NodeID{4}},
+			{ID: 4, Role: role.MenuItem, Name: "Open"},
+		}
+	}
+	closed := menuTree()
+	open := menuTree(menu()...)
+
+	c.Equal([]UIARaise{
+		raiseStructure(3, 3, StructureChangeType_ChildAdded),
+		raiseEvent(3, UIA_MenuOpenedEventId),
+	}, UIADecideRaises(closed, open, []accessibility.Event{{Kind: accessibility.NodeAdded, Node: 3}}))
+
+	// The menu closing is raised on the window: the menu itself has left the tree, so there is no provider of its own
+	// left for a client to be told about it through.
+	c.Equal([]UIARaise{
+		raiseEvent(1, UIA_MenuClosedEventId),
+		raiseStructure(1, 3, StructureChangeType_ChildRemoved),
+		raiseDisconnect(3),
+	}, UIADecideRaises(open, closed, []accessibility.Event{{Kind: accessibility.NodeRemoved, Node: 3}}))
+
+	// The same holds for the real batch a diff produces, where the structure changes collapse into one invalidation of
+	// the window but the menu events do not: a client answers an invalidation by reading the children again, which
+	// tells it nothing about a menu having opened.
+	c.Equal([]UIARaise{
+		raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated),
+		raiseEvent(3, UIA_MenuOpenedEventId),
+	}, UIADecideRaises(closed, open, accessibility.Diff(closed, open)))
+
+	// The menu item inside it is not a menu, and neither is anything else that comes and goes.
+	c.Equal([]UIARaise{raiseStructure(4, 4, StructureChangeType_ChildAdded)},
+		UIADecideRaises(closed, open, []accessibility.Event{{Kind: accessibility.NodeAdded, Node: 4}}))
+}
+
+// TestUIADecideRaisesTooltip verifies that a tooltip appearing is announced. Nothing else says it happened: a tip takes
+// no focus, names nothing and changes no property, so without the event a client never mentions it.
+func TestUIADecideRaisesTooltip(t *testing.T) {
+	c := check.New(t)
+	without := menuTree()
+	with := menuTree(&accessibility.Node{ID: 3, Role: role.Tooltip, Name: "Open a file"})
+
+	c.Equal([]UIARaise{
+		raiseStructure(3, 3, StructureChangeType_ChildAdded),
+		raiseEvent(3, UIA_ToolTipOpenedEventId),
+	}, UIADecideRaises(without, with, []accessibility.Event{{Kind: accessibility.NodeAdded, Node: 3}}))
+
+	c.Equal([]UIARaise{
+		raiseEvent(1, UIA_ToolTipClosedEventId),
+		raiseStructure(1, 3, StructureChangeType_ChildRemoved),
+		raiseDisconnect(3),
+	}, UIADecideRaises(with, without, []accessibility.Event{{Kind: accessibility.NodeRemoved, Node: 3}}))
+
+	// An ignored node has no provider, so nothing is raised for it at all.
+	hidden := menuTree(&accessibility.Node{ID: 3, Role: role.Tooltip, Name: "Open a file", Ignored: true})
+	c.Nil(UIADecideRaises(without, hidden, []accessibility.Event{{Kind: accessibility.NodeAdded, Node: 3}}))
+}
+
 // TestUIADecideRaisesRole verifies that a node whose role changed reports its control type as changed. A live node
 // really can change role — a label becomes an image when its text is swapped for a drawable, a button becomes a toggle
 // button when it is made sticky — and the control type is what a client derives the spoken kind of the element, and the
@@ -1067,20 +1412,6 @@ func TestUIADecideRaisesWindowActivation(t *testing.T) {
 	deactivated.Node(1).Focused = false
 	c.Nil(UIADecideRaises(eventTree(), deactivated, []accessibility.Event{
 		{Kind: accessibility.WindowDeactivated, Node: 1},
-	}))
-}
-
-// TestUIADecideRaisesAnnouncement verifies that an announcement is aimed at the root and that saying the same thing
-// twice really does say it twice, unlike every other kind of call, which is deduplicated.
-func TestUIADecideRaisesAnnouncement(t *testing.T) {
-	c := check.New(t)
-	c.Equal([]UIARaise{
-		raiseNotify(1, "Saved"),
-		raiseNotify(1, "Saved"),
-	}, UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
-		{Kind: accessibility.Announcement, New: "Saved"},
-		{Kind: accessibility.Announcement, New: "Saved"},
-		{Kind: accessibility.Announcement, New: ""},
 	}))
 }
 

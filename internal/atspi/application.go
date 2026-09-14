@@ -188,9 +188,13 @@ func (o *rootObject) getLocale(call *dbus.Call) {
 
 // getApplicationBusAddress implements org.a11y.atspi.Application.GetApplicationBusAddress. It is how an application
 // offers a private bus of its own for the assistive technology to use instead of the accessibility bus, which Unison
-// does not do. libatspi asks every application, so the answer has to be a polite refusal rather than an unknown method.
+// does not do.
+//
+// An empty string is how at-spi2-atk and GTK both say "there is no private bus", and libatspi asks every application it
+// sees: answering with an error instead would turn a routine probe into a failed call and a logged warning for every
+// Unison process on the desktop.
 func (o *rootObject) getApplicationBusAddress(call *dbus.Call) {
-	call.Error(dbus.NotSupported, "unison does not offer a private accessibility bus")
+	call.Reply("")
 }
 
 // setID records the identifier the registry assigns to the application. The registry sets it as soon as the application

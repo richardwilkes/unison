@@ -36,8 +36,6 @@ import (
 //  7. FocusChanged last, whenever the focus moved, so an adapter has already applied every structural and value change
 //     before it tells its assistive technology where to look.
 //
-// Announcement events are never produced here; they come from an explicit request to speak something.
-//
 // Additions and per-node changes are found by walking cur from its root, so a node that is in the Nodes map but not
 // reachable from Root is not reported. Removals, by contrast, are found from the Nodes maps alone, so nothing an
 // adapter was told about can be left behind.
@@ -233,12 +231,18 @@ func appendTextChanges(events []Event, prev, cur *Node) []Event {
 			New:    string(curRunes[prefix : prefix+inserted]),
 		})
 	}
-	if prev.Text.SelStart != cur.Text.SelStart || prev.Text.SelEnd != cur.Text.SelEnd {
+	if prev.Text.SelStart != cur.Text.SelStart || prev.Text.SelEnd != cur.Text.SelEnd ||
+		prev.Text.Caret != cur.Text.Caret {
+		// TextInfo requires SelStart <= SelEnd, and the pair is ordered again here so that a widget which fills the two
+		// in from an anchor and a caret without ordering them cannot produce a negative Length. Length is a count of
+		// runes, which adapters turn into a platform range, and there is nothing such a range could make of a negative
+		// one.
+		start := min(cur.Text.SelStart, cur.Text.SelEnd)
 		events = append(events, Event{
 			Kind:   TextSelectionChanged,
 			Node:   cur.ID,
-			Start:  cur.Text.SelStart,
-			Length: cur.Text.SelEnd - cur.Text.SelStart,
+			Start:  start,
+			Length: max(cur.Text.SelStart, cur.Text.SelEnd) - start,
 		})
 	}
 	return events

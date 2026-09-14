@@ -20,7 +20,6 @@ import (
 	"github.com/richardwilkes/unison/enums/gradienttype"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
-	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/tilemode"
 )
 
@@ -95,14 +94,9 @@ func NewGradientEditor(gradient *Gradient) *GradientEditor {
 	return e
 }
 
-// ProvideAccessibility describes the editor to assistive technologies. It is a group of controls rather than a control
-// in its own right; each field within it says what it is by pointing at the label beside it, so none of them depends on
-// where it happens to sit in the layout.
-func (e *GradientEditor) ProvideAccessibility(b *AccessibilityBuilder) {
-	if node := b.Node(); node.Role == role.Auto {
-		node.Role = role.Group
-	}
-}
+// The editor itself needs no description of its own: it is a group of controls, which is what a panel with children and
+// nothing to say for itself is already taken for, and each field within it says what it is by pointing at the label
+// beside it, so none of them depends on where it happens to sit in the layout.
 
 // Gradient returns a copy of the gradient being edited.
 func (e *GradientEditor) Gradient() *Gradient {

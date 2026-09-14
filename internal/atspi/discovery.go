@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/dbus"
@@ -37,11 +38,19 @@ const (
 
 // The match rules that [WatchEnabled] asks the session bus for. Signals from another connection are only delivered to
 // one that has asked for them.
+//
+// Both name the sender they will accept, which is what keeps any other process on the user's session bus from deciding
+// whether this one talks to an assistive technology. Without it, a forged PropertiesChanged from /org/a11y/bus saying
+// IsEnabled=false, or a forged NameOwnerChanged handing the launcher's name to nobody, would have the root package tear
+// the bridge down and leave a screen-reader user with no way into the application; the other direction would have it
+// connect to a bus nothing asked for. The bus resolves the launcher's well-known name to whichever connection owns it
+// and refuses to deliver anything sent by another, which is why the rule is where this is enforced: the signals the
+// launcher sends carry its unique name, which is not something the application can know in advance.
 const (
-	statusMatchRule = "type='signal',interface='" + dbusPropertiesInterface + "',member='" + propertiesChanged +
-		"',path='" + string(BusPath) + "'"
-	ownerMatchRule = "type='signal',interface='" + dbusInterface + "',member='" + nameOwnerChanged +
-		"',arg0='" + BusDestination + "'"
+	statusMatchRule = "type='signal',sender='" + BusDestination + "',interface='" + dbusPropertiesInterface +
+		"',member='" + propertiesChanged + "',path='" + string(BusPath) + "'"
+	ownerMatchRule = "type='signal',sender='" + dbusDestination + "',interface='" + dbusInterface +
+		"',member='" + nameOwnerChanged + "',arg0='" + BusDestination + "'"
 )
 
 // DisabledByEnvironment returns true if the environment forbids talking to the accessibility bus at all. Nothing else
@@ -117,14 +126,30 @@ func Enabled(session *dbus.Conn) bool {
 // launcher's name reports the launcher itself coming or going, which is what happens on the desktops that only start it
 // once something needs it; a launcher that has just appeared is asked again, since its signal came too early for anyone
 // to hear.
+//
+// An answer that had to be read rather than being carried by a signal is dropped if anything more recent has been
+// reported while it was on its way back. Reading it is a round trip, and the launcher can exit while one is in flight:
+// the read would then come back saying yes after the signal that said the launcher is gone, leaving the root package
+// trying to start a bridge against a launcher that no longer exists.
 func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func()) {
 	if session == nil || onChange == nil || DisabledByEnvironment() {
 		return func() {}
 	}
+	var latest atomic.Uint64
+	report := func(enabled bool) {
+		latest.Add(1)
+		onChange(enabled)
+	}
 	recheck := func() {
 		// Enabled makes a call, and this runs on the dispatcher goroutine, which must not be held up, so the answer is
 		// fetched from a goroutine of its own.
-		go func() { onChange(Enabled(session)) }()
+		wanted := latest.Add(1)
+		go func() {
+			enabled := Enabled(session)
+			if latest.Load() == wanted {
+				onChange(enabled)
+			}
+		}()
 	}
 	cancelStatus := session.Subscribe(dbus.SignalFilter{
 		Path:      BusPath,
@@ -133,9 +158,9 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 	}, func(msg *dbus.Message) {
 		switch state := enabledFromPropertiesChanged(msg); state {
 		case enabledTrue:
-			onChange(true)
+			report(true)
 		case enabledFalse:
-			onChange(false)
+			report(false)
 		case enabledUnknown:
 			if mentionsIsEnabled(msg) {
 				recheck()
@@ -143,6 +168,8 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		}
 	})
 	cancelOwner := session.Subscribe(dbus.SignalFilter{
+		Sender:    dbusDestination,
+		Path:      dbusObjectPath,
 		Interface: dbusInterface,
 		Member:    nameOwnerChanged,
 	}, func(msg *dbus.Message) {
@@ -151,7 +178,7 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 			return
 		}
 		if owner == "" {
-			onChange(false)
+			report(false)
 			return
 		}
 		recheck()
@@ -175,8 +202,9 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		// Cancellation is checked on both sides of the read, since [Enabled] makes a round trip to the session bus and
 		// the watch can be canceled while it is in flight.
 		if !canceled(done) {
+			wanted := latest.Add(1)
 			enabled := Enabled(session)
-			if !canceled(done) {
+			if !canceled(done) && latest.Load() == wanted {
 				onChange(enabled)
 			}
 		}

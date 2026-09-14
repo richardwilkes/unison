@@ -60,7 +60,9 @@ type Struct []any
 
 // Array is a D-Bus array with an explicit element type. It is only needed when the element type cannot be derived from
 // the values, i.e. for an empty array in a context where the signature is derived rather than supplied, such as
-// [Message.SetBody] or the value of a [Variant].
+// [Message.SetBody] or the value of a [Variant]. Elem may be a dict entry type, which is the one place a dict entry may
+// appear: Array{Elem: "{sv}"} is an empty a{sv}, which an empty [Dict] cannot be, since nothing about it says what its
+// keys and values would have been.
 type Array struct {
 	Elem   Signature
 	Values []any
@@ -144,25 +146,42 @@ func (d *depths) leave(c byte) {
 // String returns the path as a string.
 func (p ObjectPath) String() string { return string(p) }
 
-// Validate returns an error if the path is not a valid D-Bus object path.
+// Validate returns an error if the path is not a valid D-Bus object path. The elements are walked in place rather than
+// split out of the path: the decoder calls this on untrusted input of up to [MaxArraySize] bytes, both for the values
+// in a body and for the PATH header field, and materializing a slice holding every element of a 16 MiB path made of
+// two byte elements is an order of magnitude more memory than the path itself.
 func (p ObjectPath) Validate() error {
 	if p == "" || p[0] != '/' {
-		return fmt.Errorf("dbus: object path %q does not start with '/'", p)
+		return fmt.Errorf("dbus: object path %q does not start with '/'", abbreviate(string(p)))
 	}
 	if p == "/" {
 		return nil
 	}
-	for _, element := range strings.Split(string(p[1:]), "/") {
-		if element == "" {
-			return fmt.Errorf("dbus: object path %q has an empty element", p)
-		}
-		for i := 0; i < len(element); i++ {
-			if c := element[i]; !isNameChar(c) {
-				return fmt.Errorf("dbus: object path %q contains the invalid character %q", p, string(c))
+	if p[len(p)-1] == '/' {
+		return fmt.Errorf("dbus: object path %q has an empty element", abbreviate(string(p)))
+	}
+	for i := 1; i < len(p); i++ {
+		switch c := p[i]; {
+		case c == '/':
+			if p[i-1] == '/' {
+				return fmt.Errorf("dbus: object path %q has an empty element", abbreviate(string(p)))
 			}
+		case !isNameChar(c):
+			return fmt.Errorf("dbus: object path %q contains the invalid character %q", abbreviate(string(p)),
+				string(c))
 		}
 	}
 	return nil
+}
+
+// abbreviate shortens a string that came off the wire for an error message. A peer chooses how long an object path is,
+// and repeating a 64 MiB one back word for word costs far more than knowing the whole of it is worth.
+func abbreviate(s string) string {
+	const maxLength = 64
+	if len(s) > maxLength {
+		return s[:maxLength] + "..."
+	}
+	return s
 }
 
 // isNameChar returns true if c is one of the characters permitted in an object path element or a name element.
@@ -364,10 +383,14 @@ func signatureOfValue(v any) (Signature, error) {
 	case []ObjectRef:
 		return "a(so)", nil
 	case Array:
-		if err := tv.Elem.ValidateSingle(); err != nil {
+		// The element type is validated as part of the array rather than on its own, since a dict entry is a complete
+		// type only in that position: Array{Elem: "{sv}"} is how an empty a{sv}, the most common empty container
+		// AT-SPI sends, is written where the signature has to be derived.
+		sig := "a" + tv.Elem
+		if err := sig.ValidateSingle(); err != nil {
 			return "", err
 		}
-		return "a" + tv.Elem, nil
+		return sig, nil
 	case Dict:
 		return signatureOfDict(tv)
 	case []DictEntry:
@@ -469,6 +492,20 @@ func signatureOfOther(v any) (Signature, error) {
 	case reflect.Slice, reflect.Array:
 		if sig, ok := signatureOfType(rv.Type()); ok {
 			return sig, nil
+		}
+		// A slice or array of dict entries is a dictionary however it was named, and signatureOfType deliberately
+		// refuses one so that the key and value types can be taken from the entries themselves, which is what happens
+		// here; without this a named dictionary type ends at signatureOfValue(DictEntry), which is an error.
+		if rv.Type().Elem() == dictEntryType {
+			entries := make(Dict, rv.Len())
+			for i := range entries {
+				entry, ok := rv.Index(i).Interface().(DictEntry)
+				if !ok {
+					return "", fmt.Errorf("dbus: cannot derive the signature of %T", v)
+				}
+				entries[i] = entry
+			}
+			return signatureOfDict(entries)
 		}
 		values := make([]any, rv.Len())
 		for i := range values {

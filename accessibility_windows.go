@@ -43,8 +43,8 @@ import (
 func (w *Window) w32AccessibilityAdapter() *w32.UIAWindow {
 	// The flag makes this re-entrant safe. Creating the adapter raises the events a window appearing for the first time
 	// raises, and UI Automation answers an event by asking about what it names, so a second request for this window can
-	// arrive before the first has finished being answered. Such a request is told there is no provider yet, which costs it
-	// the fragment it asked for and nothing else, rather than starting the whole activation over again.
+	// arrive before the first has finished being answered. Such a request is told there is no provider yet, which costs
+	// it the fragment it asked for and nothing else, rather than starting the whole activation over again.
 	if w.wnd.uia != nil || w.wnd.uiaActivating {
 		return w.wnd.uia
 	}
@@ -62,9 +62,9 @@ func (w *Window) w32AccessibilityAdapter() *w32.UIAWindow {
 	// reason.
 	w.ValidateLayout()
 	// Synchronously and without regard to the publish throttle: whatever asked has nothing else to be answered from.
-	// This runs on the UI thread — WM_GETOBJECT is delivered to the thread that owns the window, even when UI Automation
-	// sent it from another one — so walking the live panel hierarchy here is safe, whether the message arrived from the
-	// main event loop or from a nested one put up by a modal dialog or a drag.
+	// This runs on the UI thread — WM_GETOBJECT is delivered to the thread that owns the window, even when UI
+	// Automation sent it from another one — so walking the live panel hierarchy here is safe, whether the message
+	// arrived from the main event loop or from a nested one put up by a modal dialog or a drag.
 	w.publishAccessibilityNow()
 	w.wnd.uiaActivating = false
 	return w.wnd.uia
@@ -78,16 +78,17 @@ func (w *Window) nativeAccessibilityPublish(tree *accessibility.Tree, events []a
 	}
 	if w.wnd.uia == nil {
 		// Creating the adapter is itself the window's first publish: it is handed the snapshot and raises what a window
-		// being described for the first time raises, so the events that describe the step from no tree at all to this one
-		// have nowhere to go and are not passed on.
+		// being described for the first time raises, so the events that describe the step from no tree at all to this
+		// one have nowhere to go and are not passed on.
 		w.wnd.uia = w32.NewUIAWindow(w32.UIAConfig{
 			Action: w.w32AccessibilityAction,
 			HWND:   w.wnd.wnd,
 		}, tree, w.w32AccessibilityGeometry())
 		return
 	}
-	// Refreshed with every publish as well as on every move, resize and scale change, since a window that was moved while
-	// no snapshot was being built has a stale origin and would point a screen reader's highlight at the wrong place.
+	// Refreshed with every publish as well as on every move, resize and scale change, since a window that was moved
+	// while no snapshot was being built has a stale origin and would point a screen reader's highlight at the wrong
+	// place.
 	w.wnd.uia.SetGeometry(w.w32AccessibilityGeometry())
 	w.wnd.uia.Publish(tree, events)
 }
@@ -110,6 +111,14 @@ func (w *Window) nativeAccessibilityShutdown() {
 	}
 }
 
+// nativeAccessibilityWindowHidden keeps the provider of a window that has been hidden or minimized. UI Automation
+// enumerates the top-level windows itself: a hidden one is not offered to a client and a minimized one reports that
+// state through its window pattern, so nothing has to be withdrawn, and keeping the provider means a client finds the
+// elements it already holds when the window comes back.
+func (*Window) nativeAccessibilityWindowHidden() bool {
+	return false
+}
+
 // nativeAccessibilityEnabledChanged turns support back on for an application the environment forced it on for, and
 // otherwise has nothing to do on this platform: support starts again on the next WM_GETOBJECT asking for the UI
 // Automation root, which activation refuses or allows as it stands at the time, and stopping has already shut every
@@ -120,7 +129,7 @@ func (w *Window) nativeAccessibilityShutdown() {
 // describing nothing at all. Linux restores a forced-on application the same way, through linuxA11yStatusInit, and the
 // promise SetAccessibilityEnabled makes is that the three platforms end up where they started.
 func nativeAccessibilityEnabledChanged(enabled bool) {
-	if enabled && accessibilityEnv > 0 {
+	if enabled && accessibilityEnv.Load() > 0 {
 		activateAccessibility()
 	}
 }

@@ -211,7 +211,10 @@ func (p *PopupMenu[T]) Click() {
 		SafeCall(func() { p.WillShowMenuCallback(p) })
 	}
 	hasItem := false
-	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
+	// The menu takes the popup's own name as its title, which is what an assistive technology announces as the person
+	// moves into the choices. Without it the choices hang off an anonymous menu, with nothing to say which control they
+	// belong to. Node.Controls says that outright while the menu is up; a name is what is heard.
+	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, p.axName(), nil)
 	defer m.Dispose()
 	for i, one := range p.items {
 		if one.separator {
@@ -457,24 +460,72 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repe
 // ProvideAccessibility describes the popup menu to assistive technologies. The choices themselves are not part of the
 // description: they exist only while the menu is open, as a native menu on the platforms that have one and as panels
 // within the window elsewhere, and either way they are described then rather than now. Whether they are showing is
-// still reported, since that is the difference between a popup a person has opened and one they have not.
+// still reported, since that is the difference between a popup a person has opened and one they have not, and while
+// they are, the menu they are showing in is pointed at, so that an assistive technology can tie the two together.
+//
+// A popup with nothing to choose from opens nothing: Click refuses one that holds no item other than separators. So
+// such a popup does not offer to expand either, rather than reporting that it had expanded and leaving an assistive
+// technology waiting for choices that are never going to appear.
 func (p *PopupMenu[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	if node.Role == role.Auto {
 		node.Role = role.PopupButton
 	}
 	node.Value = p.Text()
-	node.Expandable = true
+	node.Expandable = p.hasItem()
 	node.Expanded = axMenuIsOpen(p.openMenu)
-	node.Actions = node.Actions.With(accessibility.Press, accessibility.Expand, accessibility.Collapse)
+	node.Actions = node.Actions.With(accessibility.Press)
+	if node.Expandable {
+		node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse)
+	}
+	if inWindow, ok := p.openMenu.(*menu); ok && inWindow.popupPanel != nil {
+		node.Controls = append(node.Controls, b.IDFor(inWindow.popupPanel))
+	}
+}
+
+// hasItem reports whether the popup holds anything that could be chosen, which is what decides whether opening it would
+// show anything at all. A popup holding nothing but separators has no more to show than an empty one.
+func (p *PopupMenu[T]) hasItem() bool {
+	for _, one := range p.items {
+		if !one.separator {
+			return true
+		}
+	}
+	return false
+}
+
+// axName returns the name the popup is known by, which is the name it has been given outright or, failing that, the
+// text of the label the layout places before it — the same convention the description of the popup itself falls back
+// to, applied here so that the menu it opens is announced as the same thing the button is.
+func (p *PopupMenu[T]) axName() string {
+	if name := p.Accessibility.Name; name != "" {
+		return name
+	}
+	if labeler := axPrecedingLabel(p.AsPanel()); labeler != nil {
+		return axTrimLabelText(labeler.String())
+	}
+	return ""
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Pressing the popup menu, or asking it
 // to expand, shows its choices; asking it to collapse takes them away again. Both are idempotent, since an assistive
-// technology that has been told the popup is already the way it is asking for expects nothing to change.
+// technology that has been told the popup is already the way it is asking for expects nothing to change. A popup with
+// nothing to choose from refuses to expand, since nothing would come of it.
 func (p *PopupMenu[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
-	case accessibility.Press, accessibility.Expand:
+	case accessibility.Press:
+		if !axMenuIsOpen(p.openMenu) {
+			p.Click()
+		}
+		return true
+	case accessibility.Expand:
+		if !p.hasItem() {
+			// Click refuses a popup with nothing to choose from, so reporting that the choices had been shown would
+			// leave an assistive technology waiting for choices that are never going to appear. Pressing such a popup
+			// is still a click, which is a thing that can be done to it whether or not anything comes of it; expanding
+			// it is not.
+			return false
+		}
 		if !axMenuIsOpen(p.openMenu) {
 			p.Click()
 		}

@@ -76,7 +76,7 @@ func TestUIAPatternVtblSlotOrder(t *testing.T) {
 	var pin runtime.Pinner
 	defer pin.Unpin()
 	out := uiaSlotScratch(&pin)
-	w := newTestUIAWindow(patternTree())
+	w := newTestUIAWindow(t, patternTree())
 
 	// IInvokeProvider: Invoke.
 	c.Equal(COM_S_OK, uiaCallSlot(w.providerFor(2), uiaIfaceInvoke, 0))
@@ -117,21 +117,22 @@ func TestUIAPatternVtblSlotOrder(t *testing.T) {
 	c.Equal(COM_S_OK, uiaCallSlot(popup, uiaIfaceExpandCollapse, 2, out.fresh()))
 	c.Equal(ExpandCollapseState_Collapsed, ExpandCollapseState(out.i32()), "get_ExpandCollapseState")
 
-	uiaCheckRangeValueSlotOrder(c, out)
-	uiaCheckSelectionSlotOrder(c, out)
-	uiaCheckTableSlotOrder(c, out)
+	uiaCheckRangeValueSlotOrder(t, c, out)
+	uiaCheckSelectionSlotOrder(t, c, out)
+	uiaCheckTableSlotOrder(t, c, out)
 }
 
 // uiaCheckRangeValueSlotOrder verifies the slot order of IRangeValueProvider: SetValue, get_Value, get_IsReadOnly,
 // get_Maximum, get_Minimum, get_LargeChange, get_SmallChange. Every one of the six getters takes nothing but an
 // out-parameter, so the slider is given a range whose six answers are all different from one another: a value of 5 over
 // -1 to 10, a step of 2 — which makes the large change 20 — and no SetValue action, which makes it read-only.
-func uiaCheckRangeValueSlotOrder(c check.Checker, out *uiaSlotOut) {
+func uiaCheckRangeValueSlotOrder(t *testing.T, c check.Checker, out *uiaSlotOut) {
+	t.Helper()
 	tree := patternTree()
 	tree.Nodes[11].Min = -1
 	tree.Nodes[11].Step = 2
 	tree.Nodes[11].Actions = accessibility.ActionSet(0).With(accessibility.Increment, accessibility.Decrement)
-	slider := newTestUIAWindow(tree).providerFor(11)
+	slider := newTestUIAWindow(t, tree).providerFor(11)
 	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 1, out.fresh()))
 	c.Equal(5.0, out.f64(), "get_Value")
 	c.Equal(COM_S_OK, uiaCallSlot(slider, uiaIfaceRangeValue, 2, out.fresh()))
@@ -150,8 +151,9 @@ func uiaCheckRangeValueSlotOrder(c check.Checker, out *uiaSlotOut) {
 // get_IsSelectionRequired — of ISelectionItemProvider — Select, AddToSelection, RemoveFromSelection, get_IsSelected,
 // get_SelectionContainer — and of IScrollItemProvider's one method. The three that take nothing but the this pointer
 // are told apart by the action each asks the window for.
-func uiaCheckSelectionSlotOrder(c check.Checker, out *uiaSlotOut) {
-	w := newTestUIAWindow(listTree())
+func uiaCheckSelectionSlotOrder(t *testing.T, c check.Checker, out *uiaSlotOut) {
+	t.Helper()
+	w := newTestUIAWindow(t, listTree())
 	list := w.providerFor(2)
 	c.Equal(COM_S_OK, uiaCallSlot(list, uiaIfaceSelection, 0, out.fresh()))
 	c.Equal(2, len(uiaSafeArrayUnknowns(c, out.array())), "GetSelection")
@@ -189,8 +191,9 @@ func uiaCheckSelectionSlotOrder(c check.Checker, out *uiaSlotOut) {
 //
 // Cell 11 sits at row 2 of column 0, so get_Row and get_Column answer differently. The two spans are both the constant
 // one, so nothing can tell them apart from each other — and nothing would go wrong if they were swapped.
-func uiaCheckTableSlotOrder(c check.Checker, out *uiaSlotOut) {
-	w := newTestUIAWindow(tableTree())
+func uiaCheckTableSlotOrder(t *testing.T, c check.Checker, out *uiaSlotOut) {
+	t.Helper()
+	w := newTestUIAWindow(t, tableTree())
 	grid := w.providerFor(6)
 	c.Equal(COM_S_OK, uiaCallSlot(grid, uiaIfaceGrid, 0, 1, 0, out.fresh()))
 	cell := w.providerFor(8)
@@ -236,7 +239,7 @@ func uiaCheckTableSlotOrder(c check.Checker, out *uiaSlotOut) {
 // success.
 func TestUIAInvokePattern(t *testing.T) {
 	c := check.New(t)
-	w := newTestUIAWindow(patternTree())
+	w := newTestUIAWindow(t, patternTree())
 
 	c.Equal(COM_S_OK, uiaInvokeInvoke(w.providerFor(2).ifacePtr(uiaIfaceInvoke)))
 	c.Equal(1, len(w.recorded()))
@@ -250,6 +253,20 @@ func TestUIAInvokePattern(t *testing.T) {
 
 	plain := NewUIAWindow(UIAConfig{}, patternTree(), UIAGeometry{})
 	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
+
+	// An element that carries the pattern but offers no Press refuses too. A column header is the real case: it is
+	// given the Invoke pattern whether or not its table can be sorted by it, so that a client describes it as a header
+	// either way, and TableHeader.PerformAccessibilityAction turns down a press on one that cannot sort. Answering
+	// S_OK would tell the client the header had been activated while nothing happened at all.
+	headers := newTestUIAWindow(t, tableTree())
+	c.Equal(COM_S_OK, uiaInvokeInvoke(headers.providerFor(4).ifacePtr(uiaIfaceInvoke)))
+	c.Equal(1, len(headers.recorded()))
+	unsortable := tableTree()
+	unsortable.Nodes[4].Actions = 0
+	unsortable.Generation = 2
+	headers.Publish(unsortable, nil)
+	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(headers.providerFor(4).ifacePtr(uiaIfaceInvoke)))
+	c.Equal(1, len(headers.recorded()))
 }
 
 // TestUIAInvokeRaisesInvoked verifies that Invoke reports the invocation with UIA_Invoke_InvokedEventId on the element
@@ -258,8 +275,8 @@ func TestUIAInvokePattern(t *testing.T) {
 // forever.
 func TestUIAInvokeRaisesInvoked(t *testing.T) {
 	c := check.New(t)
-	r := uiaRecord(t, true)
-	w := newTestUIAWindow(patternTree())
+	w := newTestUIAWindow(t, patternTree())
+	r := uiaRecord(t, true) // Installed after the window, whose own hook says nobody is listening.
 	button := w.providerFor(2)
 	c.NotNil(button)
 
@@ -270,12 +287,19 @@ func TestUIAInvokeRaisesInvoked(t *testing.T) {
 	c.Equal(UIA_Invoke_InvokedEventId, r.raises[0].Event)
 	c.Equal(button.Unknown(), r.raises[0].Provider, "the event names the element that was invoked")
 
-	// A refused invocation reports nothing. Node 3 is disabled, and a window with nowhere to send the request cannot
-	// have carried it out either.
+	// A refused invocation reports nothing. Node 3 is disabled, a window with nowhere to send the request cannot have
+	// carried it out either, and an element that offers no Press never had anything to invoke — which is the case the
+	// event matters most for, since a client waiting on Invoked would otherwise be told the press had happened.
 	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaInvokeInvoke(w.providerFor(3).ifacePtr(uiaIfaceInvoke)))
 	plain := NewUIAWindow(UIAConfig{}, patternTree(), UIAGeometry{})
 	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
+	pressless := patternTree()
+	pressless.Nodes[2].Actions = 0
+	pressless.Generation = 2
+	w.Publish(pressless, nil)
+	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(button.ifacePtr(uiaIfaceInvoke)))
 	c.Equal(1, len(r.raises))
+	w.Publish(patternTree(), nil)
 
 	// Like every other raise this package makes, it costs nothing while no client is listening.
 	quiet := uiaRecord(t, false)
@@ -292,7 +316,7 @@ func TestUIATogglePattern(t *testing.T) {
 	defer pin.Unpin()
 	state, stateAddress := uiaOut[ToggleState](&pin)
 	tree := patternTree()
-	w := newTestUIAWindow(tree)
+	w := newTestUIAWindow(t, tree)
 
 	// Node 4 is a check box with a mixed check; node 5 a pressed toggle button.
 	c.Equal(COM_S_OK, uiaToggleState(w.providerFor(4).ifacePtr(uiaIfaceToggle), stateAddress))
@@ -321,7 +345,7 @@ func TestUIATogglePressFallback(t *testing.T) {
 	c := check.New(t)
 	tree := patternTree()
 	tree.Nodes[5].Actions = accessibility.ActionSet(0).With(accessibility.Press)
-	w := newTestUIAWindow(tree)
+	w := newTestUIAWindow(t, tree)
 
 	c.Equal(COM_S_OK, uiaToggleToggle(w.providerFor(5).ifacePtr(uiaIfaceToggle)))
 	c.Equal(1, len(w.recorded()))
@@ -357,7 +381,7 @@ func TestUIAValuePattern(t *testing.T) {
 	str, strAddress := uiaOut[BSTR](&pin)
 	boolean, booleanAddress := uiaOut[int32](&pin)
 	tree := patternTree()
-	w := newTestUIAWindow(tree)
+	w := newTestUIAWindow(t, tree)
 
 	value := func(node accessibility.NodeID) string {
 		c.Equal(COM_S_OK, uiaValueValue(w.providerFor(node).ifacePtr(uiaIfaceValue), strAddress))
@@ -415,7 +439,7 @@ func TestUIARangeValuePattern(t *testing.T) {
 	defer pin.Unpin()
 	number, numberAddress := uiaOut[float64](&pin)
 	boolean, booleanAddress := uiaOut[int32](&pin)
-	w := newTestUIAWindow(patternTree())
+	w := newTestUIAWindow(t, patternTree())
 	slider := w.providerFor(11).ifacePtr(uiaIfaceRangeValue)
 
 	double := func(call func(this, out uintptr) uint64, this uintptr) float64 {
@@ -463,7 +487,7 @@ func TestUIASelectionPattern(t *testing.T) {
 	defer pin.Unpin()
 	array, arrayAddress := uiaOut[SAFEARRAY](&pin)
 	boolean, booleanAddress := uiaOut[int32](&pin)
-	w := newTestUIAWindow(listTree())
+	w := newTestUIAWindow(t, listTree())
 	list := w.providerFor(2).ifacePtr(uiaIfaceSelection)
 
 	// Nodes 3 and 5 are the selected list items, 5 of them through an ignored group.
@@ -505,7 +529,7 @@ func TestUIASelectionPattern(t *testing.T) {
 	array.Destroy()
 
 	// A table's selection is its rows.
-	table := newTestUIAWindow(tableTree())
+	table := newTestUIAWindow(t, tableTree())
 	c.Equal(COM_S_OK, uiaSelectionGetSelection(table.providerFor(6).ifacePtr(uiaIfaceSelection), arrayAddress))
 	c.Equal([]uintptr{table.providerFor(7).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
 	array.Destroy()
@@ -519,7 +543,7 @@ func TestUIASelectionItemPattern(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	boolean, booleanAddress := uiaOut[int32](&pin)
-	w := newTestUIAWindow(listTree())
+	w := newTestUIAWindow(t, listTree())
 	item := w.providerFor(3).ifacePtr(uiaIfaceSelectionItem)
 	other := w.providerFor(6).ifacePtr(uiaIfaceSelectionItem)
 
@@ -544,7 +568,7 @@ func TestUIASelectionItemPattern(t *testing.T) {
 
 	// A radio button reports its check state as its selected state, is chosen by being pressed, cannot be unchosen, and
 	// has no container to name: its group is a layout panel with no pattern of its own.
-	radios := newTestUIAWindow(patternTree())
+	radios := newTestUIAWindow(t, patternTree())
 	first := radios.providerFor(6).ifacePtr(uiaIfaceSelectionItem)
 	second := radios.providerFor(7).ifacePtr(uiaIfaceSelectionItem)
 	c.Equal(COM_S_OK, uiaSelectionItemIsSelected(first, booleanAddress))
@@ -562,7 +586,7 @@ func TestUIASelectionItemPattern(t *testing.T) {
 	c.Equal(accessibility.Press, uiaRequestAt(radios, 1).Action)
 
 	// A row is a selection item too, and a disabled one is not acted on.
-	rows := newTestUIAWindow(tableTree())
+	rows := newTestUIAWindow(t, tableTree())
 	c.Equal(COM_S_OK, uiaSelectionItemSelectionContainer(rows.providerFor(7).ifacePtr(uiaIfaceSelectionItem),
 		outAddress))
 	c.Equal(rows.providerFor(6).ifacePtr(uiaIfaceSimple), *out)
@@ -583,7 +607,7 @@ func TestUIASelectionItemPattern(t *testing.T) {
 // Automation defines UIA_E_INVALIDOPERATION for that, and for an item that does not offer the action at all.
 func TestUIASelectionItemRefusesImpossibleChanges(t *testing.T) {
 	c := check.New(t)
-	w := newTestUIAWindow(listTree())
+	w := newTestUIAWindow(t, listTree())
 
 	// Node 9 is a tab, and a tab list holds one selection at a time.
 	tab := w.providerFor(9).ifacePtr(uiaIfaceSelectionItem)
@@ -617,7 +641,7 @@ func TestUIAExpandCollapsePattern(t *testing.T) {
 	var pin runtime.Pinner
 	defer pin.Unpin()
 	state, stateAddress := uiaOut[ExpandCollapseState](&pin)
-	w := newTestUIAWindow(patternTree())
+	w := newTestUIAWindow(t, patternTree())
 	popup := w.providerFor(14).ifacePtr(uiaIfaceExpandCollapse)
 
 	c.Equal(COM_S_OK, uiaExpandCollapseState(popup, stateAddress))
@@ -640,32 +664,59 @@ func TestUIAExpandCollapsePattern(t *testing.T) {
 	c.Equal(accessibility.Collapse, uiaRequestAt(w, 1).Action)
 
 	// An expanded row in a hierarchical table is the other user of the pattern.
-	rows := newTestUIAWindow(tableTree())
+	rows := newTestUIAWindow(t, tableTree())
 	c.Equal(COM_S_OK, uiaExpandCollapseState(rows.providerFor(7).ifacePtr(uiaIfaceExpandCollapse), stateAddress))
 	c.Equal(ExpandCollapseState_Expanded, *state)
 	c.Equal(COM_S_OK, uiaExpandCollapseCollapse(rows.providerFor(7).ifacePtr(uiaIfaceExpandCollapse)))
 	c.Equal(accessibility.Collapse, uiaRequestAt(rows, 0).Action)
 	c.Equal(accessibility.NodeID(7), uiaRequestAt(rows, 0).Node)
+
+	// A row behind a hierarchical filter reports that it is expanded — that is what the user sees — while offering
+	// neither action, since the filter decides what is open and Table.axSetRowOpen refuses to change it. The pattern
+	// still has to be there for the state to be read through, so the methods are what must refuse.
+	filtered := tableTree()
+	filtered.Nodes[7].Actions = filtered.Nodes[7].Actions.Without(accessibility.Expand, accessibility.Collapse)
+	filtered.Generation = 2
+	rows.Publish(filtered, nil)
+	row := rows.providerFor(7).ifacePtr(uiaIfaceExpandCollapse)
+	c.Equal(COM_S_OK, uiaExpandCollapseState(row, stateAddress))
+	c.Equal(ExpandCollapseState_Expanded, *state)
+	c.Equal(UIA_E_INVALIDOPERATION, uiaExpandCollapseCollapse(row))
+	c.Equal(UIA_E_INVALIDOPERATION, uiaExpandCollapseExpand(row))
+	c.Equal(1, len(rows.recorded()))
 }
 
 // TestUIAScrollItemPattern verifies the one method of the ScrollItem pattern, which a client calls to bring an element
 // it is about to talk about into view.
 func TestUIAScrollItemPattern(t *testing.T) {
 	c := check.New(t)
-	w := newTestUIAWindow(listTree())
+	w := newTestUIAWindow(t, listTree())
 
 	c.Equal(COM_S_OK, uiaScrollItemScrollIntoView(w.providerFor(3).ifacePtr(uiaIfaceScrollItem)))
 	c.Equal(1, len(w.recorded()))
 	c.Equal(accessibility.NodeID(3), uiaRequestAt(w, 0).Node)
 	c.Equal(accessibility.ScrollIntoView, uiaRequestAt(w, 0).Action)
 
-	// A disabled element is not acted on, here as everywhere else: a client that wants it described still gets that.
+	// A disabled element is the exception to the rule that nothing acts on one: ScrollIntoView is the single action a
+	// disabled node goes on offering, and every row and item of a disabled table or list is published with it and
+	// nothing else, so a screen reader stepping through one must still be able to bring its items on screen.
 	disabled := listTree()
 	disabled.Nodes[3].Disabled = true
+	disabled.Nodes[3].Actions = accessibility.ActionSet(0).With(accessibility.ScrollIntoView)
 	disabled.Generation = 2
 	w.Publish(disabled, nil)
-	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaScrollItemScrollIntoView(w.providerFor(3).ifacePtr(uiaIfaceScrollItem)))
-	c.Equal(1, len(w.recorded()))
+	c.Equal(COM_S_OK, uiaScrollItemScrollIntoView(w.providerFor(3).ifacePtr(uiaIfaceScrollItem)))
+	c.Equal(2, len(w.recorded()))
+	c.Equal(accessibility.ScrollIntoView, uiaRequestAt(w, 1).Action)
+
+	// A node that does not offer the action does not have the pattern either, so the interface is refused outright
+	// rather than answering for something that cannot happen.
+	fixed := listTree()
+	fixed.Nodes[3].Actions = accessibility.ActionSet(0).With(accessibility.Select)
+	fixed.Generation = 3
+	w.Publish(fixed, nil)
+	c.Equal(UIA_E_NOTSUPPORTED, uiaScrollItemScrollIntoView(w.providerFor(3).ifacePtr(uiaIfaceScrollItem)))
+	c.Equal(2, len(w.recorded()))
 }
 
 // TestUIAGridPattern verifies the Grid pattern a table implements, including the difference between a cell outside the
@@ -676,7 +727,7 @@ func TestUIAGridPattern(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	count, countAddress := uiaOut[int32](&pin)
-	w := newTestUIAWindow(tableTree())
+	w := newTestUIAWindow(t, tableTree())
 	grid := w.providerFor(6).ifacePtr(uiaIfaceGrid)
 
 	c.Equal(COM_S_OK, uiaGridRowCount(grid, countAddress))
@@ -713,7 +764,7 @@ func TestUIAGridItemPattern(t *testing.T) {
 	defer pin.Unpin()
 	out, outAddress := uiaOut[uintptr](&pin)
 	index, indexAddress := uiaOut[int32](&pin)
-	w := newTestUIAWindow(tableTree())
+	w := newTestUIAWindow(t, tableTree())
 	cell := w.providerFor(9).ifacePtr(uiaIfaceGridItem)
 
 	c.Equal(COM_S_OK, uiaGridItemRow(cell, indexAddress))
@@ -737,7 +788,7 @@ func TestUIATablePattern(t *testing.T) {
 	defer pin.Unpin()
 	array, arrayAddress := uiaOut[SAFEARRAY](&pin)
 	major, majorAddress := uiaOut[RowOrColumnMajor](&pin)
-	w := newTestUIAWindow(tableTree())
+	w := newTestUIAWindow(t, tableTree())
 	table := w.providerFor(6).ifacePtr(uiaIfaceTable)
 
 	c.Equal(COM_S_OK, uiaTableRowOrColumnMajor(table, majorAddress))
@@ -779,7 +830,7 @@ func TestUIATableItemPattern(t *testing.T) {
 	var pin runtime.Pinner
 	defer pin.Unpin()
 	array, arrayAddress := uiaOut[SAFEARRAY](&pin)
-	w := newTestUIAWindow(tableTree())
+	w := newTestUIAWindow(t, tableTree())
 
 	c.Equal(COM_S_OK, uiaTableItemGetColumnHeaderItems(w.providerFor(8).ifacePtr(uiaIfaceTableItem), arrayAddress))
 	c.Equal([]uintptr{w.providerFor(4).ifacePtr(uiaIfaceSimple)}, uiaSafeArrayUnknowns(c, *array))
@@ -804,7 +855,11 @@ func TestUIAPatternStale(t *testing.T) {
 	defer pin.Unpin()
 	str, strAddress := uiaOut[BSTR](&pin)
 	state, stateAddress := uiaOut[ToggleState](&pin)
-	w := newTestUIAWindow(patternTree())
+	// Both buffers are seeded with something a client would notice, so that "the out-parameter was cleared" is a
+	// claim that can fail: an out-parameter UI Automation hands a provider holds whatever was last in it.
+	*str = BSTR(0xDEAD)
+	*state = ToggleState_Indeterminate
+	w := newTestUIAWindow(t, patternTree())
 	button := w.providerFor(2)
 	button.addRef() // Stand in for the reference a client would be holding.
 	field := w.providerFor(8)
@@ -840,7 +895,8 @@ func TestUIAPatternUnsupported(t *testing.T) {
 	defer pin.Unpin()
 	number, numberAddress := uiaOut[float64](&pin)
 	str, strAddress := uiaOut[BSTR](&pin)
-	w := newTestUIAWindow(patternTree())
+	*str = BSTR(0xDEAD) // Seeded for the reason TestUIAPatternStale gives.
+	w := newTestUIAWindow(t, patternTree())
 	slider := w.providerFor(11).ifacePtr(uiaIfaceRangeValue)
 	c.Equal(COM_S_OK, uiaRangeValueValue(slider, numberAddress))
 	c.Equal(5.0, *number)
@@ -868,7 +924,7 @@ func TestUIAPatternUnsupported(t *testing.T) {
 // rather than its own.
 func TestUIAPatternNullOutParameters(t *testing.T) {
 	c := check.New(t)
-	w := newTestUIAWindow(tableTree())
+	w := newTestUIAWindow(t, tableTree())
 	root := w.rootProvider()
 	c.NotNil(root)
 	for _, method := range []struct {

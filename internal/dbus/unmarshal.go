@@ -354,10 +354,14 @@ func (d *decoder) array(elem Signature) (any, error) {
 		}
 		return result, d.checkEnd(end)
 	case objectRefSig:
+		read, readErr := d.elementDecoder(elem)
+		if readErr != nil {
+			return nil, readErr
+		}
 		result := make([]ObjectRef, 0, 8)
 		for d.pos < end {
 			var v any
-			if v, err = d.value(elem); err != nil {
+			if v, err = read(); err != nil {
 				return nil, err
 			}
 			ref, ok := v.(ObjectRef)
@@ -368,16 +372,35 @@ func (d *decoder) array(elem Signature) (any, error) {
 		}
 		return result, d.checkEnd(end)
 	default:
+		read, readErr := d.elementDecoder(elem)
+		if readErr != nil {
+			return nil, readErr
+		}
 		result := make([]any, 0, 8)
 		for d.pos < end {
 			var v any
-			if v, err = d.value(elem); err != nil {
+			if v, err = read(); err != nil {
 				return nil, err
 			}
 			result = append(result, v)
 		}
 		return result, d.checkEnd(end)
 	}
+}
+
+// elementDecoder returns a function that reads one value of the given type, with whatever preparation that type needs
+// done once rather than once per element. Splitting a structure's field types out of its signature is the same work for
+// every element of an array of structures, and paying for it per element let an 8 MiB body of one byte structures
+// allocate seventeen times its own size, all of it driven by an element count the peer chooses.
+func (d *decoder) elementDecoder(sig Signature) (func() (any, error), error) {
+	if sig[0] != '(' {
+		return func() (any, error) { return d.value(sig) }, nil
+	}
+	types, err := sig[1 : len(sig)-1].Types()
+	if err != nil {
+		return nil, err
+	}
+	return func() (any, error) { return d.structureFields(sig, types) }, nil
 }
 
 // dict reads an array of dict entries. sig is the dict entry type, including its braces.
@@ -396,6 +419,12 @@ func (d *decoder) dict(sig Signature) (any, error) {
 	}
 	keySig := sig[1:keyEnd]
 	valSig := sig[keyEnd : len(sig)-1]
+	// A dict entry's key is always a basic type, but its value may be a structure, so the value is read through a
+	// decoder that is prepared once rather than once per entry; see elementDecoder.
+	readValue, err := d.elementDecoder(valSig)
+	if err != nil {
+		return nil, err
+	}
 	end, err := d.startContainer(8)
 	if err != nil {
 		return nil, err
@@ -409,7 +438,7 @@ func (d *decoder) dict(sig Signature) (any, error) {
 		if entry.Key, err = d.value(keySig); err != nil {
 			return nil, err
 		}
-		if entry.Value, err = d.value(valSig); err != nil {
+		if entry.Value, err = readValue(); err != nil {
 			return nil, err
 		}
 		result = append(result, entry)
@@ -419,21 +448,27 @@ func (d *decoder) dict(sig Signature) (any, error) {
 
 // structure reads a structure. sig is the structure type, including its parentheses.
 func (d *decoder) structure(sig Signature) (any, error) {
-	if err := d.enter('('); err != nil {
-		return nil, err
-	}
-	defer d.leave('(')
 	types, err := sig[1 : len(sig)-1].Types()
 	if err != nil {
 		return nil, err
 	}
-	if err = d.align(8); err != nil {
+	return d.structureFields(sig, types)
+}
+
+// structureFields reads a structure whose field types have already been split out of its signature, which is how an
+// array of structures avoids paying for that split once per element.
+func (d *decoder) structureFields(sig Signature, types []Signature) (any, error) {
+	if err := d.enter('('); err != nil {
+		return nil, err
+	}
+	defer d.leave('(')
+	if err := d.align(8); err != nil {
 		return nil, err
 	}
 	fields := make(Struct, 0, len(types))
 	for _, one := range types {
-		var v any
-		if v, err = d.value(one); err != nil {
+		v, err := d.value(one)
+		if err != nil {
 			return nil, err
 		}
 		fields = append(fields, v)

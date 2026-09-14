@@ -195,7 +195,7 @@ func TestMarshalErrors(t *testing.T) {
 		{name: "struct field count", sig: "(ss)", values: []any{Struct{"a"}}},
 		{name: "array of non-slice", sig: "as", values: []any{"not a slice"}},
 		{name: "dict from non-map", sig: stringDictSig, values: []any{"not a map"}},
-		{name: "dict entry outside array", sig: "{ss}", values: []any{DictEntry{Key: "a", Value: "b"}}},
+		{name: "dict entry outside array", sig: stringEntrySig, values: []any{DictEntry{Key: "a", Value: "b"}}},
 		{name: "empty struct", sig: "()", values: []any{Struct{}}},
 		{name: "variant of undecidable value", sig: "v", values: []any{1}},
 		{name: "variant with bad signature", sig: "v", values: []any{Variant{Sig: "ss", Value: "x"}}},
@@ -317,8 +317,13 @@ func TestMarshalDictEntryForms(t *testing.T) {
 		[]any{DictEntry{Key: "a", Value: "b"}},
 		[]any{Struct{"a", "b"}},
 		[]any{[]any{"a", "b"}},
-		Array{Elem: "{ss}", Values: []any{DictEntry{Key: "a", Value: "b"}}},
+		Array{Elem: stringEntrySig, Values: []any{DictEntry{Key: "a", Value: "b"}}},
 		map[myText]myText{"a": "b"},
+		// A slice or an array of entries marshals into a dictionary exactly as it does into an array of structures,
+		// whatever its Go type is named.
+		[]Struct{{"a", "b"}},
+		[1]DictEntry{{Key: "a", Value: "b"}},
+		namedDict{{Key: "a", Value: "b"}},
 	} {
 		data, marshalErr := Marshal(stringDictSig, one)
 		c.NoError(marshalErr, "%T", one)
@@ -332,6 +337,9 @@ func TestMarshalDictEntryForms(t *testing.T) {
 		// is for any other array.
 		Array{Elem: "{si}", Values: []any{DictEntry{Key: "a", Value: "b"}}},
 		Array{Elem: "ss", Values: []any{DictEntry{Key: "a", Value: "b"}}},
+		// Something that is neither a series of entries nor a map has no shape a dictionary could take.
+		"not a container",
+		[]Struct{{"a", "b", "c"}},
 	} {
 		_, marshalErr := Marshal(stringDictSig, one)
 		c.HasError(marshalErr, "%T", one)

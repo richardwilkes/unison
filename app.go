@@ -234,6 +234,13 @@ func finishProcessingEvents() {
 						wnd.publishAccessibility()
 					}
 				case wnd.IsValid():
+					if active {
+						// A window that has been hidden or minimized is described no more, so where the platform lists
+						// the application's windows from what it is told, what was said about the window last has to
+						// be withdrawn rather than left standing as the state of a window that is not on the screen.
+						// The redraw stays pending, so showing the window again draws it and publishes it afresh.
+						wnd.axWindowHidden()
+					}
 					// Hidden, but not disposed, so keep the request pending until the window becomes visible. Disposed
 					// windows are dropped, since they can never be drawn again.
 					redrawSet[wnd] = struct{}{}
@@ -250,7 +257,7 @@ func finishStartup() {
 	codecs.Register()
 	RebuildDynamicColors()
 	apiLateInit()
-	if accessibilityEnv > 0 {
+	if accessibilityEnv.Load() > 0 {
 		// The environment has asked for accessibility support whatever the platform reports, so turn it on here rather
 		// than waiting for an assistive technology that may never query us. Anything the platform adapters needed in
 		// order to be asked at all has been set up by apiLateInit above.

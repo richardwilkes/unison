@@ -123,9 +123,11 @@ func TestWatchEnabled(t *testing.T) {
 	c.True(nextChange(t, changes))
 
 	// A launcher that goes away takes accessibility with it, and one that appears is asked.
-	p.emit(dbusPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, testPeerName, "")
+	p.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, testPeerName,
+		"")
 	c.False(nextChange(t, changes))
-	p.emit(dbusPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, "", testPeerName)
+	p.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, "",
+		testPeerName)
 	c.True(nextChange(t, changes))
 
 	cancel()
@@ -197,7 +199,12 @@ func TestWatchEnabledIgnoresWhatIsNotItsBusiness(t *testing.T) {
 		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})
 	p.emit(BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
 		dbus.Dict{{Key: "SomethingElse", Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})
-	p.emit(dbusPath, dbusInterface, nameOwnerChanged, "sss", "org.example.Other", "", testPeerName)
+	p.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", "org.example.Other", "",
+		testPeerName)
+	// Only the bus itself says who owns a name. A NameOwnerChanged from anything else is another process on the session
+	// bus trying to decide whether this one talks to an assistive technology, and taking it at its word would let any
+	// peer cut a screen-reader user off from the application.
+	p.emitFrom(testPeerName, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, testPeerName, "")
 	// The signal that does matter arrives last, so anything reported before it would be one of the others.
 	p.emit(BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
 		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})

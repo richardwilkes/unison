@@ -1458,6 +1458,7 @@ func (f *Field) ProvideAccessibility(b *AccessibilityBuilder) {
 		Text:      node.Value,
 		SelStart:  f.selectionStart,
 		SelEnd:    f.selectionEnd,
+		Caret:     f.axCaret(),
 		Multiline: f.multiLine,
 	}
 	if b.Focused() {
@@ -1467,6 +1468,18 @@ func (f *Field) ProvideAccessibility(b *AccessibilityBuilder) {
 		info.Lines = f.axTextLines()
 	}
 	node.Text = info
+}
+
+// axCaret returns where the caret is, which is the end of the selection that moves when the selection is extended: the
+// end a further shift+Right would push along, and the start after a backward selection made with shift+Left or
+// shift+Home. The other end is the anchor the selection was made from. Both ends are the same place when nothing is
+// selected, and a selection made from somewhere in the middle — a double-click on a word — reports its end, which is
+// where the next shift+Right would take it from.
+func (f *Field) axCaret() int {
+	if f.selectionAnchor == f.selectionEnd {
+		return f.selectionStart
+	}
+	return f.selectionEnd
 }
 
 // axTextLines returns where each of the field's laid-out lines sits, in the field's own coordinates, along with the

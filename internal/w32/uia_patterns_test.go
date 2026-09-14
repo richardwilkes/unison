@@ -97,11 +97,13 @@ func patternTree() *accessibility.Tree {
 		&accessibility.Node{ID: 13, Role: role.ProgressBar, HasNumber: true, Number: 3, Max: 10, Step: 1},
 		&accessibility.Node{
 			ID: 14, Role: role.PopupButton, Name: "Colors", Value: "Red", Expandable: true,
-			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Expand),
+			Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Expand,
+				accessibility.Collapse),
 		},
 		&accessibility.Node{
 			ID: 15, Role: role.ComboBox, Name: "Style", Value: "Text",
-			Actions: accessibility.ActionSet(0).With(accessibility.SetValue, accessibility.Expand),
+			Actions: accessibility.ActionSet(0).With(accessibility.SetValue, accessibility.Expand,
+				accessibility.Collapse),
 		},
 		&accessibility.Node{
 			ID: 16, Role: role.ColorWell, Name: "Ink", Value: "#ff0000",
@@ -519,6 +521,23 @@ func TestUIATableColumnHeadersMemo(t *testing.T) {
 	headerless.Nodes[2].Children = []accessibility.NodeID{6}
 	c.Nil(UIATableColumnHeaders(headerless, 6), "the next snapshot has no header, and is not answered from the last")
 	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(first, 6), "and going back answers the first again")
+}
+
+// TestUIAForgetHeaderMemo verifies that the memo can be emptied, which is what keeps the last snapshot of a destroyed
+// window — and every node in it — from staying reachable for the rest of the process. UIAWindow.Destroy calls it; the
+// only thing a client can notice is that the next question is worked out from scratch.
+func TestUIAForgetHeaderMemo(t *testing.T) {
+	c := check.New(t)
+	tree := tableTree()
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(tree, 6))
+
+	uiaForgetHeaderMemo()
+	c.Nil(uiaHeaderMemo.tree, "the snapshot is no longer held")
+	c.Nil(uiaHeaderMemo.headers)
+
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(tree, 6), "and the answer is worked out again")
+	c.Equal(tree, uiaHeaderMemo.tree)
+	uiaForgetHeaderMemo()
 }
 
 // TestUIAColumnHeaderItem verifies which header a cell says describes its column, including the fallback for a snapshot

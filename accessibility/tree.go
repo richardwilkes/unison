@@ -109,6 +109,10 @@ func (t *Tree) hitTest(id NodeID, pt geom.Point, clip geom.Rect, depth int) Node
 // UnignoredChildren returns the ids of the children an assistive technology should see beneath the node with the given
 // id. Each Ignored child is replaced by its own unignored children, recursively, so a control buried under several
 // layers of anonymous grouping panels appears as a direct child. The result is nil when there is nothing to report.
+//
+// Ask it about a node an assistive technology can actually see. Asked about an Ignored node it still answers with what
+// lies beneath that node, but those children are not shown as its children: they are shown as children of the nearest
+// unignored node above it, which is where UnignoredParent puts them. See UnignoredParent.
 func (t *Tree) UnignoredChildren(id NodeID) []NodeID {
 	n := t.Node(id)
 	if n == nil || len(n.Children) == 0 {
@@ -133,7 +137,13 @@ func (t *Tree) appendUnignoredChildren(ids []NodeID, n *Node, depth int) []NodeI
 }
 
 // UnignoredParent returns the id of the nearest ancestor of the node with the given id that is not Ignored, or zero if
-// there is none. It is the inverse of UnignoredChildren: for any id that UnignoredChildren(p) returns, this returns p.
+// there is none. It inverts UnignoredChildren for an unignored node: for any id that UnignoredChildren(p) returns, this
+// returns p whenever p is not itself Ignored.
+//
+// It cannot invert it for an Ignored p, and nothing here pretends otherwise. An Ignored node is not part of the
+// hierarchy an assistive technology is shown, so everything beneath it hangs off the nearest unignored node above it:
+// UnignoredChildren(p) still reports what lies under p, while this reports that higher node for each of them. The pair
+// agrees exactly on the hierarchy that is actually exposed, which is the one both are there to describe.
 func (t *Tree) UnignoredParent(id NodeID) NodeID {
 	n := t.Node(id)
 	for i := 0; n != nil && i < maxTreeDepth; i++ {

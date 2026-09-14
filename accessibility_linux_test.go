@@ -37,6 +37,9 @@ import (
 // a11yTestTimeout is how long these tests wait for something that should happen at once.
 const a11yTestTimeout = 2 * time.Second
 
+// a11yTestSettle is how long these tests give something that should not happen at all a chance to happen anyway.
+const a11yTestSettle = 250 * time.Millisecond
+
 // a11yTestBusName is the unique name the fake session bus hands out in reply to Hello.
 const a11yTestBusName = ":1.99"
 
@@ -50,24 +53,28 @@ const dbusPropertiesInterface = "org.freedesktop.DBus.Properties"
 // them may call t.Parallel, since all of that state is shared.
 func saveA11yState(t *testing.T) {
 	t.Helper()
-	priorNo, priorEnv := noAccessibility.Load(), accessibilityEnv
+	priorNo, priorEnv := noAccessibility.Load(), accessibilityEnv.Load()
 	priorAdapter, priorCancel := linuxA11y, linuxA11yCancelWatch
 	priorRejoin := linuxA11yRejoinAttempted
+	priorAttempt, priorCurrent, priorJoining := linuxA11yAttempt, linuxA11yCurrentAttempt, linuxA11yJoining
 	hadWatch := priorCancel != nil
 	t.Cleanup(func() {
 		if !hadWatch && linuxA11yCancelWatch != nil {
 			linuxA11yCancelWatch()
 		}
 		noAccessibility.Store(priorNo)
-		accessibilityEnv = priorEnv
+		accessibilityEnv.Store(priorEnv)
 		linuxA11y, linuxA11yCancelWatch = priorAdapter, priorCancel
 		linuxA11yRejoinAttempted = priorRejoin
+		linuxA11yAttempt, linuxA11yCurrentAttempt, linuxA11yJoining = priorAttempt, priorCurrent, priorJoining
 	})
 	noAccessibility.Store(false)
-	accessibilityEnv = 0
+	accessibilityEnv.Store(0)
 	linuxA11y = nil
 	linuxA11yCancelWatch = nil
 	linuxA11yRejoinAttempted = false
+	linuxA11yCurrentAttempt = 0
+	linuxA11yJoining = false
 	t.Setenv("NO_AT_BRIDGE", "")
 }
 
@@ -78,8 +85,8 @@ func TestLinuxA11yMode(t *testing.T) {
 	saveA11yState(t)
 	for i, d := range []struct {
 		noBridge string
+		env      int32
 		expected linuxA11yStartMode
-		env      int8
 		refused  bool
 	}{
 		{expected: linuxA11yAsk},
@@ -96,7 +103,7 @@ func TestLinuxA11yMode(t *testing.T) {
 		// The desktop's instruction wins over this application's request for support.
 		{noBridge: "1", env: 1, expected: linuxA11yRefused},
 	} {
-		accessibilityEnv = d.env
+		accessibilityEnv.Store(d.env)
 		noAccessibility.Store(d.refused)
 		t.Setenv("NO_AT_BRIDGE", d.noBridge)
 		c.Equal(d.expected, linuxA11yMode(), "case %d", i)
@@ -125,7 +132,7 @@ func TestLinuxA11yStatusInitWithoutSessionBus(t *testing.T) {
 func TestLinuxA11yStatusInitIsRefusedByEnvironment(t *testing.T) {
 	for name, refuse := range map[string]func(t *testing.T){
 		"NO_AT_BRIDGE":         func(t *testing.T) { t.Helper(); t.Setenv("NO_AT_BRIDGE", "1") },
-		"UNISON_ACCESSIBILITY": func(_ *testing.T) { accessibilityEnv = -1 },
+		"UNISON_ACCESSIBILITY": func(_ *testing.T) { accessibilityEnv.Store(-1) },
 		"NoAccessibility":      func(_ *testing.T) { noAccessibility.Store(true) },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -165,7 +172,8 @@ func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 
 	// The property is read by the watch, once those rules are in place, so that a screen reader starting up in between
 	// cannot be missed; it is still read only the once, and the answer — nothing is listening — starts nothing.
-	c.Equal(1, bus.waitForReads(1), "the launcher's IsEnabled property should have been read exactly once")
+	c.Equal(1, bus.waitForReads(1), "the launcher's IsEnabled property should have been read")
+	c.Equal(1, bus.settledReads(1), "and should have been read exactly once")
 	c.Nil(linuxA11y, "nothing is listening, so no adapter should have been created")
 	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
 	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
@@ -201,10 +209,69 @@ func TestLinuxA11yConnectionLostIgnoresAnAdapterThatIsGone(t *testing.T) {
 	saveA11yState(t)
 	current := &atspi.Adapter{}
 	linuxA11y = current
-	linuxA11yConnectionLost(nil, errors.New("a connection that never produced an adapter"))
-	linuxA11yConnectionLost(&atspi.Adapter{}, errors.New("a connection whose adapter has already been replaced"))
+	linuxA11yAttempt = 7
+	linuxA11yCurrentAttempt = 7
+	linuxA11yConnectionLost(0, errors.New("a connection that never produced an adapter"))
+	linuxA11yConnectionLost(6, errors.New("a connection whose adapter has already been replaced"))
 	c.True(linuxA11y == current, "an adapter that is no longer the current one must not take the current one down")
 	c.False(linuxA11yRejoinAttempted, "nor use up the one rebuild a real loss is allowed")
+}
+
+// TestLinuxA11yForcedModeActivatesWithoutABus covers the promise the environment override makes: an application that
+// asked for snapshots whatever the desktop reports keeps building them even when there is no accessibility bus to
+// publish them on. Without this, support turned off and back on — or an accessibility bus connection lost and not
+// recovered — would leave such an application with snapshots off for the rest of its life, while macOS and Windows
+// both put it back where it started.
+func TestLinuxA11yForcedModeActivatesWithoutABus(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	wasActive := IsAccessibilityActive()
+	t.Cleanup(func() {
+		if !wasActive {
+			deactivateAccessibility()
+		}
+	})
+	accessibilityEnv.Store(1)
+	linuxA11yAttempt++
+	linuxA11yJoining = true
+	linuxFinishStartA11y(linuxA11yAttempt, nil, errors.New("there is no accessibility bus to join"))
+	c.Nil(linuxA11y, "a join that failed must leave nothing behind")
+	c.False(linuxA11yJoining, "and must leave the way clear for another attempt")
+	c.True(IsAccessibilityActive(), "but snapshot building must be on, since the environment asked for it")
+
+	// The ordinary case, where the desktop decides, has nothing to keep on for: the desktop said something was
+	// listening, and there was nothing to reach.
+	deactivateAccessibility()
+	accessibilityEnv.Store(0)
+	linuxA11yAttempt++
+	linuxFinishStartA11y(linuxA11yAttempt, nil, errors.New("there is no accessibility bus to join"))
+	c.False(IsAccessibilityActive())
+}
+
+// TestLinuxA11yFinishStartIgnoresASupersededAttempt covers the race joining the accessibility bus off the user
+// interface thread creates: support may be turned off, or asked for again, while a join is in flight, and the answer to
+// a question nobody is waiting for any more must not be installed behind the back of what was decided since.
+func TestLinuxA11yFinishStartIgnoresASupersededAttempt(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	wasActive := IsAccessibilityActive()
+	t.Cleanup(func() {
+		if !wasActive {
+			deactivateAccessibility()
+		}
+	})
+	accessibilityEnv.Store(1)
+	linuxA11yAttempt = 4
+	linuxA11yJoining = true
+	linuxFinishStartA11y(3, nil, errors.New("an answer nobody is waiting for"))
+	c.True(linuxA11yJoining, "the attempt that is still in flight must not have been reported as finished")
+	c.False(IsAccessibilityActive(), "nor must a superseded answer decide anything")
+
+	// Stopping disowns whatever is in flight, which is what makes the answer that arrives afterwards a superseded one.
+	before := linuxA11yAttempt
+	linuxStopA11y()
+	c.True(linuxA11yAttempt != before, "stopping must disown the attempt that is in flight")
+	c.False(linuxA11yJoining)
 }
 
 // TestLinuxA11yGeometry verifies the geometry a window actually hands the adapter, which is what
@@ -382,6 +449,22 @@ func (b *fakeSessionBus) waitForReads(expected int) int {
 	for {
 		reads := b.isEnabledReads()
 		if reads >= expected || time.Now().After(deadline) {
+			return reads
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+// settledReads gives a further read of the launcher's IsEnabled property time to arrive and returns the count it
+// settled on. Waiting is the only way to test "read exactly once": waitForReads comes back the instant the read it was
+// waiting for lands, so a second one sent a moment behind it would not have been counted yet. Nothing is being waited
+// for here, so a slow machine only makes the wait more generous rather than making the test fail.
+func (b *fakeSessionBus) settledReads(expected int) int {
+	b.t.Helper()
+	deadline := time.Now().Add(a11yTestSettle)
+	for {
+		reads := b.isEnabledReads()
+		if reads > expected || time.Now().After(deadline) {
 			return reads
 		}
 		time.Sleep(time.Millisecond)

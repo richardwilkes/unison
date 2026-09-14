@@ -10,6 +10,7 @@
 package atspi
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -259,8 +260,10 @@ func TestApplicationInterface(t *testing.T) {
 	c.Equal(int32(17), ta.peer.getProperty(RootPath, InterfaceApplication, "Id"))
 
 	c.Equal(currentLocale(), ta.one(RootPath, InterfaceApplication, "GetLocale", "u", uint32(2)))
-	c.Equal(dbus.NotSupported, ta.errorName(RootPath, InterfaceApplication, "GetApplicationBusAddress", ""),
-		"unison has no private accessibility bus to offer")
+	// libatspi asks every application it sees for a private bus of its own, and an empty string is how at-spi2-atk and
+	// GTK both say there is none. Answering with an error instead would turn a routine probe into a failed call and a
+	// logged warning for every Unison process on the desktop.
+	c.Equal("", ta.one(RootPath, InterfaceApplication, "GetApplicationBusAddress", ""))
 }
 
 func TestNodeAccessible(t *testing.T) {
@@ -309,7 +312,7 @@ func TestNodeState(t *testing.T) {
 	states, ok := ta.one(NodePath(4), InterfaceAccessible, "GetState", "").([]uint32)
 	c.True(ok)
 	c.Equal(2, len(states), "a state set is always two words")
-	expected := States(mainTree().Node(4), true)
+	expected := States(mainTree().Node(4), true, false)
 	c.Equal(expected.Words(), states)
 	var set StateSet
 	set[0], set[1] = states[0], states[1]
@@ -565,13 +568,13 @@ func TestCacheGetItems(t *testing.T) {
 		nodeRef(1), rootRef(), rootRef(), int32(0), int32(5),
 		[]string{InterfaceAccessible, InterfaceComponent},
 		"Test Window", uint32(RoleFrame), "",
-		States(mainTree().Node(1), true).Words(),
+		States(mainTree().Node(1), true, true).Words(),
 	}, items[1], "the window itself comes first, and its parent is the application")
 	c.Equal(dbus.Struct{
 		nodeRef(4), rootRef(), nodeRef(1), int32(1), int32(0),
 		[]string{InterfaceAccessible, InterfaceComponent},
 		"", uint32(RoleEntry), "",
-		States(mainTree().Node(4), true).Words(),
+		States(mainTree().Node(4), true, false).Words(),
 	}, items[3], "the text field's parent is the window, since the group between them is ignored")
 
 	// A second window adds its own nodes, and the root reports one more child.
@@ -757,6 +760,44 @@ func TestRemovingAWindowANodeHasLeftKeepsTheNode(t *testing.T) {
 		c.Equal(dbus.UnknownObject, ta.errorName(NodePath(id), InterfaceAccessible, "GetRole", ""),
 			"node %d did go away with its window", id)
 	}
+}
+
+// TestTheRegistryComingBackRejoinsTheAccessibilityTree covers at-spi2-registryd being restarted, which happens on any
+// desktop where the session outlives the assistive technology stack. The connection to the accessibility bus survives
+// it, so nothing else reports it: the application is simply no longer among the desktop's children, everything it sends
+// afterwards reaches nobody, and the desktop reference it holds names a bus name that no longer exists.
+func TestTheRegistryComingBackRejoinsTheAccessibilityTree(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	c.True(slices.Contains(ta.peer.matchRules(), registryMatchRule),
+		"the bus has been asked to deliver the signal that says the registry is back")
+
+	// A signal from anything but the bus itself is another peer trying to make the application talk to a registry of
+	// its choosing, and a registry losing its name is not one coming back.
+	ta.peer.emitFrom(testPeerName, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", RegistryDestination, "",
+		":1.99")
+	ta.peer.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", RegistryDestination,
+		testPeerName, "")
+	ta.peer.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", "org.example.Other", "",
+		":1.99")
+	// A call of the test's own is answered on the same goroutine the signals are handled on, so by the time it comes
+	// back every one of them has been dealt with.
+	c.Equal(desktopRef(), ta.peer.getProperty(RootPath, InterfaceAccessible, "Parent"))
+	ta.peer.noCall()
+
+	// The registry taking its name again is the one thing that means it is back.
+	ta.peer.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", RegistryDestination, "",
+		":1.99")
+	msg := ta.peer.nextCall()
+	c.Equal(RegistryDestination, msg.Destination)
+	c.Equal(InterfaceSocket, msg.Interface)
+	c.Equal("Embed", msg.Member)
+	args, err := msg.Args()
+	c.NoError(err)
+	c.Equal([]any{rootRef()}, args, "the application root is what joins the tree again")
+	c.Equal(desktopRef(), ta.peer.getProperty(RootPath, InterfaceAccessible, "Parent"),
+		"and the desktop the new registry handed back is the application's parent")
 }
 
 func TestAnnounceAndStop(t *testing.T) {

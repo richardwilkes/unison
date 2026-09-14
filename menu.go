@@ -359,6 +359,11 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	content.SetLayout(lay)
 	content.Pack()
 	s := NewScrollPanel()
+	// The scroll panel is how a menu too tall for its window is shown, and nothing more: an assistive technology
+	// walking a menu must find the items in it, not an anonymous scroll area holding them. Hiding the panel itself
+	// leaves the items as the menu's own children, while the scroll bar within it is still described when there is
+	// something to scroll.
+	s.Accessibility.Role = role.None
 	s.SetContent(content, behavior.Follow, behavior.Fill)
 	s.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,

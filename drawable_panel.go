@@ -47,15 +47,21 @@ func (d *DrawablePanel) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize
 // the usual way such a panel is described — markdown hangs an image's alt text there — so it becomes the name. That has
 // to happen here rather than being left to the description the snapshot would otherwise take from the tooltip, since a
 // node marked ignored is never reached to hear it.
+//
+// Skipping it is only right for the image it is by default. A panel an application has given a role of its own is
+// something it means to be found — a drawable made focusable and given a press to stand for a button, say — and
+// splicing that out of the tree would take a live control away from the person using one, so an explicit role is left
+// exposed however little the panel has to say for itself, exactly as a Label or a Tag with one is.
 func (d *DrawablePanel) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
-	if node.Role == role.Auto {
+	auto := node.Role == role.Auto
+	if auto {
 		node.Role = role.Image
 	}
 	if node.Name == "" {
 		node.Name = axTooltipText(d.AsPanel())
 	}
-	if node.Name == "" && xreflect.IsNil(d.Accessibility.LabeledBy) {
+	if auto && node.Name == "" && xreflect.IsNil(d.Accessibility.LabeledBy) {
 		node.Ignored = true
 	}
 }

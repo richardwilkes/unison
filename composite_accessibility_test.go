@@ -11,6 +11,7 @@ package unison_test
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -183,9 +184,9 @@ func TestListAccessibility(t *testing.T) {
 	}))
 	c.Equal([]int{0}, axSelection(screen, list))
 
-	// The rows just past the bottom of the view port are described even though they cannot be seen, so that an assistive
-	// technology stepping down through the rows has one to step onto; selecting one scrolls it into view, as the arrow
-	// keys would, so that the next description reaches further down.
+	// The rows just past the bottom of the view port are described even though they cannot be seen, so that an
+	// assistive technology stepping down through the rows has one to step onto; selecting one scrolls it into view, as
+	// the arrow keys would, so that the next description reaches further down.
 	rows = axChildNodes(tree, node)
 	visibleRows := 0
 	for _, row := range rows {
@@ -791,6 +792,127 @@ func TestTableHeaderAccessibility(t *testing.T) {
 	columns = axChildNodes(tree, node)
 	c.Equal(2, len(columns))
 	c.Equal(accessibility.SortDescending, columns[0].Sort, "pressing it again turned the sort around")
+
+	// A column that is sorted on after the primary one is not reported as sorted: the order the rows visibly follow is
+	// the primary column's, and it is the only one the header draws an indicator for.
+	screen.Do(func() {
+		header.ColumnHeaders[1].SetSortState(unison.SortState{Order: 1, Ascending: true, Sortable: true})
+	})
+	tree = screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(header)
+	columns = axChildNodes(tree, node)
+	c.Equal(2, len(columns))
+	if len(columns) == 2 {
+		c.Equal(accessibility.SortDescending, columns[0].Sort, "the primary sort column still says which way it runs")
+		c.Equal(accessibility.SortNone, columns[1].Sort, "a secondary sort key is not what the rows are read in")
+	}
+
+	// A table and its header are separate panels, so the table says which header describes its columns; both platform
+	// adapters look there before falling back to searching the window.
+	tableNode := screen.AccessibilityNodeFor(table)
+	c.True(tableNode != nil)
+	if tableNode != nil {
+		c.Equal(1, len(tableNode.Controls), "the table points at its header")
+		if len(tableNode.Controls) == 1 {
+			c.Equal(node.ID, tableNode.Controls[0])
+		}
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axButtonHeader is a table column header built around a button rather than a label, which is what a header with
+// something in it to press looks like. It pairs a SetTitle with the String() every panel answers with the name of its
+// own Go type, which is what a column header must not be announced as.
+type axButtonHeader struct {
+	*unison.Button
+	sortState unison.SortState
+}
+
+// newAxButtonHeader returns a column header that is a button, counting the clicks it receives.
+func newAxButtonHeader(title string, clicks *int) *axButtonHeader {
+	h := &axButtonHeader{
+		Button:    unison.NewButton(),
+		sortState: unison.SortState{Order: -1, Ascending: true, Sortable: true},
+	}
+	h.Self = h
+	h.ClickAnimationTime = 0
+	h.SetTitle(title)
+	h.ClickCallback = func() { *clicks++ }
+	return h
+}
+
+// SortState implements unison.TableColumnHeader.
+func (h *axButtonHeader) SortState() unison.SortState { return h.sortState }
+
+// SetSortState implements unison.TableColumnHeader.
+func (h *axButtonHeader) SetSortState(state unison.SortState) { h.sortState = state }
+
+// Less implements unison.TableColumnHeader.
+func (h *axButtonHeader) Less() func(a, b string) bool { return nil }
+
+// TestTableHeaderAccessibilityCustomColumnHeader verifies what is said about a column header that is not simply a
+// label. It must not be announced as the name of the Go type it was written as, which is what every panel answers
+// String() with, and whatever it holds has to be reachable: a header with a button in it is a button an assistive
+// technology can find and press, not a leaf with the button hidden inside it.
+func TestTableHeaderAccessibilityCustomColumnHeader(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var header *unison.TableHeader[*tableTestRow]
+	var wnd *unison.Window
+	clicks := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table = axNewTable(flatRows(3)...)
+			header = unison.NewTableHeader[*tableTestRow](table,
+				newAxButtonHeader("Pick", &clicks),
+				unison.NewTableColumnHeader[*tableTestRow]("Value", "", nil))
+			scroller := axScroller(table, geom.NewSize(300, 200))
+			scroller.SetColumnHeader(header)
+			wnd = newHeadlessWindow(t, "custom header", geom.NewRect(10, 10, 400, 400), axColumn(scroller))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(header)
+	c.True(node != nil)
+	columns := axChildNodes(tree, node)
+	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
+	c.Equal(role.ColumnHeader, columns[0].Role)
+	c.Equal("Pick", columns[0].Name, "a column header is named by what it holds, never by its Go type")
+	c.Equal("Value", columns[1].Name, "a header that is nothing but a label is still named by its text")
+	c.Equal(0, len(axUnignoredNodes(tree, columns[1])), "such a header has nothing within it to describe")
+
+	inside := axUnignoredNodes(tree, columns[0])
+	c.Equal(1, len(inside), "the button in the header should have been described: %v", axNodeNames(inside))
+	if len(inside) != 1 {
+		return
+	}
+	c.Equal(role.Button, inside[0].Role)
+	c.Equal("Pick", inside[0].Name)
+	c.True(inside[0].Actions.Has(accessibility.Press))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   inside[0].ID,
+		Action: accessibility.Press,
+	}))
+	var count int
+	screen.Do(func() { count = clicks })
+	c.Equal(1, count, "pressing the button in the header should have clicked it")
+
+	// The column header itself still sorts the table, which is what pressing a column header does.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   columns[0].ID,
+		Action: accessibility.Press,
+	}))
+	tree = screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(header)
+	columns = axChildNodes(tree, node)
+	c.Equal(2, len(columns))
+	if len(columns) == 2 {
+		c.Equal(accessibility.SortAscending, columns[0].Sort, "pressing the header sorted the table on that column")
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -872,7 +994,8 @@ func TestDockAccessibility(t *testing.T) {
 		return
 	}
 	c.Equal("First", tabs[0].Name, "the marker that says the dockable is modified is not part of its name")
-	c.Equal("The first one", tabs[0].Description)
+	c.Equal("The first one, Modified", tabs[0].Description,
+		"the marker a sighted person sees is said in words instead")
 	c.True(tabs[0].Selectable)
 	c.True(tabs[0].Selected, "the first dockable is the current one")
 	c.Equal("Second", tabs[1].Name)
@@ -956,6 +1079,56 @@ func TestMarkdownAccessibility(t *testing.T) {
 	}
 
 	c.True(axNamed(tree, "Body text with a ") != nil, "the text of a paragraph is still described")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestMarkdownHeadingWithLinkAccessibility verifies that a heading holding a link is still one heading, named by the
+// whole of its text, while the link within it stays something an assistive technology can move to, hear as a link and
+// press. Folding a heading's content into its name is right for the text a heading usually is, and wrong for anything
+// in it that has to be reached.
+func TestMarkdownHeadingWithLinkAccessibility(t *testing.T) {
+	c := check.New(t)
+	const content = "## A [linked](https://example.com/x) heading\n\n### Plain heading\n"
+	var markdown *unison.Markdown
+	var wnd *unison.Window
+	followed := ""
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 800},
+		unison.StartupFinishedCallback(func() {
+			markdown = unison.NewMarkdown(false)
+			markdown.LinkHandler = func(_ unison.Paneler, target string) { followed = target }
+			markdown.SetContent(content, 400)
+			wnd = newHeadlessWindow(t, "heading links", geom.NewRect(10, 10, 600, 600), axColumn(markdown))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	headings := axNodesWithRole(tree, role.Heading)
+	c.Equal(2, len(headings))
+	if len(headings) != 2 {
+		return
+	}
+	c.Equal(2, headings[0].Level)
+	c.True(strings.Contains(headings[0].Name, "linked"),
+		"the heading reads as the whole of its text, got %q", headings[0].Name)
+	c.Equal(0, len(headings[1].Children), "a heading of nothing but text is still one element")
+
+	link := axNamed(tree, "linked")
+	c.True(link != nil, "the link inside the heading should have been described")
+	if link == nil {
+		return
+	}
+	c.Equal(role.Link, link.Role)
+	c.Equal("https://example.com/x", link.Description, "where the link leads is worth hearing")
+	c.True(link.Actions.Has(accessibility.Press))
+	c.Equal(headings[0].ID, tree.UnignoredParent(link.ID), "the link is reached through the heading it is in")
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   link.ID,
+		Action: accessibility.Press,
+	}))
+	var went string
+	screen.Do(func() { went = followed })
+	c.Equal("https://example.com/x", went, "pressing the link inside the heading should have followed it")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -1089,6 +1262,256 @@ func TestInWindowMenuAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// axUnignoredNodes returns the nodes an assistive technology is shown beneath a node, which is what every adapter
+// builds its child lists from: the children that are not ignored, with the children of the ones that are spliced in.
+func axUnignoredNodes(tree *accessibility.Tree, node *accessibility.Node) []*accessibility.Node {
+	if tree == nil || node == nil {
+		return nil
+	}
+	ids := tree.UnignoredChildren(node.ID)
+	nodes := make([]*accessibility.Node, 0, len(ids))
+	for _, id := range ids {
+		if n := tree.Node(id); n != nil {
+			nodes = append(nodes, n)
+		}
+	}
+	return nodes
+}
+
+// axMenuTestBar fills a menu bar with the menu the menu tests choose from: an ordinary item, a separator, an item with
+// a check state that has been turned off, and an item with a sub-menu.
+func axMenuTestBar(bar unison.Menu, baseID int, activated *int) {
+	f := bar.Factory()
+	edit := f.NewMenu(baseID, "Edit", nil)
+	edit.InsertItem(-1, f.NewItem(baseID+1, "Cut", unison.KeyBinding{}, nil,
+		func(_ unison.MenuItem) { *activated++ }))
+	edit.InsertSeparator(-1, false)
+	wrap := f.NewItem(baseID+2, "Wrap", unison.KeyBinding{}, nil, nil)
+	wrap.SetCheckState(checkenum.Off)
+	edit.InsertItem(-1, wrap)
+	more := f.NewMenu(baseID+3, "More", nil)
+	more.InsertItem(-1, f.NewItem(baseID+4, "Deeper", unison.KeyBinding{}, nil, nil))
+	edit.InsertMenu(-1, more)
+	bar.InsertMenu(-1, edit)
+}
+
+// TestMenuAccessibilityChildrenAreTheItems verifies that what an assistive technology finds inside a menu is the items
+// of that menu. Every menu panel lays its items out inside a scroll panel, for the menus too tall to fit, and an
+// adapter builds its child list from the unignored children of the node, so a scroll area left in the way would be the
+// only thing an assistive technology could find in any menu in the application. The popup menu's choices are the same
+// thing arrived at another way, and while they are showing the popup says which menu it opened.
+func TestMenuAccessibilityChildrenAreTheItems(t *testing.T) {
+	c := check.New(t)
+	const menuID = unison.UserBaseID + 100
+	var popup *unison.PopupMenu[string]
+	var wnd *unison.Window
+	activated := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			label := unison.NewLabel()
+			label.SetTitle("Choices:")
+			popup = unison.NewPopupMenu[string]()
+			popup.AddItem("One")
+			popup.AddItem("Two")
+			popup.SelectIndex(0)
+			wnd = newHeadlessWindow(t, "menu children", geom.NewRect(10, 10, 400, 300), axColumn(label, popup))
+			if wnd == nil {
+				return
+			}
+			unison.DefaultMenuFactory().BarForWindow(wnd, func(bar unison.Menu) {
+				axMenuTestBar(bar, menuID, &activated)
+			})
+			wnd.ToFront()
+		}))
+	c.NotNil(wnd)
+	screen.Sync()
+
+	tree := screen.AccessibilityTree(wnd)
+	bars := axNodesWithRole(tree, role.MenuBar)
+	c.Equal(1, len(bars), "the window has an in-window menu bar")
+	if len(bars) != 1 {
+		return
+	}
+	titles := axUnignoredNodes(tree, bars[0])
+	c.Equal(1, len(titles), "the bar holds the one menu that was added to it: %v", axNodeNames(titles))
+	if len(titles) != 1 {
+		return
+	}
+	c.Equal(role.MenuItem, titles[0].Role, "what an assistive technology finds in a menu bar is its titles")
+	c.Equal("Edit", titles[0].Name)
+
+	screen.Click(axScreenPoint(screen, wnd, titles[0]))
+	tree = screen.AccessibilityTree(wnd)
+	menus := axNodesWithRole(tree, role.Menu)
+	c.Equal(1, len(menus), "the menu that opened should have been described")
+	if len(menus) != 1 {
+		return
+	}
+	items := axUnignoredNodes(tree, menus[0])
+	c.Equal(4, len(items), "what an assistive technology finds in a menu is its items: %v", axNodeNames(items))
+	if len(items) != 4 {
+		return
+	}
+	c.Equal("Cut", items[0].Name)
+	c.Equal(role.Separator, items[1].Role, "the separator keeps its place among the items")
+	c.Equal("Wrap", items[2].Name)
+	c.True(items[2].HasCheck, "an item that has been unchecked is still something with a check state")
+	c.Equal(checkenum.Off, items[2].Checked)
+	c.Equal("More", items[3].Name)
+	c.True(items[3].Expandable)
+	c.True(items[3].Actions.Has(accessibility.Collapse), "an open sub-menu has to be closable again")
+
+	// The sub-menu is a menu like any other, and what is in it is its own items.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   items[3].ID,
+		Action: accessibility.Expand,
+	}))
+	tree = screen.AccessibilityTree(wnd)
+	menus = axNodesWithRole(tree, role.Menu)
+	c.Equal(2, len(menus), "the sub-menu should have opened")
+	sub := axNamed(tree, "More")
+	for _, one := range menus {
+		if one.Name == "More" {
+			sub = one
+		}
+	}
+	c.Equal(role.Menu, sub.Role)
+	deeper := axUnignoredNodes(tree, sub)
+	c.Equal(1, len(deeper), "the sub-menu holds the one item it was given: %v", axNodeNames(deeper))
+	if len(deeper) == 1 {
+		c.Equal("Deeper", deeper[0].Name)
+	}
+
+	// Collapsing the item that opened it takes the sub-menu away again, leaving the menu it belongs to open.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   items[3].ID,
+		Action: accessibility.Collapse,
+	}))
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "collapsing the item should have closed its sub-menu")
+
+	screen.KeyPress(unison.KeyEscape, mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(0, len(axNodesWithRole(tree, role.Menu)), "the menus should all have closed")
+
+	// A popup menu's choices are shown in a menu of the same kind, so they are reached the same way.
+	popupNode := screen.AccessibilityNodeFor(popup)
+	c.True(popupNode != nil)
+	if popupNode == nil {
+		return
+	}
+	c.True(popupNode.Expandable, "a popup with choices to show can be expanded")
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   popupNode.ID,
+		Action: accessibility.Expand,
+	}))
+	tree = screen.AccessibilityTree(wnd)
+	menus = axNodesWithRole(tree, role.Menu)
+	c.Equal(1, len(menus), "the popup's choices should have been described")
+	if len(menus) != 1 {
+		return
+	}
+	c.Equal("Choices", menus[0].Name, "the menu a popup opens is named after the popup")
+	choices := axUnignoredNodes(tree, menus[0])
+	c.Equal(2, len(choices), "what an assistive technology finds in a popup's menu is its choices: %v",
+		axNodeNames(choices))
+	if len(choices) == 2 {
+		c.Equal("One", choices[0].Name)
+		c.Equal("Two", choices[1].Name)
+	}
+	popupNode = screen.AccessibilityNodeFor(popup)
+	c.True(popupNode != nil)
+	if popupNode != nil {
+		c.Equal(1, len(popupNode.Controls), "the popup says which menu it opened")
+		if len(popupNode.Controls) == 1 {
+			c.Equal(menus[0].ID, popupNode.Controls[0])
+		}
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestMenuAccessibilityKeyboardNavigation verifies that choosing from a menu with the arrow keys moves what the window
+// reports as the focus, item by item, with exactly one node focused at a time. The mouse path and the keyboard path
+// move the highlight through different code — the keys move the menu panel's own index and flip each item's over flag
+// as they go — and only the highlight is what an assistive technology is told the person is choosing from.
+func TestMenuAccessibilityKeyboardNavigation(t *testing.T) {
+	c := check.New(t)
+	const menuID = unison.UserBaseID + 200
+	var wnd *unison.Window
+	activated := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			wnd = newHeadlessWindow(t, "menu keys", geom.NewRect(10, 10, 400, 300), unison.NewPanel())
+			if wnd == nil {
+				return
+			}
+			unison.DefaultMenuFactory().BarForWindow(wnd, func(bar unison.Menu) {
+				axMenuTestBar(bar, menuID, &activated)
+			})
+			wnd.ToFront()
+		}))
+	c.NotNil(wnd)
+	screen.Sync()
+
+	tree := screen.AccessibilityTree(wnd)
+	title := axNamed(tree, "Edit")
+	c.True(title != nil)
+	if title == nil {
+		return
+	}
+	screen.Click(axScreenPoint(screen, wnd, title))
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "the menu should have opened")
+	c.Equal(title.ID, tree.Focus, "with nothing in the menu pointed at yet, the title is what is being chosen from")
+
+	// Down moves onto the first item, and each step is the one node in the window that reports being focused.
+	axPressMenuKey(c, screen, wnd, unison.KeyDown, "Cut")
+	// The separator is not something that can be chosen, so it is passed over rather than landed on.
+	axPressMenuKey(c, screen, wnd, unison.KeyDown, "Wrap")
+	axPressMenuKey(c, screen, wnd, unison.KeyUp, "Cut")
+	axPressMenuKey(c, screen, wnd, unison.KeyDown, "Wrap")
+
+	// Moving onto an item with a sub-menu opens it and points at what is inside, which is where the focus goes.
+	screen.KeyPress(unison.KeyDown, mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(2, len(axNodesWithRole(tree, role.Menu)), "arrowing onto an item with a sub-menu opens it")
+	deeper := axNamed(tree, "Deeper")
+	c.True(deeper != nil)
+	if deeper == nil {
+		return
+	}
+	focused := axFocusedNodes(tree)
+	c.Equal(1, len(focused), "only one node in a window may report being focused: %v", axNodeNames(focused))
+	c.Equal(deeper.ID, tree.Focus, "the item the newest menu is pointing at is what is being chosen from")
+
+	// Escape closes the sub-menu, and what is being chosen from is the item it was opened from.
+	screen.KeyPress(unison.KeyEscape, mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "the sub-menu should have closed")
+	focused = axFocusedNodes(tree)
+	c.Equal(1, len(focused), "only one node in a window may report being focused: %v", axNodeNames(focused))
+	if len(focused) == 1 {
+		c.Equal("More", focused[0].Name)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axPressMenuKey presses a key against an open menu and checks that the item it moved onto is the one node the window
+// reports as focused.
+func axPressMenuKey(c check.Checker, screen *unison.HeadlessScreen, wnd *unison.Window, code unison.KeyCode,
+	expected string,
+) {
+	screen.KeyPress(code, mod.None)
+	tree := screen.AccessibilityTree(wnd)
+	focused := axFocusedNodes(tree)
+	c.Equal(1, len(focused), "only one node in a window may report being focused: %v", axNodeNames(focused))
+	if len(focused) != 1 {
+		return
+	}
+	c.Equal(expected, focused[0].Name, "the item the menu is pointing at is what is being chosen from")
+	c.Equal(focused[0].ID, tree.Focus)
+}
+
 // axFocusedNodes returns every node in a tree that reports being focused, other than the window itself, whose Focused
 // says only that the window is the active one.
 func axFocusedNodes(tree *accessibility.Tree) []*accessibility.Node {
@@ -1200,10 +1623,13 @@ func TestMenuBarAccessibilityFocus(t *testing.T) {
 }
 
 // TestTooltipAccessibility verifies that a tooltip, while it is showing, is described as one — a child of the window
-// rather than of the panel it belongs to, since that is where it is drawn.
+// rather than of the panel it belongs to, since that is where it is drawn — and that the whole of what a tooltip says,
+// secondary text included, is what describes the panel it belongs to, which is the only way that text is ever heard by
+// someone who cannot see the tooltip itself.
 func TestTooltipAccessibility(t *testing.T) {
 	c := check.New(t)
 	var button *unison.Button
+	var label *unison.Label
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
 		unison.StartupFinishedCallback(func() {
@@ -1212,7 +1638,10 @@ func TestTooltipAccessibility(t *testing.T) {
 			button.Tooltip = unison.NewTooltipWithText("Write the file out")
 			// Without this the tooltip would not appear until the delay a person's pause has to last.
 			button.TooltipImmediate = true
-			wnd = newHeadlessWindow(t, "tips", geom.NewRect(10, 10, 300, 200), axColumn(button))
+			label = unison.NewLabel()
+			label.SetTitle("Total")
+			label.Tooltip = unison.NewTooltipWithSecondaryText("Primary tip", "Secondary tip")
+			wnd = newHeadlessWindow(t, "tips", geom.NewRect(10, 10, 300, 200), axColumn(button, label))
 		}))
 	c.NotNil(wnd)
 	c.True(screen.Do(func() { wnd.ToFront() }))
@@ -1232,6 +1661,12 @@ func TestTooltipAccessibility(t *testing.T) {
 	}
 	c.Equal("Write the file out", screen.AccessibilityNodeFor(button).Description,
 		"the tooltip is the button's description as well")
+	labelNode := screen.AccessibilityNodeFor(label)
+	c.True(labelNode != nil)
+	if labelNode != nil {
+		c.Equal("Primary tip\nSecondary tip", labelNode.Description,
+			"the secondary text is part of what the tooltip says, so it is part of the description")
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -1345,5 +1780,142 @@ func TestTableAccessibilityCellContent(t *testing.T) {
 	c.Equal(1, clicks, "the press should have reached the button")
 	tree = screen.AccessibilityTree(wnd)
 	c.True(tree.Node(buttonNode.ID) != nil, "the button keeps its node id from one description to the next")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestListAccessibilitySelectionCallbacksAndRangePublish verifies two things a list used to get wrong about its
+// selection: re-selecting the row that is already the whole of the selection does not tell the application that the
+// selection changed, which is what a click on that same row has always done, and changing whether more than one row may
+// be selected reaches an assistive technology rather than waiting for something unrelated to redraw the window.
+func TestListAccessibilitySelectionCallbacksAndRangePublish(t *testing.T) {
+	c := check.New(t)
+	var list *unison.List[string]
+	var wnd *unison.Window
+	changes := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			list = unison.NewList[string]()
+			list.Factory = &unison.DefaultCellFactory{Height: 20}
+			for i := range 4 {
+				list.Append("Row " + strconv.Itoa(i))
+			}
+			list.SetAllowMultipleSelection(false)
+			list.Select(false, 0)
+			list.NewSelectionCallback = func() { changes++ }
+			wnd = newHeadlessWindow(t, "list selection", geom.NewRect(10, 10, 300, 300), axColumn(list))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(list)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.False(node.Multiselectable, "a list holds one row at a time until it is told otherwise")
+	first := axNodeWithRowIndex(tree, node, 0)
+	second := axNodeWithRowIndex(tree, node, 1)
+	c.True(first != nil && second != nil)
+	if first == nil || second == nil {
+		return
+	}
+	c.False(first.Actions.Has(accessibility.AddToSelection),
+		"a list that holds one row at a time has nothing to add to")
+
+	// The row is already the whole of the selection, so selecting it again changes nothing and says nothing.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   first.ID,
+		Action: accessibility.Select,
+	}))
+	var count int
+	screen.Do(func() { count = changes })
+	c.Equal(0, count, "re-selecting the row that is already selected is not a change of selection")
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   second.ID,
+		Action: accessibility.Select,
+	}))
+	screen.Do(func() { count = changes })
+	c.Equal(1, count, "moving the selection to another row is")
+
+	// Allowing more than one row to be selected changes what the list and every row of it offer, so it has to be
+	// published without waiting for something else to redraw the window.
+	screen.AccessibilityEvents(wnd)
+	screen.Do(func() { list.SetAllowMultipleSelection(true) })
+	published := false
+	for _, e := range screen.AccessibilityEvents(wnd) {
+		if e.Kind == accessibility.StateChanged && e.Node == node.ID &&
+			e.State == accessibility.StateMultiselectable && e.New == "true" {
+			published = true
+		}
+	}
+	c.True(published, "the change should have been described without anything else happening")
+	tree = screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(list)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.True(node.Multiselectable)
+	second = axNodeWithRowIndex(tree, node, 1)
+	c.True(second != nil)
+	if second != nil {
+		c.True(second.Actions.Has(accessibility.AddToSelection), "every row now offers to be added to the selection")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestPopupMenuAccessibilityWithNothingToChooseFrom verifies that a popup menu holding nothing that could be chosen
+// says so: Click refuses to open one, so advertising that it expands, and reporting that it had expanded, would leave
+// an assistive technology waiting for choices that are never going to appear.
+func TestPopupMenuAccessibilityWithNothingToChooseFrom(t *testing.T) {
+	c := check.New(t)
+	var empty, separatorsOnly, filled *unison.PopupMenu[string]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			empty = unison.NewPopupMenu[string]()
+			separatorsOnly = unison.NewPopupMenu[string]()
+			separatorsOnly.AddSeparator()
+			filled = unison.NewPopupMenu[string]()
+			filled.AddItem("One")
+			filled.SelectIndex(0)
+			wnd = newHeadlessWindow(t, "empty popup", geom.NewRect(10, 10, 300, 200),
+				axColumn(empty, separatorsOnly, filled))
+			if wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	c.NotNil(wnd)
+	screen.Sync()
+
+	screen.AccessibilityTree(wnd)
+	for _, one := range []*unison.PopupMenu[string]{empty, separatorsOnly} {
+		node := screen.AccessibilityNodeFor(one)
+		c.True(node != nil)
+		if node == nil {
+			continue
+		}
+		c.False(node.Expandable, "a popup with nothing to choose from opens nothing")
+		c.False(node.Actions.Has(accessibility.Expand))
+		c.False(node.Actions.Has(accessibility.Collapse))
+		c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+			Node:   node.ID,
+			Action: accessibility.Expand,
+		}), "expanding it cannot be carried out, since nothing would be shown")
+		c.Equal(0, len(axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)), "nothing should have opened")
+	}
+
+	filledNode := screen.AccessibilityNodeFor(filled)
+	c.True(filledNode != nil)
+	if filledNode == nil {
+		return
+	}
+	c.True(filledNode.Expandable, "a popup with a choice in it does open something")
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   filledNode.ID,
+		Action: accessibility.Expand,
+	}))
+	c.Equal(1, len(axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)), "its choices should have been shown")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

@@ -17,7 +17,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/gradienttype"
-	"github.com/richardwilkes/unison/enums/role"
 )
 
 // ColorEditor provides a widget for editing a Color. It always operates on a copy of the Color it was given, so the
@@ -77,14 +76,9 @@ func NewColorEditor(color Color) *ColorEditor {
 	return e
 }
 
-// ProvideAccessibility describes the editor to assistive technologies. It is a group of controls rather than a control
-// in its own right; each slider and field within it says what it is by pointing at the label beside it, so none of them
-// depends on where it happens to sit in the layout.
-func (e *ColorEditor) ProvideAccessibility(b *AccessibilityBuilder) {
-	if node := b.Node(); node.Role == role.Auto {
-		node.Role = role.Group
-	}
-}
+// The editor itself needs no description of its own: it is a group of controls, which is what a panel with children
+// and nothing to say for itself is already taken for, and each slider and field within it says what it is by pointing
+// at the label beside it, so none of them depends on where it happens to sit in the layout.
 
 // Color returns the currently selected color.
 func (e *ColorEditor) Color() Color {

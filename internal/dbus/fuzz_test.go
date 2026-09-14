@@ -53,6 +53,9 @@ func FuzzDecode(f *testing.F) {
 			if err != nil {
 				t.Fatalf("a re-encoded message failed to decode: %v (%s)", err, m)
 			}
+			// The wire size records how many bytes a message arrived as, which a re-encoded message need not repeat:
+			// the header fields the decoder did not understand are not written out again. See [Message.size].
+			m.wireSize, again.wireSize = 0, 0
 			if !reflect.DeepEqual(m, again) {
 				t.Fatalf("a re-encoded message decoded differently: %s vs %s", m, again)
 			}

@@ -123,7 +123,7 @@ func (o *nodeObject) getSize(call *dbus.Call) {
 
 // getLayer implements org.a11y.atspi.Component.GetLayer.
 func (o *nodeObject) getLayer(call *dbus.Call) {
-	call.Reply(uint32(layerFor(o.node)))
+	call.Reply(uint32(layerFor(o.isRoot())))
 }
 
 // getMDIZOrder implements org.a11y.atspi.Component.GetMDIZOrder. Unison has no multiple document interface panes, so

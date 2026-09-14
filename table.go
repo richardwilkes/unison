@@ -45,9 +45,9 @@ type ColumnInfo struct {
 	AutoMaximum float32
 }
 
-// resizable returns true if the user should be permitted to resize the column, i.e. its Minimum and Maximum don't pin it
-// to a single width. A Maximum of 0 or less means "no maximum", matching how the resize clamping treats it, so a column
-// with only a Minimum set remains resizable.
+// resizable returns true if the user should be permitted to resize the column, i.e. its Minimum and Maximum don't pin
+// it to a single width. A Maximum of 0 or less means "no maximum", matching how the resize clamping treats it, so a
+// column with only a Minimum set remains resizable.
 func (c *ColumnInfo) resizable() bool {
 	return c.Minimum <= 0 || c.Maximum <= 0 || c.Minimum < c.Maximum
 }
@@ -2295,6 +2295,14 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node.Multiselectable = true
 	node.RowCount = len(t.rowCache)
 	node.ColumnCount = len(t.Columns)
+	if t.header != nil {
+		// A table and its header are separate panels — the header goes into the column-header slot of the scroll panel
+		// whose content is the table — so the header is nowhere within the table's own subtree and nothing else would
+		// say that the two belong together. Both platform adapters look here first and fall back to a proximity search
+		// that gives up when an ancestor holds more than one table, so a window that puts two tables under one common
+		// ancestor would otherwise report no column headers for either of them.
+		node.Controls = append(node.Controls, b.IDFor(t.header))
+	}
 	// Pressing the table is not activating it; the default behavior would synthesize a click at the center of the
 	// table's whole frame, which for a table in a scroll panel lands on a row somewhere near the middle of the model,
 	// far from anything that can be seen, and replaces the selection with it.
@@ -2308,24 +2316,51 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	}
 	reach := axReach(b.VisibleRect())
 	// The rows are walked in order, accumulating the y coordinate as their heights go by, since asking each row where
-	// it is would walk the rows before it all over again. The walk stops as soon as nothing worth describing can be
-	// left, so that a table of a million rows costs no more than a table of a hundred.
+	// it is would walk the rows before it all over again. Nothing is described until the walk reaches the rows worth
+	// describing, and it stops as soon as none can be left, so what a description costs is bounded by what is on the
+	// screen and what is selected rather than by the size of the model — but the rows above the view port are still
+	// stepped over one at a time, since neither this nor the draw path keeps the running heights that would let the
+	// first visible row be found by search, and a table scrolled to the bottom of a million rows pays for that walk on
+	// every description. Stepping over a row costs an addition, a comparison and, while anything is selected, a map
+	// lookup.
 	rect := t.ContentRect(false)
 	described := 0
 	// An upper bound on how many selected rows are still to come. It counts any rows the selection holds that are no
 	// longer showing as well, which costs the walk nothing but its early exit.
 	selectedLeft := len(t.selMap)
+	// The top of the most recent row seen at each depth, which is where the ancestors of a row described out of
+	// sequence sit: a row's ancestors are always the last rows seen above it at each shallower depth. A table whose
+	// rows cannot have children has no ancestors to describe and does not pay for any of this.
+	var depthTops []float32
+	// The last row described, so that a row arriving without the one before it can bring its ancestors with it.
+	last := -1
 	for row := range t.rowCache {
-		rect.Height = t.rowCache[row].height
-		selected := t.IsRowSelected(row)
+		entry := &t.rowCache[row]
+		rect.Height = entry.height
+		if t.hasHierarchy {
+			for len(depthTops) <= entry.depth {
+				depthTops = append(depthTops, rect.Y)
+			}
+			depthTops[entry.depth] = rect.Y
+		}
+		selected := selectedLeft > 0 && t.IsRowSelected(row)
 		if selected {
 			selectedLeft--
 		}
+		outOfSequence := t.hasHierarchy && last != row-1
 		switch {
 		case rect.Intersects(reach), row == focusedRow:
-			t.axAddRow(b, row, rect)
+			if outOfSequence {
+				t.axAddRowAncestors(b, row, depthTops)
+			}
+			t.axAddRow(b, row, rect, false)
+			last = row
 		case selected && described < axMaxSelectedRows:
-			t.axAddRow(b, row, rect)
+			if outOfSequence {
+				t.axAddRowAncestors(b, row, depthTops)
+			}
+			t.axAddRow(b, row, rect, true)
+			last = row
 			described++
 		}
 		rect.Y += rect.Height
@@ -2338,6 +2373,35 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			// by; and either the selection holds nothing further or as much of it as will be described has been.
 			break
 		}
+	}
+}
+
+// axAddRowAncestors describes the rows a row hangs beneath, for a row that is being described although the row before
+// it was not.
+//
+// An assistive technology reads the nesting of a table's rows from their levels and the order they arrive in: the rows
+// disclosed by a container are the ones after it with a deeper level, up to the next row at the container's own level.
+// So a row that turned up without its container — one described only because it is selected, or the first row of what
+// can be seen — would be read as disclosed by whatever container came before it instead, which is the wrong row
+// whenever the two belong to different parts of the model. Bringing its ancestors along keeps the flat list honest;
+// they are described as the rows they are, with nothing in them, exactly as any other row that cannot be seen is.
+//
+// depthTops holds the top of the most recent row seen at each depth, which is where each of the ancestors sits.
+func (t *Table[T]) axAddRowAncestors(b *AccessibilityBuilder, row int, depthTops []float32) {
+	var chain []int
+	for parent := t.rowCache[row].parent; parent >= 0 && parent < len(t.rowCache); parent = t.rowCache[parent].parent {
+		chain = append(chain, parent)
+	}
+	rect := t.ContentRect(false)
+	for i := len(chain) - 1; i >= 0; i-- {
+		ancestor := chain[i]
+		if depth := t.rowCache[ancestor].depth; depth < len(depthTops) {
+			rect.Y = depthTops[depth]
+		}
+		rect.Height = t.rowCache[ancestor].height
+		// An ancestor that has already been described is left where it is: adding it again would list it among the
+		// table's children twice, which is what every position counted out of that list would then be wrong about.
+		t.axAddRow(b, ancestor, rect, true)
 	}
 }
 
@@ -2392,7 +2456,14 @@ type axDisclosureKey struct {
 
 // axAddRow describes one row of the table, along with each of its cells. rect is the row's frame in the table's own
 // coordinates.
-func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect) {
+//
+// A row described with nameOnly is described as itself and nothing more: what it is, where it is, and whether it is
+// selected, open or can be opened, without the disclosure triangle and the cells beneath it. That is what is left of a
+// row nobody can see — one described because the selection holds it, or because a row further down hangs beneath it —
+// and it is all an assistive technology asks of such a row, since what it does with the selection is read out what is
+// in it. Building the rest would mean asking the model for a panel per column, laying each one out and walking it,
+// over and over: several hundred panels on every description of a table where everything has just been selected.
+func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, nameOnly bool) {
 	entry := t.rowCache[row]
 	id := entry.row.ID()
 	depth := entry.depth
@@ -2430,7 +2501,7 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect) {
 			n.Actions = n.Actions.With(accessibility.Press)
 		}
 	})
-	if rowID == 0 {
+	if rowID == 0 || nameOnly {
 		return
 	}
 	// The triangle that opens and closes a row is drawn by the table rather than by any cell, so it is described here
@@ -2667,29 +2738,38 @@ func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequ
 	return handled
 }
 
-// axPressableTargets returns the panels at or beneath p, in drawing order, that might respond to a press or a toggle:
-// ones with an accessibility action callback or actor of their own, and ones that handle both halves of a click.
-// Hidden and disabled panels are left out, along with everything beneath them, since neither a click nor a request from
-// an assistive technology reaches those — a cell holding a disabled button ahead of an enabled check box must land on
-// the check box rather than being refused by the button.
+// axPressableTargets returns the panels at or beneath p, front to back, that might respond to a press or a toggle: ones
+// with an accessibility action callback or actor of their own, and ones that handle both halves of a click.
+//
+// A hidden panel is left out along with everything beneath it, since nothing within something that is not drawn can be
+// reached. A disabled panel is left out too, since every path refuses it — Window.mouseDown and Window.mouseUp pass
+// over a panel that is not enabled, and so does axDispatchAction — but what is beneath it is not: being enabled is a
+// panel's own property rather than something it passes down, and a click landing on an enabled widget nested inside a
+// disabled wrapper is handed to that widget, so a request from an assistive technology must reach it too. This is also
+// what the cell is described as holding, so that nothing is offered on a cell that would then be refused.
 func axPressableTargets(p *Panel) []*Panel {
 	var targets []*Panel
 	axAppendPressableTargets(&targets, p)
 	return targets
 }
 
-// axAppendPressableTargets appends p and the panels beneath it that might respond to a press or a toggle to targets.
+// axAppendPressableTargets appends the panels at or beneath p that might respond to a press or a toggle to targets.
+// The children come before the panel itself, and in index order, which is front to back: index 0 is drawn last and so
+// sits on top, and a press must land where a click would rather than on whatever was drawn underneath.
 func axAppendPressableTargets(targets *[]*Panel, p *Panel) {
-	if p.Hidden || !p.Enabled() {
+	if p.Hidden {
+		return
+	}
+	for _, child := range p.Children() {
+		axAppendPressableTargets(targets, child)
+	}
+	if !p.Enabled() {
 		return
 	}
 	if p.Accessibility.ActionCallback != nil || (p.MouseDownCallback != nil && p.MouseUpCallback != nil) {
 		*targets = append(*targets, p)
 	} else if _, ok := p.Self.(AccessibilityActor); ok {
 		*targets = append(*targets, p)
-	}
-	for _, child := range p.Children() {
-		axAppendPressableTargets(targets, child)
 	}
 }
 

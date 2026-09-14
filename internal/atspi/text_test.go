@@ -39,28 +39,31 @@ const (
 
 // textTree is the window the text tests work over:
 //
-//	40 window "Notes"            (0,0 200x100)    active
+//	40 window "Notes"            (0,0 200x140)    active
 //	├─ 41 text area "Body"       (10,10 100x40)   focused, "ab\ncd" over two measured lines, "b\nc" selected
 //	├─ 42 text field "Title"     (10,60 100x20)   "Hi", unmeasured, caret at the end
-//	└─ 43 password field         (10,80 100x20)   protected, and holding text it must not hand over
+//	├─ 43 password field         (10,80 100x20)   protected, so it carries no text at all
+//	└─ 44 text area "Log"        (10,110 100x20)  text that can be neither selected nor changed
 //
 // The two lines of the text area are each twenty units tall, and every character on them is ten wide except the line
 // feed, which has no width of its own.
 func textTree() *accessibility.Tree {
 	return treeOf(1,
 		&accessibility.Node{
-			ID: 40, Role: role.Window, Name: "Notes", Focused: true, Bounds: geom.NewRect(0, 0, 200, 100),
-			Children: []accessibility.NodeID{41, 42, 43},
+			ID: 40, Role: role.Window, Name: "Notes", Focused: true, Bounds: geom.NewRect(0, 0, 200, 140),
+			Children: []accessibility.NodeID{41, 42, 43, 44},
 		},
 		&accessibility.Node{
 			ID: 41, Parent: 40, Role: role.TextArea, Name: "Body", Focusable: true, Focused: true,
-			Bounds:  geom.NewRect(10, 10, 100, 40),
-			Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetTextSelection),
+			Bounds: geom.NewRect(10, 10, 100, 40),
+			Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetTextSelection,
+				accessibility.ReplaceText),
 			Text: &accessibility.TextInfo{
 				Text:      textBody,
 				Multiline: true,
 				SelStart:  1,
 				SelEnd:    4,
+				Caret:     4,
 				Lines: []accessibility.Line{
 					{
 						Start:    0,
@@ -79,14 +82,19 @@ func textTree() *accessibility.Tree {
 		},
 		&accessibility.Node{
 			ID: 42, Parent: 40, Role: role.TextField, Name: "Title", Focusable: true,
-			Bounds:  geom.NewRect(10, 60, 100, 20),
-			Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetTextSelection),
-			Text:    &accessibility.TextInfo{Text: "Hi", SelStart: 2, SelEnd: 2},
+			Bounds: geom.NewRect(10, 60, 100, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetTextSelection,
+				accessibility.ReplaceText, accessibility.SetValue),
+			Text: &accessibility.TextInfo{Text: "Hi", SelStart: 2, SelEnd: 2, Caret: 2},
 		},
 		&accessibility.Node{
 			ID: 43, Parent: 40, Role: role.TextField, Name: "Secret", Protected: true, Focusable: true,
 			Bounds: geom.NewRect(10, 80, 100, 20),
-			Text:   &accessibility.TextInfo{Text: "secret", SelStart: 6, SelEnd: 6},
+		},
+		&accessibility.Node{
+			ID: 44, Parent: 40, Role: role.TextArea, Name: "Log", ReadOnly: true,
+			Bounds: geom.NewRect(10, 110, 100, 20),
+			Text:   &accessibility.TextInfo{Text: "done", Multiline: true},
 		},
 	)
 }
@@ -106,11 +114,18 @@ func TestTextInterfaceIsOnlyThereForText(t *testing.T) {
 	c := ta.c
 	// Neither taking the focus nor setting a selection is one of the things AT-SPI's Action interface covers, so a text
 	// area that does both still has nothing to do.
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText},
 		ta.one(NodePath(41), InterfaceAccessible, "GetInterfaces", ""))
 	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceText},
-		ta.one(NodePath(43), InterfaceAccessible, "GetInterfaces", ""),
-		"a password field that holds text still has the interface")
+		ta.one(NodePath(44), InterfaceAccessible, "GetInterfaces", ""),
+		"text that cannot be changed has no EditableText")
+	// A password field carries no text at all in a published snapshot, so it has no text interface either: what an
+	// assistive technology is told is that it is a password field, which is what ATSPI_ROLE_PASSWORD_TEXT says.
+	c.Equal([]string{InterfaceAccessible, InterfaceComponent},
+		ta.one(NodePath(43), InterfaceAccessible, "GetInterfaces", ""))
+	c.Equal(uint32(RolePasswordText), ta.one(NodePath(43), InterfaceAccessible, "GetRole", ""))
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(43), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
+		"and nothing can ask it for a character count or for the characters themselves")
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(40), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
 		"a window holds no text of its own")
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(3), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
@@ -123,7 +138,17 @@ func TestTextContent(t *testing.T) {
 	c := ta.c
 	c.Equal(int32(5), ta.peer.getProperty(NodePath(41), InterfaceText, "CharacterCount"))
 	c.Equal(int32(4), ta.peer.getProperty(NodePath(41), InterfaceText, "CaretOffset"),
-		"the caret is where the selection ends")
+		"the caret is at the end of this selection")
+
+	// Either end of a selection may be the one the caret is at: shift+Left and shift+Home extend it backwards, and a
+	// client told the wrong end puts its review cursor at the wrong end of what it has just read out.
+	backwards := textTree()
+	backwards.Generation++
+	backwards.Node(41).Text.Caret = 1
+	ta.Publish(textWindow, backwards, nil, sampleGeometry())
+	c.Equal(int32(1), ta.peer.getProperty(NodePath(41), InterfaceText, "CaretOffset"),
+		"a selection extended backwards has its caret at the start")
+	ta.Publish(textWindow, textTree(), nil, sampleGeometry())
 	c.Equal(textBody, ta.one(NodePath(41), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
 		"a negative end offset is the end of the text")
 	c.Equal("b\n", ta.one(NodePath(41), InterfaceText, "GetText", "ii", int32(1), int32(3)))
@@ -255,9 +280,24 @@ func TestTextBoundaryAtBeforeAndAfterOffset(t *testing.T) {
 			member: textAfterOffset, why: "the character after the offset", boundary: BoundaryChar,
 			offset: 0, text: "b", start: 1, end: 2,
 		},
+		// The END forms divide the same text at different places: a line ends where its own characters stop rather
+		// than after the line feed that follows them, so the range a client is handed for the same offset is a
+		// separator shorter at one end and a separator longer at the other.
 		{
-			member: textAfterOffset, why: "the end form divides the text the same way as the start form",
-			boundary: BoundaryWordEnd, offset: 0, text: secondTextLine, start: 3, end: 5,
+			member: textAtOffset, why: "a line end runs to where the line's characters stop",
+			boundary: BoundaryLineEnd, offset: 0, text: "ab", start: 0, end: 2,
+		},
+		{
+			member: textAtOffset, why: "and the line feed belongs to the line after it",
+			boundary: BoundaryLineEnd, offset: 2, text: "\n" + secondTextLine, start: 2, end: 5,
+		},
+		{
+			member: textBeforeOffset, why: "the line end before the one holding the offset",
+			boundary: BoundaryLineEnd, offset: 4, text: "ab", start: 0, end: 2,
+		},
+		{
+			member: textAfterOffset, why: "the word end after the one holding the offset",
+			boundary: BoundaryWordEnd, offset: 0, text: "\n" + secondTextLine, start: 2, end: 5,
 		},
 	} {
 		c.Equal([]any{one.text, one.start, one.end},
@@ -267,8 +307,8 @@ func TestTextBoundaryAtBeforeAndAfterOffset(t *testing.T) {
 }
 
 // TestTextUnits covers the division of content into units directly, over content the window the other text tests work
-// with does not hold: real words, sentences and paragraphs. Every unit runs to the start of the next one, so walking a
-// control a unit at a time covers every character exactly once.
+// with does not hold: real words, sentences and paragraphs. Every START unit runs to the start of the next one, so
+// walking a control a unit at a time covers every character exactly once.
 func TestTextUnits(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -286,41 +326,77 @@ func TestTextUnits(t *testing.T) {
 		{why: "a line feed is whitespace like any other", unit: unitWord, offset: 16, start: 15, end: 20},
 		{why: "the last word runs to the end", unit: unitWord, offset: 25, start: 25, end: 29},
 		{why: "the first sentence, with the spaces after it", unit: unitSentence, offset: 0, start: 0, end: 11},
-		{why: "the second sentence, ending at the line feed after it", unit: unitSentence, offset: 12, start: 11, end: 20},
+		{why: "the second sentence, ending at the line feed", unit: unitSentence, offset: 12, start: 11, end: 20},
 		{why: "the last sentence runs to the end", unit: unitSentence, offset: 22, start: 20, end: 29},
 		{why: "the first paragraph, with the line feed", unit: unitParagraph, offset: 3, start: 0, end: 20},
 		{why: "the second paragraph", unit: unitParagraph, offset: 20, start: 20, end: 29},
-		{why: "a control with no measured lines is one line", unit: unitLine, offset: 3, start: 0, end: 29},
+		// A control the snapshot did not measure is divided at its own line feeds rather than being treated as one
+		// line, so flat review reads an unfocused multi-line control a line at a time as its state set promises.
+		{why: "an unmeasured control is divided at its line feeds", unit: unitLine, offset: 3, start: 0, end: 20},
+		{why: "and its last line runs to the end", unit: unitLine, offset: 25, start: 20, end: 29},
 	} {
-		c.Equal(textRange{start: one.start, end: one.end}, content.rangeAt(one.unit, one.offset), one.why)
+		c.Equal(textRange{start: one.start, end: one.end}, content.rangeAt(one.unit, formStart, one.offset), one.why)
 	}
 
 	// A full stop with a character hard against it is part of the word rather than the end of a sentence, which is what
 	// keeps a version number or a file name from being read as several of them.
 	run := textContent{runes: []rune("Use v1.2.3 now. Then stop.")}
-	c.Equal(textRange{start: 0, end: 16}, run.rangeAt(unitSentence, 0))
-	c.Equal(textRange{start: 16, end: 26}, run.rangeAt(unitSentence, 20))
+	c.Equal(textRange{start: 0, end: 16}, run.rangeAt(unitSentence, formStart, 0))
+	c.Equal(textRange{start: 16, end: 26}, run.rangeAt(unitSentence, formStart, 20))
 
 	// Walking forwards has to carry on from where the unit before it ended and reach the end of the content, which is
-	// what makes a client reading the whole of a control with GetTextAfterOffset terminate.
-	for _, unit := range []textUnit{unitChar, unitWord, unitSentence, unitParagraph} {
-		at := content.rangeAt(unit, 0)
-		c.Equal(0, at.start, "unit %d must begin at the beginning", unit)
-		for range len(content.runes) {
-			if at.end >= len(content.runes) {
-				break
+	// what makes a client reading the whole of a control with GetTextAfterOffset terminate. It holds for both forms:
+	// they divide the same text at different places, but each of them divides all of it.
+	for _, form := range []textForm{formStart, formEnd} {
+		for _, unit := range []textUnit{unitChar, unitWord, unitSentence, unitLine, unitParagraph} {
+			at := content.rangeAt(unit, form, 0)
+			c.Equal(0, at.start, "unit %d in form %d must begin at the beginning", unit, form)
+			for range len(content.runes) {
+				if at.end >= len(content.runes) {
+					break
+				}
+				next := content.rangeAfter(unit, form, at.start)
+				c.Equal(at.end, next.start, "unit %d in form %d must carry on from where the one before it ended",
+					unit, form)
+				c.True(next.end > at.end, "unit %d in form %d must advance past %d", unit, form, at.end)
+				at = next
 			}
-			next := content.rangeAfter(unit, at.start)
-			c.Equal(at.end, next.start, "unit %d must carry on from where the one before it ended", unit)
-			c.True(next.end > at.end, "unit %d must advance past %d", unit, at.end)
-			at = next
+			c.Equal(len(content.runes), at.end, "unit %d in form %d must reach the end", unit, form)
 		}
-		c.Equal(len(content.runes), at.end, "unit %d must reach the end", unit)
 	}
 	empty := textContent{}
-	c.Equal(textRange{}, empty.rangeAt(unitWord, 0), "there is nothing in an empty control")
-	c.Equal(textRange{}, empty.rangeBefore(unitLine, 0))
-	c.Equal(textRange{}, empty.rangeAfter(unitLine, 0))
+	c.Equal(textRange{}, empty.rangeAt(unitWord, formStart, 0), "there is nothing in an empty control")
+	c.Equal(textRange{}, empty.rangeBefore(unitLine, formStart, 0))
+	c.Equal(textRange{}, empty.rangeAfter(unitLine, formEnd, 0))
+}
+
+// TestTextUnitsInTheEndForm covers the other way AT-SPI divides text into units of the same kind. The END form runs
+// from the end of one unit to the end of the next rather than from start to start, so the separators between two units
+// belong to the unit that follows them rather than to the one they follow. A client walking with the END form and
+// answered in the START form lands a separator off on every step.
+func TestTextUnitsInTheEndForm(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	content := textContent{runes: []rune("hello world")}
+	c.Equal(textRange{start: 0, end: 5}, content.rangeAt(unitWord, formEnd, 0), "the first word, without the space")
+	c.Equal(textRange{start: 0, end: 5}, content.rangeAt(unitWord, formEnd, 4))
+	c.Equal(textRange{start: 5, end: 11}, content.rangeAt(unitWord, formEnd, 5),
+		"the space belongs to the word that follows it")
+	c.Equal(textRange{start: 5, end: 11}, content.rangeAt(unitWord, formEnd, 11), "the end of the text is in the last")
+	c.Equal(textRange{start: 5, end: 11}, content.rangeAfter(unitWord, formEnd, 0))
+	c.Equal(textRange{start: 0, end: 5}, content.rangeBefore(unitWord, formEnd, 7))
+	c.Equal(textRange{}, content.rangeBefore(unitWord, formEnd, 2), "there is nothing before the first")
+
+	// The same text in the START form, which is where the separator goes instead.
+	c.Equal(textRange{start: 0, end: 6}, content.rangeAt(unitWord, formStart, 0))
+
+	lines := textContent{runes: []rune("ab\ncd")}
+	c.Equal(textRange{start: 0, end: 2}, lines.rangeAt(unitLine, formEnd, 0), "a line ends before its line feed")
+	c.Equal(textRange{start: 2, end: 5}, lines.rangeAt(unitLine, formEnd, 2))
+	sentences := textContent{runes: []rune("One. Two.")}
+	c.Equal(textRange{start: 0, end: 4}, sentences.rangeAt(unitSentence, formEnd, 0),
+		"a sentence ends at its full stop, without the spaces after it")
+	c.Equal(textRange{start: 4, end: 9}, sentences.rangeAt(unitSentence, formEnd, 6))
 }
 
 func TestTextExtents(t *testing.T) {
@@ -351,9 +427,12 @@ func TestTextExtents(t *testing.T) {
 		ta.values(NodePath(41), InterfaceText, "GetRangeExtents", "iiu", int32(0), int32(-1), uint32(CoordWindow)))
 	c.Equal([]any{int32(20), int32(20), int32(40), int32(40)},
 		ta.values(NodePath(41), InterfaceText, "GetRangeExtents", "iiu", int32(0), int32(2), uint32(CoordWindow)))
-	c.Equal([]any{int32(0), int32(0), int32(0), int32(0)},
+	c.Equal([]any{int32(60), int32(20), int32(0), int32(40)},
 		ta.values(NodePath(41), InterfaceText, "GetRangeExtents", "iiu", int32(2), int32(3), uint32(CoordWindow)),
-		"a range that holds nothing but a line feed has no area")
+		"a range that holds nothing but a line feed has no width, but it is still somewhere")
+	c.Equal([]any{int32(0), int32(0), int32(0), int32(0)},
+		ta.values(NodePath(41), InterfaceText, "GetRangeExtents", "iiu", int32(3), int32(3), uint32(CoordWindow)),
+		"a range that holds no characters at all has no place either")
 
 	// An unmeasured field has one line the size of the field, and its characters are not told apart.
 	c.Equal([]any{int32(20), int32(120), int32(200), int32(40)},
@@ -408,7 +487,7 @@ func TestTextSelection(t *testing.T) {
 		c.Equal(false, ta.one(NodePath(41), InterfaceText, "SetCaretOffset", "i", offset),
 			"offset %d is not in the text", offset)
 	}
-	c.Equal(false, ta.one(NodePath(43), InterfaceText, "SetCaretOffset", "i", int32(1)),
+	c.Equal(false, ta.one(NodePath(44), InterfaceText, "SetCaretOffset", "i", int32(1)),
 		"a control that does not let its selection be set says so")
 	ta.noRequest(t)
 
@@ -435,19 +514,59 @@ func TestTextSelection(t *testing.T) {
 	ta.noRequest(t)
 }
 
-func TestTextOfAProtectedField(t *testing.T) {
+// TestEditableText covers the only way AT-SPI has of putting characters into a control. org.a11y.atspi.Text moves the
+// caret and the selection but never changes a character, and [States] claims ATSPI_STATE_EDITABLE for these nodes, so
+// without this interface an assistive technology could read a Unison field and walk about inside it but never edit it —
+// while the same field is writable through VoiceOver and through UI Automation's value and text patterns.
+func TestEditableText(t *testing.T) {
 	t.Parallel()
 	ta := newTextAdapter(t)
 	c := ta.c
-	// A password never reaches an assistive technology, but how much of one has been typed does.
-	c.Equal(int32(6), ta.peer.getProperty(NodePath(43), InterfaceText, "CharacterCount"))
-	c.Equal("••••••", ta.one(NodePath(43), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
-	c.Equal([]any{"••••••", int32(0), int32(6)},
-		ta.values(NodePath(43), InterfaceText, "GetStringAtOffset", "iu", int32(0), uint32(GranularityLine)))
-	c.Equal([]any{"•", int32(2), int32(3)},
-		ta.values(NodePath(43), InterfaceText, "GetStringAtOffset", "iu", int32(2), uint32(GranularityChar)),
-		"a bullet is what every unit of a password is made of, however small the unit")
-	c.Equal(int32(bulletRune), ta.one(NodePath(43), InterfaceText, "GetCharacterAtOffset", "i", int32(0)))
+	// Replacing the whole content of a control that takes a value is a value change, which is what a control with no
+	// notion of ranges, such as a spin button, knows what to do with.
+	c.Equal(true, ta.one(NodePath(42), InterfaceEditableText, "SetTextContents", "s", "Bye"))
+	c.Equal(accessibility.ActionRequest{Node: 42, Action: accessibility.SetValue, Value: "Bye"}, ta.nextRequest(t))
+	// One that only offers to have a range of its text replaced has the whole of it replaced instead.
+	c.Equal(true, ta.one(NodePath(41), InterfaceEditableText, "SetTextContents", "s", "new"))
+	c.Equal(accessibility.ActionRequest{
+		Node: 41, Action: accessibility.ReplaceText, Value: "new", Start: 0, End: 5,
+	}, ta.nextRequest(t))
+
+	// An insertion is an empty range replaced by the text, and a deletion is a range replaced by nothing.
+	c.Equal(true, ta.one(NodePath(41), InterfaceEditableText, "InsertText", "isi", int32(2), "xy", int32(2)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 41, Action: accessibility.ReplaceText, Value: "xy", Start: 2, End: 2,
+	}, ta.nextRequest(t))
+	c.Equal(true, ta.one(NodePath(41), InterfaceEditableText, "InsertText", "isi", int32(0), "xy", int32(1)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 41, Action: accessibility.ReplaceText, Value: "x", Start: 0, End: 0,
+	}, ta.nextRequest(t), "a length shorter than the string is how many characters of it the caller means")
+	c.Equal(true, ta.one(NodePath(41), InterfaceEditableText, "DeleteText", "ii", int32(1), int32(3)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 41, Action: accessibility.ReplaceText, Start: 1, End: 3,
+	}, ta.nextRequest(t))
+	c.Equal(true, ta.one(NodePath(41), InterfaceEditableText, "DeleteText", "ii", int32(-5), int32(99)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 41, Action: accessibility.ReplaceText, Start: 0, End: 5,
+	}, ta.nextRequest(t), "a range outside the content is brought back into it")
+	c.Equal(true, ta.one(NodePath(41), InterfaceEditableText, "DeleteText", "ii", int32(4), int32(1)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 41, Action: accessibility.ReplaceText, Start: 4, End: 4,
+	}, ta.nextRequest(t), "a range that ends before it starts is the empty range where it starts")
+
+	// The clipboard is not something the schema carries a request for, so the three methods that would use it report
+	// that they did nothing. Copying is the one method of the interface that answers with nothing at all.
+	c.Equal(0, len(ta.values(NodePath(41), InterfaceEditableText, "CopyText", "ii", int32(0), int32(2))))
+	c.Equal(false, ta.one(NodePath(41), InterfaceEditableText, "CutText", "ii", int32(0), int32(2)))
+	c.Equal(false, ta.one(NodePath(41), InterfaceEditableText, "PasteText", "i", int32(0)))
+
+	// A control that does not offer to have its text changed has no such interface to call at all, and neither has one
+	// that holds no text.
+	c.Equal(dbus.UnknownInterface,
+		ta.errorName(NodePath(44), InterfaceEditableText, "DeleteText", "ii", int32(0), int32(1)))
+	c.Equal(dbus.UnknownInterface,
+		ta.errorName(NodePath(43), InterfaceEditableText, "SetTextContents", "s", "guess"))
+	ta.noRequest(t)
 }
 
 func TestTextAttributes(t *testing.T) {
@@ -459,6 +578,15 @@ func TestTextAttributes(t *testing.T) {
 		ta.values(NodePath(41), InterfaceText, "GetAttributes", "i", int32(2)))
 	c.Equal([]any{dbus.Dict{}, int32(0), int32(5)},
 		ta.values(NodePath(41), InterfaceText, "GetAttributeRun", "ib", int32(2), true))
+	// An offset the content does not reach is an empty run, which is what ATK answers with and what stops a client
+	// walking the runs of a control from being handed the whole of it again at the end.
+	for _, offset := range []int32{-1, 5, 99} {
+		c.Equal([]any{dbus.Dict{}, int32(0), int32(0)},
+			ta.values(NodePath(41), InterfaceText, "GetAttributes", "i", offset), "offset %d is outside the text",
+			offset)
+		c.Equal([]any{dbus.Dict{}, int32(0), int32(0)},
+			ta.values(NodePath(41), InterfaceText, "GetAttributeRun", "ib", offset, true))
+	}
 	c.Equal(dbus.Dict{}, ta.one(NodePath(41), InterfaceText, "GetDefaultAttributes", ""))
 	c.Equal("", ta.one(NodePath(41), InterfaceText, "GetAttributeValue", "is", int32(2), "weight"))
 }
@@ -471,12 +599,19 @@ func TestTextIntrospection(t *testing.T) {
 	c.True(ok)
 	for _, want := range []string{
 		InterfaceText,
+		InterfaceEditableText,
 		`<property name="CharacterCount" type="i" access="read"/>`,
 		`<property name="CaretOffset" type="i" access="read"/>`,
 		`<method name="GetStringAtOffset">`,
 		`<method name="GetCharacterExtents">`,
 		`<method name="GetAttributeRun">`,
+		`<method name="InsertText">`,
 	} {
 		c.True(strings.Contains(xml, want), "the introspection of a text node must mention %s", want)
 	}
+	// What the node says it implements has to be what is there, in the same order, so that a client that walks the
+	// introspection and one that asks the shorter question see the same object.
+	advertised, ok := ta.one(NodePath(41), InterfaceAccessible, "GetInterfaces", "").([]string)
+	c.True(ok)
+	c.Equal(advertised, atspiInterfacesIn(xml))
 }

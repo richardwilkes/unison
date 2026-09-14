@@ -208,7 +208,9 @@ func UIATableColumnHeaders(t *accessibility.Tree, id accessibility.NodeID) []acc
 // Remembering it is correct only because a published snapshot is immutable: a publish swaps a whole new tree in rather
 // than editing the one providers are answering from, so an answer worked out from a tree cannot go out of date while
 // that tree is still the one being asked about. Only the most recently asked-about tree is kept, which is all a client
-// walking one table needs and which keeps this from holding every snapshot a window ever published alive.
+// walking one table needs and which keeps this from holding every snapshot a window ever published alive. It is a
+// strong reference all the same, so UIAWindow.Destroy drops it: otherwise the last snapshot of a window with a table
+// in it, and every node in that snapshot, would stay reachable for the rest of the process.
 //
 // UI Automation calls providers on whichever thread it likes, so every access is under the lock, the computation
 // included: it is short, and several threads working the same answer out at once is the thing being avoided.
@@ -216,6 +218,16 @@ var uiaHeaderMemo struct {
 	tree    *accessibility.Tree
 	headers map[accessibility.NodeID]accessibility.NodeID
 	lock    sync.Mutex
+}
+
+// uiaForgetHeaderMemo drops whatever uiaHeaderMemo is holding, so that a snapshot nothing is answering from any more
+// is not kept alive by it. A window being destroyed calls it; the next question asked of any window works its answer
+// out again, which costs one walk of that window's tree.
+func uiaForgetHeaderMemo() {
+	uiaHeaderMemo.lock.Lock()
+	defer uiaHeaderMemo.lock.Unlock()
+	uiaHeaderMemo.tree = nil
+	uiaHeaderMemo.headers = nil
 }
 
 // uiaMemoizedTableHeaderFor answers uiaTableHeaderFor from uiaHeaderMemo, working the answer out and remembering it

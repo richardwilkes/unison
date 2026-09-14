@@ -12,6 +12,7 @@ package unison
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -163,11 +164,16 @@ func (f *NumericField[T]) PerformAccessibilityAction(req accessibility.ActionReq
 // axSetValue replaces the value on behalf of an assistive technology. Anything that treats the field as the spin button
 // it says it is sends the new value as a number and leaves the text empty — the Windows UI Automation range value
 // pattern and the AT-SPI value interface have nowhere else to put it — so handing such a request straight to the field,
-// which knows only about text, would blank the field rather than set it. Text is still what is used whenever it was
-// supplied, since it carries whatever formatting the field presents its values in; macOS sends both, and its text is
-// simply the number written out.
+// which knows only about text, would blank the field rather than set it.
+//
+// Text is what is used when it says something the number does not. Both macOS and Windows send the two together, with
+// the text nothing more than the number written out, and taking the text there would set a field that shows its values
+// as anything but bare digits — a percentage, a currency, a length — to whatever those digits happen to mean when read
+// back through its Extract, and would skip the clamp to the field's range besides. So a text that parses to exactly the
+// number it came with says no more than the number does, and the number is taken; anything else is the formatting the
+// field presents its values in, and the text is taken.
 func (f *NumericField[T]) axSetValue(req accessibility.ActionRequest) bool {
-	if req.Value != "" {
+	if req.Value != "" && !axValueIsNumber(req.Value, req.Number) {
 		return f.Field.PerformAccessibilityAction(req)
 	}
 	if math.IsNaN(req.Number) {
@@ -177,6 +183,16 @@ func (f *NumericField[T]) axSetValue(req accessibility.ActionRequest) bool {
 	// that was typed and because converting a float far outside an integer type's range is not defined.
 	f.SetValue(T(min(max(req.Number, float64(f.minimum)), float64(f.maximum))))
 	return true
+}
+
+// axValueIsNumber reports whether the text an assistive technology sent with a request says no more than the number it
+// sent along with it, which is the case when the text is that number written out and nothing else.
+func axValueIsNumber(value string, number float64) bool {
+	if math.IsNaN(number) {
+		return false
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	return err == nil && parsed == number
 }
 
 // axStepValue moves the value one step up or down, stopping at the end of the range rather than passing it. Value
@@ -218,6 +234,12 @@ func (f *NumericField[T]) SetMinMax(minimum, maximum T) {
 		f.adjustMinimumTextWidth()
 		v, _ := f.Extract(strings.TrimSpace(f.Text())) //nolint:errcheck // Default value in case of error is acceptable
 		f.SetValue(min(max(v, f.minimum), f.maximum))
+		// Neither of the calls above need have done anything: the minimum text width is only a field until something
+		// lays the field out again, and a value that still formats to the text already showing leaves the field
+		// untouched. The range is part of what an assistive technology is told, though, and a window is only described
+		// again once it has been drawn, so the new range would otherwise not be published until something unrelated
+		// happened to redraw.
+		f.MarkForLayoutAndRedraw()
 	}
 }
 

@@ -15,7 +15,6 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/enums/mod"
-	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
 	"github.com/richardwilkes/unison/enums/weight"
@@ -128,13 +127,9 @@ func NewFontPanel() *FontPanel {
 	return p
 }
 
-// ProvideAccessibility describes the panel to assistive technologies. It is a group of controls rather than a control
-// in its own right, and since it lays them out in a row with no labels beside them, each of those names itself.
-func (p *FontPanel) ProvideAccessibility(b *AccessibilityBuilder) {
-	if node := b.Node(); node.Role == role.Auto {
-		node.Role = role.Group
-	}
-}
+// The panel itself needs no description of its own: it is a group of controls, which is what a panel with children and
+// nothing to say for itself is already taken for, and since it lays them out in a row with no labels beside them, each
+// of those names itself.
 
 // FontDescriptor returns the font descriptor.
 func (p *FontPanel) FontDescriptor() FontDescriptor {

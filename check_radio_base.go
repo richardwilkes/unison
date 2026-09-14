@@ -133,11 +133,19 @@ func (c *checkRadioBase) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _re
 
 // axName returns the name a check box or a radio button reports to an assistive technology, which is the title beside
 // its mark unless something has already supplied a better one. current is the name resolved so far.
+//
+// One built out of a drawable with no title at all has only its tooltip to say what it is, exactly as an icon button
+// does, so that is what it falls back to. It has to be consulted here rather than being left to the description the
+// snapshot would otherwise take from it, since a control with no name is announced as an unlabeled check box however
+// much its description says.
 func (c *checkRadioBase) axName(current string) string {
 	if current != "" {
 		return current
 	}
-	return c.Text.String()
+	if text := c.Text.String(); text != "" {
+		return text
+	}
+	return axTooltipText(c.AsPanel())
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Pressing or toggling a check box or a

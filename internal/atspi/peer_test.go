@@ -34,8 +34,6 @@ const (
 	testPeerName = ":1.7"
 	// testDesktopPath is the path of the desktop object the fake registry hands back from Embed.
 	testDesktopPath dbus.ObjectPath = "/org/a11y/atspi/accessible/desktop"
-	// dbusPath is the path of the bus's own object.
-	dbusPath dbus.ObjectPath = "/org/freedesktop/DBus"
 )
 
 // testPeer is the other end of a connection under test. It answers the calls the bus itself implements, answers the
@@ -94,7 +92,7 @@ func (p *testPeer) run() {
 		}
 		switch msg.Type {
 		case dbus.TypeMethodCall:
-			if msg.Path == dbusPath {
+			if msg.Path == dbusObjectPath {
 				p.answerBus(msg)
 				continue
 			}
@@ -192,10 +190,18 @@ func (p *testPeer) errorTo(call *dbus.Message, name, message string) {
 	p.write(dbus.NewError(call, name, message))
 }
 
-// emit sends a signal to the connection under test.
+// emit sends a signal to the connection under test as the peer itself.
 func (p *testPeer) emit(path dbus.ObjectPath, iface, member string, sig dbus.Signature, args ...any) {
+	p.emitFrom(testPeerName, path, iface, member, sig, args...)
+}
+
+// emitFrom sends a signal to the connection under test as though it came from a particular sender, which is what a real
+// bus fills in and what the subscriptions that will only listen to one sender match against.
+func (p *testPeer) emitFrom(sender string, path dbus.ObjectPath, iface, member string, sig dbus.Signature,
+	args ...any,
+) {
 	msg := dbus.NewSignal(path, iface, member)
-	msg.Sender = testPeerName
+	msg.Sender = sender
 	if len(args) != 0 {
 		p.c.NoError(msg.SetBodyWithSignature(sig, args...))
 	}
@@ -264,6 +270,17 @@ func (p *testPeer) nextCall() *dbus.Message {
 	case <-time.After(testTimeout):
 		p.t.Fatal("timed out waiting for a method call")
 		return nil
+	}
+}
+
+// noCall fails the test if the connection under test has made a method call that the peer did not answer itself and
+// that nothing has taken.
+func (p *testPeer) noCall() {
+	p.t.Helper()
+	select {
+	case msg := <-p.calls:
+		p.t.Fatalf("nothing should have been called, but %s was", msg)
+	default:
 	}
 }
 

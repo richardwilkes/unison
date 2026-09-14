@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/role"
 )
@@ -78,10 +79,18 @@ func (s *Separator) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geo
 }
 
 // ProvideAccessibility describes the separator to assistive technologies, which present it as a break between the
-// groups of things on either side of it rather than as something in its own right.
+// groups of things on either side of it rather than as something in its own right. Which way it runs is reported along
+// with it, since a separator drawn down the screen divides what is beside it rather than what is above and below, and
+// that is the whole of what it has to say.
 func (s *Separator) ProvideAccessibility(b *AccessibilityBuilder) {
-	if node := b.Node(); node.Role == role.Auto {
+	node := b.Node()
+	if node.Role == role.Auto {
 		node.Role = role.Separator
+	}
+	if s.Vertical {
+		node.Orientation = accessibility.OrientationVertical
+	} else {
+		node.Orientation = accessibility.OrientationHorizontal
 	}
 }
 

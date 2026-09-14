@@ -161,6 +161,11 @@ func axPanelAtPath(root *Panel, path string) *Panel {
 // A disabled panel has none: Window.mouseDown and Window.mouseUp pass over a panel that is not enabled, so synthesizing
 // a click here would do what a real one could not. axDispatchAction has already refused such a request, but the check
 // is repeated here because this is what actually calls the callbacks.
+//
+// A panel that declines the press has none either. Window.mouseDown remembers which panel to deliver the release to
+// only when the press was accepted — a panel that returns false is letting the press go to its parent instead, and
+// never sees the matching release — so a release sent here regardless would be something no real click could produce.
+// The request is reported as not carried out, which is the truth: the press went nowhere.
 func (p *Panel) axSynthesizeClick() bool {
 	if p.MouseDownCallback == nil || p.MouseUpCallback == nil || !p.Enabled() {
 		return false
@@ -169,7 +174,11 @@ func (p *Panel) axSynthesizeClick() bool {
 		p.RequestFocus()
 	}
 	where := p.ContentRect(true).Center()
-	SafeCall(func() { p.MouseDownCallback(where, ButtonLeft, 1, 0) })
+	pressed := false
+	SafeCall(func() { pressed = p.MouseDownCallback(where, ButtonLeft, 1, 0) })
+	if !pressed {
+		return false
+	}
 	SafeCall(func() { p.MouseUpCallback(where, ButtonLeft, 0) })
 	return true
 }

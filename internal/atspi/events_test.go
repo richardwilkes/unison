@@ -36,6 +36,10 @@ const mainWindowSignals = 14
 // falseValue is what a boolean state change that has been turned off carries, which is what strconv.FormatBool writes.
 const falseValue = "false"
 
+// groupName is what the ignored group is called in the publishes that make it a reported object, since a group with a
+// name is a group worth announcing.
+const groupName = "Identity"
+
 // The text the field holds before and after a character is typed into it.
 const (
 	textBefore = "Will"
@@ -214,6 +218,51 @@ func (lists childLists) apply(c check.Checker, records []signalRecord) {
 	}
 }
 
+// listsOf returns the child lists a client would be holding if it had been told about every object of a tree, which is
+// where the replay of a publish starts from and what it has to arrive at.
+func listsOf(t *accessibility.Tree) childLists {
+	lists := make(childLists)
+	t.Walk(func(n *accessibility.Node) bool {
+		if n.Ignored {
+			return true
+		}
+		children := t.UnignoredChildren(n.ID)
+		if len(children) == 0 {
+			return true
+		}
+		refs := make([]dbus.ObjectRef, 0, len(children))
+		for _, id := range children {
+			refs = append(refs, nodeRef(id))
+		}
+		lists[NodePath(n.ID)] = refs
+		return true
+	})
+	return lists
+}
+
+// matches fails the test unless the lists a client is holding are the ones every object of the tree now reports. What
+// it holds for an object that has left the tree is passed over: a client drops those along with the objects.
+func (lists childLists) matches(c check.Checker, t *accessibility.Tree) {
+	for path, expected := range listsOf(t) {
+		c.Equal(expected, lists[path], "the children a client holds for %s", path)
+	}
+	t.Walk(func(n *accessibility.Node) bool {
+		if !n.Ignored && len(t.UnignoredChildren(n.ID)) == 0 {
+			c.Equal(0, len(lists[NodePath(n.ID)]), "%s has nothing left in it", NodePath(n.ID))
+		}
+		return true
+	})
+}
+
+// replay applies what a publish announced to the lists a client held before it and checks that the result is what the
+// new snapshot says. It is the whole of what a caching client ever sees: the objects would answer correctly however
+// wrong the announcement was, and a client that never asks again would live with the difference forever.
+func replay(c check.Checker, prior *accessibility.Tree, signals []signalRecord, now *accessibility.Tree) {
+	lists := listsOf(prior)
+	lists.apply(c, signals)
+	lists.matches(c, now)
+}
+
 // activeMainTree returns the main window's tree with the given changes applied, keeping it the active window.
 func activeMainTree(apply func(t *accessibility.Tree)) *accessibility.Tree {
 	tree := mainTree()
@@ -237,7 +286,7 @@ func TestFirstPublishAnnouncesTheWholeWindow(t *testing.T) {
 		nodeRef(1), rootRef(), rootRef(), int32(0), int32(5),
 		[]string{InterfaceAccessible, InterfaceComponent},
 		"Test Window", uint32(RoleFrame), "",
-		States(mainTree().Node(1), true).Words(),
+		States(mainTree().Node(1), true, true).Words(),
 	}}, signals[0].args, "the window's cache item says everything the cache would")
 
 	// The window itself, then its place among the application's children.
@@ -366,6 +415,69 @@ func TestRemovingAWindowSaysSo(t *testing.T) {
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
+// TestPublishingAWindowAgainAfterRemovingIt covers a window that is hidden and shown again, which the root package
+// reports by taking it out of the accessibility tree and publishing it afresh. The second publish has to announce the
+// whole window, since nothing has been told anything about it since it went.
+func TestPublishingAWindowAgainAfterRemovingIt(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	ta.RemoveWindow(mainWindow)
+	ta.peer.nextSignals(2 + len(mainWindowNodes))
+	c.Equal(int32(0), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"))
+
+	renamed := activeMainTree(func(tree *accessibility.Tree) { tree.Node(1).Name = "Test Window Again" })
+	// The events are the ones the window's own snapshots produce, and they are beside the point: to this adapter the
+	// window is one it has never heard of, so what it says is what it says about any new window.
+	ta.Publish(mainWindow, renamed, accessibility.Diff(mainTree(), renamed), sampleGeometry())
+	signals := ta.peer.nextSignals(mainWindowSignals)
+	for i, id := range mainWindowNodes {
+		c.Equal(nodeRef(id), ta.cachedID(signals[i]), "cache item %d", i)
+	}
+	c.Equal(windowEvent(1, signalCreate, "Test Window Again"), signals[8])
+	c.Equal(rootChildrenEvent(detailAdd, 0, 1), signals[9])
+	c.Equal(windowEvent(1, signalActivate, "Test Window Again"), signals[10])
+	c.Equal(stateEvent(1, stateNameActive, true), signals[11])
+	c.Equal(stateEvent(4, stateNameFocused, true), signals[12])
+	c.Equal(focusEvent(4), signals[13])
+	c.Equal(int32(1), ta.peer.getProperty(RootPath, InterfaceAccessible, "ChildCount"))
+	c.Equal("Test Window Again", ta.peer.getProperty(NodePath(1), InterfaceAccessible, "Name"))
+	c.Equal([]dbus.ObjectRef{nodeRef(1)}, ta.one(RootPath, InterfaceAccessible, "GetChildren", ""))
+}
+
+// TestANodeThatMovedToAnotherWindowIsNotBuried covers the cache signals of a panel that has been reparented from one
+// window into another. The window it left says it is gone, which is true of that window's hierarchy, but the object
+// itself goes on answering for the window that holds it now — and nothing would ever put it back into a client's cache,
+// since that window sees no change of its own.
+func TestANodeThatMovedToAnotherWindowIsNotBuried(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	geometry := Geometry{Scale: geom.NewPoint(1, 1)}
+	ta.Publish(otherWindow, windowThatTookTheSlider(), nil, geometry)
+	ta.peer.nextSignals(6) // A cache item for each of its four nodes, the window's Create, and its place
+
+	// The window the slider came from publishes without it, which to that window is a removal.
+	without := mainWindowWithoutTheSlider()
+	ta.Publish(mainWindow, without, accessibility.Diff(mainTree(), without), sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(1, signalChildrenChanged, detailRemove, 3, 0, variantRef(nodeRef(8))),
+	}, ta.peer.nextSignals(1), "the window it left no longer lists it, and nothing says the object has gone")
+
+	// Closing that window says nothing about it either.
+	ta.RemoveWindow(mainWindow)
+	signals := ta.peer.nextSignals(2 + len(mainWindowNodes) - 1)
+	c.Equal(windowEvent(1, signalDestroy, "Test Window"), signals[0])
+	c.Equal(rootChildrenEvent(detailRemove, 0, 1), signals[1])
+	for _, record := range signals {
+		c.False(record.path == CachePath && record.args[0] == nodeRef(8), "the slider must not be reported as gone")
+	}
+	c.Equal("Volume", ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Name"),
+		"and it goes on answering for the window that holds it")
+	ta.Announce("Nothing more")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
 func TestNodesComingAndGoing(t *testing.T) {
 	t.Parallel()
 	ta := newEventAdapter(t)
@@ -445,29 +557,32 @@ func TestANodeThatStopsBeingIgnored(t *testing.T) {
 	c := ta.c
 	named := activeMainTree(func(tree *accessibility.Tree) {
 		tree.Node(2).Ignored = false
-		tree.Node(2).Name = "Identity"
+		tree.Node(2).Name = groupName
 	})
 	events := accessibility.Diff(mainTree(), named)
 	c.Equal([]accessibility.Event{
-		{Kind: accessibility.NameChanged, Node: 2, New: "Identity"},
+		{Kind: accessibility.NameChanged, Node: 2, New: groupName},
 		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateIgnored, Old: trueValue, New: falseValue},
 	}, events, "the group is still in the tree, so nothing was added or removed there")
 	ta.Publish(mainWindow, named, events, sampleGeometry())
 
-	signals := ta.peer.nextSignals(9)
-	c.Equal(objectEvent(2, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("Identity")), signals[0])
+	signals := ta.peer.nextSignals(11)
+	c.Equal(objectEvent(2, signalPropertyChange, propertyAccessibleName, 0, 0, variantString(groupName)), signals[0])
 	// The two nodes that were standing in for the group leave the window before anything is put in their place. The
 	// second of them was at index 1 of the list the snapshots hold, but the first removal has already taken index 0
 	// away by the time the client hears about it.
 	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 0, 0, variantRef(nodeRef(3))), signals[1])
 	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 0, 0, variantRef(nodeRef(4))), signals[2])
-	// The group then joins the window's children, and the two nodes become its own.
+	// The group then joins the window's children, and the two nodes become its own, each of them told whose child it is
+	// now.
 	c.Equal(nodeRef(2), ta.cachedID(signals[3]))
 	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(2))), signals[4])
 	c.Equal(nodeRef(3), ta.cachedID(signals[5]))
 	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(3))), signals[6])
-	c.Equal(nodeRef(4), ta.cachedID(signals[7]))
-	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(4))), signals[8])
+	c.Equal(objectEvent(3, signalPropertyChange, propertyAccessibleParent, 0, 0, variantRef(nodeRef(2))), signals[7])
+	c.Equal(nodeRef(4), ta.cachedID(signals[8]))
+	c.Equal(objectEvent(2, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(4))), signals[9])
+	c.Equal(objectEvent(4, signalPropertyChange, propertyAccessibleParent, 0, 0, variantRef(nodeRef(2))), signals[10])
 
 	// Replaying what was announced against the lists a client held before the publish has to produce the lists the
 	// objects report now. Checking the objects alone would pass even if the window had never been told that the two
@@ -500,18 +615,147 @@ func TestANodeThatBecomesIgnored(t *testing.T) {
 
 	// The name change says nothing: a node with no object has no property for anything to have changed on. The list was
 	// the window's third reported child, and its two rows take its place there.
-	signals := ta.peer.nextSignals(6)
+	signals := ta.peer.nextSignals(8)
 	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 2, 0, variantRef(nodeRef(5))), signals[0])
 	c.Equal(cacheRemoval(5), signals[1])
 	c.Equal(nodeRef(6), ta.cachedID(signals[2]))
 	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 2, 0, variantRef(nodeRef(6))), signals[3])
-	c.Equal(nodeRef(7), ta.cachedID(signals[4]))
-	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 3, 0, variantRef(nodeRef(7))), signals[5])
+	// Nothing is said to the object that held them: the client has just been told to forget the whole of it.
+	c.Equal(objectEvent(6, signalPropertyChange, propertyAccessibleParent, 0, 0, variantRef(nodeRef(1))), signals[4])
+	c.Equal(nodeRef(7), ta.cachedID(signals[5]))
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 3, 0, variantRef(nodeRef(7))), signals[6])
+	c.Equal(objectEvent(7, signalPropertyChange, propertyAccessibleParent, 0, 0, variantRef(nodeRef(1))), signals[7])
 	lists := childLists{NodePath(1): {nodeRef(3), nodeRef(4), nodeRef(5), nodeRef(8), nodeRef(9)}}
 	lists.apply(c, signals)
 	children := ta.one(NodePath(1), InterfaceAccessible, "GetChildren", "")
 	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(6), nodeRef(7), nodeRef(8), nodeRef(9)}, children)
 	c.Equal(lists[NodePath(1)], children, "a client that applied the announcement has the window's children right")
+}
+
+// TestAGroupAppearingWhileASiblingDisappears covers the numbering of a publish that both adds to and removes from the
+// same parent. A client applies each children-changed as it arrives and has nothing to go on but the index it carries,
+// so every index has to be an index into the list the client is holding at that moment — the one the signals sent so
+// far have left it with — rather than into either snapshot. Numbering a removal against the old snapshot alone names
+// the wrong child once anything has been added ahead of it, and a client that trusts the index deletes something else.
+func TestAGroupAppearingWhileASiblingDisappears(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	swapped := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(2).Ignored = false
+		tree.Node(2).Name = groupName
+		tree.Node(5).Ignored = true
+	})
+	ta.Publish(mainWindow, swapped, accessibility.Diff(mainTree(), swapped), sampleGeometry())
+
+	// The group takes the window's first place, so the list that is on its way out is no longer where either snapshot
+	// has it by the time the client is told it has gone.
+	signals := ta.peer.nextSignals(19)
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(2))), signals[4])
+	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(5))), signals[11])
+	c.Equal(cacheRemoval(5), signals[12])
+	replay(c, mainTree(), signals, swapped)
+	c.Equal([]dbus.ObjectRef{nodeRef(2), nodeRef(6), nodeRef(7), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""))
+}
+
+// TestANodeThatStopsBeingIgnoredWhileGainingAChild covers the other way two events can describe one arrival. The new
+// child's NodeAdded comes first, naming an object the client has not been told about yet and whose list it does not
+// have; announcing it then and again with the group's own children has the same child arrive twice, which is a
+// contradiction a client cannot recover from.
+func TestANodeThatStopsBeingIgnoredWhileGainingAChild(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	grown := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(2).Ignored = false
+		tree.Node(2).Name = groupName
+		tree.Node(2).Children = []accessibility.NodeID{3, 4, 10}
+		tree.Nodes[10] = &accessibility.Node{
+			ID: 10, Parent: 2, Role: role.Label, Name: "New", Bounds: geom.NewRect(10, 30, 40, 20),
+		}
+	})
+	events := accessibility.Diff(mainTree(), grown)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.ChildrenChanged, Node: 2},
+		{Kind: accessibility.NodeAdded, Node: 10},
+		{Kind: accessibility.NameChanged, Node: 2, New: groupName},
+		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateIgnored, Old: trueValue, New: falseValue},
+	}, events, "the new child is reported before anything says its parent has an object at all")
+	ta.Publish(mainWindow, grown, events, sampleGeometry())
+
+	signals := ta.peer.nextSignals(13)
+	// The group is announced before any of its children, and the child that arrived with it is announced once.
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(2))), signals[4])
+	adds := 0
+	for _, record := range signals {
+		if record.path == NodePath(2) && record.member == signalChildrenChanged {
+			adds++
+			c.Equal(detailAdd, record.args[0])
+		}
+	}
+	c.Equal(3, adds, "the group gains its two old children and the new one, each of them once")
+	replay(c, mainTree(), signals, grown)
+	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(10)},
+		ta.one(NodePath(2), InterfaceAccessible, "GetChildren", ""))
+}
+
+// TestANodeMovingBetweenParents covers a panel that is reparented within one window. It keeps its id, so
+// [accessibility.Diff] has nothing to report but a pair of ChildrenChanged events — no node was added or removed — and
+// a client that keeps a child list per object, which libatspi does, would go on holding it under its old parent and
+// never under its new one for as long as the window lived.
+func TestANodeMovingBetweenParents(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	moved := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(1).Children = []accessibility.NodeID{2, 5, 9}
+		tree.Node(5).Children = []accessibility.NodeID{6, 7, 8}
+		tree.Node(8).Parent = 5
+	})
+	events := accessibility.Diff(mainTree(), moved)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.ChildrenChanged, Node: 1},
+		{Kind: accessibility.ChildrenChanged, Node: 5},
+	}, events, "nothing joined or left the window, so this is all there is to go on")
+	ta.Publish(mainWindow, moved, events, sampleGeometry())
+
+	signals := ta.peer.nextSignals(4)
+	c.Equal(objectEvent(1, signalChildrenChanged, detailRemove, 3, 0, variantRef(nodeRef(8))), signals[0])
+	c.Equal(nodeRef(8), ta.cachedID(signals[1]))
+	c.Equal(objectEvent(5, signalChildrenChanged, detailAdd, 2, 0, variantRef(nodeRef(8))), signals[2])
+	c.Equal(objectEvent(8, signalPropertyChange, propertyAccessibleParent, 0, 0, variantRef(nodeRef(5))), signals[3])
+	replay(c, mainTree(), signals, moved)
+	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(5), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""))
+	c.Equal([]dbus.ObjectRef{nodeRef(6), nodeRef(7), nodeRef(8)},
+		ta.one(NodePath(5), InterfaceAccessible, "GetChildren", ""))
+	c.Equal(nodeRef(5), ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Parent"))
+
+	// A node moved into a container that is ignored belongs to the nearest reported ancestor, whose own list of
+	// children has not changed: nothing in the publish names it, so the parent that lost the node is where both halves
+	// of the move have to be said.
+	buried := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(2).Children = []accessibility.NodeID{3, 4, 7}
+		tree.Node(5).Children = []accessibility.NodeID{6}
+		tree.Node(7).Parent = 2
+	})
+	buried.Generation++
+	// The window goes back to the shape it started in, without a word said about it, so that what follows is only what
+	// the move into the ignored group produces.
+	ta.Publish(mainWindow, mainTree(), nil, sampleGeometry())
+	events = accessibility.Diff(mainTree(), buried)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.ChildrenChanged, Node: 2},
+		{Kind: accessibility.ChildrenChanged, Node: 5},
+	}, events, "the window's own list of children is what it was")
+	ta.Publish(mainWindow, buried, events, sampleGeometry())
+	signals = ta.peer.nextSignals(4)
+	c.Equal(objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(7))), signals[0])
+	c.Equal(nodeRef(7), ta.cachedID(signals[1]))
+	c.Equal(objectEvent(1, signalChildrenChanged, detailAdd, 2, 0, variantRef(nodeRef(7))), signals[2])
+	c.Equal(objectEvent(7, signalPropertyChange, propertyAccessibleParent, 0, 0, variantRef(nodeRef(1))), signals[3])
+	replay(c, mainTree(), signals, buried)
 }
 
 // TestActivationAndAFocusMoveInOneSnapshot covers the pair of events that clicking a control in a window that was not
@@ -574,6 +818,47 @@ func TestDeactivationAndAFocusMoveInOneSnapshot(t *testing.T) {
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
+// TestARowThatStopsBeingExpandable covers the pair of states AT-SPI has for a thing that can be opened. [States] gives
+// a node that cannot be expanded neither EXPANDED nor COLLAPSED, so losing the ability has to take the side the node
+// was on with it rather than putting it on the other one: a client caches a state set until something retracts it, and
+// COLLAPSED on an object whose state set has neither is wrong for as long as the window lives.
+func TestARowThatStopsBeingExpandable(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	open := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(5).Expandable = true
+		tree.Node(5).Expanded = true
+	})
+	ta.Publish(mainWindow, open, accessibility.Diff(mainTree(), open), sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(5, stateNameExpandable, true),
+		stateEvent(5, stateNameExpanded, true),
+		stateEvent(5, stateNameCollapsed, false),
+	}, ta.peer.nextSignals(3), "the ability and the side it is on arrive together, and each is said once")
+
+	plain := activeMainTree(func(_ *accessibility.Tree) {})
+	plain.Generation++
+	events := accessibility.Diff(open, plain)
+	c.Equal([]accessibility.Event{
+		{
+			Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateExpandable,
+			Old: trueValue, New: falseValue,
+		},
+		{
+			Kind: accessibility.StateChanged, Node: 5, State: accessibility.StateExpanded,
+			Old: trueValue, New: falseValue,
+		},
+	}, events)
+	ta.Publish(mainWindow, plain, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(5, stateNameExpandable, false),
+		stateEvent(5, stateNameExpanded, false),
+	}, ta.peer.nextSignals(2), "the row is left with neither side of the pair rather than with the other one")
+	ta.Announce("Nothing about being collapsed")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
 // bigTableTree is a window holding a table with more rows than it is worth walking, which is what makes it claim
 // ATSPI_STATE_MANAGES_DESCENDANTS, along with the two of those rows it is showing:
 //
@@ -613,7 +898,7 @@ func TestTheCurrentRowOfATableThatManagesItsDescendants(t *testing.T) {
 	ledger := bigTableTree()
 	ta.Publish(tableWindow, ledger, nil, sampleGeometry())
 	ta.peer.nextSignals(8) // Four cache items, the window's Create and place, and the two that say it is active
-	c.True(States(ledger.Node(51), true).Has(StateManagesDescendants))
+	c.True(States(ledger.Node(51), true, false).Has(StateManagesDescendants))
 
 	moved := bigTableTree()
 	moved.Generation++
@@ -621,16 +906,24 @@ func TestTheCurrentRowOfATableThatManagesItsDescendants(t *testing.T) {
 	moved.Node(53).Selected = true
 	events := accessibility.Diff(ledger, moved)
 	c.Equal([]accessibility.Event{
-		{Kind: accessibility.StateChanged, Node: 52, State: accessibility.StateSelected, Old: trueValue, New: falseValue},
-		{Kind: accessibility.StateChanged, Node: 53, State: accessibility.StateSelected, Old: falseValue, New: trueValue},
+		{
+			Kind: accessibility.StateChanged, Node: 52, State: accessibility.StateSelected,
+			Old: trueValue, New: falseValue,
+		},
+		{
+			Kind: accessibility.StateChanged, Node: 53, State: accessibility.StateSelected,
+			Old: falseValue, New: trueValue,
+		},
 	}, events)
 	ta.Publish(tableWindow, moved, events, sampleGeometry())
-	// The table is told which of its rows is current, after the rows themselves have said what happened to them.
+	// The table is told that its selection moved and which of its rows is current, after the rows themselves have said
+	// what happened to them.
 	c.Equal([]signalRecord{
 		stateEvent(52, stateNameSelected, false),
 		stateEvent(53, stateNameSelected, true),
+		objectEvent(51, signalSelectionChanged, "", 0, 0, variantInt32(0)),
 		objectEvent(51, signalActiveDescendantChanged, "", 1, 0, variantRef(nodeRef(53))),
-	}, ta.peer.nextSignals(3))
+	}, ta.peer.nextSignals(4))
 }
 
 // TestASmallTableSaysNothingAboutItsCurrentRow covers the other side of the same contract: a table a client is expected
@@ -643,7 +936,7 @@ func TestASmallTableSaysNothingAboutItsCurrentRow(t *testing.T) {
 	small.Node(51).RowCount = manageDescendantsRowThreshold
 	ta.Publish(tableWindow, small, nil, sampleGeometry())
 	ta.peer.nextSignals(8)
-	c.False(States(small.Node(51), true).Has(StateManagesDescendants))
+	c.False(States(small.Node(51), true, false).Has(StateManagesDescendants))
 
 	moved := bigTableTree()
 	moved.Node(51).RowCount = manageDescendantsRowThreshold
@@ -651,10 +944,13 @@ func TestASmallTableSaysNothingAboutItsCurrentRow(t *testing.T) {
 	moved.Node(52).Selected = false
 	moved.Node(53).Selected = true
 	ta.Publish(tableWindow, moved, accessibility.Diff(small, moved), sampleGeometry())
+	// The container still says that its selection moved — every container that can be selected within does — but there
+	// is no current descendant to name, since a client is expected to walk this table's rows for itself.
 	c.Equal([]signalRecord{
 		stateEvent(52, stateNameSelected, false),
 		stateEvent(53, stateNameSelected, true),
-	}, ta.peer.nextSignals(2))
+		objectEvent(51, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+	}, ta.peer.nextSignals(3))
 	ta.Announce("Nothing about the table")
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
@@ -893,12 +1189,27 @@ func TestStateChanges(t *testing.T) {
 			},
 		},
 		{
-			name: "the simple states",
+			// The container is told as well as the item, since an assistive technology following a list or a tab list
+			// reads the container's signal and nothing else.
+			name: "selecting an item also moves its container's selection",
 			event: accessibility.Event{
 				Kind: accessibility.StateChanged, Node: 7, State: accessibility.StateSelected,
 				Old: falseValue, New: trueValue,
 			},
-			expected: []signalRecord{stateEvent(7, stateNameSelected, true)},
+			expected: []signalRecord{
+				stateEvent(7, stateNameSelected, true),
+				objectEvent(5, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+			},
+		},
+		{
+			// [roleStates] only ever gives PRESSED to the two roles whose pressed-ness is their check, so announcing it
+			// for anything else would move a state the object's own GetState never reports and leave a caching client
+			// holding one Unison will never retract.
+			name: "a state the role's own state set never holds is not announced",
+			event: accessibility.Event{
+				Kind: accessibility.StateChanged, Node: 5, State: accessibility.StatePressed,
+				Old: falseValue, New: trueValue,
+			},
 		},
 		{
 			name: "a node that has no object at all",
@@ -933,7 +1244,6 @@ func TestStateChanges(t *testing.T) {
 		{state: accessibility.StateFocusable, expected: stateNameFocusable},
 		{state: accessibility.StateSelectable, expected: stateNameSelectable},
 		{state: accessibility.StateMultiselectable, expected: stateNameMultiselectable},
-		{state: accessibility.StatePressed, expected: stateNamePressed},
 		{state: accessibility.StateModal, expected: stateNameModal},
 		{state: accessibility.StateBusy, expected: stateNameBusy},
 		{state: accessibility.StateInvalid, expected: stateNameInvalidEntry},
@@ -979,7 +1289,8 @@ func TestStateChangesThatTheNodeDecides(t *testing.T) {
 	options := toggleTree()
 	ta.Publish(toggleWindow, options, nil, sampleGeometry())
 	ta.peer.nextSignals(8) // Four cache items, the window's Create and place, and the two that say it is active
-	c.True(States(options.Node(91), true).Has(StateChecked), "a toggle that is down is a control that is checked")
+	c.True(States(options.Node(91), true, false).Has(StateChecked),
+		"a toggle that is down is a control that is checked")
 
 	// Releasing the toggle has to retract that CHECKED as well as the PRESSED it came with.
 	released := toggleTree()
@@ -1019,8 +1330,13 @@ func TestStateChangesThatTheNodeDecides(t *testing.T) {
 		Old: checkenum.Off.Key(), New: checkenum.Off.Key(),
 	}}, events, "losing the check is a change even though the check state is what it was")
 	ta.Publish(toggleWindow, plain, events, sampleGeometry())
-	c.Equal([]signalRecord{stateEvent(93, stateNameCheckable, false)}, ta.peer.nextSignals(1),
-		"nothing but the checkability moved, so nothing else is announced")
+	// It also stops being a check menu item, since that is what this package reports a menu item carrying a check as.
+	// The role is decided by more of the node than the schema's role, so a client is told about it here rather than by
+	// a role change that never comes.
+	c.Equal([]signalRecord{
+		stateEvent(93, stateNameCheckable, false),
+		objectEvent(93, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleMenuItem))),
+	}, ta.peer.nextSignals(2), "nothing but the checkability and the role it decides moved")
 
 	// Getting it back while already checked gains both states at once.
 	ticked := toggleTree()
@@ -1032,7 +1348,8 @@ func TestStateChangesThatTheNodeDecides(t *testing.T) {
 	c.Equal([]signalRecord{
 		stateEvent(93, stateNameCheckable, true),
 		stateEvent(93, stateNameChecked, true),
-	}, ta.peer.nextSignals(2))
+		objectEvent(93, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleCheckMenuItem))),
+	}, ta.peer.nextSignals(3))
 }
 
 // TestARoleChangeIsAPropertyChange covers a live control becoming a different kind of thing, which happens whenever a
@@ -1065,6 +1382,55 @@ func TestARoleChangeIsAPropertyChange(t *testing.T) {
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
+// TestARoleChangeWithNoRoleChangedEvent covers the rest of what decides the role this package reports. A group gaining
+// a name, a text field being protected and a menu item gaining a check each move it without the schema's own role
+// moving, so [accessibility.Diff] reports something else entirely — or, for the protected field, a state AT-SPI has no
+// state for and would otherwise say nothing about at all. A client that is not told goes on believing the old role for
+// as long as the window lives.
+func TestARoleChangeWithNoRoleChangedEvent(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	// The list becomes an unnamed group, which is layout rather than anything worth announcing.
+	unnamed := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(5).Role = role.Group
+		tree.Node(5).Name = ""
+	})
+	ta.Publish(mainWindow, unnamed, accessibility.Diff(mainTree(), unnamed), sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(5, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RolePanel))),
+		objectEvent(5, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("")),
+	}, ta.peer.nextSignals(2))
+
+	// Giving it a name turns it into a group worth announcing, and nothing but the name has changed.
+	renamed := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(5).Role = role.Group
+		tree.Node(5).Name = "Choices"
+	})
+	renamed.Generation++
+	events := accessibility.Diff(unnamed, renamed)
+	c.Equal([]accessibility.Event{{Kind: accessibility.NameChanged, Node: 5, New: "Choices"}}, events)
+	ta.Publish(mainWindow, renamed, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(5, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("Choices")),
+		objectEvent(5, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleGrouping))),
+	}, ta.peer.nextSignals(2))
+
+	// A text field that becomes a password field is AT-SPI's password text role: it has no state for being protected,
+	// so the role is the only thing that says what the control now is.
+	secret := activeMainTree(func(tree *accessibility.Tree) { tree.Node(4).Protected = true })
+	events = accessibility.Diff(mainTree(), secret)
+	c.Equal([]accessibility.Event{{
+		Kind: accessibility.StateChanged, Node: 4, State: accessibility.StateProtected,
+		Old: falseValue, New: trueValue,
+	}}, events)
+	ta.Publish(mainWindow, secret, events, sampleGeometry())
+	c.Equal(objectEvent(4, signalPropertyChange, propertyAccessibleRole, 0, 0,
+		variantUint32(uint32(RolePasswordText))), ta.peer.nextSignal())
+	ta.Announce("Nothing more about the field")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
 func TestTextEvents(t *testing.T) {
 	t.Parallel()
 	ta := newEventAdapter(t)
@@ -1072,13 +1438,13 @@ func TestTextEvents(t *testing.T) {
 	// A field that already holds text, published without events, since a field gaining an interface is not something
 	// AT-SPI has an event for.
 	before := activeMainTree(func(tree *accessibility.Tree) {
-		tree.Node(4).Text = &accessibility.TextInfo{Text: textBefore, SelStart: 4, SelEnd: 4}
+		tree.Node(4).Text = &accessibility.TextInfo{Text: textBefore, SelStart: 4, SelEnd: 4, Caret: 4}
 	})
 	ta.Publish(mainWindow, before, nil, sampleGeometry())
 
 	// Typing a character at the end of the field.
 	typed := activeMainTree(func(tree *accessibility.Tree) {
-		tree.Node(4).Text = &accessibility.TextInfo{Text: textAfter, SelStart: 5, SelEnd: 5}
+		tree.Node(4).Text = &accessibility.TextInfo{Text: textAfter, SelStart: 5, SelEnd: 5, Caret: 5}
 	})
 	events := accessibility.Diff(before, typed)
 	c.Equal([]accessibility.Event{
@@ -1093,7 +1459,7 @@ func TestTextEvents(t *testing.T) {
 
 	// Selecting the whole field, which moves the caret and adds a range to report.
 	selected := activeMainTree(func(tree *accessibility.Tree) {
-		tree.Node(4).Text = &accessibility.TextInfo{Text: textAfter, SelStart: 0, SelEnd: 5}
+		tree.Node(4).Text = &accessibility.TextInfo{Text: textAfter, SelStart: 0, SelEnd: 5, Caret: 5}
 	})
 	ta.Publish(mainWindow, selected, accessibility.Diff(typed, selected), sampleGeometry())
 	c.Equal([]signalRecord{
@@ -1101,11 +1467,24 @@ func TestTextEvents(t *testing.T) {
 		objectEvent(4, signalTextSelectionChanged, "", 0, 0, variantString("")),
 	}, ta.peer.nextSignals(2))
 
-	// Deleting the selection.
+	// Extending the selection backwards from its end, which leaves the caret at its start rather than at its end. The
+	// caret is read from the node, since the event says only where the selection is.
+	backwards := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: textAfter, SelStart: 2, SelEnd: 5, Caret: 2}
+	})
+	ta.Publish(mainWindow, backwards, accessibility.Diff(selected, backwards), sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(4, signalTextCaretMoved, "", 2, 0, variantInt32(0)),
+		objectEvent(4, signalTextSelectionChanged, "", 0, 0, variantString("")),
+	}, ta.peer.nextSignals(2))
+
+	// Deleting the selection, which both empties the field and collapses a range to a bare caret. Orca replaces the
+	// selection it is holding only when it is told the selection changed, so the collapse has to be announced as well
+	// as the deletion, or it goes on reading a range the control no longer has.
 	emptied := activeMainTree(func(tree *accessibility.Tree) {
 		tree.Node(4).Text = &accessibility.TextInfo{}
 	})
-	events = accessibility.Diff(selected, emptied)
+	events = accessibility.Diff(backwards, emptied)
 	c.Equal([]accessibility.Event{
 		{Kind: accessibility.TextDeleted, Node: 4, Start: 0, Length: 5, Old: textAfter},
 		{Kind: accessibility.TextSelectionChanged, Node: 4},
@@ -1114,7 +1493,20 @@ func TestTextEvents(t *testing.T) {
 	c.Equal([]signalRecord{
 		objectEvent(4, signalTextChanged, detailDelete, 0, 5, variantString(textAfter)),
 		objectEvent(4, signalTextCaretMoved, "", 0, 0, variantInt32(0)),
+		objectEvent(4, signalTextSelectionChanged, "", 0, 0, variantString("")),
+	}, ta.peer.nextSignals(3))
+
+	// Moving a bare caret about says nothing about a selection, since there was none and there is none.
+	moved := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: textBefore, SelStart: 1, SelEnd: 1, Caret: 1}
+	})
+	ta.Publish(mainWindow, moved, accessibility.Diff(emptied, moved), sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(4, signalTextChanged, detailInsert, 0, 4, variantString(textBefore)),
+		objectEvent(4, signalTextCaretMoved, "", 1, 0, variantInt32(0)),
 	}, ta.peer.nextSignals(2))
+	ta.Announce("Nothing about a selection")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
 func TestAnnouncementsComeFromTheApplication(t *testing.T) {
@@ -1129,14 +1521,6 @@ func TestAnnouncementsComeFromTheApplication(t *testing.T) {
 		member: signalAnnouncement,
 		args:   eventBody("", livePolite, 0, variantString("Saved")),
 	}, ta.peer.nextSignal())
-
-	// An announcement that arrives as an event, which only a caller that builds its own events can produce, is the same
-	// signal.
-	ta.Publish(mainWindow, mainTree(), []accessibility.Event{{
-		Kind: accessibility.Announcement,
-		New:  "From an event",
-	}}, sampleGeometry())
-	c.Equal(eventBody("", livePolite, 0, variantString("From an event")), ta.peer.nextSignal().args)
 }
 
 func TestPublishNeverWaitsForTheBus(t *testing.T) {
@@ -1152,6 +1536,9 @@ func TestPublishNeverWaitsForTheBus(t *testing.T) {
 		a.Publish(mainWindow, otherTree(), accessibility.Diff(mainTree(), otherTree()), sampleGeometry())
 		a.Announce("Nobody is listening")
 		a.RemoveWindow(mainWindow)
+		// Shutting down has to be as quick: switching a screen reader off is exactly when the far end stops reading,
+		// and telling the registry the application is going is the one thing here that is a method call.
+		a.Stop()
 	}()
 	select {
 	case <-done:

@@ -180,6 +180,7 @@ type EventID int32
 // https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-event-ids
 const (
 	UIA_ToolTipOpenedEventId                             EventID = 20000
+	UIA_ToolTipClosedEventId                             EventID = 20001
 	UIA_StructureChangedEventId                          EventID = 20002
 	UIA_MenuOpenedEventId                                EventID = 20003
 	UIA_AutomationPropertyChangedEventId                 EventID = 20004
@@ -337,6 +338,10 @@ const (
 
 // LiveSetting is how aggressively a client should announce changes within an element. It is the value of
 // UIA_LiveSettingPropertyId.
+//
+// No element here answers that property. A client consults it only for an element it has been given a
+// UIA_LiveRegionChangedEventId for, and this package raises that for nothing: an announcement goes out as a
+// notification event, which carries its own ordering instead.
 type LiveSetting int32
 
 // Possible LiveSetting values.

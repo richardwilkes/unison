@@ -79,9 +79,10 @@ func (s SortDirection) String() string {
 // The fields are ordered for a compact memory layout rather than by topic, since a snapshot of a busy window holds
 // thousands of these.
 type Node struct {
-	// Text holds the text content, caret and selection for the text roles (see role.Enum.IsText), and is nil for
-	// every other role. It is also nil when Protected is true, so that a password never reaches an assistive
-	// technology.
+	// Text holds the text content, caret and selection. Only a node whose Role is one of the text roles (see
+	// role.Enum.IsText) ever carries it, but not every such node does: it is nil when Protected is true, so that a
+	// password never reaches an assistive technology, and nil for a Document, whose content is described by the nodes
+	// beneath it rather than as one body of text. Check it for nil rather than deciding from the role.
 	Text *TextInfo
 	// Name is what an assistive technology announces for this node. It is the primary label, not a description.
 	Name string
@@ -195,11 +196,16 @@ type TextInfo struct {
 	// needs are too expensive to take for every text control in a window on every snapshot. When it is empty, an
 	// adapter must treat the whole content as one line.
 	Lines []Line
-	// SelStart is the rune index where the selection begins.
+	// SelStart is the rune index where the selection begins. It is never greater than SelEnd: a widget that keeps its
+	// selection as an anchor and a caret orders the pair before filling these in, and reports which end the caret is
+	// at through Caret.
 	SelStart int
-	// SelEnd is the rune index where the selection ends, which is also where the caret sits. It equals SelStart when
-	// nothing is selected.
+	// SelEnd is the rune index where the selection ends. It equals SelStart when nothing is selected.
 	SelEnd int
+	// Caret is the rune index of the caret. It is always one of SelStart and SelEnd: the end that moves when the
+	// selection is extended, which after a backward selection (shift+Left, shift+Home) is SelStart. When nothing is
+	// selected all three are equal.
+	Caret int
 	// Multiline reports that the control lays its content out over more than one line.
 	Multiline bool
 }

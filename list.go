@@ -560,6 +560,11 @@ func (l *List[T]) SetAllowMultipleSelection(allow bool) *List[T] {
 		}
 		l.Select(false, i)
 	}
+	// Marked unconditionally, and not only on the path above that alters the selection: whether more than one row may
+	// be selected is part of what an assistive technology is told, both on the list and on every row of it, and a
+	// window is only described again once it has been drawn, so the change would otherwise not be published until
+	// something unrelated happened to redraw.
+	l.MarkForRedraw()
 	return l
 }
 
@@ -731,12 +736,22 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 		}
 		SafeCall(l.DoubleClickCallback)
 	case accessibility.Select:
+		// The callback is for a selection that actually changed, exactly as it is for a click: an assistive technology
+		// moving through the rows re-selects the row it is already on often enough — landing on it, then acting on it —
+		// and an application told its selection changed sets about whatever it does when that happens. The selection is
+		// still made either way, since it also puts the anchor a later shift-click extends from on the row.
+		changed := !l.Selection.State(row) || l.Selection.Count() != 1
 		l.Select(false, row)
-		SafeCall(l.NewSelectionCallback)
+		if changed {
+			SafeCall(l.NewSelectionCallback)
+		}
 		l.ScrollRectIntoView(l.RowRect(row))
 	case accessibility.AddToSelection:
+		changed := !l.Selection.State(row)
 		l.Select(true, row)
-		SafeCall(l.NewSelectionCallback)
+		if changed {
+			SafeCall(l.NewSelectionCallback)
+		}
 		l.ScrollRectIntoView(l.RowRect(row))
 	case accessibility.RemoveFromSelection:
 		if !l.Selection.State(row) {

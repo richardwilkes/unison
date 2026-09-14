@@ -29,6 +29,8 @@ const (
 	countProperty   = "Count"
 	missingMember   = "Missing"
 	changedName     = "changed"
+
+	mistypedInterface = "org.example.Mistyped"
 )
 
 // testObject is an object with a method of every interesting shape and a few properties.
@@ -54,6 +56,7 @@ func newTestObject() *testObject {
 				{Name: "Later", Out: "s", Handle: func(call *Call) { o.deferred <- call }},
 				{Name: "Derived", Handle: func(call *Call) { call.ReplyWithSignature("", "derived", int32(2)) }},
 				{Name: "Explicit", Out: "v", Handle: func(call *Call) { call.ReplyWithSignature(stringDictSig, Dict{}) }},
+				{Name: "Silent", Out: "s", Handle: func(call *Call) { call.Reply() }},
 			},
 			Properties: []*Property{
 				{Name: nameProperty, Sig: "s", Get: o.getName, Set: o.setName},
@@ -200,6 +203,10 @@ func TestExportedMethodCallErrors(t *testing.T) {
 		{path: testPath, iface: testInterface, member: greetMember, want: InvalidArgs},
 		{path: testPath, iface: testInterface, member: "Unimplemented", want: NotSupported},
 		{path: testPath, iface: testInterface, member: "Boom", want: Failed},
+		// A handler that answers with nothing at all when its method declares a reply has not answered the call: a
+		// METHOD_RETURN with no signature and an empty body is rejected by GDBus and libatspi as having the wrong
+		// number of arguments, which tells the caller far less than an error does.
+		{path: testPath, iface: testInterface, member: "Silent", want: Failed},
 	} {
 		reply := b.call(one.path, one.iface, one.member, one.sig, one.args...)
 		c.Equal(TypeError, reply.Type, "case %d", i)
@@ -273,6 +280,83 @@ func TestReplyWithSignature(t *testing.T) {
 	c.Equal([]any{Dict{}}, replyValues(t, reply))
 }
 
+func TestNoReplyExpectedSuppressesAnswers(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	exportTestObject(t, b)
+	// The specification requires a call that says no reply is expected to get none, whether the answer would have been
+	// a value or an error, and whether the error came from the handler or from dispatch itself.
+	answered := map[string]func() bool{
+		"a reply":              b.callNoReply(testPath, testInterface, greetMember, "s", "quiet"),
+		"a panicking handler":  b.callNoReply(testPath, testInterface, "Boom", ""),
+		"an unknown method":    b.callNoReply(testPath, testInterface, missingMember, ""),
+		"an unknown interface": b.callNoReply(testPath, "org.example.Missing", greetMember, "s", "x"),
+		"an unknown object":    b.callNoReply("/org/example/nothing", testInterface, greetMember, "s", "x"),
+		"invalid arguments":    b.callNoReply(testPath, testInterface, greetMember, ""),
+	}
+	// A later call that is answered proves the earlier ones would have been: the dispatcher answers in the order the
+	// calls arrived, so anything it was going to send for them has been sent by the time this one comes back.
+	c.Equal([]any{"hello after"}, replyValues(t, b.call(testPath, testInterface, greetMember, "s", "after")))
+	for name, wasAnswered := range answered {
+		c.False(wasAnswered(), "%s was answered", name)
+	}
+}
+
+func TestErrorRepliesDoNotCarryAStackTrace(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	exportTestObject(t, b)
+	// Any peer on the bus can reach a handler that panics, so the reply carries the message alone; the detail, which
+	// names our own source files and line numbers, is logged here instead.
+	reply := b.call(testPath, testInterface, "Boom", "")
+	c.Equal(TypeError, reply.Type)
+	c.Equal(Failed, reply.ErrorName)
+	message := reply.AsError().Message
+	c.Equal("recovered from panic", message)
+	c.NotContains(message, "internal/dbus")
+	// The same goes for a panic in the object's own Interfaces, which is reachable the same way. Only a subtree can
+	// hand out such an object, since Export asks an object what it implements before it accepts it.
+	c.NoError(b.client.ExportSubtree(testPath+"/panics", func(_ ObjectPath) Object { return panickingObject{} }))
+	reply = b.call(testPath+"/panics", testInterface, greetMember, "s", "x")
+	c.Equal(Failed, reply.ErrorName)
+	c.Equal("recovered from panic", reply.AsError().Message)
+}
+
+// mistypedObject has a property whose getter succeeds but hands back a value that its declared type cannot describe,
+// which is the other way a property can fail to be part of a GetAll reply.
+type mistypedObject struct{}
+
+func (mistypedObject) Interfaces() []*Interface {
+	return []*Interface{
+		{
+			Name: mistypedInterface,
+			Properties: []*Property{
+				{Name: "First", Sig: "s", Get: func() (any, error) { return "first", nil }},
+				{Name: "Bad", Sig: "i", Get: func() (any, error) { return "not an int", nil }},
+				{Name: "Last", Sig: "s", Get: func() (any, error) { return "last", nil }},
+			},
+		},
+	}
+}
+
+func TestGetAllLeavesOutAPropertyThatWillNotMarshal(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	const path = ObjectPath("/org/example/mistyped")
+	c.NoError(b.client.Export(path, mistypedObject{}))
+	// GetAll is the call a client makes to fill its cache, so one property whose value does not match the type it
+	// declares costs that property rather than every property the object has.
+	c.Equal([]any{Dict{
+		{Key: "First", Value: Variant{Sig: "s", Value: "first"}},
+		{Key: "Last", Value: Variant{Sig: "s", Value: "last"}},
+	}}, replyValues(t, b.call(path, propertiesInterface, getAllMember, "s", mistypedInterface)))
+	// Get on the same property still fails, since there is nothing else it could answer.
+	c.Equal(Failed, b.call(path, propertiesInterface, getMember, "ss", mistypedInterface, "Bad").ErrorName)
+}
+
 func TestPropertiesOnABuiltinInterface(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -339,7 +423,7 @@ func TestIntrospectionEscapesWhatItIsGiven(t *testing.T) {
 	c.NoError(b.client.ExportSubtree(prefix, func(_ ObjectPath) Object {
 		return declaredObject{ifaces: []*Interface{{
 			Name:    `org.example.X"><node name="pwned`,
-			Methods: []*Method{{Name: `M"`, In: "s"}},
+			Methods: []*Method{{Name: `M"`, In: "s"}, {Name: "Bell\a"}},
 			Signals: []*Signal{{Name: "S&"}},
 			Properties: []*Property{
 				{Name: "P<", Sig: "s", Get: readable},
@@ -350,10 +434,14 @@ func TestIntrospectionEscapesWhatItIsGiven(t *testing.T) {
 	values := replyValues(t, b.call(prefix+"/x", introspectableInterface, "Introspect", ""))
 	doc, ok := values[0].(string)
 	c.True(ok)
-	c.Contains(doc, `<interface name="org.example.X&quot;&gt;&lt;node name=&quot;pwned">`)
-	c.Contains(doc, `<method name="M&quot;">`)
+	c.Contains(doc, `<interface name="org.example.X&#34;&gt;&lt;node name=&#34;pwned">`)
+	c.Contains(doc, `<method name="M&#34;">`)
 	c.Contains(doc, `<signal name="S&amp;"/>`)
 	c.Contains(doc, `<property name="P&lt;" type="s" access="read"/>`)
+	// XML 1.0 forbids most control characters outright, so escaping only the five metacharacters would still leave a
+	// document that no parser accepts; they are replaced instead.
+	c.Contains(doc, `<method name="Bell`+"\uFFFD"+`"/>`)
+	c.NotContains(doc, "Bell\a")
 	// A property that can neither be read nor written is left out rather than advertised as one that can be written.
 	c.NotContains(doc, "Useless")
 	var node struct {
@@ -507,36 +595,21 @@ func TestPropertyErrors(t *testing.T) {
 	c.NoError(b.client.Export(testPath+"/small", smallObject{}))
 	reply = b.call(testPath+"/small", propertiesInterface, getMember, "ss", "org.example.Small", "WriteOnly")
 	c.Equal(UnknownProperty, reply.ErrorName)
-	c.Contains(reply.AsError().Message, "cannot be read")
-}
-
-func TestEmitPropertiesChanged(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	b := newFakeBus(t)
-	b.client.EmitPropertiesChanged(testPath, testInterface, map[string]Variant{
-		nameProperty:  {Sig: "s", Value: changedName},
-		countProperty: {Sig: "i", Value: int32(3)},
-	}, []string{"Other"})
-	signal := b.nextSignal()
-	c.Equal(propertiesInterface, signal.Interface)
-	c.Equal("PropertiesChanged", signal.Member)
-	c.Equal(testPath, signal.Path)
-	args, err := signal.Args()
-	c.NoError(err)
-	c.Equal([]any{
-		testInterface,
-		Dict{ // Sorted by name, so that the encoding is reproducible
-			{Key: countProperty, Value: Variant{Sig: "i", Value: int32(3)}},
-			{Key: nameProperty, Value: Variant{Sig: "s", Value: changedName}},
-		},
-		[]string{"Other"},
-	}, args)
-
-	b.client.EmitPropertiesChanged(testPath, testInterface, nil, nil)
-	args, err = b.nextSignal().Args()
-	c.NoError(err)
-	c.Equal([]any{testInterface, Dict{}, []string{}}, args)
+	c.Equal("org.example.Small.WriteOnly cannot be read", reply.AsError().Message)
+	// An empty interface name asks for every interface to be searched, so there is no interface to name and the object
+	// path stands in for it, exactly as it does when the property itself is missing; without that the message read
+	// ".WriteOnly cannot be read".
+	reply = b.call(testPath+"/small", propertiesInterface, getMember, "ss", "", "WriteOnly")
+	c.Equal(UnknownProperty, reply.ErrorName)
+	c.Equal(string(testPath)+"/small.WriteOnly cannot be read", reply.AsError().Message)
+	reply = b.call(testPath+"/small", propertiesInterface, setMember, "ssv", "", "ReadOnly",
+		Variant{Sig: "s", Value: "x"})
+	c.Equal(PropertyReadOnly, reply.ErrorName)
+	c.Equal(string(testPath)+"/small.ReadOnly cannot be changed", reply.AsError().Message)
+	reply = b.call(testPath+"/small", propertiesInterface, setMember, "ssv", "", "ReadWrite",
+		Variant{Sig: "s", Value: "x"})
+	c.Equal(InvalidArgs, reply.ErrorName)
+	c.Equal(string(testPath)+"/small.ReadWrite is a i, not a s", reply.AsError().Message)
 }
 
 // smallObject is an object whose introspection document is short enough to check in full.
@@ -635,6 +708,77 @@ func TestIntrospect(t *testing.T) {
 	doc, ok := values[0].(string)
 	c.True(ok)
 	c.Equal(smallIntrospection, doc)
+}
+
+func TestIntrospectAPathThatOnlyHasChildren(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	c.NoError(b.client.Export("/org/example/deep/down/here", smallObject{}))
+	// Nothing is exported at any of the paths above it, which is what every path above a subtree looks like on the
+	// real adapter. Introspection is the only way to find what is below, so answering these with UnknownObject left
+	// busctl and d-feet unable to walk down to anything at all.
+	for _, one := range []struct {
+		path  ObjectPath
+		child string
+	}{
+		{path: "/", child: "org"},
+		{path: "/org", child: "example"},
+		{path: "/org/example", child: "deep"},
+		{path: "/org/example/deep", child: "down"},
+		{path: "/org/example/deep/down", child: "here"},
+	} {
+		values := replyValues(t, b.call(one.path, introspectableInterface, "Introspect", ""))
+		doc, ok := values[0].(string)
+		c.True(ok)
+		// A path with no object of its own is described by the list of its children and nothing else: the interfaces
+		// it answers are there so that a client can walk down, not because there is anything at the path.
+		c.Equal(introspectPrologue+`  <node name="`+one.child+"\"/>\n</node>\n", doc, string(one.path))
+	}
+	// Peer answers too, since it is about the connection rather than the object...
+	c.Equal(TypeMethodReturn, b.call("/org/example", peerInterface, "Ping", "").Type)
+	// ...while everything else is honestly reported as not being there.
+	c.Equal(UnknownInterface, b.call("/org/example", propertiesInterface, getAllMember, "").ErrorName)
+	c.Equal(UnknownMethod, b.call("/org/example", "", greetMember, "").ErrorName)
+	// A path with nothing at or below it is still an unknown object, and so is one that only looks like a prefix.
+	c.Equal(UnknownObject, b.call("/org/nothing", introspectableInterface, "Introspect", "").ErrorName)
+	c.Equal(UnknownObject, b.call("/org/example/deep/down/here/below", introspectableInterface, "Introspect",
+		"").ErrorName)
+	// The object itself still describes its interfaces, since it has some.
+	values := replyValues(t, b.call("/org/example/deep/down/here", introspectableInterface, "Introspect", ""))
+	doc, ok := values[0].(string)
+	c.True(ok)
+	c.Contains(doc, `<interface name="org.example.Small">`)
+}
+
+func TestExportRejectsDuplicateDeclarations(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	// Dispatch resolves a duplicate to whichever was declared first while introspection describes both, so neither
+	// half of what a duplicate produces is right and it is refused instead.
+	c.HasError(b.client.Export(testPath, declaredObject{ifaces: []*Interface{
+		{Name: testInterface, Methods: []*Method{{Name: "M", Handle: func(call *Call) { call.Reply() }}}},
+		{Name: testInterface, Properties: []*Property{{Name: "P", Sig: "s", Get: readable}}},
+	}}))
+	for i, one := range []*Interface{
+		{Name: testInterface, Methods: []*Method{{Name: "M", In: "s"}, {Name: "M", In: "i"}}},
+		{Name: testInterface, Signals: []*Signal{{Name: "S"}, {Name: "S", Sig: "s"}}},
+		{Name: testInterface, Properties: []*Property{
+			{Name: "P", Sig: "s", Get: readable},
+			{Name: "P", Sig: "i", Get: readable},
+		}},
+	} {
+		c.HasError(b.client.Export(testPath, declaredObject{ifaces: []*Interface{one}}), "case %d", i)
+	}
+	// A method and a signal may share a name, since they are described by different elements and dispatched from
+	// different lists.
+	c.NoError(b.client.Export(testPath, declaredObject{ifaces: []*Interface{{
+		Name:       testInterface,
+		Methods:    []*Method{{Name: "Same"}},
+		Signals:    []*Signal{{Name: "Same"}},
+		Properties: []*Property{{Name: "Same", Sig: "s", Get: readable}},
+	}}}))
 }
 
 // partialPropertiesObject declares just one member of a standard interface, which is all the specification requires an

@@ -40,8 +40,14 @@ import (
 //     It is also the answer for asking a read-only element to take a new value, which keeps the disabled case — which
 //     says nothing about whether the value could otherwise be set — distinguishable.
 //   - UIA_E_ELEMENTNOTENABLED, when the element is disabled. Every pattern method that asks for something to happen
-//     refuses on a disabled element, ScrollIntoView included: a disabled control is still described, still navigated to
-//     and still reported, but nothing acts on it.
+//     refuses on a disabled element, with one exception: ScrollIntoView, which is the single action a disabled node
+//     goes on offering, since a screen reader stepping through a disabled list must still be able to bring its items on
+//     screen. A disabled control is otherwise described, navigated to and reported, but nothing acts on it.
+//   - UIA_E_INVALIDOPERATION, when the element does not offer the action the method stands for. A pattern says what
+//     kind of thing an element is, and the snapshot's action set says what can actually be done to it: a column header
+//     that cannot be sorted carries Invoke so that a client describes it as a header, and a container row in a filtered
+//     table reports that it is expanded without offering to collapse. Answering S_OK and raising the pattern's event
+//     would tell a client that something happened when the widget refuses the request outright.
 
 // uiaBuildPatternVtbls fills in the virtual method table of every control-pattern interface. The order of the methods
 // in each call is the order the interface declares them in; see the interface declarations in the Windows SDK's
@@ -127,6 +133,11 @@ func uiaBuildPatternVtbls() {
 // cannot be seen from here: the request is queued onto the UI thread and the callback the adapter was handed reports
 // nothing back, deliberately, since UI Automation calls in on whichever thread it likes and must not be left waiting
 // on a UI thread that may be inside a modal loop. That is the same optimism the S_OK answered here already carries.
+//
+// Which is why uiaPatternAction refusing an element that does not offer the Press action matters here in particular. A
+// column header carries the Invoke pattern whether or not its table can be sorted by it — that is how a client knows
+// what kind of thing it is — and TableHeader.PerformAccessibilityAction refuses a press on an unsortable one, so
+// without that check a client would be answered S_OK and handed an Invoked event while nothing at all had happened.
 func uiaInvokeInvoke(this uintptr) uint64 {
 	hr := uiaPatternAction(this, uiaIfaceInvoke, accessibility.Press)
 	if hr == COM_S_OK {
@@ -391,7 +402,9 @@ func uiaExpandCollapseState(this, out uintptr) uint64 {
 }
 
 // uiaScrollItemScrollIntoView implements IScrollItemProvider::ScrollIntoView, which a client calls to bring an element
-// it is about to talk about into view.
+// it is about to talk about into view. It is the one thing a disabled element still does: every row and item of a
+// disabled table or list is published with ScrollIntoView as its only action, and a screen reader that could not scroll
+// them would be reading out elements the user cannot see.
 func uiaScrollItemScrollIntoView(this uintptr) uint64 {
 	return uiaPatternAction(this, uiaIfaceScrollItem, accessibility.ScrollIntoView)
 }
@@ -544,16 +557,22 @@ func uiaDispatch(p *UIAProvider, request accessibility.ActionRequest) uint64 {
 }
 
 // uiaPatternAction answers one of the pattern methods whose whole job is to ask for something to happen: it checks that
-// the element is still there and still supports the pattern, refuses while the element is disabled, and queues the
-// request. It returns as soon as the request is queued, which is what UI Automation expects: the outcome arrives later,
-// as an event.
+// the element is still there and still supports the pattern, refuses while the element is disabled or does not offer
+// the action, and queues the request. It returns as soon as the request is queued, which is what UI Automation expects:
+// the outcome arrives later, as an event.
+//
+// ScrollIntoView is the one action a disabled element still takes; see the list at the top of this file for why, and
+// axDisabledActions in accessibility_actions.go for the snapshot's half of the same rule.
 func uiaPatternAction(this uintptr, iface uiaIface, action accessibility.Action) uint64 {
 	p, _, node, hr := uiaPatternNode(this, iface)
 	if hr != COM_S_OK {
 		return hr
 	}
-	if node.Disabled {
+	if node.Disabled && action != accessibility.ScrollIntoView {
 		return UIA_E_ELEMENTNOTENABLED
+	}
+	if !node.Actions.Has(action) {
+		return UIA_E_INVALIDOPERATION
 	}
 	return uiaDispatch(p, accessibility.ActionRequest{Action: action})
 }

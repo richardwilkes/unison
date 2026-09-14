@@ -51,11 +51,11 @@ func axRootChildCount(tree *accessibility.Tree) int {
 }
 
 // TestButtonAccessibility verifies what a button says about itself: its title is its name, an icon button falls back to
-// its tooltip, a button that stays drawn in the state a click puts it in is a toggle button, one that springs back is
-// not, however it is grouped, and pressing it clicks it.
+// its tooltip, a sticky button in a group latches like a radio button and says so, one that springs back does not,
+// however it is grouped, and pressing it clicks it.
 func TestButtonAccessibility(t *testing.T) {
 	c := check.New(t)
-	var plain, named, icon, first, second, loose *unison.Button
+	var plain, named, icon, first, second, loose, lone *unison.Button
 	var clicks int
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 500},
@@ -86,8 +86,14 @@ func TestButtonAccessibility(t *testing.T) {
 			loose.SetTitle("Loose")
 			unison.NewGroup(loose).Select(loose)
 
+			// Sticky but in no group at all: nothing latches it, since DefaultDraw keeps a sticky button drawn
+			// pressed only while its group has it selected and it has no group to be selected by.
+			lone = unison.NewButton()
+			lone.SetTitle("Lone")
+			lone.Sticky = true
+
 			wnd = newHeadlessWindow(t, "buttons", geom.NewRect(10, 10, 400, 400),
-				axColumn(plain, named, icon, first, second, loose))
+				axColumn(plain, named, icon, first, second, loose, lone))
 		}))
 	c.NotNil(wnd)
 
@@ -112,14 +118,43 @@ func TestButtonAccessibility(t *testing.T) {
 	secondNode := screen.AccessibilityNodeFor(second)
 	c.True(firstNode != nil)
 	c.True(secondNode != nil)
-	c.Equal(role.ToggleButton, firstNode.Role, "a sticky button stays in the state a click puts it in")
-	c.True(firstNode.Pressed, "the selected button in the group is the pressed one")
-	c.False(secondNode.Pressed)
+	c.Equal(role.RadioButton, firstNode.Role,
+		"a sticky button that latches within a group is a radio button in everything but appearance")
+	c.True(firstNode.HasCheck)
+	c.Equal(checkenum.On, firstNode.Checked, "the selected button of the group is the checked one")
+	c.Equal(checkenum.Off, secondNode.Checked)
+	c.True(secondNode.Actions.Has(accessibility.Select), "the selection can be moved to it")
 
 	looseNode := screen.AccessibilityNodeFor(loose)
 	c.True(looseNode != nil)
 	c.Equal(role.Button, looseNode.Role, "a grouped button that is not sticky springs back, so it is a plain button")
-	c.False(looseNode.Pressed, "a button drawn unpressed must not be announced as an on toggle button")
+	c.False(looseNode.HasCheck, "a button drawn unpressed must not be announced as something with a state")
+	c.False(looseNode.Actions.Has(accessibility.Select))
+
+	loneNode := screen.AccessibilityNodeFor(lone)
+	c.True(loneNode != nil)
+	c.Equal(role.Button, loneNode.Role, "a sticky button with no group latches nothing, so it is a plain button")
+	c.False(loneNode.HasCheck)
+	c.False(loneNode.Actions.Has(accessibility.Select), "there is no group for it to be the selection of")
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   loneNode.ID,
+		Action: accessibility.Select,
+	}), "selecting a button that belongs to no group cannot be carried out")
+
+	// Selecting the other button of the group moves the check to it, which is the whole of what an assistive
+	// technology can do to a latch and what it could not do at all while the pair were reported as toggle buttons.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   secondNode.ID,
+		Action: accessibility.Select,
+	}))
+	screen.AccessibilityTree(wnd)
+	firstNode = screen.AccessibilityNodeFor(first)
+	secondNode = screen.AccessibilityNodeFor(second)
+	c.True(firstNode != nil && secondNode != nil)
+	if firstNode != nil && secondNode != nil {
+		c.Equal(checkenum.Off, firstNode.Checked, "the button that was the selection gave it up")
+		c.Equal(checkenum.On, secondNode.Checked)
+	}
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   plainNode.ID,
@@ -131,11 +166,12 @@ func TestButtonAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestCheckBoxAccessibility verifies that all three states of a check box are reported and that both pressing and
-// toggling it move it on to the next one.
+// TestCheckBoxAccessibility verifies that all three states of a check box are reported, that both pressing and toggling
+// it move it on to the next one, and that a box with an icon in place of a title is named by its tooltip rather than
+// being announced as an unlabeled check box.
 func TestCheckBoxAccessibility(t *testing.T) {
 	c := check.New(t)
-	var box *unison.CheckBox
+	var box, icon *unison.CheckBox
 	var clicks int
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
@@ -144,7 +180,10 @@ func TestCheckBoxAccessibility(t *testing.T) {
 			box.ClickAnimationTime = 0
 			box.SetTitle("Enabled")
 			box.ClickCallback = func() { clicks++ }
-			wnd = newHeadlessWindow(t, "check box", geom.NewRect(10, 10, 240, 120), axColumn(box))
+			icon = unison.NewCheckBox()
+			icon.Drawable = axTestDrawable()
+			icon.Tooltip = unison.NewTooltipWithText("Include deleted")
+			wnd = newHeadlessWindow(t, "check box", geom.NewRect(10, 10, 240, 120), axColumn(box, icon))
 		}))
 	c.NotNil(wnd)
 
@@ -179,6 +218,13 @@ func TestCheckBoxAccessibility(t *testing.T) {
 	node = screen.AccessibilityNodeFor(box)
 	c.True(node != nil)
 	c.Equal(checkenum.On, node.Checked)
+
+	iconNode := screen.AccessibilityNodeFor(icon)
+	c.True(iconNode != nil)
+	if iconNode != nil {
+		c.Equal("Include deleted", iconNode.Name, "a check box with no title has only its tooltip to name it")
+		c.Equal("", iconNode.Description, "the tooltip became the name, so it must not also be the description")
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -355,12 +401,15 @@ func TestLinkAccessibility(t *testing.T) {
 }
 
 // TestDrawablePanelAndSeparatorAccessibility verifies that a drawable panel is an image only when something has said
-// what it shows — its tooltip counts, which is how markdown's alt text arrives — and that a separator says it is one.
+// what it shows — its tooltip counts, which is how markdown's alt text arrives — that a panel an application has given
+// a role of its own is left where an assistive technology can reach it whatever it has to say for itself, and that a
+// separator says it is one and which way it runs.
 func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 	c := check.New(t)
-	var named, unnamed, tipped *unison.DrawablePanel
-	var separator *unison.Separator
+	var named, unnamed, tipped, acting *unison.DrawablePanel
+	var separator, vertical *unison.Separator
 	var wnd *unison.Window
+	pressed := 0
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
 		unison.StartupFinishedCallback(func() {
 			named = unison.NewDrawablePanel()
@@ -374,10 +423,24 @@ func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 			tipped.Drawable = axTestDrawable()
 			tipped.Tooltip = unison.NewTooltipWithText("A photograph of a cat")
 
+			// A drawable an application has made into a control of its own: it says what it is, takes the focus and
+			// answers a click, so it is a live control however little it has to say about what it shows.
+			acting = unison.NewDrawablePanel()
+			acting.Drawable = axTestDrawable()
+			acting.Accessibility.Role = role.Button
+			acting.SetFocusable(true)
+			acting.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+			acting.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+				pressed++
+				return true
+			}
+
 			separator = unison.NewSeparator()
+			vertical = unison.NewSeparator()
+			vertical.Vertical = true
 
 			wnd = newHeadlessWindow(t, "drawables", geom.NewRect(10, 10, 300, 200),
-				axColumn(named, unnamed, tipped, separator))
+				axColumn(named, unnamed, tipped, acting, separator, vertical))
 		}))
 	c.NotNil(wnd)
 
@@ -402,9 +465,34 @@ func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 	c.False(tippedNode.Ignored, "an image its tooltip describes must not be hidden")
 	c.Equal("", tippedNode.Description, "the tooltip became the name, so it must not also be the description")
 
+	actingNode := screen.AccessibilityNodeFor(acting)
+	c.True(actingNode != nil)
+	if actingNode == nil {
+		return
+	}
+	c.Equal(role.Button, actingNode.Role, "an explicitly set role is left alone")
+	c.False(actingNode.Ignored, "a live, focusable, pressable control must not be spliced out of the tree")
+	c.True(actingNode.Actions.Has(accessibility.Press))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   actingNode.ID,
+		Action: accessibility.Press,
+	}))
+	var count int
+	screen.Do(func() { count = pressed })
+	c.Equal(1, count, "pressing it should have reached the callbacks a click would have")
+
 	separatorNode := screen.AccessibilityNodeFor(separator)
 	c.True(separatorNode != nil)
-	c.Equal(role.Separator, separatorNode.Role)
+	if separatorNode != nil {
+		c.Equal(role.Separator, separatorNode.Role)
+		c.Equal(accessibility.OrientationHorizontal, separatorNode.Orientation,
+			"a separator drawn across the window divides what is above from what is below")
+	}
+	verticalNode := screen.AccessibilityNodeFor(vertical)
+	c.True(verticalNode != nil)
+	if verticalNode != nil {
+		c.Equal(accessibility.OrientationVertical, verticalNode.Orientation, "a vertical separator says so")
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

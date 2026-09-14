@@ -230,7 +230,8 @@ func NewAXAdapter(v View) *AXAdapter {
 	})
 	axElementClassOnce.Do(registerAXElementClass)
 	if axElementClassErr != nil {
-		errs.Log(axElementClassErr)
+		// Already logged by registerAXElementClass, which runs once: a failure reported again here would be written
+		// once per window, and once more for every query that reached this while the same class was still missing.
 		return nil
 	}
 	a := &AXAdapter{
@@ -275,15 +276,23 @@ func (a *AXAdapter) Shutdown() {
 	if a == nil {
 		return
 	}
-	delete(axAdapters, a.view)
-	for id, element := range a.elements {
-		// Told to the accessibility system before the reference is dropped, since the window may well still be on the
-		// screen: support is being turned off while the window lives on, and an assistive technology holding one of
-		// these must learn it is gone rather than go on asking it questions it can no longer answer.
-		delete(a.elements, id)
+	// Told to the accessibility system before anything is dropped, since the window may well still be on the screen:
+	// support is being turned off while the window lives on, and an assistive technology holding one of these must
+	// learn it is gone rather than go on asking it questions it can no longer answer. Every element keeps its place in
+	// the map until all of them have been announced, so that a question arriving in the middle of it is answered with
+	// the element it has always been answered with rather than a fresh one standing for the same node.
+	for _, element := range a.elements {
 		NSAccessibilityPostNotification(element, AppKitString(axNotifyUIElementDestroyed))
+	}
+	for id, element := range a.elements {
+		delete(a.elements, id)
 		a.releaseElement(element)
 	}
+	// The adapter is forgotten only once every notification has been routed, which is the order destroyElement works
+	// in. An element that has just been announced as destroyed is asked what window and parent it belonged to, and
+	// axElementTarget answers that from the adapter registered for the view: unregistering first would leave each of
+	// those notifications describing an element with no window, no parent and no role at all.
+	delete(axAdapters, a.view)
 	a.tree = nil
 }
 
@@ -352,19 +361,22 @@ func AXAnnounce(text string) {
 	})
 }
 
-// postEvents translates the events describing one publish into NSAccessibility notifications. Structural change is
-// coalesced into a single layout-changed notification on the content view, and a selection change into one notification
-// per container, since an assistive technology re-reads what it needs either way and a table whose selection moved by
-// one row would otherwise produce a notification per row.
+// postEvents translates the events describing one publish into NSAccessibility notifications. Every notification is
+// gathered rather than posted as its event arrives, so that an element is told about each kind of change once however
+// many events named it: a keystroke in a text field changes both the node's value and its text, and a numeric field's
+// number besides, and all three mean one value-changed notification to an assistive technology, which re-reads what it
+// needs when it arrives. Structural change is coalesced further, into a single layout-changed notification on the
+// content view, and a selection change into one notification per container, since a table whose selection moved by one
+// row would otherwise produce a notification per row.
 func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit // one case per event kind
 	var layoutChanged []accessibility.NodeID
-	var selectionChanged []axSelectionNotice
+	var notices []axNotice
 	for _, e := range events {
 		switch e.Kind {
 		case accessibility.NodeRemoved:
 			a.destroyElement(e.Node)
 		case accessibility.ChildrenChanged, accessibility.NodeAdded, accessibility.BoundsChanged:
-			layoutChanged = append(layoutChanged, e.Node)
+			layoutChanged = axAppendUnique(layoutChanged, e.Node)
 		case accessibility.RoleChanged:
 			// macOS has no role-changed notification, and the element needs no rebuilding for one: it holds nothing but
 			// the content view and the node id, so its role, subrole and role description are all read from the current
@@ -374,59 +386,69 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			// "what is in here is no longer what you were told". Destroying the element instead would certainly force a
 			// fresh one to be fetched, but it would also pull the VoiceOver cursor out of whatever it was reading,
 			// which a control that merely changed what it is does not deserve.
-			if parent := a.tree.UnignoredParent(e.Node); !slices.Contains(layoutChanged, parent) {
-				layoutChanged = append(layoutChanged, parent)
-			}
+			layoutChanged = axAppendUnique(layoutChanged, a.tree.UnignoredParent(e.Node))
 		case accessibility.FocusChanged:
+			// Everything gathered so far goes out first: an assistive technology is told where to look only once it has
+			// been told what changed, which is why Diff puts this event last of all. Nothing follows it in a published
+			// set, so the flush is the whole of what the publish had to say.
+			a.postNotices(notices)
+			notices = nil
 			if axTraceOn {
 				axTrace("notify %s node=%d", axNotifyFocusedUIElement, e.Node)
 			}
 			NSAccessibilityPostNotification(a.elementOrView(e.Node), AppKitString(axNotifyFocusedUIElement))
 		case accessibility.NameChanged:
 			// A node's name is given to the accessibility system as the element's label, which AppKit reports as
-			// AXDescription (see axHasLabel), and macOS has no notification for a changed description: the title-changed
-			// notification is the only one it has for "what this element is called has changed", so that is what stands
-			// in for one. A client that re-reads AXTitle when it arrives finds nothing, since the element deliberately
-			// does not answer accessibilityTitle — an element that answers both AXTitle and AXDescription with the same
-			// string is spoken twice — so what this notification is worth is the prompt to read the element again.
-			a.post(e.Node, axNotifyTitleChanged)
+			// AXDescription (see axHasLabel), and macOS has no notification for a changed description: the
+			// title-changed notification is the only one it has for "what this element is called has changed", so that
+			// is what stands in for one. A client that re-reads AXTitle when it arrives finds nothing, since the
+			// element deliberately does not answer accessibilityTitle — an element that answers both AXTitle and
+			// AXDescription with the same string is spoken twice — so what this notification is worth is the prompt to
+			// read the element again.
+			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyTitleChanged})
 		case accessibility.ValueChanged, accessibility.NumberChanged, accessibility.TextInserted,
 			accessibility.TextDeleted, accessibility.SortChanged:
-			a.post(e.Node, axNotifyValueChanged)
+			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
 		case accessibility.TextSelectionChanged:
-			a.post(e.Node, axNotifySelectedTextChanged)
+			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifySelectedTextChanged})
 		case accessibility.StateChanged:
 			switch e.State {
 			case accessibility.StateChecked, accessibility.StatePressed:
-				a.post(e.Node, axNotifyValueChanged)
+				notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
 			case accessibility.StateSelected:
-				selectionChanged = a.appendSelectionNotice(selectionChanged, e.Node)
+				notices = a.appendSelectionNotice(notices, e.Node)
 			case accessibility.StateExpanded:
 				// The two notifications macOS has for this are about outline rows, so only a row may send one. A
 				// disclosure triangle, a pop-up button or a combo box opening would otherwise report a row event on an
 				// element that is not a row. Nothing is posted for them: every element answers isAccessibilityExpanded
-				// (AXExpanded) from the current snapshot, so an assistive technology that cares reads the new state back
-				// when it next asks. A disclosure triangle is also the one of the three whose Pressed flag tracks
+				// (AXExpanded) from the current snapshot, so an assistive technology that cares reads the new state
+				// back when it next asks. A disclosure triangle is also the one of the three whose Pressed flag tracks
 				// whether it is open, and that is what it reports as its value (see axNodeValue), so a change to it
 				// arrives as a StatePressed event and does post a value-changed notification.
 				if n := a.tree.Node(e.Node); n != nil && n.Role.IsRowLike() {
+					notification := axNotifyRowCollapsed
 					if n.Expanded {
-						a.post(e.Node, axNotifyRowExpanded)
-					} else {
-						a.post(e.Node, axNotifyRowCollapsed)
+						notification = axNotifyRowExpanded
 					}
+					notices = axAppendNotice(notices, axNotice{node: e.Node, notification: notification})
 				}
+			case accessibility.StateIgnored:
+				// Whether a node is ignored is exactly what decides whether it appears among its parent's presented
+				// children, so a node that has just become ignored — or stopped being — has changed the child list an
+				// assistive technology holds for its container, which is what a layout-changed notification naming that
+				// container says. A scroll bar is the one this happens to constantly: it is ignored while there is
+				// nothing to scroll, so a scroll panel whose content grows past its view port gains a scroll bar in the
+				// middle of a publish that changes nothing else about the panel.
+				layoutChanged = axAppendUnique(layoutChanged, a.tree.UnignoredParent(e.Node))
 			default:
 				// Nothing macOS has a notification for. An assistive technology re-reads the element's state when it
 				// next needs it.
 			}
-		case accessibility.Announcement:
-			AXAnnounce(e.New)
 		case accessibility.DescriptionChanged, accessibility.WindowActivated, accessibility.WindowDeactivated:
 			// NSWindow reports its own activation, and macOS has no notification for a changed help string.
 		}
 	}
-	a.postSelectionChanged(selectionChanged)
+	a.postNotices(notices)
 	if len(layoutChanged) != 0 {
 		if axTraceOn {
 			axTrace("notify %s nodes=%v", axNotifyLayoutChanged, layoutChanged)
@@ -435,11 +457,32 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 	}
 }
 
-// axSelectionNotice is one notification a change to a node's Selected flag calls for, and the node it is posted
-// against. See appendSelectionNotice.
-type axSelectionNotice struct {
+// axNotice is one notification a publish calls for, and the node it is posted against. See postNotices.
+type axNotice struct {
 	notification string
 	node         accessibility.NodeID
+	// container reports that the notification is about what a node holds rather than about the node itself, which is
+	// what decides whether it is posted against a node nothing has asked about yet.
+	container bool
+}
+
+// axAppendNotice records a notification, dropping one that is already there: several events of one publish routinely
+// mean the same notification, from the two a keystroke produces for a text field to the one a table's whole selection
+// moving produces for every row it touched, and an assistive technology re-reads what it needs when it arrives.
+func axAppendNotice(notices []axNotice, notice axNotice) []axNotice {
+	if slices.Contains(notices, notice) {
+		return notices
+	}
+	return append(notices, notice)
+}
+
+// axAppendUnique records a node id, dropping one that is already there: a node that both moved and gained children
+// would otherwise be named twice by the single layout-changed notification they are gathered for.
+func axAppendUnique(ids []accessibility.NodeID, id accessibility.NodeID) []accessibility.NodeID {
+	if slices.Contains(ids, id) {
+		return ids
+	}
+	return append(ids, id)
 }
 
 // appendSelectionNotice records what a change to one node's Selected flag has to be reported as, dropping a notice that
@@ -457,26 +500,35 @@ type axSelectionNotice struct {
 //
 // Reporting only the first of them, which is all a table asks for, leaves an assistive technology holding the AXValue
 // or AXSelected from before a tab or a cell was selected until something else makes it ask again.
-func (a *AXAdapter) appendSelectionNotice(notices []axSelectionNotice, id accessibility.NodeID) []axSelectionNotice {
+func (a *AXAdapter) appendSelectionNotice(notices []axNotice, id accessibility.NodeID) []axNotice {
 	n := a.tree.Node(id)
 	if n == nil {
 		return notices
 	}
-	var notice axSelectionNotice
+	var notice axNotice
 	switch {
 	case n.Role.IsRowLike():
-		notice = axSelectionNotice{node: a.tree.UnignoredParent(id), notification: axNotifySelectedRowsChanged}
+		notice = axNotice{
+			node:         a.tree.UnignoredParent(id),
+			notification: axNotifySelectedRowsChanged,
+			container:    true,
+		}
 	case n.Role == role.Cell:
-		notice = axSelectionNotice{node: axRowContainerOf(a.tree, id), notification: axNotifySelectedCellsChanged}
+		notice = axNotice{
+			node:         axRowContainerOf(a.tree, id),
+			notification: axNotifySelectedCellsChanged,
+			container:    true,
+		}
 	case axSelectionIsValue(n):
-		notice = axSelectionNotice{node: id, notification: axNotifyValueChanged}
+		notice = axNotice{node: id, notification: axNotifyValueChanged}
 	default:
-		notice = axSelectionNotice{node: axPresentedParent(a.tree, n), notification: axNotifySelectedChildrenChanged}
+		notice = axNotice{
+			node:         axPresentedParent(a.tree, n),
+			notification: axNotifySelectedChildrenChanged,
+			container:    true,
+		}
 	}
-	if slices.Contains(notices, notice) {
-		return notices
-	}
-	return append(notices, notice)
+	return axAppendNotice(notices, notice)
 }
 
 // axSelectionIsValue reports whether a node's selection state is what it reports as its value, which is true of a tab
@@ -485,13 +537,13 @@ func axSelectionIsValue(n *accessibility.Node) bool {
 	return n.Role == role.Tab
 }
 
-// postSelectionChanged posts the notifications appendSelectionNotice gathered. A notice about a node itself is posted
-// only if something has already asked about that node, the way every other per-node notification is, while one about a
-// container is posted whether or not the container has an element yet, since an assistive technology that is looking at
-// a selection has certainly been given the thing holding it.
-func (a *AXAdapter) postSelectionChanged(notices []axSelectionNotice) {
+// postNotices posts the notifications postEvents gathered, in the order the events called for them. A notice about a
+// node itself is posted only if something has already asked about that node, since an assistive technology cannot be
+// interested in an element it has never seen, while one about what a container holds is posted whether or not the
+// container has an element yet: something looking at a selection has certainly been given the thing holding it.
+func (a *AXAdapter) postNotices(notices []axNotice) {
 	for _, notice := range notices {
-		if notice.notification == axNotifyValueChanged {
+		if !notice.container {
 			a.post(notice.node, notice.notification)
 			continue
 		}
@@ -736,11 +788,11 @@ func axRoleFor(t *accessibility.Tree, n *accessibility.Node) (roleID, subroleID 
 		return AppKitString(axRoleTextArea), 0
 	case role.SpinButton:
 		// The incrementor role is what carries the stepper semantics on this platform: told a spin button is a text
-		// field, VoiceOver describes it as one and never mentions that its value can be stepped, even though the element
-		// implements accessibilityPerformIncrement and Decrement. The element still answers the whole text protocol, so
-		// the content is as readable as it was; this only adds what a plain text field cannot say. WebKit maps ARIA's
-		// spinbutton the same way, and it is the counterpart of the spinner control type Windows reports and the spin
-		// button role AT-SPI reports.
+		// field, VoiceOver describes it as one and never mentions that its value can be stepped, even though the
+		// element implements accessibilityPerformIncrement and Decrement. The element still answers the whole text
+		// protocol, so the content is as readable as it was; this only adds what a plain text field cannot say. WebKit
+		// maps ARIA's spinbutton the same way, and it is the counterpart of the spinner control type Windows reports
+		// and the spin button role AT-SPI reports.
 		return AppKitString(axRoleIncrementor), 0
 	case role.ComboBox:
 		return AppKitString(axRoleComboBox), 0
@@ -895,6 +947,8 @@ func axNodeValue(n *accessibility.Node) objc.ID {
 		return NSNumberFromInt64(axBoolValue(n.Selected))
 	case n.Role == role.Heading:
 		return NSNumberFromInt64(int64(n.Level))
+	case axValueIsFraction(n):
+		return NSNumberFromFloat64(axFractionOf(n))
 	case n.Text != nil:
 		return NSStringFromGo(n.Text.Text)
 	case n.HasNumber:
@@ -907,6 +961,49 @@ func axNodeValue(n *accessibility.Node) objc.ID {
 		return NSStringFromGo(n.Name)
 	default:
 		return 0
+	}
+}
+
+// axValueIsFraction reports whether a node's value is given to the accessibility system as a fraction of the range it
+// moves in rather than as the number itself, which is what a scroll bar does and nothing else does.
+//
+// AXScrollBar's value is a position between 0.0 and 1.0, and an AXScrollBar carries no AXMinValue or AXMaxValue at all:
+// an NSScroller over a document of any length answers 0.25 for a quarter of the way down and lists neither attribute.
+// Reporting the raw offset instead tells VoiceOver a scroll bar sits at "420" of an unstated range, and a client that
+// sets the value — which is how an assistive technology scrolls — sends back the fraction the convention promised,
+// which as a raw offset means the very top. See axFractionOf and axDenormalize, which are the two halves of it.
+func axValueIsFraction(n *accessibility.Node) bool {
+	return n.Role == role.ScrollBar && n.HasNumber
+}
+
+// axFractionOf maps a node's number onto the 0..1 fraction of its range that axValueIsFraction calls for. An empty
+// range — a scroll bar with nothing to scroll — sits at the start of itself.
+func axFractionOf(n *accessibility.Node) float64 {
+	if n.Max <= n.Min {
+		return 0
+	}
+	return axClampFraction((n.Number - n.Min) / (n.Max - n.Min))
+}
+
+// axDenormalize maps a fraction of a node's range back onto the number the node deals in, which is the inverse of
+// axFractionOf.
+func axDenormalize(n *accessibility.Node, fraction float64) float64 {
+	if n.Max <= n.Min {
+		return n.Min
+	}
+	return n.Min + axClampFraction(fraction)*(n.Max-n.Min)
+}
+
+// axClampFraction confines a fraction to 0..1, leaving a NaN alone: the widgets refuse one of those for themselves, and
+// turning it into a position at either end of the range here would hide what was asked for rather than refuse it.
+func axClampFraction(fraction float64) float64 {
+	switch {
+	case fraction < 0:
+		return 0
+	case fraction > 1:
+		return 1
+	default:
+		return fraction
 	}
 }
 
@@ -1038,6 +1135,34 @@ func axVisibleRowsOf(t *accessibility.Tree, n *accessibility.Node) []accessibili
 	return visible
 }
 
+// axSelectedChildrenOf returns the presented children of a node that are selected. It is what an assistive technology
+// re-reads when it is told a container's selected children changed, which is how the selection of everything that is
+// neither a row nor a cell — a menu item, a tab, a list of anything — is reported.
+func axSelectedChildrenOf(t *accessibility.Tree, id accessibility.NodeID) []accessibility.NodeID {
+	children := axPresentedChildren(t, id)
+	selected := children[:0]
+	for _, childID := range children {
+		if child := t.Node(childID); child != nil && child.Selected {
+			selected = append(selected, childID)
+		}
+	}
+	return selected
+}
+
+// axVisibleChildrenOf returns the presented children of a node that are not scrolled or clipped out of view, which is
+// what accessibilityVisibleChildren is for: the rows of a table answer accessibilityVisibleRows, and this is the same
+// answer for everything that is not a row.
+func axVisibleChildrenOf(t *accessibility.Tree, id accessibility.NodeID) []accessibility.NodeID {
+	children := axPresentedChildren(t, id)
+	visible := children[:0]
+	for _, childID := range children {
+		if child := t.Node(childID); child != nil && !child.Offscreen {
+			visible = append(visible, childID)
+		}
+	}
+	return visible
+}
+
 // axDisclosedRowsOf returns the rows an outline row discloses: the rows one level deeper that follow it, up to the next
 // row at its own level or shallower. Rows of an outline are published as one flat list with a level apiece, the way an
 // outline view orders them, so the rows a row discloses are exactly the deeper ones between it and its next sibling.
@@ -1120,6 +1245,49 @@ func axIndexOfID(ids []accessibility.NodeID, id accessibility.NodeID) int {
 	return -1
 }
 
+// axSetValue turns the value an assistive technology set on an element into a SetValue request.
+//
+// What arrives is examined before it is messaged. AXValue is a CFType and AXUIElementSetAttributeValue hands on
+// whatever a client cares to send, so a script or an assistive technology can perfectly well set it to an
+// NSAttributedString, an AXValueRef or a dictionary; sending an NSString's selectors to one of those raises an
+// unrecognized-selector exception inside a Go callback, which is uncatchable and takes the process with it. Anything
+// that is neither a string nor a number is dropped, which is what an element that cannot be set that way answers.
+//
+// A node whose value is a fraction of its own range is the one case where what arrives is not what is passed on: the
+// fraction is mapped back onto the range first (see axValueIsFraction), so that a scroll bar set to 0.25 scrolls a
+// quarter of the way down rather than to the offset 0.25, which would be the very top of anything longer than a pixel.
+func axSetValue(self, value objc.ID) {
+	if value == 0 {
+		return
+	}
+	req := accessibility.ActionRequest{Action: accessibility.SetValue}
+	isNumber := objc.Send[bool](value, Sel("isKindOfClass:"), Cls("NSNumber"))
+	switch {
+	case isNumber:
+		req.Number = Float64FromNSNumber(value)
+		req.Value = GoStringFromNSString(value.Send(Sel("stringValue")))
+	case objc.Send[bool](value, Sel("isKindOfClass:"), Cls("NSString")):
+		req.Value = GoStringFromNSString(value)
+	default:
+		if axTraceOn {
+			axTrace("set value ignored: %#x is neither a string nor a number", value)
+		}
+		return
+	}
+	if _, n := axElementTarget(self, 0); n != nil && axValueIsFraction(n) {
+		if !isNumber {
+			// A fraction of the node's range is the only thing this value can be, and a string is not one of those.
+			if axTraceOn {
+				axTraceNode("set value ignored: not a fraction", n)
+			}
+			return
+		}
+		req.Number = axDenormalize(n, req.Number)
+		req.Value = GoStringFromNSString(NSNumberFromFloat64(req.Number).Send(Sel("stringValue")))
+	}
+	axRequest(self, req)
+}
+
 // axSelectRows makes the rows in an NSArray of elements the selection of the table, outline or list they belong to. The
 // schema has no request that replaces a selection wholesale, so the first row is selected outright, which clears the
 // rest, and each further row is added to it; the requests are carried out later, in that order, on the UI thread.
@@ -1130,6 +1298,15 @@ func axIndexOfID(ids []accessibility.NodeID, id accessibility.NodeID) int {
 func axSelectRows(self, rows objc.ID) {
 	a, n := axElementTarget(self, 0)
 	if a == nil || n == nil || rows == 0 || AccessibilityActionCallback == nil {
+		return
+	}
+	// AXSelectedRows is a CFType like any other attribute, so what a client sets it to is checked before it is
+	// counted: asking a dictionary or an AXValueRef how many objects it holds raises an unrecognized-selector
+	// exception inside a Go callback, which is uncatchable and takes the process with it.
+	if !objc.Send[bool](rows, Sel("isKindOfClass:"), Cls("NSArray")) {
+		if axTraceOn {
+			axTraceNode(fmt.Sprintf("set selected rows ignored: %#x is not an array", rows), n)
+		}
 		return
 	}
 	if axTraceOn {
@@ -1261,8 +1438,8 @@ func axHeadersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, de
 		// A header's own subtree holds nothing but its column headers, so there is no reason to walk into it.
 		return headers, 0
 	case role.Table, role.Tree:
-		// Likewise a table's subtree holds its rows and cells. Counting it and stopping also keeps a table nested inside
-		// another table's cell from being counted twice.
+		// Likewise a table's subtree holds its rows and cells. Counting it and stopping also keeps a table nested
+		// inside another table's cell from being counted twice.
 		return nil, 1
 	default:
 	}
@@ -1365,6 +1542,9 @@ func registerAXElementClass() {
 	}, axElementMethods())
 	if err != nil {
 		axElementClassErr = errs.NewWithCause("NewAXAdapter: unable to register accessibility element class", err)
+		// Logged here, inside the once, rather than by each caller: the registration is attempted a single time per
+		// process, so this is the only moment there is anything new to say about it.
+		errs.Log(axElementClassErr)
 		return
 	}
 	axElementClass = cls
@@ -1450,9 +1630,11 @@ func axElementAttributeMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// Answered by every node with a number except the ones whose value is a fraction of their own range, which
+			// carry no bounds on this platform because the fraction already expresses them (see axValueIsFraction).
 			Cmd: Sel("accessibilityMinValue"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
-				if _, n := axElementTarget(self, cmd); n != nil && n.HasNumber {
+				if _, n := axElementTarget(self, cmd); n != nil && n.HasNumber && !axValueIsFraction(n) {
 					return NSNumberFromFloat64(n.Min)
 				}
 				return 0
@@ -1461,7 +1643,7 @@ func axElementAttributeMethods() []objc.MethodDef {
 		{
 			Cmd: Sel("accessibilityMaxValue"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
-				if _, n := axElementTarget(self, cmd); n != nil && n.HasNumber {
+				if _, n := axElementTarget(self, cmd); n != nil && n.HasNumber && !axValueIsFraction(n) {
 					return NSNumberFromFloat64(n.Max)
 				}
 				return 0
@@ -1593,8 +1775,8 @@ func axElementAttributeMethods() []objc.MethodDef {
 		},
 		{
 			// Answered by a table with all of its column headers, and by a cell with the one describing its own column,
-			// which is what an assistive technology speaks alongside a cell's contents as it moves across a row. Without
-			// it a cell is read as a value with nothing to say which column it came from.
+			// which is what an assistive technology speaks alongside a cell's contents as it moves across a row.
+			// Without it a cell is read as a value with nothing to say which column it came from.
 			Cmd: Sel("accessibilityColumnHeaderUIElements"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
 				a, n := axElementTarget(self, cmd)
@@ -1618,6 +1800,20 @@ func axElementAttributeMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// The selection of anything that is neither a table nor an outline: a menu's current item, a tab group's
+			// tab, a list of anything that is not a row. It is the attribute
+			// NSAccessibilitySelectedChildrenChangedNotification tells an assistive technology to read again, so
+			// without it that notification names a container holding nothing it can find the selection in.
+			Cmd: Sel("accessibilitySelectedChildren"),
+			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
+					return NSArrayFromIDs()
+				}
+				return a.elementsFor(axSelectedChildrenOf(a.tree, n.ID))
+			},
+		},
+		{
 			// VoiceOver moves the selection of a table or outline it is interacting with by setting the selected rows,
 			// not by pressing rows one at a time, so without this it has no way to move the selection at all.
 			Cmd: Sel("setAccessibilitySelectedRows:"),
@@ -1633,6 +1829,19 @@ func axElementAttributeMethods() []objc.MethodDef {
 					return NSArrayFromIDs()
 				}
 				return a.elementsFor(axVisibleRowsOf(a.tree, n))
+			},
+		},
+		{
+			// The same answer for the children that are not rows. A scroll panel hands out every child it has,
+			// including the ones scrolled clean out of the window, since an assistive technology that wants to reach
+			// one needs it to exist; this is how it learns which of them can be seen without scrolling first.
+			Cmd: Sel("accessibilityVisibleChildren"),
+			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
+					return NSArrayFromIDs()
+				}
+				return a.elementsFor(axVisibleChildrenOf(a.tree, n.ID))
 			},
 		},
 		{
@@ -1804,6 +2013,19 @@ func axElementStateMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// A node scrolled or clipped entirely out of view is still part of the hierarchy and is still handed out as
+			// a child, since an assistive technology that wants to reach it has to be given it before it can ask for it
+			// to be scrolled into view. AXHidden is how it is told that the thing is not on the screen at the moment,
+			// which is what stops VoiceOver drawing its cursor around a frame outside the window and what keeps it from
+			// reading its way through the part of a list that nobody can see. It is the counterpart of the offscreen
+			// property the Windows adapter reports and of the showing and visible states the AT-SPI one drops.
+			Cmd: Sel("isAccessibilityHidden"),
+			Fn: func(self objc.ID, cmd objc.SEL) bool {
+				_, n := axElementTarget(self, cmd)
+				return n != nil && n.Offscreen
+			},
+		},
+		{
 			Cmd: Sel("isAccessibilityFocused"),
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
 				_, n := axElementTarget(self, cmd)
@@ -1939,14 +2161,7 @@ func axElementStateMethods() []objc.MethodDef {
 		{
 			Cmd: Sel("setAccessibilityValue:"),
 			Fn: func(self objc.ID, _ objc.SEL, value objc.ID) {
-				req := accessibility.ActionRequest{Action: accessibility.SetValue}
-				if objc.Send[bool](value, Sel("isKindOfClass:"), Cls("NSNumber")) {
-					req.Number = Float64FromNSNumber(value)
-					req.Value = GoStringFromNSString(value.Send(Sel("stringValue")))
-				} else {
-					req.Value = GoStringFromNSString(value)
-				}
-				axRequest(self, req)
+				axSetValue(self, value)
 			},
 		},
 		// The legacy action protocol, alongside the accessibilityPerform* methods above. AppKit derives an element's
@@ -2087,13 +2302,17 @@ func axElementTextMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// The line the caret sits on, which is the end of the selection that moves as it is extended rather than
+			// whichever end happens to be later (see accessibility.TextInfo.Caret). A node with no text at all has no
+			// insertion point, and -1 is how AXInsertionPointLineNumber says so: answering 0 instead would have every
+			// button, row and group this class serves claim a caret on its first line.
 			Cmd: Sel("accessibilityInsertionPointLineNumber"),
 			Fn: func(self objc.ID, _ objc.SEL) int64 {
 				_, _, info := axTextTarget(self)
 				if info == nil {
-					return 0
+					return -1
 				}
-				return int64(axLineForRune(info, info.SelEnd))
+				return int64(axLineForRune(info, info.Caret))
 			},
 		},
 		{
@@ -2370,7 +2589,7 @@ func axRectForRuneRange(n *accessibility.Node, info *accessibility.TextInfo, sta
 // measured lines there is nothing to search, so the caret is reported.
 func axRuneForLocalPoint(info *accessibility.TextInfo, pt geom.Point) int {
 	if len(info.Lines) == 0 {
-		return info.SelEnd
+		return info.Caret
 	}
 	index := len(info.Lines) - 1
 	for i := range info.Lines {

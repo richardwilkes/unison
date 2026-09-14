@@ -73,7 +73,9 @@ const (
 	toolkitName   = "unison"
 	toolkitKey    = "toolkit"
 	propertiesSig = "a{sv}"
-	stringDictSig = "a{ss}"
+	// stringEntrySig is a dict entry type, which is a complete type only as the element type of an array.
+	stringEntrySig = "{ss}"
+	stringDictSig  = "a" + stringEntrySig
 )
 
 func goldenCases() []goldenCase {

@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
@@ -257,23 +258,37 @@ func (b *Button) DefaultUpdateCursor(_ geom.Point) *Cursor {
 	return PointingCursor()
 }
 
-// ProvideAccessibility describes the button to assistive technologies. A sticky button stays drawn in the state a click
-// puts it in rather than springing back, so it is reported as a toggle button and its state is reported along with it;
-// a button that merely belongs to a group is not, since DefaultDraw only keeps a sticky button latched and announcing
-// an unsticky one as an on toggle would describe something the person cannot see. The name is the button's own text; an
-// icon button has none, so it falls back to whatever name has been set for it and then to its tooltip, which is the
-// only thing such a button usually has to say what it does.
+// ProvideAccessibility describes the button to assistive technologies. A sticky button that belongs to a group stays
+// drawn in the state a click puts it in, and clicking another button of the group is what takes it out of that state
+// again, which is a radio button in everything but appearance: it is reported as one, with its check saying whether it
+// is the group's selection and a selection request to make it so. A sticky button with no group latches nothing —
+// DefaultDraw keeps it drawn pressed only while the group has it selected, and it has no group to be selected by — so
+// it is a plain button, as is any button that is merely grouped without being sticky.
+//
+// The name is the button's own text; an icon button has none, so it falls back to whatever name has been set for it and
+// then to its tooltip, which is the only thing such a button usually has to say what it does.
 func (b *Button) ProvideAccessibility(builder *AccessibilityBuilder) {
 	node := builder.Node()
+	latching := b.Sticky && b.group != nil
 	if node.Role == role.Auto {
-		if b.Sticky {
-			node.Role = role.ToggleButton
+		if latching {
+			node.Role = role.RadioButton
 		} else {
 			node.Role = role.Button
 		}
 	}
-	// The same condition DefaultDraw uses to decide whether to draw the button in its selected state, so that what an
-	// assistive technology is told matches what is on the screen.
+	if latching {
+		node.HasCheck = true
+		if b.group.Selected(b) {
+			node.Checked = check.On
+		} else {
+			node.Checked = check.Off
+		}
+		node.Actions = node.Actions.With(accessibility.Select)
+	}
+	// The same condition DefaultDraw uses to decide whether to draw the button in its selected state, so that a button
+	// an application has asked to have reported as a toggle — the one role that reads its state from this rather than
+	// from the check — says what is on the screen.
 	node.Pressed = b.Pressed || (b.Sticky && b.group.Selected(b))
 	if node.Name == "" {
 		node.Name = b.Text.String()
@@ -285,11 +300,21 @@ func (b *Button) ProvideAccessibility(builder *AccessibilityBuilder) {
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Pressing the button clicks it, which
-// runs the same animation and callback that a person's click would have.
+// runs the same animation and callback that a person's click would have. Selecting one makes it the selection of the
+// group it latches within, without the animation and without the callback, exactly as selecting one radio button of a
+// set does; a button that latches nothing has no selection to be.
 func (b *Button) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
-	if req.Action != accessibility.Press {
+	switch req.Action {
+	case accessibility.Press:
+		b.Click()
+		return true
+	case accessibility.Select:
+		if !b.Sticky || b.group == nil {
+			return false
+		}
+		b.group.Select(b)
+		return true
+	default:
 		return false
 	}
-	b.Click()
-	return true
 }

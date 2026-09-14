@@ -48,10 +48,22 @@ func TestMacAccessibilityCallbacksInstalled(t *testing.T) {
 	c.Equal(before, axSnapshotCount)
 	c.False(IsAccessibilityActive())
 
-	// An action for a window that does not exist is dropped rather than queued.
+	// A request that arrived somewhere other than the user interface thread is handed to it in full, since finding the
+	// window it names is a read of the window list and only that thread may make one. It is dropped there.
 	resetTaskQueue()
 	cocoa.AccessibilityActionCallback(macUnknownWindow, accessibility.ActionRequest{Action: accessibility.Press})
 	length, _ := taskQueueState()
+	c.Equal(1, length, "a request that arrived off the user interface thread must be handed to it")
+	processNextTask()
+	length, _ = taskQueueState()
+	c.Equal(0, length, "and must be dropped there, since no window answers to it")
+
+	// On the user interface thread the window is looked up on the spot, and a request naming one that does not exist is
+	// dropped without anything being queued at all.
+	withUIThreadIdentity(t)
+	resetTaskQueue()
+	cocoa.AccessibilityActionCallback(macUnknownWindow, accessibility.ActionRequest{Action: accessibility.Press})
+	length, _ = taskQueueState()
 	c.Equal(0, length, "a request naming a window that does not exist must not have been queued")
 }
 

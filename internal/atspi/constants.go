@@ -224,6 +224,9 @@ const (
 	InterfaceCache = "org.a11y.atspi.Cache"
 	// InterfaceComponent is implemented by every object that occupies space on the screen.
 	InterfaceComponent = "org.a11y.atspi.Component"
+	// InterfaceEditableText is implemented by the objects whose text can be changed, which is the only way AT-SPI has
+	// of typing into a control.
+	InterfaceEditableText = "org.a11y.atspi.EditableText"
 	// InterfaceSelection is implemented by the containers whose children can be selected.
 	InterfaceSelection = "org.a11y.atspi.Selection"
 	// InterfaceSocket is what the registry implements, and is only ever called rather than answered.
@@ -231,7 +234,8 @@ const (
 	// InterfaceTable is implemented by the containers laid out as a grid of cells, which is what an assistive
 	// technology's table navigation commands work over.
 	InterfaceTable = "org.a11y.atspi.Table"
-	// InterfaceTableCell is implemented by the cells of such a container, and is how one says where in the grid it sits.
+	// InterfaceTableCell is implemented by the cells of such a container, and is how one says where in the grid it
+	// sits.
 	InterfaceTableCell = "org.a11y.atspi.TableCell"
 	// InterfaceText is implemented by the objects that hold navigable text.
 	InterfaceText = "org.a11y.atspi.Text"
@@ -316,6 +320,12 @@ const (
 const (
 	dbusInterface           = "org.freedesktop.DBus"
 	dbusPropertiesInterface = "org.freedesktop.DBus.Properties"
+	// dbusDestination is the bus's own name, which is also the sender of every signal the bus itself emits, such as
+	// NameOwnerChanged. A match rule that names it, and a check of the sender when one arrives, are what keep another
+	// peer on the same bus from forging one.
+	dbusDestination = "org.freedesktop.DBus"
+	// dbusObjectPath is the path of the bus's own object, which those signals come from.
+	dbusObjectPath dbus.ObjectPath = "/org/freedesktop/DBus"
 )
 
 const (

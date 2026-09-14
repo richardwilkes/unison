@@ -313,7 +313,9 @@ func (t *dockTab) mouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
 
 // ProvideAccessibility describes the tab to assistive technologies. The name is the dockable's title without the marker
 // that says it has unsaved changes, since that marker is punctuation a screen reader would read out as part of the
-// title; a tab for a modified dockable is still the tab for that dockable.
+// title; a tab for a modified dockable is still the tab for that dockable. What the marker says is said in words
+// instead, as part of the description, since a person who cannot see the marker has no other way to learn that a
+// dockable has changes that have not been saved.
 func (t *dockTab) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	if node.Role == role.Auto {
@@ -324,6 +326,14 @@ func (t *dockTab) ProvideAccessibility(b *AccessibilityBuilder) {
 	}
 	if node.Description == "" {
 		node.Description = t.dockable.Tooltip()
+	}
+	if t.dockable.Modified() {
+		modified := i18n.Text("Modified")
+		if node.Description == "" {
+			node.Description = modified
+		} else {
+			node.Description += ", " + modified
+		}
 	}
 	node.Selectable = true
 	if dc := Ancestor[*DockContainer](t.dockable); dc != nil {

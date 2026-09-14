@@ -277,20 +277,24 @@ func (e *encoder) arrayElements(elem Signature, v any) error {
 			}
 			return nil
 		}
-	case objectRefSig:
-		if s, ok := v.([]ObjectRef); ok {
-			for _, one := range s {
-				if err := e.value(elem, one); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
+	}
+	// Everything else is written one element at a time, through a writer that does whatever preparation the element
+	// type needs once rather than once per element; see elementEncoder.
+	write, err := e.elementEncoder(elem)
+	if err != nil {
+		return err
 	}
 	switch tv := v.(type) {
+	case []ObjectRef:
+		for _, one := range tv {
+			if err = write(one); err != nil {
+				return err
+			}
+		}
+		return nil
 	case []any:
 		for _, one := range tv {
-			if err := e.value(elem, one); err != nil {
+			if err = write(one); err != nil {
 				return err
 			}
 		}
@@ -300,7 +304,7 @@ func (e *encoder) arrayElements(elem Signature, v any) error {
 			return fmt.Errorf("dbus: array of %q cannot hold elements of type %q", elem, tv.Elem)
 		}
 		for _, one := range tv.Values {
-			if err := e.value(elem, one); err != nil {
+			if err = write(one); err != nil {
 				return err
 			}
 		}
@@ -311,12 +315,27 @@ func (e *encoder) arrayElements(elem Signature, v any) error {
 			return typeError("a"+elem, v)
 		}
 		for i := 0; i < rv.Len(); i++ {
-			if err := e.value(elem, rv.Index(i).Interface()); err != nil {
+			if err = write(rv.Index(i).Interface()); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
+}
+
+// elementEncoder returns a function that writes one value of the given type, with whatever preparation that type needs
+// done once rather than once per element. Splitting a structure's field types out of its signature is the same work for
+// every element of an array of structures, and paying for it per element made an array of millions of small structures
+// cost several times what the values themselves do.
+func (e *encoder) elementEncoder(elem Signature) (func(v any) error, error) {
+	if elem[0] != '(' {
+		return func(v any) error { return e.value(elem, v) }, nil
+	}
+	types, err := elem[1 : len(elem)-1].Types()
+	if err != nil {
+		return nil, err
+	}
+	return func(v any) error { return e.structureFields(elem, types, v) }, nil
 }
 
 // dict marshals an array of dict entries. sig is the dict entry type, including its braces.
@@ -355,7 +374,17 @@ func (e *encoder) dict(sig Signature, v any) error {
 			}
 		}
 	default:
-		err = e.mapEntries(keySig, valSig, v)
+		// A named slice type, or an array, holds dict entries just as well as the types named above do, and the same
+		// shapes already marshal into a structure array through arrayElements; a Go map is what is left.
+		if rv := reflect.ValueOf(v); rv.Kind() == reflect.Slice || rv.Kind() == reflect.Array {
+			for i := 0; i < rv.Len(); i++ {
+				if err = e.dictEntry(keySig, valSig, rv.Index(i).Interface()); err != nil {
+					break
+				}
+			}
+		} else {
+			err = e.mapEntries(keySig, valSig, v)
+		}
 	}
 	if err != nil {
 		return err
@@ -458,6 +487,16 @@ func compareMapKeys(a, b reflect.Value) int {
 
 // structure marshals a structure. sig is the structure type, including its parentheses.
 func (e *encoder) structure(sig Signature, v any) error {
+	types, err := sig[1 : len(sig)-1].Types()
+	if err != nil {
+		return err
+	}
+	return e.structureFields(sig, types, v)
+}
+
+// structureFields marshals a structure whose field types have already been split out of its signature, which is how an
+// array of structures avoids paying for that split once per element.
+func (e *encoder) structureFields(sig Signature, types []Signature, v any) error {
 	if err := e.enter('('); err != nil {
 		return err
 	}
@@ -478,16 +517,12 @@ func (e *encoder) structure(sig Signature, v any) error {
 	default:
 		return typeError(sig, v)
 	}
-	types, err := sig[1 : len(sig)-1].Types()
-	if err != nil {
-		return err
-	}
 	if len(types) != len(fields) {
 		return fmt.Errorf("dbus: structure %q requires %d fields, but %d were given", sig, len(types), len(fields))
 	}
 	e.align(8)
 	for i, one := range types {
-		if err = e.value(one, fields[i]); err != nil {
+		if err := e.value(one, fields[i]); err != nil {
 			return err
 		}
 	}

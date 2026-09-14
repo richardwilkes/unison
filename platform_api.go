@@ -531,6 +531,19 @@ func (w *Window) apiAccessibilityShutdown() {
 	w.nativeAccessibilityShutdown()
 }
 
+// apiAccessibilityWindowHidden is called by the event loop when a window it has described is found hidden or minimized.
+// It reports whether the window was withdrawn from what an assistive technology holds, which is a platform's decision:
+// one where the application itself lists its windows has to take a window that is no longer on the screen out of that
+// list, while one where the system lists them keeps what was built so that the window is still known when it is shown
+// again. A window that was withdrawn is described afresh when it is next drawn.
+func (w *Window) apiAccessibilityWindowHidden() bool {
+	if hw := w.wnd.hw; hw != nil {
+		hw.accessibilityShutdown()
+		return true
+	}
+	return w.nativeAccessibilityWindowHidden()
+}
+
 func apiAccessibilityAnnounce(text string) {
 	if hs := activeHeadless(); hs != nil {
 		hs.accessibilityAnnounce(text)

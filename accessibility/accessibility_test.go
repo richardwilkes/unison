@@ -126,7 +126,7 @@ func TestEnumStrings(t *testing.T) {
 	c := check.New(t)
 	c.Equal("focus-changed", accessibility.FocusChanged.String())
 	c.Equal("window-deactivated", accessibility.WindowDeactivated.String())
-	c.Equal("EventKind(18)", (accessibility.Announcement + 1).String())
+	c.Equal("EventKind(17)", (accessibility.WindowDeactivated + 1).String())
 	c.Equal("role-changed", accessibility.RoleChanged.String())
 	c.Equal("none", accessibility.StateNone.String())
 	c.Equal("checked", accessibility.StateChecked.String())

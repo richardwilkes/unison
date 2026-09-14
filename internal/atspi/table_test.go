@@ -24,10 +24,14 @@ const tableWindow WindowKey = 4
 
 // tableTree is the window the table tests work over. The table holds four rows and describes two of them, which is what
 // a Unison table does: only the rows that can be seen, plus the selection and the row the focus is in, are described,
-// however many the model holds.
+// however many the model holds. Its column headers sit in a panel of their own beside it, which is where a Unison
+// layout puts them and which is why finding them takes a search; see [buildTableHeaders].
 //
 //	60 window "Books"                (0,0 300x200)  active
-//	└─ 61 table "Ledger"             (0,0 300x200)  4 rows, 2 columns, multi-select
+//	├─ 69 table header               (0,0 300x20)
+//	│  ├─ 70 column header "Title"   (0,0 160x20)   column 0
+//	│  └─ 71 column header "Count"   (160,0 140x20) column 1
+//	└─ 61 table "Ledger"             (0,20 300x180) 4 rows, 2 columns, multi-select
 //	   ├─ 62 row "Alpha"             (0,20 300x20)  row 1, selected
 //	   │  ├─ 63 disclosure triangle  (0,20 20x20)
 //	   │  ├─ 64 cell "Alpha"         (20,20 140x20) row 1, column 0
@@ -39,7 +43,18 @@ func tableTree() *accessibility.Tree {
 	return treeOf(1,
 		&accessibility.Node{
 			ID: 60, Role: role.Window, Name: "Books", Focused: true, Bounds: geom.NewRect(0, 0, 300, 200),
-			Children: []accessibility.NodeID{61},
+			Children: []accessibility.NodeID{69, 61},
+		},
+		&accessibility.Node{
+			ID: 69, Parent: 60, Role: role.TableHeader, Bounds: geom.NewRect(0, 0, 300, 20),
+			Children: []accessibility.NodeID{70, 71},
+		},
+		&accessibility.Node{
+			ID: 70, Parent: 69, Role: role.ColumnHeader, Name: "Title", Bounds: geom.NewRect(0, 0, 160, 20),
+		},
+		&accessibility.Node{
+			ID: 71, Parent: 69, Role: role.ColumnHeader, Name: "Count", ColumnIndex: 1,
+			Bounds: geom.NewRect(160, 0, 140, 20),
 		},
 		&accessibility.Node{
 			ID: 61, Parent: 60, Role: role.Table, Name: "Ledger", Multiselectable: true, RowCount: 4, ColumnCount: 2,
@@ -119,10 +134,17 @@ func TestTableShape(t *testing.T) {
 		"a row the table is not describing has no object to hand back")
 	c.Equal(nullReference(), ta.one(NodePath(61), InterfaceTable, "GetAccessibleAt", "ii", int32(1), int32(9)))
 
-	// The flattened index counts the cells row by row, as ATK's own implementation does.
-	c.Equal(int32(3), ta.one(NodePath(61), InterfaceTable, "GetIndexAt", "ii", int32(1), int32(1)))
-	c.Equal(int32(1), ta.one(NodePath(61), InterfaceTable, "GetRowAtIndex", "i", int32(3)))
-	c.Equal(int32(1), ta.one(NodePath(61), InterfaceTable, "GetColumnAtIndex", "i", int32(3)))
+	// The index these four methods work in is a child index of the table, and a Unison table's children are its rows:
+	// Orca feeds a cell's GetIndexInParent straight into GetRowAtIndex, so an index naming anything else sends it to
+	// the wrong row. Row 1 is the first of the two the table is describing, so it is child 0.
+	c.Equal(int32(0), ta.one(NodePath(61), InterfaceTable, "GetIndexAt", "ii", int32(1), int32(1)))
+	c.Equal(int32(1), ta.one(NodePath(61), InterfaceTable, "GetIndexAt", "ii", int32(2), int32(0)))
+	c.Equal(int32(1), ta.one(NodePath(61), InterfaceTable, "GetRowAtIndex", "i", int32(0)))
+	c.Equal(int32(2), ta.one(NodePath(61), InterfaceTable, "GetRowAtIndex", "i", int32(1)))
+	c.Equal(int32(0), ta.one(NodePath(61), InterfaceTable, "GetColumnAtIndex", "i", int32(1)),
+		"a child of the table is a whole row, so it starts at the first column")
+	c.Equal(nodeRef(62), ta.one(NodePath(61), InterfaceAccessible, "GetChildAtIndex", "i", int32(0)),
+		"and the index really is one the table's own children answer to")
 	for _, one := range []struct {
 		member string
 		sig    dbus.Signature
@@ -130,13 +152,14 @@ func TestTableShape(t *testing.T) {
 	}{
 		{member: "GetIndexAt", sig: "ii", args: []any{int32(-1), int32(0)}},
 		{member: "GetIndexAt", sig: "ii", args: []any{int32(0), int32(2)}},
+		{member: "GetIndexAt", sig: "ii", args: []any{int32(0), int32(0)}},
 		{member: "GetRowAtIndex", sig: "i", args: []any{int32(8)}},
 		{member: "GetColumnAtIndex", sig: "i", args: []any{int32(-1)}},
 		{member: "GetRowExtentAt", sig: "ii", args: []any{int32(9), int32(0)}},
 		{member: "GetColumnExtentAt", sig: "ii", args: []any{int32(0), int32(9)}},
 	} {
 		c.Equal(int32(-1), ta.one(NodePath(61), InterfaceTable, one.member, one.sig, one.args...),
-			"%s is being asked about a cell the table does not have", one.member)
+			"%s is being asked about something the table is not describing", one.member)
 	}
 	// Nothing Unison reports spans more than one row or column.
 	c.Equal(int32(1), ta.one(NodePath(61), InterfaceTable, "GetRowExtentAt", "ii", int32(1), int32(0)))
@@ -144,21 +167,68 @@ func TestTableShape(t *testing.T) {
 
 	c.Equal("Alpha", ta.one(NodePath(61), InterfaceTable, "GetRowDescription", "i", int32(1)))
 	c.Equal("", ta.one(NodePath(61), InterfaceTable, "GetRowDescription", "i", int32(0)))
-	c.Equal("", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(0)))
-	// A Unison table's column headers belong to a header panel of their own, where they are reported in their own
-	// right, so the table has none to point at.
+	// Unison tables have no row headers at all, whatever they have in the way of column ones.
 	c.Equal(nullReference(), ta.one(NodePath(61), InterfaceTable, "GetRowHeader", "i", int32(1)))
+}
+
+// TestTableColumnHeaders covers the one thing that makes a table readable as a table: the name of the column the user
+// has arrowed into. A Unison table's headers sit in a panel beside it rather than inside it, so every route to them —
+// the table's own GetColumnHeader and GetColumnDescription, and the cell's ColumnHeaderCells — goes through the same
+// search, which is the one the other two adapters make.
+func TestTableColumnHeaders(t *testing.T) {
+	t.Parallel()
+	ta := newTableAdapter(t)
+	c := ta.c
+	c.Equal(nodeRef(70), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(0)))
+	c.Equal(nodeRef(71), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(1)))
+	c.Equal(nullReference(), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(2)),
+		"the table has no third column")
+	c.Equal(nullReference(), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(-1)))
+	c.Equal("Title", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(0)))
+	c.Equal("Count", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(1)))
+	c.Equal("", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(9)))
+	c.Equal([]dbus.ObjectRef{nodeRef(70)},
+		ta.peer.getProperty(NodePath(64), InterfaceTableCell, "ColumnHeaderCells"))
+	c.Equal([]dbus.ObjectRef{nodeRef(71)},
+		ta.peer.getProperty(NodePath(65), InterfaceTableCell, "ColumnHeaderCells"),
+		"a cell reports the header of its own column")
+	c.Equal([]dbus.ObjectRef{}, ta.peer.getProperty(NodePath(65), InterfaceTableCell, "RowHeaderCells"),
+		"Unison tables have no row headers")
+
+	// A header the table names, or that names the table, is used however the two are laid out, which is what an
+	// explicit link is for.
+	linked := tableTree()
+	linked.Generation++
+	linked.Node(60).Children = []accessibility.NodeID{61}
+	linked.Node(61).Children = append(linked.Node(61).Children, 69)
+	linked.Node(69).Parent = 61
+	linked.Node(69).Controls = []accessibility.NodeID{61}
+	ta.Publish(tableWindow, linked, nil, sampleGeometry())
+	c.Equal(nodeRef(71), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(1)))
+
+	// Two tables under one ancestor and no link between any of them is an ambiguity that cannot be resolved, and
+	// guessing would announce one table's column names over the other's cells.
+	ambiguous := tableTree()
+	ambiguous.Generation += 2
+	ambiguous.Node(60).Children = []accessibility.NodeID{69, 61, 72}
+	ambiguous.Nodes[72] = &accessibility.Node{
+		ID: 72, Parent: 60, Role: role.Table, Name: "Other", RowCount: 1, ColumnCount: 1,
+		Bounds: geom.NewRect(0, 100, 300, 100),
+	}
+	ta.Publish(tableWindow, ambiguous, nil, sampleGeometry())
 	c.Equal(nullReference(), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(0)))
+	c.Equal("", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(0)))
 }
 
 func TestTableRowColumnExtentsAtIndex(t *testing.T) {
 	t.Parallel()
 	ta := newTableAdapter(t)
 	c := ta.c
-	c.Equal([]any{true, int32(1), int32(1), int32(1), int32(1), true},
-		ta.values(NodePath(61), InterfaceTable, "GetRowColumnExtentsAtIndex", "i", int32(3)))
-	c.Equal([]any{true, int32(2), int32(0), int32(1), int32(1), false},
-		ta.values(NodePath(61), InterfaceTable, "GetRowColumnExtentsAtIndex", "i", int32(4)))
+	// The index is a child index, so what it names is a row: it begins at the first column and spans them all.
+	c.Equal([]any{true, int32(1), int32(0), int32(1), int32(2), true},
+		ta.values(NodePath(61), InterfaceTable, "GetRowColumnExtentsAtIndex", "i", int32(0)))
+	c.Equal([]any{true, int32(2), int32(0), int32(1), int32(2), false},
+		ta.values(NodePath(61), InterfaceTable, "GetRowColumnExtentsAtIndex", "i", int32(1)))
 	c.Equal([]any{false, int32(0), int32(0), int32(0), int32(0), false},
 		ta.values(NodePath(61), InterfaceTable, "GetRowColumnExtentsAtIndex", "i", int32(99)))
 }
@@ -195,6 +265,18 @@ func TestTableSelection(t *testing.T) {
 		"a row with no object cannot be asked to do anything")
 	c.Equal(false, ta.one(NodePath(61), InterfaceTable, "RemoveRowSelection", "i", int32(3)))
 	ta.noRequest(t)
+
+	// A table that cannot hold more than one selected row refuses to add to its selection, which is ATK's contract for
+	// it. Replacing the selection instead would throw away the row the user had selected and report success.
+	single := tableTree()
+	single.Generation++
+	single.Node(61).Multiselectable = false
+	ta.Publish(tableWindow, single, nil, sampleGeometry())
+	c.Equal(false, ta.one(NodePath(61), InterfaceTable, "AddRowSelection", "i", int32(2)))
+	ta.noRequest(t)
+	c.Equal(true, ta.one(NodePath(61), InterfaceSelection, "SelectChild", "i", int32(1)),
+		"a client that means to replace the selection has SelectChild to ask with")
+	c.Equal(accessibility.ActionRequest{Node: 66, Action: accessibility.Select}, ta.nextRequest(t))
 }
 
 func TestTableCellInterface(t *testing.T) {
@@ -207,7 +289,10 @@ func TestTableCellInterface(t *testing.T) {
 	c.Equal(int32(1), ta.peer.getProperty(NodePath(65), InterfaceTableCell, "ColumnSpan"))
 	c.Equal(nodeRef(61), ta.peer.getProperty(NodePath(65), InterfaceTableCell, "Table"),
 		"the table is the cell's grandparent, since the row sits between them")
-	c.Equal([]dbus.ObjectRef{}, ta.peer.getProperty(NodePath(65), InterfaceTableCell, "ColumnHeaderCells"))
+	// The header lists are covered by TestTableColumnHeaders; here it is enough that the cell reports one column header
+	// and no row header at all.
+	c.Equal([]dbus.ObjectRef{nodeRef(71)},
+		ta.peer.getProperty(NodePath(65), InterfaceTableCell, "ColumnHeaderCells"))
 	c.Equal([]dbus.ObjectRef{}, ta.peer.getProperty(NodePath(65), InterfaceTableCell, "RowHeaderCells"))
 	c.Equal([]any{true, int32(1), int32(1), int32(1), int32(1)},
 		ta.values(NodePath(65), InterfaceTableCell, "GetRowColumnSpan", ""))

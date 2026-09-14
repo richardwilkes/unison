@@ -132,17 +132,20 @@ type windowData struct {
 	children  map[accessibility.NodeID][]accessibility.NodeID
 	indexes   map[accessibility.NodeID]int
 	relations map[accessibility.NodeID][]relation
+	headers   map[accessibility.NodeID][]accessibility.NodeID
 	geometry  Geometry
 }
 
 // newWindowData indexes a tree so that the questions AT-SPI asks most often — the children of a node, where a node sits
-// among its siblings, and what a node is related to — can be answered without walking anything.
+// among its siblings, what a node is related to, and which headers describe a table's columns — can be answered without
+// walking anything.
 func newWindowData(t *accessibility.Tree, g Geometry) *windowData {
 	d := &windowData{
 		tree:      t,
 		children:  make(map[accessibility.NodeID][]accessibility.NodeID),
 		indexes:   make(map[accessibility.NodeID]int),
 		relations: buildRelations(t),
+		headers:   buildTableHeaders(t),
 		geometry:  g,
 	}
 	t.Walk(func(n *accessibility.Node) bool {
@@ -213,6 +216,12 @@ func (d *windowData) parent(id accessibility.NodeID) accessibility.NodeID {
 // relationsOf returns the relation set of a node, which is empty for most of them.
 func (d *windowData) relationsOf(id accessibility.NodeID) []relation {
 	return d.relations[id]
+}
+
+// columnHeaders returns the nodes that describe the columns of a table or a tree, in the order the header panel holding
+// them publishes them, or nil when the snapshot holds no header for it. See [buildTableHeaders].
+func (d *windowData) columnHeaders(id accessibility.NodeID) []accessibility.NodeID {
+	return d.headers[id]
 }
 
 // reachableBounds returns the part of a node that can actually be pointed at: its own Bounds confined to those of every

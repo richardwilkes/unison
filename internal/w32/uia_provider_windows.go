@@ -439,7 +439,7 @@ func (p *UIAProvider) propertyValue(tree *accessibility.Tree, node *accessibilit
 	case UIA_IsKeyboardFocusablePropertyId:
 		value.SetBool(node.Focusable)
 	case UIA_HasKeyboardFocusPropertyId:
-		value.SetBool(node.Focused && uiaRootFocused(tree))
+		value.SetBool(UIAHasKeyboardFocus(tree, node))
 	case UIA_IsControlElementPropertyId:
 		value.SetBool(UIAIsControlElement(node))
 	case UIA_IsContentElementPropertyId:
@@ -481,8 +481,10 @@ func (p *UIAProvider) propertyValue(tree *accessibility.Tree, node *accessibilit
 	case UIA_HeadingLevelPropertyId:
 		value.SetI4(int32(UIAHeadingLevel(node)))
 	case UIA_NativeWindowHandlePropertyId:
-		// The property is an int, so a 64-bit handle is reported truncated. Clients that care use the host provider,
-		// which the root also supplies and which reports the handle itself.
+		// The property is an int, so a 64-bit handle is reported truncated. That loses nothing: a Windows handle is
+		// documented to be significant in its low 32 bits, so that 32-bit and 64-bit processes can hand each other
+		// window handles, and this is the only answer a client ever gets — UI Automation asks the fragment first and
+		// falls back to the host provider only for a property the fragment leaves empty.
 		if p.isRoot() {
 			value.SetI4(int32(uint32(uintptr(p.window.HWND()))))
 		}
@@ -490,15 +492,15 @@ func (p *UIAProvider) propertyValue(tree *accessibility.Tree, node *accessibilit
 		if p.isRoot() {
 			value.SetBool(node.Role == role.Dialog)
 		}
-	case UIA_LiveSettingPropertyId:
-		// The root is where an announcement is raised from, and a polite live region is what tells a client to speak
-		// one after whatever it is already saying rather than interrupting.
-		if p.isRoot() {
-			value.SetI4(int32(LiveSetting_Polite))
-		}
 	default:
 		// Including UIA_LocalizedControlTypePropertyId, which is deliberately left to UI Automation: it has a
 		// localized name for every control type, and ours would be in English only.
+		//
+		// And UIA_LiveSettingPropertyId, which nothing here answers. A client consults it only when it has been given
+		// UIA_LiveRegionChangedEventId for an element, and this package raises that for nothing: an announcement goes
+		// out as a notification event instead, which carries its own ordering — raiseNotification passes
+		// NotificationProcessing_All — rather than taking it from a live setting. Declaring the root a polite live
+		// region would say that changes inside it are announced by themselves, which is not true of any of them.
 	}
 }
 
@@ -508,13 +510,6 @@ func uiaSetString(value *VARIANT, s string) {
 	if s != "" {
 		value.SetBSTR(s)
 	}
-}
-
-// uiaRootFocused reports whether the window a snapshot describes is the active one, which is the second half of the
-// HasKeyboardFocus property: a node holds the focus within its window whether or not that window has it.
-func uiaRootFocused(tree *accessibility.Tree) bool {
-	root := tree.Node(tree.Root)
-	return root != nil && root.Focused
 }
 
 // setProvider stores the first of the given nodes that has a provider as an interface pointer, which is the shape the
@@ -561,6 +556,11 @@ func (p *UIAProvider) setProviderArray(value *VARIANT, ids []accessibility.NodeI
 // root has a host: the system-supplied provider for the window handle, which fills in the process id, the window
 // handle and the window's class name so that the fragment does not have to. Every other element answers NULL, which is
 // what says "I am part of a fragment rather than a window of my own".
+//
+// The staleness check matters more here than anywhere else. UIAWindow.Destroy runs before DestroyWindow, so a client
+// still holding the fragment root afterwards would have the window handle asked about a window that is being torn down
+// — and Windows reuses handles, so once it is gone the same value may name some other window entirely, whose process
+// id, handle and class name the client would be handed as this fragment's.
 func uiaSimpleHostRawElementProvider(this, out uintptr) uint64 {
 	if out == 0 {
 		return COM_E_POINTER
@@ -568,10 +568,13 @@ func uiaSimpleHostRawElementProvider(this, out uintptr) uint64 {
 	target := xruntime.PtrFromUintptr[uintptr](out)
 	*target = 0
 	p := uiaProviderFromThis(this, uiaIfaceSimple)
+	if _, _, ok := p.current(); !ok {
+		return UIA_E_ELEMENTNOTAVAILABLE
+	}
 	if !p.isRoot() {
 		return COM_S_OK
 	}
-	host, hr := UiaHostProviderFromHwnd(p.window.HWND())
+	host, hr := uiaHostProviderFromHwnd(p.window.HWND())
 	if !hresultSucceeded(hr) {
 		return uint64(hr)
 	}

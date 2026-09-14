@@ -112,6 +112,10 @@ func Start(cfg Config) (*Adapter, error) {
 		conn.Close()
 		return nil, err
 	}
+	// Watching for the registry before joining the tree rather than after is what keeps a registry that is restarted
+	// between the two from being missed, which would leave the application out of the desktop's tree with nothing to
+	// ever put it back.
+	a.watchRegistry()
 	if err := a.embed(); err != nil {
 		conn.Close()
 		return nil, err
@@ -126,7 +130,8 @@ func Start(cfg Config) (*Adapter, error) {
 
 // Err returns the error that ended the connection to the accessibility bus, or nil while the adapter is still usable.
 // A non-nil answer means nothing published since is reaching anyone: the adapter has to be thrown away, and a fresh one
-// started if the desktop still wants to be served. [Adapter.Stop] makes it non-nil too.
+// started if the desktop still wants to be served. [Adapter.Stop] makes it non-nil before it returns, so an adapter
+// that has been stopped never reports itself as usable.
 func (a *Adapter) Err() error {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
@@ -159,6 +164,66 @@ func (a *Adapter) export() error {
 	return a.conn.ExportSubtree(AccessiblePrefix, a.resolve)
 }
 
+// registryMatchRule is what the accessibility bus is asked for so that it delivers the signal that says the registry
+// has come or gone. Only the bus itself sends NameOwnerChanged, and only its own name can be the sender, so a rule that
+// names both cannot be satisfied by anything another peer on the bus emits.
+const registryMatchRule = "type='signal',sender='" + dbusDestination + "',interface='" + dbusInterface +
+	"',member='" + nameOwnerChanged + "',arg0='" + RegistryDestination + "'"
+
+// watchRegistry asks the accessibility bus to say when the registry comes back and joins the accessibility tree again
+// when it does.
+//
+// at-spi2-registryd can be restarted, and is on any desktop where the session is left running while the assistive
+// technology stack is not. The connection to the accessibility bus survives that, so nothing else reports it: the
+// application is simply no longer among the desktop's children, every event it sends afterwards reaches nobody, and the
+// desktop reference it holds names a bus name that no longer exists. at-spi2-atk registers itself again on this signal,
+// and so does this.
+func (a *Adapter) watchRegistry() {
+	a.conn.Subscribe(dbus.SignalFilter{
+		Sender:    dbusDestination,
+		Path:      dbusObjectPath,
+		Interface: dbusInterface,
+		Member:    nameOwnerChanged,
+	}, func(msg *dbus.Message) {
+		if !registryIsBack(msg) {
+			return
+		}
+		// This runs on the connection's dispatcher goroutine, which answers every query an assistive technology makes,
+		// so the call that rejoins the tree is made on a goroutine of its own.
+		go a.reembed()
+	})
+	if err := a.conn.AddMatch(registryMatchRule); err != nil {
+		errs.Log(errs.NewWithCause("atspi: unable to watch for the accessibility registry restarting", err))
+	}
+}
+
+// registryIsBack reports whether a NameOwnerChanged signal says that the registry's name has gained an owner, which is
+// what a registry that has just started up does.
+func registryIsBack(msg *dbus.Message) bool {
+	args, err := msg.Args()
+	if err != nil || len(args) < 3 {
+		return false
+	}
+	name, ok := args[0].(string)
+	if !ok || name != RegistryDestination {
+		return false
+	}
+	owner, ok := args[2].(string)
+	return ok && owner != ""
+}
+
+// reembed joins the accessibility tree again, replacing the desktop reference that the registry which has just gone
+// away handed out. Nothing is retried: a registry that cannot be talked to now will be talked to when it appears again,
+// which is the only thing that would make a retry work anyway.
+func (a *Adapter) reembed() {
+	if a.stopping.Load() || a.Err() != nil {
+		return
+	}
+	if err := a.embed(); err != nil {
+		errs.Log(errs.NewWithCause("atspi: unable to rejoin the accessibility tree", err))
+	}
+}
+
 // embed asks the registry to add the application to the accessibility tree. The reply is the desktop object, which
 // becomes the parent of the application root.
 func (a *Adapter) embed() error {
@@ -188,30 +253,49 @@ func (a *Adapter) embed() error {
 }
 
 // Stop tells the registry the application is leaving the accessibility tree and closes the connection. Every object
-// goes away with it, and the adapter must not be used afterwards.
+// goes away with it, and the adapter must not be used afterwards. It never waits for the bus: it is called from the
+// user interface thread, and what is left to say is said on a goroutine of its own.
 //
 // The [Config.Lost] callback is not called for a connection that ends this way: the caller is the one that ended it, so
 // there is nothing to report.
 func (a *Adapter) Stop() {
 	a.stopping.Store(true)
-	a.unembed()
+	a.lock.Lock()
+	// The connection ends on a goroutine of its own, so a caller that asked whether the adapter was still usable the
+	// moment after this returned would otherwise be told that it was. Whether it was still usable before that is what
+	// decides whether there is anyone left to tell that the application is going.
+	alive := a.err == nil
+	if alive {
+		a.err = dbus.ErrClosed
+	}
+	a.lock.Unlock()
+	go a.leave(alive)
+}
+
+// leave tells the registry the application is going and closes the connection.
+//
+// It runs on a goroutine of its own because [Adapter.Stop] is called from the user interface thread, while the message
+// has to reach the transport before the connection is closed, since closing it throws away whatever is still queued. An
+// assistive technology or a bus that has stopped reading — exactly the state switching a screen reader off can leave
+// things in — would otherwise hold the whole user interface up for the length of a write timeout. Nothing waits for
+// this: the adapter is unusable from the moment Stop was called, and everything it answered for goes with it.
+func (a *Adapter) leave(tell bool) {
+	if tell {
+		a.unembed()
+	}
 	a.conn.Close()
 }
 
 // unembed tells the registry the application is leaving. No reply is asked for: the registry has nothing to say, and
-// waiting for it would hold up a shutdown that may be happening because the bus has already gone.
+// waiting for one would hold up a shutdown that may be happening because the bus has already gone.
 func (a *Adapter) unembed() {
-	if a.Err() != nil {
-		// The connection has already ended, so there is nobody left to tell and nothing to report but the death that
-		// has been reported once already.
-		return
-	}
 	msg := dbus.NewMethodCall(RegistryDestination, RootPath, InterfaceSocket, "Unembed")
+	msg.Flags |= dbus.FlagNoReplyExpected
 	if err := msg.SetBodyWithSignature(objectRefSignature, a.rootReference()); err != nil {
 		errs.Log(err)
 		return
 	}
-	if _, err := a.conn.CallWithFlags(msg, dbus.FlagNoReplyExpected); err != nil {
+	if err := a.conn.Send(msg); err != nil {
 		errs.Log(errs.NewWithCause("atspi: unable to tell the registry the application is leaving", err))
 	}
 }
@@ -280,7 +364,12 @@ func (a *Adapter) SetGeometry(key WindowKey, g Geometry) {
 }
 
 // RemoveWindow takes a window out of the accessibility tree. Its nodes stop being reachable at once; the snapshot
-// itself is kept a little longer, since the signals that announce the window's departure are built from it.
+// itself is kept a little longer, since the signals that announce the window's departure are built from it. A node that
+// has been reparented into another window that is still published belongs to that window now, and neither stops
+// answering nor is announced as gone.
+//
+// The same key may be published again afterwards, which is what a window that is hidden and shown again does: it joins
+// the application's children once more, as a window nothing has been told about yet.
 func (a *Adapter) RemoveWindow(key WindowKey) {
 	a.lock.Lock()
 	ws := a.windows[key]

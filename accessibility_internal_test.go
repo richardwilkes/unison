@@ -12,12 +12,14 @@ package unison
 import (
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 // These tests reach the parts of the accessibility core that a widget uses rather than an application: the builder a
@@ -200,8 +202,8 @@ func TestAccessibilityVirtualChildren(t *testing.T) {
 		Action: accessibility.Focus,
 	}), "a virtual child gets none of the default behaviors, since those act on a panel")
 
-	// Dropping most of the rows leaves the ids of the ones that are gone to be reclaimed, which happens the next time the
-	// list is described. Each row accounts for one id of its own plus one per cell.
+	// Dropping most of the rows leaves the ids of the ones that are gone to be reclaimed, which happens the next time
+	// the list is described. Each row accounts for one id of its own plus one per cell.
 	screen.Do(func() { list.rows = list.rows[:3] })
 	screen.AccessibilityTree(wnd)
 	var held int
@@ -602,4 +604,214 @@ func TestAccessibilityInfoIdentityIsNotShared(t *testing.T) {
 	}
 	c.True(tree.Node(secondAfter) == nil, "the identity it gave up must not still be in the tree")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axSweepList describes one virtual child per key it is holding, and then makes a number of further attempts with the
+// first of those keys, which the builder refuses. It is what shows that a refused attempt costs the panel nothing: the
+// count of children a panel is actually using is what the sweep of abandoned ids measures its holdings against, so
+// counting refusals as uses would keep ids alive that nothing is using any more.
+//
+// The children are also what shows that a virtual child is given a concrete role: the first is described as role.None
+// and the rest are left with no role at all, neither of which may reach a published tree.
+type axSweepList struct {
+	keys []string
+	Panel
+	repeats int
+}
+
+// newAXSweepList creates a list holding the given number of keys.
+func newAXSweepList(count int) *axSweepList {
+	l := &axSweepList{}
+	l.Self = l
+	l.keys = make([]string, count)
+	for i := range l.keys {
+		l.keys[i] = "k" + strconv.Itoa(i)
+	}
+	l.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+		size := geom.NewSize(100, axTestRowHeight*float32(max(count, 1)))
+		return size, size, size
+	})
+	return l
+}
+
+// ProvideAccessibility adds one child per key, then repeats the first key.
+func (l *axSweepList) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	node.Role = role.List
+	node.Name = "Sweep"
+	for i, key := range l.keys {
+		b.AddVirtualChild(key, func(n *accessibility.Node) {
+			if i == 0 {
+				n.Role = role.None
+			}
+			n.Name = key
+			n.Bounds = geom.NewRect(0, axTestRowHeight*float32(i), 100, axTestRowHeight)
+		})
+	}
+	for range l.repeats {
+		b.AddVirtualChild(l.keys[0], func(n *accessibility.Node) { n.Name = "repeat" })
+	}
+}
+
+// TestAccessibilityVirtualChildRoleIsResolved verifies that a virtual child reaches a published tree with a role it can
+// have: neither role.Auto, which for a child a widget invented there is nothing to work out from, nor role.None, which
+// is an instruction about a panel. Adapters are told a published tree holds neither.
+func TestAccessibilityVirtualChildRoleIsResolved(t *testing.T) {
+	c := check.New(t)
+	var list *axSweepList
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			list = newAXSweepList(2)
+			wnd = axNewTestWindow(t, "virtual roles", geom.NewRect(10, 10, 200, 150), list)
+		}))
+	c.NotNil(list)
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	listNode := screen.AccessibilityNodeFor(list)
+	c.True(listNode != nil)
+	if listNode == nil {
+		return
+	}
+	c.Equal(2, len(listNode.Children))
+	for i, id := range listNode.Children {
+		child := tree.Node(id)
+		c.True(child != nil)
+		if child != nil {
+			c.Equal(role.Group, child.Role, "child %d", i)
+		}
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityRefusedVirtualKeyIsNotAUse verifies that a key the builder refused does not make the panel look like
+// it is using more children than it is. The ids of children a panel has stopped using are reclaimed once it is holding
+// appreciably more of them than it needs, and a refusal counted as a use raises that threshold — which is the opposite
+// of what refusing the key is saying.
+func TestAccessibilityRefusedVirtualKeyIsNotAUse(t *testing.T) {
+	c := check.New(t)
+	const initialKeys = 40
+	var list *axSweepList
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 600},
+		StartupFinishedCallback(func() {
+			list = newAXSweepList(initialKeys)
+			wnd = axNewTestWindow(t, "sweep", geom.NewRect(10, 10, 300, 560), list)
+		}))
+	c.NotNil(list)
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	var held int
+	screen.Do(func() { held = len(list.Accessibility.virtual) })
+	c.Equal(initialKeys, held, "each key should have been given an id of its own")
+
+	// One key, and a pile of attempts to use it again. The panel is using one child, so the ids of the other
+	// thirty-nine have nothing keeping them alive.
+	screen.Do(func() {
+		list.keys = list.keys[:1]
+		list.repeats = initialKeys / 2
+	})
+	screen.AccessibilityTree(wnd)
+	screen.Do(func() { held = len(list.Accessibility.virtual) })
+	c.Equal(1, held, "the ids of the keys that are gone should have been reclaimed")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityPublishThrottle covers the throttle that bounds how often a window that redraws continuously is
+// described. Headless sessions bypass it so that a test asking for a tree is given the current one, which leaves it
+// with nothing else that could drive it, so it is turned on here by hand.
+func TestAccessibilityPublishThrottle(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
+	c := check.New(t)
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			wnd = axNewTestWindow(t, "throttle", geom.NewRect(20, 20, 240, 120), NewPanel())
+		}))
+	c.NotNil(wnd)
+	screen.Do(func() { axThrottleHeadless = true })
+	t.Cleanup(func() { screen.Do(func() { axThrottleHeadless = false }) })
+
+	// The first publish of a window is never throttled, whatever the session, so that an adapter which activates on its
+	// first query has something to answer with before it returns.
+	c.True(screen.AccessibilityTree(wnd) != nil)
+	var generation uint64
+	var queued bool
+	screen.Do(func() {
+		generation = wnd.ax.generation
+		wnd.publishAccessibility()
+		queued = wnd.ax.publishQueued
+	})
+	c.True(queued, "a publish that came too soon after the last one should have been queued")
+	var after uint64
+	screen.Do(func() { after = wnd.ax.generation })
+	c.Equal(generation, after, "and should not have described the window")
+
+	// The queued task fires on a timer, which Sync deliberately does not wait for, so it is waited for here.
+	c.True(axWaitForPublish(t, screen, wnd, generation), "the queued publish should have described the window")
+	screen.Do(func() { queued = wnd.ax.publishQueued })
+	c.False(queued, "and should have left nothing queued behind it")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityPublishThrottleSurvivesDeactivation covers what becomes of a queued publish when the support it was
+// queued for goes away before the task runs, which is what deactivating support, or destroying the window, does: the
+// state the task would publish from is dropped while the task is still in flight.
+func TestAccessibilityPublishThrottleSurvivesDeactivation(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
+	c := check.New(t)
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			wnd = axNewTestWindow(t, "throttle off", geom.NewRect(20, 20, 240, 120), NewPanel())
+		}))
+	c.NotNil(wnd)
+	screen.Do(func() { axThrottleHeadless = true })
+	t.Cleanup(func() { screen.Do(func() { axThrottleHeadless = false }) })
+
+	c.True(screen.AccessibilityTree(wnd) != nil)
+	var queued bool
+	screen.Do(func() {
+		wnd.publishAccessibility()
+		queued = wnd.ax.publishQueued
+	})
+	c.True(queued)
+
+	screen.Do(deactivateAccessibility)
+	var held bool
+	screen.Do(func() { held = wnd.ax != nil })
+	c.False(held, "deactivation should have dropped what the queued publish would have published from")
+
+	// The task still runs, and must find nothing rather than a window it can describe.
+	time.Sleep(2 * axPublishThrottle)
+	screen.Sync()
+	screen.Do(func() { held = wnd.ax != nil })
+	c.False(held, "the queued publish must not have brought the state back")
+	c.False(IsAccessibilityActive())
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axWaitForPublish waits for the window to be described again, which a queued publish does on a timer that Sync does
+// not wait for. Reports whether it happened before waiting went on too long.
+func axWaitForPublish(t *testing.T, screen *HeadlessScreen, w *Window, was uint64) bool {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		var generation uint64
+		screen.Do(func() {
+			if w.ax != nil {
+				generation = w.ax.generation
+			}
+		})
+		if generation > was {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(time.Millisecond)
+	}
 }

@@ -32,7 +32,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
-	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/role"
@@ -386,9 +385,10 @@ func (m *Markdown) processHeading() {
 	if heading, ok := m.node.(*ast.Heading); ok {
 		saveDec := m.decoration
 		saveBlock := m.block
+		level := min(max(heading.Level, 1), 6)
 		m.decoration = m.decoration.Clone()
-		m.decoration.Font = m.HeadingFont[min(max(heading.Level, 1), 6)-1]
-		p := NewPanel()
+		m.decoration.Font = m.HeadingFont[level-1]
+		p := newMarkdownHeading(level).AsPanel()
 		insets := m.stdBottomMargin()
 		insets.Top = m.collapseMarginWithPrevious(m.decoration.Font.Baseline())
 		if m.block == m.AsPanel() && len(m.block.Children()) == 0 {
@@ -398,12 +398,6 @@ func (m *Markdown) processHeading() {
 			insets.Bottom = 0
 		}
 		p.SetBorder(NewEmptyBorder(insets))
-		p.SetLayout(&FlexLayout{Columns: 1})
-		// The heading is one element to an assistive technology, however many labels the text within it is broken into:
-		// the snapshot builder folds their text into the heading's name rather than describing each of them.
-		p.Accessibility.Role = role.Heading
-		level := min(max(heading.Level, 1), 6)
-		p.Accessibility.Callback = func(node *accessibility.Node) { node.Level = level }
 		m.block.AddChild(p)
 		if id, hasID := heading.AttributeString("id"); hasID {
 			if idBytes, isBytes := id.([]byte); isBytes {
@@ -427,6 +421,59 @@ func (m *Markdown) processHeading() {
 			m.block.AddChild(hr)
 		}
 	}
+}
+
+// markdownHeading is the panel a heading's content is laid out in. It has a type of its own so that it can describe
+// itself: a heading holding a link or an image holds something an assistive technology has to be able to reach, and
+// asking for that has to be done while the description is being built.
+type markdownHeading struct {
+	Panel
+	level int
+}
+
+// newMarkdownHeading returns the panel for a heading at the given level, which is between 1 and 6.
+func newMarkdownHeading(level int) *markdownHeading {
+	h := &markdownHeading{level: level}
+	h.Self = h
+	h.SetLayout(&FlexLayout{Columns: 1})
+	h.Accessibility.Role = role.Heading
+	return h
+}
+
+// ProvideAccessibility describes the heading to assistive technologies. A heading is one element, however many labels
+// its text is broken into: their text is folded into the heading's name rather than described a label at a time, which
+// is what a screen reader moving from heading to heading reads out.
+//
+// A heading holding a link or an image is described with its content as well. Such a thing is not text: it is
+// announced as what it is, moved to on its own and, for a link, followed, and a heading that swallowed it would leave
+// the person who heard the heading with no way to reach what was in it. The heading still reads as the whole of its
+// text, since the name is gathered from everything within it either way.
+func (h *markdownHeading) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.Heading
+	}
+	node.Level = h.level
+	if markdownHasInlineElement(h.AsPanel()) {
+		b.DescribeChildren()
+	}
+}
+
+// markdownHasInlineElement reports whether anything within the panel is something an assistive technology must be able
+// to reach in its own right — a link or an image — rather than a piece of the text around it.
+func markdownHasInlineElement(p *Panel) bool {
+	for _, child := range p.Children() {
+		if child.Accessibility.Role == role.Link {
+			return true
+		}
+		if _, ok := child.Self.(*DrawablePanel); ok {
+			return true
+		}
+		if markdownHasInlineElement(child) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Markdown) collapseMarginWithPrevious(desired float32) float32 {
@@ -1263,8 +1310,9 @@ func (m *Markdown) processImage() {
 			secondary = ""
 		}
 		if primary != "" {
-			// The alternative text is what the image is called, which is the only thing about it an assistive technology
-			// can pass on; without it the image is skipped entirely rather than announced as a picture of nothing.
+			// The alternative text is what the image is called, which is the only thing about it an assistive
+			// technology can pass on; without it the image is skipped entirely rather than announced as a picture of
+			// nothing.
 			panel.Accessibility.Name = primary
 			panel.Accessibility.Description = secondary
 			if secondary != "" {

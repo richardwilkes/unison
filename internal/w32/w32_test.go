@@ -70,9 +70,9 @@ func TestDropResultEffect(t *testing.T) {
 	c.Equal(DropEffectNone, dropResultEffect(false, drag.Copy))
 }
 
-// bstrAllocatorFile is the one file allowed to allocate a BSTR. Concentrating the allocators there is what makes the
-// callee-allocates contract auditable: the comment on SysAllocString states who owns the result, and a reader can see
-// every place a BSTR is born without searching the package.
+// bstrAllocatorFile is the one file allowed to allocate a BSTR. Concentrating the allocator there is what makes the
+// callee-allocates contract auditable: the comment on SysAllocStringLen states who owns the result, and a reader can
+// see every place a BSTR is born without searching the package.
 const bstrAllocatorFile = "uia_variant_windows.go"
 
 // forbiddenSourcePatterns maps a source pattern this package must not contain to the set of files allowed to contain
@@ -82,7 +82,9 @@ const bstrAllocatorFile = "uia_variant_windows.go"
 // opengl32.dll is not a KnownDLL). CoInitializeEx with COINIT_MULTITHREADED on the STA UI thread only ever "worked"
 // because it failed with RPC_E_CHANGED_MODE. SysAllocString and SysAllocStringLen are the OLE automation allocators:
 // they were once used to build BSTRs that were never freed, and are unnecessary for the PCWSTR parameters that misuse
-// was for, so they are confined to the file that hands out BSTRs with their ownership spelled out.
+// was for, so they are confined to the file that hands out BSTRs with their ownership spelled out. Only
+// SysAllocStringLen is bound at all — NewBSTR builds both the empty and the non-empty case with it — so the entry for
+// the other one guards against its return rather than against a second caller.
 var forbiddenSourcePatterns = map[string]map[string]bool{
 	"syscall.NewLazyDLL(": {},
 	"CoInitializeEx(":     {},
