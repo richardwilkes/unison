@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,6 +98,10 @@ func newFakeBus(t *testing.T) *fakeBus {
 	t.Cleanup(func() {
 		client.Close()
 		xio.CloseIgnoringErrors(busSide)
+		// The fake bus's own goroutine reports what it cannot make sense of through the testing.T, which panics the
+		// whole test binary with "Log in goroutine after Test... has completed" if it gets there after the test
+		// function has returned, so the cleanup waits for it to be done rather than leaving it to race the teardown.
+		<-b.gone
 	})
 	return b
 }
@@ -382,6 +387,7 @@ func TestConnCallReturnsAnError(t *testing.T) {
 }
 
 func TestConnCallTimesOut(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	t.Parallel()
 	c := check.New(t)
 	b := newFakeBus(t)
@@ -391,7 +397,10 @@ func TestConnCallTimesOut(t *testing.T) {
 	reply, err := wait()
 	c.Nil(reply)
 	c.HasError(err)
-	c.Contains(err.Error(), "timed out")
+	// The same timeout bounds the write, and a machine slow enough to take 50 ms handing the message to the pipe fails
+	// the call with "timed out ... writing a message" instead, which is not the wait this test is about: the fuller
+	// text is what says the reply was waited for.
+	c.Contains(err.Error(), "waiting for a reply to")
 }
 
 func TestConnCallWithNoReplyExpected(t *testing.T) {
@@ -481,12 +490,19 @@ func TestConnSubscribe(t *testing.T) {
 	b.emit(testPath, eventInterface, "SomethingElse", "s", "ignored")
 	b.emit("/org/example/other", eventInterface, "StateChanged", "s", "elsewhere")
 
-	msg := <-filtered
+	// Every wait here is bounded, so a regression that stops delivering a signal fails with a message that says which
+	// wait it was rather than hanging until the package-wide panic timeout.
+	msg, ok := awaitOne(filtered)
+	if !ok {
+		t.Fatal("timed out waiting for the filtered signal")
+	}
 	args, err := msg.Args()
 	c.NoError(err)
 	c.Equal([]any{"focused"}, args)
-	for range 3 {
-		c.NotNil(<-everything)
+	for i := range 3 {
+		if _, ok = awaitOne(everything); !ok {
+			t.Fatalf("timed out waiting for signal %d of 3", i+1)
+		}
 	}
 	c.Equal(0, len(filtered))
 
@@ -495,7 +511,9 @@ func TestConnSubscribe(t *testing.T) {
 	cancel()
 	cancel() // Canceling twice is harmless
 	b.emit(testPath, eventInterface, "StateChanged", "s", "after")
-	c.NotNil(<-everything)
+	if _, ok = awaitOne(everything); !ok {
+		t.Fatal("timed out waiting for the signal that follows the cancellation")
+	}
 	c.Equal(0, len(filtered))
 }
 
@@ -643,7 +661,12 @@ func TestDial(t *testing.T) {
 	serveOneConnection(t, listener)
 	// The first alternative cannot be used and the second does not exist, so the third is the one that answers.
 	conn, err := Dial("tcp:host=localhost,port=1;unix:path=" + socket + ".missing;unix:path=" + socket)
-	c.NoError(err)
+	if err != nil {
+		// Everything below dereferences the connection, so a failure here has to end this test rather than be reported
+		// and carried on from: check.Checker.NoError calls t.Error, and conn.Name() on a nil connection panics the
+		// whole test binary instead of failing the one test.
+		t.Fatal(err)
+	}
 	t.Cleanup(conn.Close)
 	c.Equal(testSender, conn.Name())
 }
@@ -743,6 +766,138 @@ func TestPanicsInExportedCodeCostOnlyTheOneCall(t *testing.T) {
 	}
 	// The connection carries on afterwards, which is the whole point.
 	c.Equal([]any{"hello intact"}, replyValues(t, b.call(prefix+"/fine", testInterface, greetMember, "s", "intact")))
+}
+
+// malformedObject hands out an interface list with a nil hole in it, which is what an object built on demand looks like
+// when the code that builds it has a bug of its own.
+type malformedObject struct {
+	ifaces []*Interface
+}
+
+func (o malformedObject) Interfaces() []*Interface { return o.ifaces }
+
+func TestMalformedInterfaceListsCostOnlyTheOneCall(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	const prefix = ObjectPath("/org/example/holes")
+	obj := newTestObject()
+	// Only Export checks what an object declares, and an object a resolver hands out is never seen until it is used,
+	// so a nil hole anywhere in its list reaches the walk that dispatch makes over it. Any peer on the bus chooses the
+	// path, and therefore which object is asked, so that walk has to cost the one call rather than the dispatcher
+	// goroutine and with it every message the connection would have delivered afterwards.
+	c.NoError(b.client.ExportSubtree(prefix, func(path ObjectPath) Object {
+		switch {
+		case strings.HasSuffix(string(path), "/interface"):
+			return malformedObject{ifaces: []*Interface{nil}}
+		case strings.HasSuffix(string(path), "/method"):
+			return malformedObject{ifaces: []*Interface{{Name: testInterface, Methods: []*Method{nil}}}}
+		default:
+			return obj
+		}
+	}))
+	for _, name := range []string{"interface", "method"} {
+		for _, one := range []struct {
+			iface  string
+			member string
+		}{
+			{iface: testInterface, member: greetMember},
+			{iface: introspectableInterface, member: "Introspect"},
+		} {
+			reply := b.call(prefix+ObjectPath("/"+name), one.iface, one.member, "")
+			c.Equal(TypeError, reply.Type, "%s %s", name, one.member)
+			c.Equal(Failed, reply.ErrorName, "%s %s", name, one.member)
+		}
+	}
+	// The connection carries on afterwards, which is the whole point.
+	c.Equal([]any{"hello intact"}, replyValues(t, b.call(prefix+"/fine", testInterface, greetMember, "s", "intact")))
+}
+
+func TestAPanicOutsideTheGuardsCostsOnlyTheOneMessage(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	c.NoError(b.client.Export(testPath, newTestObject()))
+	// Nothing in the connection's own dispatch is meant to panic, so this reaches in and breaks it: a nil subscription
+	// and a nil subtree are what a slice modified in place under the dispatcher's feet used to hand it, and neither is
+	// touched inside one of the guards that the code an exporter supplies is called through.
+	b.client.mu.Lock()
+	b.client.subs = append(b.client.subs, nil)
+	b.client.subtrees = append(b.client.subtrees, nil)
+	b.client.mu.Unlock()
+	// A signal has nobody to answer, so the fault is logged and the messages behind it are delivered anyway...
+	b.emit(testPath, eventInterface, "StateChanged", "s", "focused")
+	// ...while a method call is answered with an error rather than left waiting for a reply that will never come.
+	reply := b.call("/org/example/nowhere", testInterface, greetMember, "s", "x")
+	c.Equal(TypeError, reply.Type)
+	c.Equal(Failed, reply.ErrorName)
+	// The dispatcher is still running afterwards, which is the whole point.
+	c.Equal([]any{"hello intact"}, replyValues(t, b.call(testPath, testInterface, greetMember, "s", "intact")))
+}
+
+// countingObject records how many times it has been asked what it implements.
+type countingObject struct {
+	obj   *testObject
+	count atomic.Int32
+}
+
+func (o *countingObject) Interfaces() []*Interface {
+	o.count.Add(1)
+	return o.obj.Interfaces()
+}
+
+func TestTheInterfaceListIsAskedForOncePerCall(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	obj := &countingObject{obj: newTestObject()}
+	c.NoError(b.client.Export(testPath, obj))
+	// Dispatch asks the object what it implements in order to find the method, and each of the builtin handlers that
+	// walks the list asks for it again, so an object that builds its interfaces on demand built them twice for every
+	// property an assistive technology read. The list is kept for the length of the call instead.
+	for i, one := range []struct {
+		iface  string
+		member string
+		sig    Signature
+		args   []any
+	}{
+		{iface: testInterface, member: greetMember, sig: "s", args: []any{"x"}},
+		{iface: propertiesInterface, member: getMember, sig: "ss", args: []any{testInterface, nameProperty}},
+		{iface: propertiesInterface, member: getAllMember, sig: "s", args: []any{""}},
+		{
+			iface:  propertiesInterface,
+			member: setMember,
+			sig:    setPropertySig,
+			args:   []any{testInterface, nameProperty, Variant{Sig: "s", Value: changedName}},
+		},
+		{iface: introspectableInterface, member: "Introspect"},
+	} {
+		obj.count.Store(0)
+		reply := b.call(testPath, one.iface, one.member, one.sig, one.args...)
+		c.Equal(TypeMethodReturn, reply.Type, "case %d: %s", i, one.member)
+		c.Equal(int32(1), obj.count.Load(), "case %d: %s", i, one.member)
+	}
+}
+
+func TestConnCarriesOnAfterAMalformedBody(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	received := make(chan *Message, 2)
+	b.client.Subscribe(SignalFilter{Member: malformedMember}, func(msg *Message) { received <- msg })
+	// A body that does not match the signature its message declares is a fault in that one message, whichever byte
+	// order the peer chose. Converting a big-endian body inside Decode made it a fault in the stream instead, since
+	// the reader ends the connection for any error Decode reports.
+	for i, bigEndian := range []bool{false, true} {
+		b.writeRaw(malformedBodySignal(t, uint32(i+1), bigEndian))
+		msg, ok := awaitOne(received)
+		if !ok {
+			t.Fatalf("timed out waiting for the malformed signal (big-endian: %v)", bigEndian)
+		}
+		_, err := msg.Args()
+		c.HasError(err, "big-endian: %v", bigEndian)
+	}
+	c.NoError(b.client.Hello()) // The connection is still usable, which is the whole point
 }
 
 func TestQueueIsBoundedByItemsAndBytes(t *testing.T) {

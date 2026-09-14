@@ -124,6 +124,13 @@ type Window struct {
 	cursorHidden                bool
 	minimized                   bool
 	maximized                   bool
+	// axGeneration counts the accessibility snapshots taken of this window and is what accessibility.Tree.Generation
+	// carries. It is held here rather than with the rest of the window's accessibility state, which is dropped when the
+	// window is withdrawn from what an assistive technology holds (see Window.axWindowHidden), because the count must
+	// not restart: the generation is what an adapter tells a stale tree from a current one by, so a window that is
+	// hidden and shown again has to go on counting rather than hand out numbers it has already used. Last in the
+	// struct, where it costs no more padding than it would among the other eight-byte fields. UI thread only.
+	axGeneration uint64
 }
 
 // WindowOption holds an option for window creation.
@@ -501,6 +508,11 @@ func (w *Window) SetTitle(title string) {
 		w.title = title
 		if w.IsValid() {
 			w.apiSetTitle(title)
+			// The title is the accessible name of the window itself, and nothing about setting it repaints the window:
+			// every platform's nativeSetTitle only talks to the window manager. Without this a screen reader would go
+			// on reporting the name from before the title changed until something unrelated happened to redraw. See
+			// Window.axMarkForPublish.
+			w.axMarkForPublish()
 		}
 	}
 }

@@ -67,7 +67,7 @@ func (o *nodeObject) Interfaces() []*dbus.Interface {
 	if supportsTableCell(o.node.Role) {
 		list = append(list, o.tableCellInterface())
 	}
-	if o.node.Text != nil {
+	if supportsText(o.node) {
 		list = append(list, o.textInterface())
 	}
 	if o.node.HasNumber {

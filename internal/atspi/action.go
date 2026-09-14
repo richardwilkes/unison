@@ -108,22 +108,35 @@ func (o *nodeObject) actionKeyBinding(actions []nodeAction) func(*dbus.Call) {
 			return
 		}
 		if actions[index].action == accessibility.Press {
-			call.Reply(o.node.Shortcut)
+			call.Reply(keyBinding(o.node.Shortcut))
 			return
 		}
 		call.Reply("")
 	}
 }
 
+// keyBinding returns a node's shortcut in the form every AT-SPI producer reports one: the three semicolon-separated
+// fields mnemonic;full-shortcut;accelerator, of which a Unison shortcut is only ever the last. An assistive technology
+// splits the string on the semicolons — Orca's mnemonicShortcutAccelerator does exactly that — so a bare accelerator
+// lands in the mnemonic's field, which has a menu item's Ctrl+V announced, or suppressed, as though it were the
+// underlined letter of a menu path. GTK's gtkatspiaction.c builds "%s;;%s" for the same reason. A node with no shortcut
+// reports nothing at all rather than two bare separators.
+func keyBinding(shortcut string) string {
+	if shortcut == "" {
+		return ""
+	}
+	return ";;" + shortcut
+}
+
 // getActions returns the handler for org.a11y.atspi.Action.GetActions, which hands over every action in one call as
-// name, description and key binding.
+// name, description and key binding. The key binding is the same triple GetKeyBinding reports; see [keyBinding].
 func (o *nodeObject) getActions(actions []nodeAction) func(*dbus.Call) {
 	return func(call *dbus.Call) {
 		list := make([]any, 0, len(actions))
 		for _, one := range actions {
 			binding := ""
 			if one.action == accessibility.Press {
-				binding = o.node.Shortcut
+				binding = keyBinding(o.node.Shortcut)
 			}
 			list = append(list, dbus.Struct{one.name, "", binding})
 		}

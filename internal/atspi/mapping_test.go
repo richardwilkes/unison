@@ -174,10 +174,19 @@ func TestInterfaces(t *testing.T) {
 			expected: []string{InterfaceAccessible, InterfaceComponent},
 		},
 		{
-			name: "a field with content holds navigable text",
+			name: "a field with content holds navigable text, and is a kind of control that is typed into",
 			node: accessibility.Node{
 				Role: role.TextField,
 				Text: &accessibility.TextInfo{Text: "content"},
+			},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText},
+		},
+		{
+			name: "the same field with its content locked has nothing to edit",
+			node: accessibility.Node{
+				Role:     role.TextField,
+				ReadOnly: true,
+				Text:     &accessibility.TextInfo{Text: "content"},
 			},
 			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceText},
 		},
@@ -193,7 +202,9 @@ func TestInterfaces(t *testing.T) {
 				HasNumber: true,
 				Text:      &accessibility.TextInfo{Text: "42"},
 			},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceText, InterfaceValue},
+			expected: []string{
+				InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText, InterfaceValue,
+			},
 		},
 	} {
 		c.Equal(one.expected, Interfaces(&one.node), one.name)
@@ -419,16 +430,16 @@ func TestAttributes(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}},
-		Attributes(&accessibility.Node{Role: role.Button}, nil))
+		Attributes(nil, &accessibility.Node{Role: role.Button}, nil))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: levelAttribute, Value: "3"},
-	}, Attributes(&accessibility.Node{Role: role.Heading, Level: 3}, nil))
+	}, Attributes(nil, &accessibility.Node{Role: role.Heading, Level: 3}, nil))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: sortAttribute, Value: "ascending"},
 		{Key: columnIndexAttribute, Value: "3"},
-	}, Attributes(&accessibility.Node{
+	}, Attributes(nil, &accessibility.Node{
 		Role:        role.ColumnHeader,
 		Sort:        accessibility.SortAscending,
 		ColumnIndex: 2,
@@ -437,11 +448,11 @@ func TestAttributes(t *testing.T) {
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: sortAttribute, Value: "descending"},
 		{Key: columnIndexAttribute, Value: "1"},
-	}, Attributes(&accessibility.Node{Role: role.ColumnHeader, Sort: accessibility.SortDescending}, nil))
+	}, Attributes(nil, &accessibility.Node{Role: role.ColumnHeader, Sort: accessibility.SortDescending}, nil))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: placeholderTextAttribute, Value: "Search"},
-	}, Attributes(&accessibility.Node{Role: role.TextField, Placeholder: "Search"}, nil))
+	}, Attributes(nil, &accessibility.Node{Role: role.TextField, Placeholder: "Search"}, nil))
 }
 
 func TestAttributesOfARowAndItsCells(t *testing.T) {
@@ -456,19 +467,170 @@ func TestAttributesOfARowAndItsCells(t *testing.T) {
 		{Key: rowIndexAttribute, Value: "4"},
 		{Key: positionInSetAttribute, Value: "4"},
 		{Key: setSizeAttribute, Value: "6000"},
-	}, Attributes(&accessibility.Node{Role: role.Row, Level: 2, RowIndex: 3}, table))
+	}, Attributes(nil, &accessibility.Node{Role: role.Row, Level: 2, RowIndex: 3}, table))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: rowIndexAttribute, Value: "4"},
 		{Key: columnIndexAttribute, Value: "2"},
-	}, Attributes(&accessibility.Node{Role: role.Cell, RowIndex: 3, ColumnIndex: 1}, table),
+	}, Attributes(nil, &accessibility.Node{Role: role.Cell, RowIndex: 3, ColumnIndex: 1}, table),
 		"a cell is placed by row and column rather than by a position in a run")
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
 		{Key: rowIndexAttribute, Value: "1"},
 		{Key: positionInSetAttribute, Value: "1"},
-	}, Attributes(&accessibility.Node{Role: role.ListItem}, &accessibility.Node{Role: role.List}),
+	}, Attributes(nil, &accessibility.Node{Role: role.ListItem}, &accessibility.Node{Role: role.List}),
 		"a container that does not know how many rows it holds reports no size")
+}
+
+// TestAttributesOfARunOfSiblings covers the sets that are all there in the tree rather than being sampled the way a
+// table's rows are: a tab, a menu item and a radio button are numbered by counting their siblings, which is what lets
+// an assistive technology say "tab 2 of 3" and "radio button 1 of 2" — something every ATK-based toolkit says and both
+// of the other adapters report.
+func TestAttributesOfARunOfSiblings(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	tree := treeOf(1,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2, 6}},
+		&accessibility.Node{ID: 2, Parent: 1, Role: role.TabList, Children: []accessibility.NodeID{3, 4, 5}},
+		&accessibility.Node{ID: 3, Parent: 2, Role: role.Tab, Name: "Summary"},
+		&accessibility.Node{ID: 4, Parent: 2, Role: role.Tab, Name: "Details"},
+		&accessibility.Node{ID: 5, Parent: 2, Role: role.Tab, Name: "History"},
+		&accessibility.Node{ID: 6, Parent: 1, Role: role.Group, Children: []accessibility.NodeID{7, 8, 9}},
+		&accessibility.Node{ID: 7, Parent: 6, Role: role.RadioButton, Name: "Yes"},
+		&accessibility.Node{ID: 8, Parent: 6, Role: role.Separator},
+		&accessibility.Node{ID: 9, Parent: 6, Role: role.RadioButton, Name: "No"},
+	)
+	list := tree.Node(2)
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: positionInSetAttribute, Value: "2"},
+		{Key: setSizeAttribute, Value: "3"},
+	}, Attributes(tree, tree.Node(4), list))
+	// Only the siblings that share the role are counted, so the separator between the two radio buttons is passed over
+	// rather than making them one and three of three.
+	group := tree.Node(6)
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: positionInSetAttribute, Value: "2"},
+		{Key: setSizeAttribute, Value: "2"},
+	}, Attributes(tree, tree.Node(9), group))
+	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}}, Attributes(tree, tree.Node(8), group),
+		"a separator is not one of a numbered run")
+	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}}, Attributes(nil, tree.Node(4), list),
+		"a caller with no tree to count has nothing to report")
+}
+
+// TestTextInterfaceFromATextualValue covers the one way AT-SPI has of reporting a value that is not a number. A popup
+// menu reports the item it has chosen as its Value, and a color well the ink it holds, and neither has an
+// org.a11y.atspi.Value interface to hand a number over through, so the value becomes the content of a read-only text
+// interface instead: without it Orca is told a combo box's name and role and never which item is in it.
+func TestTextInterfaceFromATextualValue(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	for _, one := range []struct {
+		name     string
+		expected []string
+		node     accessibility.Node
+	}{
+		{
+			name:     "a popup button reports the item it has chosen",
+			node:     accessibility.Node{Role: role.PopupButton, Value: "Weekly"},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+		},
+		{
+			name:     "so does a table cell whose content was moved into its value",
+			node:     accessibility.Node{Role: role.Cell, Value: "10"},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell, InterfaceText},
+		},
+		{
+			name:     "a value that is a number is reported as one instead",
+			node:     accessibility.Node{Role: role.Slider, Value: "40%", HasNumber: true, Number: 0.4},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceValue},
+		},
+		{
+			name:     "a node with no value at all has no text",
+			node:     accessibility.Node{Role: role.PopupButton},
+			expected: []string{InterfaceAccessible, InterfaceComponent},
+		},
+		{
+			name:     "and neither has a password field, whatever it is carrying",
+			node:     accessibility.Node{Role: role.TextField, Protected: true, Value: "hunter2"},
+			expected: []string{InterfaceAccessible, InterfaceComponent},
+		},
+		{
+			name: "text of its own is the real thing rather than a description of it",
+			node: accessibility.Node{
+				Role:  role.TextField,
+				Value: testFieldValue,
+				Text:  &accessibility.TextInfo{Text: testFieldValue},
+			},
+			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText},
+		},
+	} {
+		c.Equal(one.expected, Interfaces(&one.node), one.name)
+	}
+	// The states that describe text are not claimed for a synthesized one: they describe a control the user is inside,
+	// with a caret and a selection, which a value is not.
+	set := States(&accessibility.Node{Role: role.ComboBox, Value: "Weekly"}, true, false)
+	c.False(set.Has(StateEditable))
+	c.False(set.Has(StateSelectableText))
+	c.False(set.Has(StateSingleLine))
+}
+
+// TestTheEditableStateAndInterfaceAgree covers the pair that used to be derived from two different rules: the interface
+// from the actions the node offers and the state from its role and its text. A disabled field keeps its text while
+// axSnapshot strips its actions, so it claimed ATSPI_STATE_EDITABLE with no interface to edit it through.
+func TestTheEditableStateAndInterfaceAgree(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	for _, one := range []struct {
+		name     string
+		node     accessibility.Node
+		editable bool
+	}{
+		{
+			name: "a field that offers to have its text replaced",
+			node: accessibility.Node{
+				Role:    role.TextField,
+				Text:    &accessibility.TextInfo{Text: testFieldValue},
+				Actions: accessibility.ActionSet(0).With(accessibility.ReplaceText),
+			},
+			editable: true,
+		},
+		{
+			name: "a disabled field, whose actions have been stripped along with its sensitivity",
+			node: accessibility.Node{
+				Role:     role.TextField,
+				Disabled: true,
+				Text:     &accessibility.TextInfo{Text: testFieldValue},
+				Actions:  accessibility.ActionSet(0).With(accessibility.Focus),
+			},
+			editable: true,
+		},
+		{
+			name: "a field whose content cannot be changed at all",
+			node: accessibility.Node{
+				Role:     role.TextArea,
+				ReadOnly: true,
+				Text:     &accessibility.TextInfo{Text: "done"},
+			},
+		},
+		{
+			name: "a field that is not carrying its text",
+			node: accessibility.Node{
+				Role:    role.TextField,
+				Actions: accessibility.ActionSet(0).With(accessibility.ReplaceText),
+			},
+		},
+		{
+			name: "a role that is never typed into",
+			node: accessibility.Node{Role: role.Label, Text: &accessibility.TextInfo{Text: testLabelName}},
+		},
+	} {
+		c.Equal(one.editable, supportsEditableText(&one.node), one.name)
+		c.Equal(one.editable, slices.Contains(Interfaces(&one.node), InterfaceEditableText), one.name)
+		c.Equal(one.editable, States(&one.node, true, false).Has(StateEditable), one.name)
+	}
 }
 
 func TestLayerFor(t *testing.T) {

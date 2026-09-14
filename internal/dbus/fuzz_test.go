@@ -41,12 +41,14 @@ func FuzzDecode(f *testing.F) {
 			if err != nil {
 				return
 			}
-			if _, err = m.Args(); err != nil {
-				// An invalid body is fine; it just must not be fatal.
-				_ = err
-			}
+			_, argsErr := m.Args() // A body that does not match its signature is fine; it just must not be fatal
 			encoded, err := m.Encode()
 			if err != nil {
+				if m.bigEndianBody && argsErr != nil {
+					// A big-endian body that will not convert is the one body that cannot be written out again, since
+					// what a Message holds is always the little-endian encoding. See [Message.Encode].
+					continue
+				}
 				t.Fatalf("a decoded message failed to encode: %v (%s)", err, m)
 			}
 			again, err := Decode(bytes.NewReader(encoded))

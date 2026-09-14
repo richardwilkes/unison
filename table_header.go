@@ -591,8 +591,11 @@ func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequ
 	if key, isPanel := req.Key.(axCellPanelKey); isPanel {
 		return h.axPerformInColumnHeader(key, req)
 	}
+	// Bounded by the columns as well as by the column headers, which is what decides the set of column headers that are
+	// described: a header holding more column headers than the table has columns would otherwise be asked to sort on a
+	// column that does not exist, and CellDataForSort would be handed an out-of-range index.
 	col, ok := req.Key.(int)
-	if !ok || col < 0 || col >= len(h.ColumnHeaders) {
+	if !ok || col < 0 || col >= len(h.ColumnHeaders) || col >= len(h.table.Columns) {
 		return false
 	}
 	switch req.Action {
@@ -618,9 +621,13 @@ func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequ
 // was described at.
 func (h *TableHeader[T]) axPerformInColumnHeader(key axCellPanelKey, req accessibility.ActionRequest) bool {
 	col := key.Cell.Col
-	if col < 0 || col >= len(h.ColumnHeaders) {
+	if col < 0 || col >= len(h.ColumnHeaders) || col >= len(h.table.Columns) {
 		return false
 	}
+	// The key that brought the request here named one of the header's virtual children. What it is being handed to is a
+	// real panel, for which ActionRequest.Key is nil: a panel within a column header would otherwise be given a key it
+	// never handed out, and one that keys virtual children of its own would take this one for one of them.
+	req.Key = nil
 	panel := h.ColumnHeaders[col].AsPanel()
 	h.installCell(panel, h.ColumnFrame(col))
 	handled := false

@@ -74,6 +74,10 @@ func TestParseAddressErrors(t *testing.T) {
 		{in: "unix:abstract=", message: "empty abstract name"},
 		{in: "unix:abstract=,path=/a", message: "empty abstract name"},
 		{in: "unix:runtime=no", message: "unsupported runtime value"},
+		// A path that begins with "@" reaches the abstract namespace rather than the filesystem, both as it stands and
+		// in its escaped form, so it is refused rather than silently dialing something else.
+		{in: "unix:path=@foo", message: "path beginning with '@'"},
+		{in: "unix:path=%40foo", message: "path beginning with '@'"},
 		{in: "unix:path=%zz", message: "invalid escape"},
 		{in: "unix:path=/tmp/%2", message: "incomplete escape"},
 	} {

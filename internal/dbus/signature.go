@@ -495,16 +495,12 @@ func signatureOfOther(v any) (Signature, error) {
 		}
 		// A slice or array of dict entries is a dictionary however it was named, and signatureOfType deliberately
 		// refuses one so that the key and value types can be taken from the entries themselves, which is what happens
-		// here; without this a named dictionary type ends at signatureOfValue(DictEntry), which is an error.
+		// here; without this a named dictionary type ends at signatureOfValue(DictEntry), which is an error. The
+		// element type is already known to be a dict entry, so the entries are copied out wholesale rather than
+		// asserted one at a time.
 		if rv.Type().Elem() == dictEntryType {
 			entries := make(Dict, rv.Len())
-			for i := range entries {
-				entry, ok := rv.Index(i).Interface().(DictEntry)
-				if !ok {
-					return "", fmt.Errorf("dbus: cannot derive the signature of %T", v)
-				}
-				entries[i] = entry
-			}
+			reflect.Copy(reflect.ValueOf(entries), rv)
 			return signatureOfDict(entries)
 		}
 		values := make([]any, rv.Len())
@@ -520,28 +516,48 @@ func signatureOfOther(v any) (Signature, error) {
 	}
 }
 
+// signatureOfMap derives the signature of a Go map. A key or value type that implies no signature on its own falls back
+// to the keys or values the map actually holds, which every entry then has to agree on, since a dictionary has one key
+// type and one value type. Such a type is not only an interface: [signatureOfType] also declines an unsized integer, a
+// float32, a Go structure and a named dictionary type, so map[string]int reaches the fallback as surely as
+// map[any]string does, and the latter marshals perfectly well once its keys have been looked at.
 func signatureOfMap(rv reflect.Value) (Signature, error) {
-	keySig, ok := signatureOfType(rv.Type().Key())
-	if !ok || len(keySig) != 1 || !strings.ContainsRune(basicTypes, rune(keySig[0])) {
-		return "", fmt.Errorf("dbus: map key type %s cannot be a dict entry key", rv.Type().Key())
-	}
-	valSig, ok := signatureOfType(rv.Type().Elem())
-	if !ok {
-		// The value type carries no type information of its own (it is an interface), so fall back to the values.
+	keySig, keyKnown := signatureOfType(rv.Type().Key())
+	valSig, valKnown := signatureOfType(rv.Type().Elem())
+	if !keyKnown || !valKnown {
 		if rv.Len() == 0 {
 			return "", errEmptyDictNoType
 		}
 		for iter := rv.MapRange(); iter.Next(); {
-			sig, err := signatureOfValue(iter.Value().Interface())
-			if err != nil {
-				return "", err
+			if !keyKnown {
+				sig, err := signatureOfValue(iter.Key().Interface())
+				if err != nil {
+					return "", err
+				}
+				if keySig == "" {
+					keySig = sig
+				} else if keySig != sig {
+					return "", fmt.Errorf("dbus: map keys have differing types %q and %q", keySig, sig)
+				}
 			}
-			if valSig == "" {
-				valSig = sig
-			} else if valSig != sig {
-				return "", fmt.Errorf("dbus: map values have differing types %q and %q", valSig, sig)
+			if !valKnown {
+				sig, err := signatureOfValue(iter.Value().Interface())
+				if err != nil {
+					return "", err
+				}
+				if valSig == "" {
+					valSig = sig
+				} else if valSig != sig {
+					return "", fmt.Errorf("dbus: map values have differing types %q and %q", valSig, sig)
+				}
 			}
 		}
+	}
+	if len(keySig) != 1 || !strings.ContainsRune(basicTypes, rune(keySig[0])) {
+		if keyKnown {
+			return "", fmt.Errorf("dbus: map key type %s cannot be a dict entry key", rv.Type().Key())
+		}
+		return "", fmt.Errorf("dbus: map keys of type %q cannot be dict entry keys", keySig)
 	}
 	return "a{" + keySig + valSig + "}", nil
 }

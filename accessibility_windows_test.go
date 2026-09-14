@@ -46,9 +46,9 @@ func TestW32HandleGetObjectIgnoresOtherObjectIDs(t *testing.T) {
 		c.False(handled, "case %d: object id %d is not UI Automation's and must be left to DefWindowProc", i, objectID)
 		c.Equal(uintptr(0), result, "case %d", i)
 	}
-	// A UI Automation request for a window with nothing to describe is also unhandled, and must not have turned anything
-	// on while deciding that. The object id goes through a variable because a negative constant cannot be converted to
-	// the unsigned type an lParam is.
+	// A UI Automation request for a window with nothing to describe is also unhandled, and must not have turned
+	// anything on while deciding that. The object id goes through a variable because a negative constant cannot be
+	// converted to the unsigned type an lParam is.
 	uiaObjectID := w32.UiaRootObjectId
 	result, handled := w.w32HandleGetObject(0, w32.LPARAM(uiaObjectID))
 	c.False(handled, "a window with no root panel has nothing to describe")

@@ -511,7 +511,85 @@ func TestTextSelection(t *testing.T) {
 	c.Equal(accessibility.ActionRequest{
 		Node: 42, Action: accessibility.SetTextSelection, Start: 0, End: 2,
 	}, ta.nextRequest(t))
+
+	// A range that is reversed, or that reaches outside the content, is refused exactly as an offset outside it is.
+	// Bringing it within the content instead would turn AddSelection(3, 1) on the two-rune field into a collapsed
+	// caret and still report that a selection had been made, which the next snapshot would then contradict.
+	for _, one := range []struct {
+		start, end int32
+	}{
+		{start: 3, end: 1},
+		{start: -1, end: 2},
+		{start: 0, end: 3},
+		{start: 4, end: 5},
+	} {
+		c.Equal(false, ta.one(NodePath(42), InterfaceText, "AddSelection", "ii", one.start, one.end),
+			"%d to %d is not a range the field holds", one.start, one.end)
+		c.Equal(false, ta.one(NodePath(42), InterfaceText, "SetSelection", "iii", int32(0), one.start, one.end),
+			"%d to %d is not a range the field holds", one.start, one.end)
+	}
 	ta.noRequest(t)
+}
+
+// TestTextSynthesizedFromAValue covers the read-only text a node whose value is textual hands over. A popup menu
+// reports the item it has chosen as its Value and a color well the ink it holds; neither is a number, so neither has an
+// org.a11y.atspi.Value interface to be read through, and without this an assistive technology would be told what such a
+// control is called and never what is in it.
+func TestTextSynthesizedFromAValue(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	// The main window's field is carrying no text of its own, so its value is what there is to read.
+	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+		ta.one(NodePath(4), InterfaceAccessible, "GetInterfaces", ""))
+	c.Equal(int32(4), ta.peer.getProperty(NodePath(4), InterfaceText, "CharacterCount"))
+	c.Equal(int32(0), ta.peer.getProperty(NodePath(4), InterfaceText, "CaretOffset"),
+		"there is no caret in a value, so the start of the content is what is reported")
+	c.Equal(testFieldValue, ta.one(NodePath(4), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
+	c.Equal("re", ta.one(NodePath(4), InterfaceText, "GetText", "ii", int32(1), int32(3)))
+	c.Equal(int32('F'), ta.one(NodePath(4), InterfaceText, "GetCharacterAtOffset", "i", int32(0)))
+	c.Equal([]any{testFieldValue, int32(0), int32(4)},
+		ta.values(NodePath(4), InterfaceText, "GetStringAtOffset", "iu", int32(0), uint32(GranularityLine)))
+	c.Equal(int32(0), ta.one(NodePath(4), InterfaceText, "GetNSelections", ""), "and nothing is selected in one")
+
+	// Nothing about it can be changed: there is no caret to move, no selection to set, and no interface to type
+	// through. The states that describe a control the user is inside are not claimed either.
+	c.Equal(false, ta.one(NodePath(4), InterfaceText, "SetCaretOffset", "i", int32(2)))
+	c.Equal(false, ta.one(NodePath(4), InterfaceText, "AddSelection", "ii", int32(0), int32(2)))
+	c.Equal(false, ta.one(NodePath(4), InterfaceText, "SetSelection", "iii", int32(0), int32(0), int32(2)))
+	c.Equal(false, ta.one(NodePath(4), InterfaceText, "RemoveSelection", "i", int32(0)))
+	c.Equal(dbus.UnknownInterface,
+		ta.errorName(NodePath(4), InterfaceEditableText, "SetTextContents", "s", changedFieldValue))
+	states, ok := ta.one(NodePath(4), InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	var set StateSet
+	set[0], set[1] = states[0], states[1]
+	c.False(set.Has(StateEditable))
+	c.False(set.Has(StateSelectableText))
+	ta.noRequest(t)
+
+	// A popup menu is the case this exists for: its role has no text of its own at all, and the item it has chosen is
+	// its value.
+	popup := mainTree()
+	popup.Generation++
+	chooser := popup.Node(4)
+	chooser.Role = role.PopupButton
+	chooser.Value = "Weekly"
+	ta.Publish(mainWindow, popup, nil, sampleGeometry())
+	c.Equal(uint32(RoleComboBox), ta.one(NodePath(4), InterfaceAccessible, "GetRole", ""))
+	c.Equal("Weekly", ta.one(NodePath(4), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
+
+	// So is a populated table cell: Table.axAddRow clears such a cell's name and puts what its content reports into
+	// the value, which would otherwise leave the cell with nothing an assistive technology could read.
+	table := tableTree()
+	cell := table.Node(65)
+	cell.Name = ""
+	cell.Value = "10"
+	ta.Publish(tableWindow, table, nil, sampleGeometry())
+	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell, InterfaceText},
+		ta.one(NodePath(65), InterfaceAccessible, "GetInterfaces", ""))
+	c.Equal("10", ta.one(NodePath(65), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
+	c.Equal("", ta.peer.getProperty(NodePath(65), InterfaceAccessible, "Name"))
 }
 
 // TestEditableText covers the only way AT-SPI has of putting characters into a control. org.a11y.atspi.Text moves the

@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -328,11 +329,12 @@ func (t *dockTab) ProvideAccessibility(b *AccessibilityBuilder) {
 		node.Description = t.dockable.Tooltip()
 	}
 	if t.dockable.Modified() {
-		modified := i18n.Text("Modified")
 		if node.Description == "" {
-			node.Description = modified
+			node.Description = i18n.Text("Modified")
 		} else {
-			node.Description += ", " + modified
+			// A format string rather than a concatenation, so that a language needing the marker somewhere other than
+			// after the description it is added to, or joined with something other than a comma, can say so.
+			node.Description = fmt.Sprintf(i18n.Text("%s, Modified"), node.Description)
 		}
 	}
 	node.Selectable = true

@@ -274,7 +274,10 @@ func TestWatchColorScheme(t *testing.T) {
 		default:
 		}
 	})
-	c.Equal("type='signal',interface='org.freedesktop.portal.Settings',member='SettingChanged'", peer.nextRule())
+	// The rule names the sender, which is the only place that can be enforced: it is what keeps any other process on
+	// the user's session bus from flipping the application between light and dark with a signal of its own.
+	c.Equal("type='signal',sender='org.freedesktop.portal.Desktop',"+
+		"interface='org.freedesktop.portal.Settings',member='SettingChanged'", peer.nextRule())
 
 	// Everything but the last of these is for something other than the color scheme, or is not shaped the way the
 	// portal documents, so only the last one may be reported. Signals are delivered in order, so receiving it proves

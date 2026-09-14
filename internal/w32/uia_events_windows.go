@@ -58,8 +58,8 @@ const uiaAnnouncementActivity = "unison"
 //
 // Nothing is raised unless a client is listening, and the question is not even asked for a publish with no events
 // behind it — which is most of them, since a window republishes its snapshot after every redraw. The exception is the
-// first publish, identified by there being no previous snapshot: a dialog announces itself then, and no event stands
-// behind that.
+// first publish, identified by there being no previous snapshot: the window reports that it opened then, and no event
+// stands behind that.
 func (w *UIAWindow) raiseEvents(old, cur *accessibility.Tree, events []accessibility.Event) {
 	if len(events) == 0 && old != nil {
 		return
@@ -94,8 +94,6 @@ func (w *UIAWindow) raiseOne(old, cur *accessibility.Tree, raise UIARaise) {
 		p.raisePropertyChanged(old, cur, raise.Property)
 	case UIARaiseStructure:
 		uiaRaiseStructureChangedEvent(p.Unknown(), raise.Change, uiaStructureRuntimeID(raise))
-	case UIARaiseNotify:
-		p.raiseNotification(raise.Text)
 	default:
 	}
 }

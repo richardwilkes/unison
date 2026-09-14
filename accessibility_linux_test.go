@@ -34,8 +34,10 @@ import (
 // point where the bus is dialed belongs to internal/atspi, which is tested in full on every platform, and the rest is
 // checked by hand with Orca and accerciser.
 
-// a11yTestTimeout is how long these tests wait for something that should happen at once.
-const a11yTestTimeout = 2 * time.Second
+// a11yTestTimeout is how long these tests wait for something that ought to happen at once. It only bounds how long a
+// failure takes to report, so it is generous enough to ride out the multi-second stalls a loaded CI runner can suffer,
+// as internal/x11's portalTestTimeout is.
+const a11yTestTimeout = 10 * time.Second
 
 // a11yTestSettle is how long these tests give something that should not happen at all a chance to happen anyway.
 const a11yTestSettle = 250 * time.Millisecond
@@ -76,6 +78,30 @@ func saveA11yState(t *testing.T) {
 	linuxA11yCurrentAttempt = 0
 	linuxA11yJoining = false
 	t.Setenv("NO_AT_BRIDGE", "")
+}
+
+// runQueuedA11yTasks runs the tasks the user interface thread has been handed, waiting until at least the expected
+// number of them have arrived, and returns how many it ran. What provokes them here is a goroutine of the watch's or
+// the join's own, so one has not necessarily been queued by the time the call that provoked it has returned.
+//
+// Running them inside the test that caused them is what keeps the process-wide state they write inside the window
+// saveA11yState puts that state back in: no event loop runs during these tests, so a task left behind would be run by
+// whatever came next, long after the cleanup had restored everything it touches.
+func runQueuedA11yTasks(t *testing.T, expected int) int {
+	t.Helper()
+	deadline := time.Now().Add(a11yTestTimeout)
+	ran := 0
+	for {
+		if length, head := taskQueueState(); length > head {
+			processNextTask()
+			ran++
+			continue
+		}
+		if ran >= expected || time.Now().After(deadline) {
+			return ran
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 // TestLinuxA11yMode covers the decision that is made before the session bus is consulted at all. Only the ordinary
@@ -154,6 +180,10 @@ func TestLinuxA11yStatusInitIsRefusedByEnvironment(t *testing.T) {
 func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 	c := check.New(t)
 	saveA11yState(t)
+	// So that the one task the watch queues below is the only one there is to run, whatever earlier work in this
+	// process left behind. Those closures belong to tests that are over, as the ones a headless session drops on its
+	// way up do.
+	resetTaskQueue()
 	snapshots := axSnapshotCount
 	wasActive := IsAccessibilityActive()
 	bus := newFakeSessionBus(t)
@@ -174,6 +204,11 @@ func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 	// cannot be missed; it is still read only the once, and the answer — nothing is listening — starts nothing.
 	c.Equal(1, bus.waitForReads(1), "the launcher's IsEnabled property should have been read")
 	c.Equal(1, bus.settledReads(1), "and should have been read exactly once")
+
+	// The watch hands the answer to the user interface thread, so it is run here rather than being left in the queue
+	// for whatever runs next, which would write this test's state back after its cleanup had restored it.
+	c.Equal(1, runQueuedA11yTasks(t, 1), "the answer should have been handed to the user interface thread")
+
 	c.Nil(linuxA11y, "nothing is listening, so no adapter should have been created")
 	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
 	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
@@ -193,7 +228,7 @@ func TestLinuxA11yHooksAreInertWithoutAnAdapter(t *testing.T) {
 	w.nativeAccessibilityPublish(&accessibility.Tree{}, nil)
 	w.nativeAccessibilityGeometryChanged()
 	w.nativeAccessibilityShutdown()
-	w.x11RefreshAccessibilityGeometry()
+	w.x11RefreshAccessibilityGeometry(geom.NewPoint(10, 20))
 	nativeAccessibilityAnnounce("nobody is listening")
 	linuxSetA11yEnabled(false) // Turning support off when it was never on does nothing
 	linuxA11yTerminate()
@@ -248,6 +283,77 @@ func TestLinuxA11yForcedModeActivatesWithoutABus(t *testing.T) {
 	c.False(IsAccessibilityActive())
 }
 
+// TestLinuxA11yRejoinKeepsForcedModeBuilding covers the same promise for the losses after the first one. Only one
+// rebuild is attempted for each thing the desktop says, and in forced mode the desktop says nothing at all — no watch
+// is created, so nothing ever clears linuxA11yRejoinAttempted — so the second loss of the accessibility bus connection
+// stops short of dialing again. Snapshot building, which the adapter took with it, still has to come back: it is the
+// half of the promise that has nothing to do with there being a bus.
+func TestLinuxA11yRejoinKeepsForcedModeBuilding(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	wasActive := IsAccessibilityActive()
+	t.Cleanup(func() {
+		if !wasActive {
+			deactivateAccessibility()
+		}
+	})
+	// Nothing on this path may reach the session bus: the rebuild is not attempted, and forced mode would not ask the
+	// desktop in any case.
+	t.Cleanup(dbus.SetSessionForTest(nil, errors.New("the session bus must not be reached")))
+	accessibilityEnv.Store(1)
+	linuxA11yRejoinAttempted = true // As the first loss left it
+	linuxA11yRejoin()
+	c.True(IsAccessibilityActive(), "the environment asked for snapshots whatever the desktop reports")
+	c.Nil(linuxA11y, "but the one rebuild a loss is allowed has already been used up")
+	c.False(linuxA11yJoining, "so nothing may be being joined")
+
+	// The ordinary case, where the desktop decides, has nothing to keep on for.
+	deactivateAccessibility()
+	accessibilityEnv.Store(0)
+	linuxA11yRejoinAttempted = true
+	linuxA11yRejoin()
+	c.False(IsAccessibilityActive())
+
+	// Nor may an application the desktop has told to stay away from the accessibility bus have anything turned back
+	// on. NO_AT_BRIDGE refuses the mode without refusing activateAccessibility, so the mode is all that stands between
+	// a forced-on application and snapshots the desktop has said it does not want.
+	accessibilityEnv.Store(1)
+	t.Setenv("NO_AT_BRIDGE", "1")
+	linuxA11yRejoinAttempted = true
+	linuxA11yRejoin()
+	c.False(IsAccessibilityActive())
+}
+
+// TestLinuxA11yRejoinDialsAgainOnTheFirstLoss covers the other half: the first loss in forced mode both turns snapshot
+// building back on and dials the accessibility bus once more, since the launcher will have a new bus up by the time the
+// dial arrives. There is nothing to reach here, so what the attempt produces is an error, which leaves snapshot
+// building on and the adapter empty.
+func TestLinuxA11yRejoinDialsAgainOnTheFirstLoss(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	resetTaskQueue()
+	wasActive := IsAccessibilityActive()
+	t.Cleanup(func() {
+		if !wasActive {
+			deactivateAccessibility()
+		}
+	})
+	// There must be nothing to join: no session bus to ask for the address, no address in the environment, and no X11
+	// connection to read the root window's property from during a test.
+	t.Cleanup(dbus.SetSessionForTest(nil, errors.New("there is no session bus")))
+	t.Setenv("AT_SPI_BUS_ADDRESS", "")
+	accessibilityEnv.Store(1)
+	linuxA11yRejoin()
+	c.True(linuxA11yRejoinAttempted, "the one rebuild a loss is allowed must have been used up")
+	c.True(linuxA11yJoining, "and must be in flight")
+
+	// The join reports back through the user interface thread, which nothing else is running here.
+	c.Equal(1, runQueuedA11yTasks(t, 1), "the join should have reported back")
+	c.False(linuxA11yJoining, "the attempt must have been reported as finished")
+	c.Nil(linuxA11y, "a join that failed must leave nothing behind")
+	c.True(IsAccessibilityActive(), "but snapshot building must be on, since the environment asked for it")
+}
+
 // TestLinuxA11yFinishStartIgnoresASupersededAttempt covers the race joining the accessibility bus off the user
 // interface thread creates: support may be turned off, or asked for again, while a join is in flight, and the answer to
 // a question nobody is waiting for any more must not be installed behind the back of what was decided since.
@@ -297,16 +403,60 @@ func TestLinuxA11yGeometry(t *testing.T) {
 	c.Equal(geom.NewPoint(100, 50), contentOrigin, "the content area is where it was put, in logical units")
 	c.Equal(geom.NewPoint(200, 100), geometry.Origin, "and is reported to AT-SPI in the X server's pixels")
 	c.Equal(geom.NewPoint(2, 2), geometry.Scale, "along with the scale node bounds have to be multiplied by")
+
+	// A window on a display to the left of or above the primary one sits at a negative origin, which the conversion
+	// has to carry through rather than clamping: an assistive technology places its highlight from these numbers.
+	screen.Do(func() {
+		wnd.SetContentRect(geom.NewRect(-960, -20, 200, 150))
+		geometry = wnd.linuxA11yGeometry()
+	})
+	c.Equal(geom.NewPoint(-1920, -40), geometry.Origin, "a negative origin must survive the conversion")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestLinuxA11yGeometryFor covers the conversion itself for the cases a window cannot be put in, such as a display to
-// the left of the primary one, whose negative origin must survive.
-func TestLinuxA11yGeometryFor(t *testing.T) {
+// TestLinuxA11yWindowManagerMinimizeMarksForPublish covers the minimize the window manager performs by itself, which
+// Window.Minimize never sees: a taskbar, switching workspaces and "show desktop" all iconify a window that need not
+// hold the keyboard focus, and only one that does is rescued by the FocusOut that follows it. Marking the window for
+// publish is what has the event loop find a window it cannot draw and withdraw it from the accessibility tree, so
+// without it a window nobody can see goes on being listed as showing and visible.
+func TestLinuxA11yWindowManagerMinimizeMarksForPublish(t *testing.T) {
 	c := check.New(t)
-	geometry := linuxA11yGeometryFor(geom.NewPoint(-1920, 0), geom.NewPoint(1, 1))
-	c.Equal(geom.NewPoint(-1920, 0), geometry.Origin)
-	c.Equal(geom.NewPoint(1, 1), geometry.Scale)
+	saveA11yState(t)
+	swapRedrawSet(t)
+	wasActive := IsAccessibilityActive()
+	t.Cleanup(func() {
+		if !wasActive {
+			deactivateAccessibility()
+		}
+	})
+	c.True(activateAccessibility(), "snapshot building should have been turned on")
+	w := newRedrawTestWindow()
+	var minimizedCalls []bool
+	w.MinimizedCallback = func(minimized bool) { minimizedCalls = append(minimizedCalls, minimized) }
+	marked := func() bool {
+		_, pending := redrawSet[w]
+		delete(redrawSet, w)
+		return pending
+	}
+	c.False(marked(), "the window has just been built, so nothing has marked it")
+
+	w.x11SetMinimized(true)
+	c.True(marked(), "a window the window manager iconified must be described again, so the event loop withdraws it")
+
+	w.x11SetMinimized(false)
+	c.True(marked(), "and so must one it restored, which is what puts the window back into the tree")
+	c.Equal([]bool{true, false}, minimizedCalls)
+
+	// A report of the state already in effect changes nothing, so there is nothing to describe.
+	w.x11SetMinimized(false)
+	c.False(marked())
+	c.Equal([]bool{true, false}, minimizedCalls)
+
+	// An application nothing is listening to pays one atomic load for this and nothing else.
+	deactivateAccessibility()
+	w.x11SetMinimized(true)
+	c.False(marked())
+	c.Equal([]bool{true, false, true}, minimizedCalls, "the callback is not an accessibility matter")
 }
 
 // TestLinuxToolkitVersionFrom verifies the version reported to an assistive technology. Unison is normally one of the

@@ -88,6 +88,9 @@ func sampleTree() *accessibility.Tree {
 // TestUIAControlType verifies the role-to-control-type table, and that it covers every role: a role added to the enum
 // without a decision here would silently become Custom, which is the wrong answer for anything UI Automation has a
 // control type for.
+//
+// Every node here is the tree's root, which is what a window-like role needs to be to report the Window control type;
+// TestUIAControlTypeNested covers the nested case.
 func TestUIAControlType(t *testing.T) {
 	c := check.New(t)
 	expected := map[role.Enum]ControlTypeID{
@@ -131,17 +134,39 @@ func TestUIAControlType(t *testing.T) {
 		role.Image:              UIA_ImageControlTypeId,
 		role.ColorWell:          UIA_ButtonControlTypeId,
 		role.Tooltip:            UIA_ToolTipControlTypeId,
-		role.Document:           UIA_DocumentControlTypeId,
-		role.Toolbar:            UIA_ToolBarControlTypeId,
-		role.Unknown:            UIA_CustomControlTypeId,
+		// A document is a group: the document control type requires the Text pattern, which nothing here implements, so
+		// a client would ask for the one pattern every document has and be handed NULL. The Cocoa adapter treats the
+		// role the same way.
+		role.Document: UIA_GroupControlTypeId,
+		role.Toolbar:  UIA_ToolBarControlTypeId,
+		role.Unknown:  UIA_CustomControlTypeId,
 	}
 	c.Equal(len(role.All), len(expected))
 	for _, r := range role.All {
 		want, ok := expected[r]
 		c.True(ok, "no control type expected for role %s", r.Key())
-		c.Equal(want, UIAControlType(&accessibility.Node{ID: 1, Role: r}), "role %s", r.Key())
+		node := &accessibility.Node{ID: 1, Role: r}
+		c.Equal(want, UIAControlType(newTestTree(1, 0, node), node), "role %s", r.Key())
 	}
-	c.Equal(UIA_CustomControlTypeId, UIAControlType(nil))
+	c.Equal(UIA_CustomControlTypeId, UIAControlType(nil, nil))
+}
+
+// TestUIAControlTypeNested verifies that only the fragment root reports the Window control type. The Window control
+// type lists IWindowProvider as a required pattern and the provider hands that interface out for the root alone, so a
+// dialog-shaped panel inside a window must report Pane instead of advertising a pattern it refuses.
+func TestUIAControlTypeNested(t *testing.T) {
+	c := check.New(t)
+	tree := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2, 3}},
+		&accessibility.Node{ID: 2, Role: role.Dialog},
+		&accessibility.Node{ID: 3, Role: role.Window},
+	)
+	c.Equal(UIA_WindowControlTypeId, UIAControlType(tree, tree.Node(1)))
+	c.Equal(UIA_PaneControlTypeId, UIAControlType(tree, tree.Node(2)))
+	c.Equal(UIA_PaneControlTypeId, UIAControlType(tree, tree.Node(3)))
+
+	// With no tree to ask, nothing can be said to be the root, so the cautious answer is the nested one.
+	c.Equal(UIA_PaneControlTypeId, UIAControlType(nil, tree.Node(1)))
 }
 
 // TestUIAPatterns verifies the role-to-patterns table, including the handful of roles whose patterns depend on state.
@@ -171,8 +196,14 @@ func TestUIAPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.ColumnHeader}, patterns: PatternInvoke},
 		{node: &accessibility.Node{Role: role.ColorWell}, patterns: PatternInvoke | PatternValue},
 		{node: &accessibility.Node{Role: role.ToggleButton}, patterns: PatternToggle},
-		{node: &accessibility.Node{Role: role.DisclosureTriangle}, patterns: PatternToggle},
 		{node: &accessibility.Node{Role: role.CheckBox}, patterns: PatternToggle},
+		// A disclosure triangle expands whatever it is attached to, and the state it reports is reachable only through
+		// the ExpandCollapse pattern, so the pattern follows the flag exactly as a row's and a menu item's do.
+		{node: &accessibility.Node{Role: role.DisclosureTriangle}, patterns: PatternToggle},
+		{
+			node:     &accessibility.Node{Role: role.DisclosureTriangle, Expandable: true},
+			patterns: PatternToggle | PatternExpandCollapse,
+		},
 		{node: &accessibility.Node{Role: role.RadioButton}, patterns: PatternSelectionItem},
 		{node: &accessibility.Node{Role: role.TextField}, patterns: PatternValue},
 		{node: &accessibility.Node{Role: role.TextArea}, patterns: PatternValue},
@@ -188,8 +219,13 @@ func TestUIAPatterns(t *testing.T) {
 		},
 		{node: &accessibility.Node{Role: role.ComboBox}, patterns: PatternValue | PatternExpandCollapse},
 		{node: &accessibility.Node{Role: role.PopupButton}, patterns: PatternValue | PatternExpandCollapse},
-		{node: &accessibility.Node{Role: role.Slider}, patterns: PatternRangeValue},
-		{node: &accessibility.Node{Role: role.ScrollBar}, patterns: PatternRangeValue},
+		// A slider and a scroll bar have a range only once they have a number, for the reason a spin button and a
+		// progress bar do: the roles are public API, and RangeValue answering zero for the value, the bounds and the
+		// increments reads as "0 percent".
+		{node: &accessibility.Node{Role: role.Slider}},
+		{node: &accessibility.Node{Role: role.Slider, HasNumber: true}, patterns: PatternRangeValue},
+		{node: &accessibility.Node{Role: role.ScrollBar}},
+		{node: &accessibility.Node{Role: role.ScrollBar, HasNumber: true}, patterns: PatternRangeValue},
 		{node: &accessibility.Node{Role: role.ProgressBar}},
 		{node: &accessibility.Node{Role: role.ProgressBar, HasNumber: true}, patterns: PatternRangeValue},
 		{node: &accessibility.Node{Role: role.List}, patterns: PatternSelection},
@@ -204,6 +240,12 @@ func TestUIAPatterns(t *testing.T) {
 			patterns: PatternSelectionItem | PatternExpandCollapse,
 		},
 		{node: &accessibility.Node{Role: role.Cell}, patterns: PatternGridItem | PatternTableItem},
+		// A cell holding one widget reports that widget's state as its own value, which a client can only read through
+		// the Value pattern.
+		{
+			node:     &accessibility.Node{Role: role.Cell, Value: "checked"},
+			patterns: PatternGridItem | PatternTableItem | PatternValue,
+		},
 		{node: &accessibility.Node{Role: role.Menu}},
 		{node: &accessibility.Node{Role: role.MenuItem}, patterns: PatternInvoke},
 		{node: &accessibility.Node{Role: role.MenuItem, HasCheck: true}, patterns: PatternInvoke | PatternToggle},
@@ -274,13 +316,15 @@ func TestPatternSet(t *testing.T) {
 	c.Equal("", PatternSet(0).String())
 }
 
-// TestUIAIdentifierValues pins the numeric value of every UI Automation identifier this package declares. Nothing else
-// does: the mapping tests compare one symbol against another, so a transposed value — DataGrid's 50028 written where
-// DataItem's 50029 belongs, or one property id given another's number — would pass the whole suite while making a
-// screen reader describe elements as the wrong kind of thing, or read a property no client asked for.
+// TestUIAIdentifierValues pins every hand-written number in uia_constants.go: the identifiers UI Automation defines,
+// the provider options, the VARIANT type tags and VARIANT_BOOL values from wtypes.h, and the HRESULTs a provider
+// refuses with. Nothing else does: the mapping tests compare one symbol against another, so a transposed value —
+// DataGrid's 50028 written where DataItem's 50029 belongs, or one property id given another's number — would pass the
+// whole suite while making a screen reader describe elements as the wrong kind of thing, or read a property no client
+// asked for.
 //
 // A client resolves none of these by name, so the numbers are the entire interface. They are the values in the Windows
-// SDK's uiautomationcoreapi.h and uiautomationcore.idl, which is where a reader checks them.
+// SDK's uiautomationcoreapi.h, uiautomationcore.idl and wtypes.h, which is where a reader checks them.
 func TestUIAIdentifierValues(t *testing.T) {
 	c := check.New(t)
 
@@ -441,6 +485,36 @@ func TestUIAIdentifierValues(t *testing.T) {
 	// The two bare integers UI Automation defines: the WM_GETOBJECT lParam and the runtime-id prefix.
 	c.Equal(int32(-25), UiaRootObjectId)
 	c.Equal(int32(3), UiaAppendRuntimeId)
+
+	// The provider options, which are bit values rather than a sequence: get_ProviderOptions reports
+	// ServerSideProvider, and reporting ClientSideProvider or UseComThreading by accident would have UI Automation
+	// treat a free-threaded server-side provider as something else entirely.
+	c.Equal(ProviderOptions(0x1), ProviderOptions_ClientSideProvider)
+	c.Equal(ProviderOptions(0x2), ProviderOptions_ServerSideProvider)
+	c.Equal(ProviderOptions(0x4), ProviderOptions_NonClientAreaProvider)
+	c.Equal(ProviderOptions(0x8), ProviderOptions_OverrideProvider)
+	c.Equal(ProviderOptions(0x10), ProviderOptions_ProviderOwnsSetFocus)
+	c.Equal(ProviderOptions(0x20), ProviderOptions_UseComThreading)
+
+	// The VARIANT type tags and the VARIANT_BOOL values, which are wtypes.h's rather than UI Automation's. A wrong tag
+	// has a client read a property's bits as the wrong type, and a VARIANT_BOOL of one rather than every bit set is
+	// neither true nor false to most COM clients.
+	c.Equal(VARTYPE(0), VT_EMPTY)
+	c.Equal(VARTYPE(3), VT_I4)
+	c.Equal(VARTYPE(5), VT_R8)
+	c.Equal(VARTYPE(8), VT_BSTR)
+	c.Equal(VARTYPE(11), VT_BOOL)
+	c.Equal(VARTYPE(13), VT_UNKNOWN)
+	c.Equal(VARTYPE(0x2000), VT_ARRAY)
+	c.Equal(int16(-1), VARIANT_TRUE)
+	c.Equal(int16(0), VARIANT_FALSE)
+
+	// The UI Automation HRESULTs a provider refuses with. A client turns each into a different error, and the whole
+	// distinction between "gone", "never did that" and "not just now" is these four numbers.
+	c.Equal(uint64(0x80040200), UIA_E_ELEMENTNOTENABLED)
+	c.Equal(uint64(0x80040201), UIA_E_ELEMENTNOTAVAILABLE)
+	c.Equal(uint64(0x80040204), UIA_E_NOTSUPPORTED)
+	c.Equal(uint64(0x80131509), UIA_E_INVALIDOPERATION)
 }
 
 // TestUIAViews verifies which nodes belong to the control and content views. The interesting case is a label: it stays
@@ -472,12 +546,13 @@ func TestUIAViews(t *testing.T) {
 	c.False(UIAIsContentElement(lone, lone.Node(5)))
 }
 
-// TestUIAHasKeyboardFocus verifies that exactly one element of a fragment claims the keyboard focus, and only while the
+// TestUIAHasKeyboardFocus verifies that at most one element of a fragment claims the keyboard focus, and only while the
 // window is the active one.
 //
 // The root is the trap: its Focused flag says the window is active rather than that the window itself is where typing
 // goes, so answering the property from that flag would have the root claim the focus alongside the control that really
-// has it — while reporting that it cannot be focused at all, since a root is never focusable.
+// has it — while reporting that it cannot be focused at all, since a root is never focusable. It claims nothing for an
+// empty focus either, which is the answer GetFocus gives for one.
 func TestUIAHasKeyboardFocus(t *testing.T) {
 	c := check.New(t)
 	tree := sampleTree()
@@ -491,12 +566,19 @@ func TestUIAHasKeyboardFocus(t *testing.T) {
 	c.False(UIAHasKeyboardFocus(inactive, inactive.Node(4)))
 	c.False(UIAHasKeyboardFocus(inactive, inactive.Node(1)))
 
-	// With nothing inside the window focused, the root is where the keyboard is.
+	// With nothing inside the window focused, no element claims the keyboard: the root would have to report
+	// HasKeyboardFocus true alongside IsKeyboardFocusable false, which is a pair a client cannot make sense of, and
+	// IRawElementProviderFragmentRoot::GetFocus answers with a NULL element in exactly this case.
 	bare := sampleTree()
 	bare.Focus = 0
 	bare.Node(4).Focused = false
-	c.True(UIAHasKeyboardFocus(bare, bare.Node(1)))
+	c.False(UIAHasKeyboardFocus(bare, bare.Node(1)))
 	c.False(UIAHasKeyboardFocus(bare, bare.Node(4)), "a stale Focused flag does not decide it; the tree's Focus does")
+
+	// A stale Focused flag on the node the tree still names is not what decides it either.
+	stale := sampleTree()
+	stale.Focus = 0
+	c.False(UIAHasKeyboardFocus(stale, stale.Node(4)))
 
 	c.False(UIAHasKeyboardFocus(nil, tree.Node(4)))
 	c.False(UIAHasKeyboardFocus(tree, nil))
@@ -790,8 +872,8 @@ func eventTree() *accessibility.Tree {
 	)
 }
 
-// raiseEvent, raiseProperty, raiseStructure, raiseNotify and raiseDisconnect build the expected results of
-// UIADecideRaises, so that a test reads as a list of calls rather than as a list of struct literals.
+// raiseEvent, raiseProperty, raiseStructure and raiseDisconnect build the expected results of UIADecideRaises, so that
+// a test reads as a list of calls rather than as a list of struct literals.
 func raiseEvent(node accessibility.NodeID, id EventID) UIARaise {
 	return UIARaise{Kind: UIARaiseEvent, Node: node, Event: id}
 }
@@ -802,10 +884,6 @@ func raiseProperty(node accessibility.NodeID, id PropertyID) UIARaise {
 
 func raiseStructure(node, child accessibility.NodeID, change StructureChangeType) UIARaise {
 	return UIARaise{Kind: UIARaiseStructure, Node: node, Child: child, Change: change}
-}
-
-func raiseNotify(node accessibility.NodeID, text string) UIARaise {
-	return UIARaise{Kind: UIARaiseNotify, Node: node, Text: text}
 }
 
 func raiseDisconnect(node accessibility.NodeID) UIARaise {
@@ -835,8 +913,41 @@ func TestUIADecideRaisesFocus(t *testing.T) {
 	c.Nil(UIADecideRaises(eventTree(), cur, events))
 }
 
-// TestUIADecideRaisesWindowOpened verifies that the first publish of a dialog announces the dialog, which is how a
-// screen reader knows to read the whole thing out, and that an ordinary window does not.
+// TestUIADecideRaisesFocusCleared verifies that the focus moving to nothing is reported on the fragment root. A client
+// answers a focus event by moving its cursor to the element the event names, so saying nothing at all would leave it on
+// an element that has just stopped being focused; the root is the only element left to name, and a client that follows
+// the event up is told by GetFocus that the fragment holds no focus.
+func TestUIADecideRaisesFocusCleared(t *testing.T) {
+	c := check.New(t)
+	cleared := eventTree()
+	cleared.Focus = 0
+	cleared.Node(2).Focused = false
+	c.Equal([]UIARaise{raiseEvent(1, UIA_AutomationFocusChangedEventId)},
+		UIADecideRaises(eventTree(), cleared, accessibility.Diff(eventTree(), cleared)))
+
+	// A window becoming active with nothing inside it focused points the client at the window itself for the same
+	// reason.
+	c.Equal([]UIARaise{raiseEvent(1, UIA_AutomationFocusChangedEventId)},
+		UIADecideRaises(eventTree(), cleared, []accessibility.Event{
+			{Kind: accessibility.WindowActivated, Node: 1},
+		}))
+
+	// An inactive window still says nothing, however its focus moved.
+	background := eventTree()
+	background.Focus = 0
+	background.Node(1).Focused = false
+	background.Node(2).Focused = false
+	c.Nil(UIADecideRaises(eventTree(), background, []accessibility.Event{
+		{Kind: accessibility.FocusChanged, Node: 0},
+	}))
+}
+
+// TestUIADecideRaisesWindowOpened verifies that the first publish of a window announces that it opened, which is how a
+// screen reader knows to read a dialog out as it appears.
+//
+// Every root raises it, not only a dialog: UIAWindow.Destroy raises Window_WindowClosed for every window, and the
+// Window control type lists both events as required, so a client tracking window lifetimes must not be told that a
+// window it was never told about has closed.
 func TestUIADecideRaisesWindowOpened(t *testing.T) {
 	c := check.New(t)
 	dialog := eventTree()
@@ -847,10 +958,12 @@ func TestUIADecideRaisesWindowOpened(t *testing.T) {
 	}, UIADecideRaises(nil, dialog, accessibility.Diff(nil, dialog)))
 
 	window := eventTree()
-	c.Equal([]UIARaise{raiseEvent(2, UIA_AutomationFocusChangedEventId)},
-		UIADecideRaises(nil, window, accessibility.Diff(nil, window)))
+	c.Equal([]UIARaise{
+		raiseEvent(1, UIA_Window_WindowOpenedEventId),
+		raiseEvent(2, UIA_AutomationFocusChangedEventId),
+	}, UIADecideRaises(nil, window, accessibility.Diff(nil, window)))
 
-	// Every publish after the first one has a previous snapshot to compare against, and announces nothing: a dialog
+	// Every publish after the first one has a previous snapshot to compare against, and announces nothing: a window
 	// that said it had opened on every redraw would be read out again each time.
 	next := eventTree()
 	next.Node(1).Role = role.Dialog
@@ -890,18 +1003,63 @@ func TestUIADecideRaisesInvalidationOrder(t *testing.T) {
 	}), "the invalidation still drops the child events when it arrives last")
 }
 
-// TestUIADecideRaisesTextProperties verifies the straightforward one-event-to-one-property translations.
+// TestUIADecideRaisesTextProperties verifies the straightforward one-event-to-one-property translations, and the one
+// event that reports two properties: the provider answers both HelpText and FullDescription from Node.Description, so
+// a client that cached FullDescription and heard only about HelpText would keep a stale value forever.
 func TestUIADecideRaisesTextProperties(t *testing.T) {
 	c := check.New(t)
 	cur := eventTree()
 	c.Equal([]UIARaise{
 		raiseProperty(2, UIA_NamePropertyId),
 		raiseProperty(2, UIA_HelpTextPropertyId),
+		raiseProperty(2, UIA_FullDescriptionPropertyId),
 		raiseProperty(3, UIA_ItemStatusPropertyId),
 	}, UIADecideRaises(eventTree(), cur, []accessibility.Event{
 		{Kind: accessibility.NameChanged, Node: 2, Old: "a", New: "b"},
 		{Kind: accessibility.DescriptionChanged, Node: 2},
 		{Kind: accessibility.SortChanged, Node: 3},
+	}))
+}
+
+// TestUIADecideRaisesAttributes verifies that an attributes change reports every property the provider derives from the
+// fields that event covers. The event does not say which of them changed — a watermark, a level, a row index, an
+// orientation or one of the three relations — so each of the properties GetPropertyValue answers from them is reported
+// once, in a fixed order.
+func TestUIADecideRaisesAttributes(t *testing.T) {
+	c := check.New(t)
+	c.Equal([]UIARaise{
+		raiseProperty(2, UIA_HelpTextPropertyId),
+		raiseProperty(2, UIA_LevelPropertyId),
+		raiseProperty(2, UIA_PositionInSetPropertyId),
+		raiseProperty(2, UIA_SizeOfSetPropertyId),
+		raiseProperty(2, UIA_OrientationPropertyId),
+		raiseProperty(2, UIA_LabeledByPropertyId),
+		raiseProperty(2, UIA_DescribedByPropertyId),
+		raiseProperty(2, UIA_ControllerForPropertyId),
+	}, UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: 2},
+	}))
+
+	// An ignored node has no provider, so nothing is raised for it at all.
+	c.Nil(UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: 9},
+	}))
+
+	// A description change alongside it reports HelpText once: the two events ask for the same property, and a client
+	// hearing about it twice would read the same value twice.
+	c.Equal([]UIARaise{
+		raiseProperty(2, UIA_HelpTextPropertyId),
+		raiseProperty(2, UIA_FullDescriptionPropertyId),
+		raiseProperty(2, UIA_LevelPropertyId),
+		raiseProperty(2, UIA_PositionInSetPropertyId),
+		raiseProperty(2, UIA_SizeOfSetPropertyId),
+		raiseProperty(2, UIA_OrientationPropertyId),
+		raiseProperty(2, UIA_LabeledByPropertyId),
+		raiseProperty(2, UIA_DescribedByPropertyId),
+		raiseProperty(2, UIA_ControllerForPropertyId),
+	}, UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
+		{Kind: accessibility.DescriptionChanged, Node: 2},
+		{Kind: accessibility.AttributesChanged, Node: 2},
 	}))
 }
 
@@ -926,6 +1084,24 @@ func TestUIADecideRaisesValue(t *testing.T) {
 			{Kind: accessibility.ValueChanged, Node: 8},
 			{Kind: accessibility.NumberChanged, Node: 8},
 		}))
+
+	// A cell whose one widget changed state reports its value, which is the Value pattern's property: a screen reader
+	// reading across a row asks the cell, so a change to the widget has to arrive as a change to the cell.
+	cells := func(value string) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Focused: true, Children: []accessibility.NodeID{2}},
+			&accessibility.Node{ID: 2, Role: role.Table, RowCount: 1, Children: []accessibility.NodeID{3}},
+			&accessibility.Node{ID: 3, Role: role.Row, RowIndex: 0, Children: []accessibility.NodeID{4}},
+			&accessibility.Node{ID: 4, Role: role.Cell, RowIndex: 0, ColumnIndex: 0, Value: value},
+		)
+	}
+	c.Equal([]UIARaise{raiseProperty(4, UIA_ValueValuePropertyId)}, UIADecideRaises(cells("off"), cells("on"),
+		[]accessibility.Event{{Kind: accessibility.ValueChanged, Node: 4}}))
+
+	// A cell whose content is its name has no value to report, so there is no property to raise.
+	c.Nil(UIADecideRaises(cells(""), cells(""), []accessibility.Event{
+		{Kind: accessibility.ValueChanged, Node: 4},
+	}))
 }
 
 // TestUIADecideRaisesText verifies that an edit reports the new value once, even though the diff describes it as a
@@ -1132,6 +1308,18 @@ func TestUIADecideRaisesRadioButton(t *testing.T) {
 	c.Equal([]UIARaise{raiseProperty(7, UIA_SelectionItemIsSelectedPropertyId)},
 		UIADecideRaises(eventTree(), unchecked, []accessibility.Event{
 			{Kind: accessibility.StateChanged, Node: 7, State: accessibility.StateChecked},
+		}))
+
+	// Its Selected flag is not what decides it either: ISelectionItemProvider::get_IsSelected answers from the check
+	// state for a radio button, so a selected-but-unchecked one must not be reported as having become the selection —
+	// the client would be told something the provider then denies. The builder produces no such node today; the two
+	// answers are kept in step here rather than relying on that.
+	odd := eventTree()
+	odd.Node(7).Checked = checkenum.Off
+	odd.Node(7).Selected = true
+	c.Equal([]UIARaise{raiseProperty(7, UIA_SelectionItemIsSelectedPropertyId)},
+		UIADecideRaises(eventTree(), odd, []accessibility.Event{
+			{Kind: accessibility.StateChanged, Node: 7, State: accessibility.StateSelected},
 		}))
 }
 
@@ -1445,7 +1633,6 @@ func TestUIARaiseStrings(t *testing.T) {
 	c.Equal("event", UIARaiseEvent.String())
 	c.Equal("property", UIARaiseProperty.String())
 	c.Equal("structure", UIARaiseStructure.String())
-	c.Equal("notify", UIARaiseNotify.String())
 	c.Equal("disconnect", UIARaiseDisconnect.String())
 	c.Equal("UIARaiseKind(9)", UIARaiseKind(9).String())
 	c.Equal("event{node:2,event:20005}", raiseEvent(2, UIA_AutomationFocusChangedEventId).String())
@@ -1453,6 +1640,5 @@ func TestUIARaiseStrings(t *testing.T) {
 	c.Equal("structure{node:4,change:1,child:6}",
 		raiseStructure(4, 6, StructureChangeType_ChildRemoved).String())
 	c.Equal("structure{node:4,change:2}", raiseStructure(4, 0, StructureChangeType_ChildrenInvalidated).String())
-	c.Equal(`notify{node:1,text:"Saved"}`, raiseNotify(1, "Saved").String())
 	c.Equal("disconnect{node:6}", raiseDisconnect(6).String())
 }

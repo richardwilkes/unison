@@ -109,8 +109,9 @@ func nativeFinalFinishStartup() {
 }
 
 func nativeTerminate() error {
-	// Before the X11 connection goes away, since the last resort for finding the accessibility bus reads a property
-	// from the root window.
+	// First, so the registry is told the application is going before the rest of the platform is taken apart. It needs
+	// nothing from the X11 connection: the last resort for finding the accessibility bus reads the root window's
+	// AT_SPI_BUS property when a join begins, on the UI thread, rather than while leaving.
 	linuxA11yTerminate()
 	if x11Conn != nil {
 		// Withdraw the connection from nativePostEmptyEvent before closing it. A goroutine that loaded the pointer just

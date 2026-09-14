@@ -26,6 +26,10 @@ func (t *Table[T]) AddHitRectForTest(rect geom.Rect, row T) {
 // AccessibilitySnapshotCountForTest returns how many accessibility snapshots have been built in this process, which is
 // how an external test verifies that an application no assistive technology is watching builds none at all. The count
 // is reset when a headless session ends, so each session starts from zero.
+//
+// UI thread only, as the count itself is. Call it from inside HeadlessScreen.Do, which is the thread the session's
+// windows are described on; reading it from the test's own goroutine races that one and is reported as such under
+// -race.
 func AccessibilitySnapshotCountForTest() uint64 {
 	return axSnapshotCount
 }

@@ -431,8 +431,6 @@ func (w *Window) nativeUpdateRegisteredDragTypes(types []*uti.DataType) {
 
 func (w *Window) nativeDestroy() {
 	w.glCtx.nativeDestroy()
-	// The adapter holds Objective-C elements that point at the view, so it has to let go of them before the view does.
-	w.nativeAccessibilityShutdown()
 	if w.wnd.wnd != 0 {
 		w.wnd.wnd.OrderOut()
 		if delegate := w.wnd.wnd.Delegate(); delegate != 0 {

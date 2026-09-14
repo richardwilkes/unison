@@ -48,6 +48,7 @@ import (
 	"slices"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
@@ -135,6 +136,24 @@ const (
 	axKeyUIElements   = "NSAccessibilityUIElementsKey"
 )
 
+// The attribute names a menu item's accelerator is reported through. They are spelled out rather than resolved through
+// AppKitString because they are constants of ApplicationServices rather than of AppKit — kAXMenuItemCmdCharAttribute
+// and kAXMenuItemCmdModifiersAttribute, which are CFStrings with no exported NSString counterpart — and the strings
+// themselves have been these since Mac OS X 10.1.
+const (
+	axAttrMenuItemCmdChar      = "AXMenuItemCmdChar"
+	axAttrMenuItemCmdModifiers = "AXMenuItemCmdModifiers"
+)
+
+// The bits of AXMenuItemCmdModifiers (AXMenuItemModifiers in ApplicationServices' AXAttributeConstants.h). Zero means
+// the command key by itself, which is why a shortcut that does not use it has to say so with the no-command bit.
+const (
+	axMenuModifierShift     int64 = 1 << 0
+	axMenuModifierOption    int64 = 1 << 1
+	axMenuModifierControl   int64 = 1 << 2
+	axMenuModifierNoCommand int64 = 1 << 3
+)
+
 // AppKit enumeration values used by the adapter (verified against the macOS SDK's NSAccessibilityProtocols.h and
 // NSAccessibilityConstants.h, which document them as fixed).
 const (
@@ -170,6 +189,10 @@ type AXAdapter struct {
 	// zero only between handing a request to AccessibilityActionCallback and that callback returning, which on this
 	// platform is when a request may be carried out and a new snapshot published before AppKit is answered.
 	inflight int
+	// modal is the modality last given to the window, and modalKnown whether it has been given one at all; see
+	// publishModal.
+	modal      bool
+	modalKnown bool
 }
 
 // axAdapters holds the adapter for each content view that has one. It is an ordinary map rather than a synchronized
@@ -192,6 +215,12 @@ var (
 	axActionNamesOnce       sync.Once
 	axActionNameIDs         []objc.ID
 	axActionDescriptionFunc func(name objc.ID) objc.ID
+
+	axShortcutAttrsOnce sync.Once
+	axShortcutAttrIDs   []objc.ID
+
+	axSelectorRulesOnce sync.Once
+	axSelectorRuleMap   map[objc.SEL]func(t *accessibility.Tree, n *accessibility.Node) bool
 )
 
 // axActionNames pairs each action name the legacy action protocol deals in with the accessibility.Action it stands
@@ -266,7 +295,35 @@ func (a *AXAdapter) Publish(tree *accessibility.Tree, events []accessibility.Eve
 		axTrace("publish generation=%d nodes=%d focus=%d events=%v", tree.Generation, len(tree.Nodes), tree.Focus,
 			kinds)
 	}
-	WithPool(func() { a.postEvents(events) })
+	WithPool(func() {
+		a.publishModal(tree)
+		a.postEvents(events)
+	})
+}
+
+// publishModal tells the window whether the snapshot's root node is modal. It is the one thing about a unison modal
+// dialog that AppKit cannot work out for itself: Window.RunModal runs unison's own event loop rather than an NSApp
+// modal session, so no window of ours ever becomes NSApp's modal window and AXModal would otherwise read false for
+// every dialog, while both other platforms report it. Unlike everything else this adapter answers, the modality is
+// state held by the NSWindow rather than an answer read from the snapshot, so it is pushed rather than pulled: on the
+// first publish, and afterwards whenever it changes.
+func (a *AXAdapter) publishModal(tree *accessibility.Tree) {
+	if a.wnd == 0 {
+		return
+	}
+	modal := false
+	if root := tree.Node(tree.Root); root != nil {
+		modal = root.Modal
+	}
+	if a.modalKnown && a.modal == modal {
+		return
+	}
+	a.modal = modal
+	a.modalKnown = true
+	if axTraceOn {
+		axTrace("window modal=%v", modal)
+	}
+	objc.ID(a.wnd).Send(Sel("setAccessibilityModal:"), modal)
 }
 
 // Shutdown tells the accessibility system that every element the adapter handed out is gone, releases everything the
@@ -276,24 +333,31 @@ func (a *AXAdapter) Shutdown() {
 	if a == nil {
 		return
 	}
-	// Told to the accessibility system before anything is dropped, since the window may well still be on the screen:
-	// support is being turned off while the window lives on, and an assistive technology holding one of these must
-	// learn it is gone rather than go on asking it questions it can no longer answer. Every element keeps its place in
-	// the map until all of them have been announced, so that a question arriving in the middle of it is answered with
-	// the element it has always been answered with rather than a fresh one standing for the same node.
-	for _, element := range a.elements {
-		NSAccessibilityPostNotification(element, AppKitString(axNotifyUIElementDestroyed))
-	}
-	for id, element := range a.elements {
-		delete(a.elements, id)
-		a.releaseElement(element)
-	}
-	// The adapter is forgotten only once every notification has been routed, which is the order destroyElement works
-	// in. An element that has just been announced as destroyed is asked what window and parent it belonged to, and
-	// axElementTarget answers that from the adapter registered for the view: unregistering first would leave each of
-	// those notifications describing an element with no window, no parent and no role at all.
-	delete(axAdapters, a.view)
-	a.tree = nil
+	// A pool of its own, like Publish and AXAnnounce, because this is an entry point in its own right: it is reached
+	// from a window being destroyed and from support being turned off, either of which an application may call on the
+	// UI thread outside the pool an event-loop turn provides, and anything AppKit autoreleases while routing these
+	// notifications would otherwise leak with the "autoreleased with no pool in place" warning.
+	WithPool(func() {
+		// Told to the accessibility system before anything is dropped, since the window may well still be on the
+		// screen: support is being turned off while the window lives on, and an assistive technology holding one of
+		// these must learn it is gone rather than go on asking it questions it can no longer answer. Every element
+		// keeps its place in the map until all of them have been announced, so that a question arriving in the middle
+		// of it is answered with the element it has always been answered with rather than a fresh one standing for the
+		// same node.
+		for _, element := range a.elements {
+			NSAccessibilityPostNotification(element, AppKitString(axNotifyUIElementDestroyed))
+		}
+		for id, element := range a.elements {
+			delete(a.elements, id)
+			a.releaseElement(element)
+		}
+		// The adapter is forgotten only once every notification has been routed, which is the order destroyElement
+		// works in. An element that has just been announced as destroyed is asked what window and parent it belonged
+		// to, and axElementTarget answers that from the adapter registered for the view: unregistering first would
+		// leave each of those notifications describing an element with no window, no parent and no role at all.
+		delete(axAdapters, a.view)
+		a.tree = nil
+	})
 }
 
 // dispatch hands a request to the action callback with the adapter marked as having one in flight, and lets go of
@@ -371,6 +435,16 @@ func AXAnnounce(text string) {
 func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit // one case per event kind
 	var layoutChanged []accessibility.NodeID
 	var notices []axNotice
+	// flush posts everything gathered so far and forgets it, in the order an assistive technology has to hear it:
+	// what changed about each element first, then the one notification that says the shape of the window changed.
+	flush := func() {
+		a.postNotices(notices)
+		notices = nil
+		if len(layoutChanged) != 0 {
+			a.postLayoutChanged(layoutChanged)
+			layoutChanged = nil
+		}
+	}
 	for _, e := range events {
 		switch e.Kind {
 		case accessibility.NodeRemoved:
@@ -388,11 +462,11 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			// which a control that merely changed what it is does not deserve.
 			layoutChanged = axAppendUnique(layoutChanged, a.tree.UnignoredParent(e.Node))
 		case accessibility.FocusChanged:
-			// Everything gathered so far goes out first: an assistive technology is told where to look only once it has
-			// been told what changed, which is why Diff puts this event last of all. Nothing follows it in a published
-			// set, so the flush is the whole of what the publish had to say.
-			a.postNotices(notices)
-			notices = nil
+			// Everything gathered so far goes out first — the per-node notices and the layout-changed notification
+			// alike: an assistive technology is told where to look only once it has been told what changed, which is
+			// why Diff puts this event last of all. Nothing follows it in a published set, so the flush is the whole of
+			// what the publish had to say.
+			flush()
 			if axTraceOn {
 				axTrace("notify %s node=%d", axNotifyFocusedUIElement, e.Node)
 			}
@@ -442,19 +516,22 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 				layoutChanged = axAppendUnique(layoutChanged, a.tree.UnignoredParent(e.Node))
 			default:
 				// Nothing macOS has a notification for. An assistive technology re-reads the element's state when it
-				// next needs it.
+				// next needs it. The root's Modal is the one of these the adapter acts on, and it does so on every
+				// publish rather than from an event, since the window has to be told even on the first one; see
+				// publishModal.
 			}
+		case accessibility.AttributesChanged:
+			// The secondary attributes and the relations: a placeholder, a level, a row or column index or count, an
+			// orientation, or one of the LabeledBy, DescribedBy and Controls links. macOS has no notification for any
+			// of them, and the title-changed notification is the nearest thing it has to "read this element again" —
+			// the same stand-in NameChanged uses, and for the same reason: what it is worth is the prompt, since every
+			// one of these is answered from the current snapshot the moment an assistive technology asks.
+			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyTitleChanged})
 		case accessibility.DescriptionChanged, accessibility.WindowActivated, accessibility.WindowDeactivated:
 			// NSWindow reports its own activation, and macOS has no notification for a changed help string.
 		}
 	}
-	a.postNotices(notices)
-	if len(layoutChanged) != 0 {
-		if axTraceOn {
-			axTrace("notify %s nodes=%v", axNotifyLayoutChanged, layoutChanged)
-		}
-		a.postLayoutChanged(layoutChanged)
-	}
+	flush()
 }
 
 // axNotice is one notification a publish calls for, and the node it is posted against. See postNotices.
@@ -560,6 +637,10 @@ func (a *AXAdapter) postNotices(notices []axNotice) {
 // leaves the cursor where the old frame was, one scroll behind. Only elements that already exist are named: an
 // assistive technology cannot be holding a frame for an element it has never been given, and creating one for every
 // row a scroll moved would be work nobody asked for. The root is represented by the content view.
+//
+// Nothing is posted when none of the named nodes has an element yet, which is what a change to a node nothing has ever
+// asked about comes to: the notification would carry an empty element list, which is the very case this function's
+// answer is worth nothing in.
 func (a *AXAdapter) postLayoutChanged(ids []accessibility.NodeID) {
 	elements := make([]objc.ID, 0, len(ids))
 	for _, id := range ids {
@@ -569,6 +650,12 @@ func (a *AXAdapter) postLayoutChanged(ids []accessibility.NodeID) {
 		case a.elements[id] != 0:
 			elements = append(elements, a.elements[id])
 		}
+	}
+	if len(elements) == 0 {
+		return
+	}
+	if axTraceOn {
+		axTrace("notify %s nodes=%v", axNotifyLayoutChanged, ids)
 	}
 	NSAccessibilityPostNotificationWithUserInfo(objc.ID(a.view), AppKitString(axNotifyLayoutChanged),
 		NSDictionaryFromPairs(AppKitString(axKeyUIElements), NSArrayFromIDs(elements...)))
@@ -1220,12 +1307,16 @@ func axScrollBarOf(t *accessibility.Tree, n *accessibility.Node, o accessibility
 	return 0
 }
 
-// axContentsOf returns the children of a scroll area other than its scroll bars, which is what it scrolls.
+// axContentsOf returns the children of a scroll area other than its scroll bars, which is what it scrolls. Anything
+// else reports the children it is shown, since AXContents is registered on every element and an element that answered
+// the raw children instead would disagree with accessibilityChildren about any container holding a single-occupant
+// cell — handing out an element for a cell the presented hierarchy never mentions, which then names a parent that does
+// not list it (see axStandIn).
 func axContentsOf(t *accessibility.Tree, n *accessibility.Node) []accessibility.NodeID {
-	children := t.UnignoredChildren(n.ID)
 	if n.Role != role.ScrollArea {
-		return children
+		return axPresentedChildren(t, n.ID)
 	}
+	children := t.UnignoredChildren(n.ID)
 	contents := children[:0:0]
 	for _, id := range children {
 		if child := t.Node(id); child != nil && child.Role != role.ScrollBar {
@@ -1233,6 +1324,61 @@ func axContentsOf(t *accessibility.Tree, n *accessibility.Node) []accessibility.
 		}
 	}
 	return contents
+}
+
+// axShortcutOf splits a node's Shortcut into the character AXMenuItemCmdChar reports and the AXMenuItemCmdModifiers
+// bits that go with it, and reports whether the node names a shortcut at all.
+//
+// What it is given is the string the menus themselves draw, which KeyBinding.String builds as the modifier glyphs in a
+// fixed order followed by the key's own name, so the glyphs are taken from the front and whatever is left is the key.
+// A key whose name is a word rather than a character — Delete, Space, F1 — is reported as that word, which is what the
+// menu shows and what an assistive technology can say: the two attributes that could express such a key exactly,
+// AXMenuItemCmdVirtualKey and AXMenuItemCmdGlyph, name a hardware key code and a Carbon menu glyph, and a string built
+// for a person to read carries neither.
+func axShortcutOf(n *accessibility.Node) (char string, modifiers int64, ok bool) {
+	rest := n.Shortcut
+	command := false
+	for rest != "" {
+		ch, size := utf8.DecodeRuneInString(rest)
+		bits, isCommand, isModifier := axShortcutModifier(ch)
+		if !isModifier {
+			break
+		}
+		modifiers |= bits
+		command = command || isCommand
+		rest = rest[size:]
+	}
+	if rest == "" {
+		// Either no shortcut at all, or modifiers with no key to go with them, which is not an accelerator any
+		// assistive technology can report.
+		return "", 0, false
+	}
+	if !command {
+		modifiers |= axMenuModifierNoCommand
+	}
+	return rest, modifiers, true
+}
+
+// axShortcutModifier maps one of the modifier glyphs a shortcut string starts with onto its AXMenuItemCmdModifiers
+// bit, reporting separately whether it is the command key — which has no bit of its own, since its absence is what
+// the no-command bit says — and whether the glyph is a modifier at all, which is what ends the run of them.
+func axShortcutModifier(ch rune) (bits int64, command, isModifier bool) {
+	switch ch {
+	case '⌃':
+		return axMenuModifierControl, false, true
+	case '⌥':
+		return axMenuModifierOption, false, true
+	case '⇧':
+		return axMenuModifierShift, false, true
+	case '⌘':
+		return 0, true, true
+	case '⇪', '⇭':
+		// Caps lock and num lock. The menus can draw them, but AXMenuItemCmdModifiers has no bit for either and
+		// neither is an accelerator modifier on this platform, so they are stripped and forgotten.
+		return 0, false, true
+	default:
+		return 0, false, false
+	}
 }
 
 // axIndexOfID returns the position of an id within a list of ids, or -1 if it is absent.
@@ -1550,12 +1696,198 @@ func registerAXElementClass() {
 	axElementClass = cls
 }
 
-// axElementMethods returns UnisonAXElement's method table, in three groups: the attributes that describe a node, the
-// states and actions, and the text protocol.
+// axElementMethods returns UnisonAXElement's method table, in five groups: the attributes that describe a node, the
+// states and actions, the text protocol, the accelerator a node may name, and the one method that says which of all of
+// them apply to the node an element is standing for.
 func axElementMethods() []objc.MethodDef {
 	methods := axElementAttributeMethods()
 	methods = append(methods, axElementStateMethods()...)
-	return append(methods, axElementTextMethods()...)
+	methods = append(methods, axElementTextMethods()...)
+	methods = append(methods, axElementShortcutMethods()...)
+	return append(methods, axElementAllowedMethods()...)
+}
+
+// axElementAllowedMethods returns the override that trims what each element advertises down to what its node can
+// actually do.
+//
+// The method table above is one flat set shared by every node of every snapshot, so without this a plain label offers
+// AXIncrement and AXDecrement, a button offers the whole text protocol, a group offers AXRows and AXDisclosing, and
+// every element says its value, selection and expansion can be set — the requests behind all of which the node's own
+// action set then refuses (see axPerform and axRequest). isAccessibilitySelectorAllowed: is the facility AppKit
+// consults to decide which attributes and actions an element really supports, including the action names it derives
+// from the accessibilityPerform* methods a class implements, and answering it from the node is what makes the two ends
+// agree: an assistive technology is offered exactly what it will be allowed to do.
+//
+// Only the selectors axSelectorRules names are ever refused. Everything else is answered the way the default
+// implementation answers it, which is "yes if the class responds to it at all".
+func axElementAllowedMethods() []objc.MethodDef {
+	return []objc.MethodDef{
+		{
+			Cmd: Sel("isAccessibilitySelectorAllowed:"),
+			Fn: func(self objc.ID, _, selector objc.SEL) bool {
+				allowed, restricted := axSelectorRules()[selector]
+				if !restricted {
+					return objc.Send[bool](self, Sel("respondsToSelector:"), selector)
+				}
+				a, n := axElementTarget(self, 0)
+				if a == nil || n == nil {
+					// An element whose node has left the tree speaks for nothing, so it can support nothing either.
+					return false
+				}
+				if axTraceOn {
+					axTraceNode("allowed? "+axSelName(selector), n)
+				}
+				return allowed(a.tree, n)
+			},
+		},
+	}
+}
+
+// axSelectorRules returns the rule for each selector an element offers only when its node can back it, keyed by the
+// selector. A selector that is absent is always offered; see axElementAllowedMethods.
+//
+// The rules answer from the same fields the methods themselves answer from, so what is advertised and what is answered
+// cannot drift apart: the performers from the node's action set, the text protocol from whether the node holds text at
+// all, the row and disclosure attributes from whether the node is a container of rows or a row itself, and each setter
+// from the action it turns into.
+func axSelectorRules() map[objc.SEL]func(t *accessibility.Tree, n *accessibility.Node) bool {
+	axSelectorRulesOnce.Do(func() {
+		hasText := func(_ *accessibility.Tree, n *accessibility.Node) bool { return n.Text != nil }
+		isRow := func(_ *accessibility.Tree, n *accessibility.Node) bool { return n.Role.IsRowLike() }
+		can := func(actions ...accessibility.Action) func(t *accessibility.Tree, n *accessibility.Node) bool {
+			return func(_ *accessibility.Tree, n *accessibility.Node) bool {
+				for _, action := range actions {
+					if n.Actions.Has(action) {
+						return true
+					}
+				}
+				return false
+			}
+		}
+		axSelectorRuleMap = map[objc.SEL]func(t *accessibility.Tree, n *accessibility.Node) bool{
+			// The performers, and with them the action names AppKit derives from having them at all.
+			Sel("accessibilityPerformPress"):     can(accessibility.Press),
+			Sel("accessibilityPerformConfirm"):   can(accessibility.Press),
+			Sel("accessibilityPerformIncrement"): can(accessibility.Increment),
+			Sel("accessibilityPerformDecrement"): can(accessibility.Decrement),
+			Sel("accessibilityPerformShowMenu"):  can(accessibility.ShowContextMenu),
+			// The text protocol, which belongs to the nodes that hold text and to no others.
+			Sel("accessibilityNumberOfCharacters"):        hasText,
+			Sel("accessibilitySelectedText"):              hasText,
+			Sel("accessibilitySelectedTextRange"):         hasText,
+			Sel("accessibilityVisibleCharacterRange"):     hasText,
+			Sel("accessibilityInsertionPointLineNumber"):  hasText,
+			Sel("accessibilityStringForRange:"):           hasText,
+			Sel("accessibilityAttributedStringForRange:"): hasText,
+			Sel("accessibilityRangeForLine:"):             hasText,
+			Sel("accessibilityLineForIndex:"):             hasText,
+			Sel("accessibilityFrameForRange:"):            hasText,
+			Sel("accessibilityRangeForIndex:"):            hasText,
+			Sel("accessibilityRangeForPosition:"):         hasText,
+			Sel("setAccessibilitySelectedTextRange:"): func(_ *accessibility.Tree, n *accessibility.Node) bool {
+				return n.Text != nil && n.Actions.Has(accessibility.SetTextSelection)
+			},
+			// The rows of a container, and the disclosure of a row.
+			Sel("accessibilityRows"):             axHoldsRows,
+			Sel("accessibilitySelectedRows"):     axHoldsRows,
+			Sel("accessibilityVisibleRows"):      axHoldsRows,
+			Sel("accessibilityDisclosedRows"):    isRow,
+			Sel("accessibilityDisclosedByRow"):   isRow,
+			Sel("isAccessibilityDisclosed"):      isRow,
+			Sel("setAccessibilitySelectedRows:"): axHoldsRows,
+			Sel("setAccessibilityDisclosed:"): func(_ *accessibility.Tree, n *accessibility.Node) bool {
+				return n.Role.IsRowLike() && (n.Actions.Has(accessibility.Expand) ||
+					n.Actions.Has(accessibility.Collapse))
+			},
+			// The settable state. A node whose value is read-only says so by refusing the setter, which is what the
+			// other two platforms report as AT-SPI's READ_ONLY and UIA's IsReadOnly.
+			Sel("setAccessibilityValue:"): func(_ *accessibility.Tree, n *accessibility.Node) bool {
+				return !n.ReadOnly && n.Actions.Has(accessibility.SetValue)
+			},
+			Sel("setAccessibilitySelected:"): can(accessibility.Select, accessibility.RemoveFromSelection),
+			Sel("setAccessibilityExpanded:"): can(accessibility.Expand, accessibility.Collapse),
+		}
+	})
+	return axSelectorRuleMap
+}
+
+// axHoldsRows reports whether a node is a container whose contents an assistive technology reaches as rows, which is
+// what decides whether it may be asked about its rows at all. A table, an outline and a list always are, whatever they
+// happen to hold at the moment; anything else is one only while it really does hold rows.
+func axHoldsRows(t *accessibility.Tree, n *accessibility.Node) bool {
+	switch n.Role {
+	case role.Table, role.Tree, role.List:
+		return true
+	default:
+		return len(axRowsOf(t, n, false)) != 0
+	}
+}
+
+// axElementShortcutMethods returns the two overrides that publish a node's Shortcut as the accelerator that activates
+// it, which on this platform is AXMenuItemCmdChar and AXMenuItemCmdModifiers: the attributes VoiceOver speaks after a
+// menu item's name, and the counterparts of the key binding AT-SPI reports through Action.GetKeyBinding and the
+// accelerator key UIA reports through UIA_AcceleratorKeyPropertyId.
+//
+// They are published through the informal protocol these two methods belong to because there is nowhere else to put
+// them: the NSAccessibility protocol has no property for either, they predate it, and AppKit's own NSMenuItem still
+// answers them this way — one lists both among its accessibilityAttributeNames and answers each from
+// accessibilityAttributeValue:. Everything else is handed to the superclass untouched, which is what goes on answering
+// every other attribute of every other element.
+//
+// Every node that names a shortcut is reported, not just a menu item: a widget or an application may set Shortcut on
+// anything through Accessibility.Callback, and these are the only attributes macOS has to say it with.
+func axElementShortcutMethods() []objc.MethodDef {
+	return []objc.MethodDef{
+		{
+			Cmd: Sel("accessibilityAttributeNames"),
+			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
+				names := SendSuper(self, axElementClass, Sel("accessibilityAttributeNames"))
+				_, n := axElementTarget(self, cmd)
+				if n == nil {
+					return names
+				}
+				if _, _, ok := axShortcutOf(n); !ok {
+					return names
+				}
+				extra := NSArrayFromIDs(axShortcutAttributeStrings()...)
+				if names == 0 {
+					return extra
+				}
+				return names.Send(Sel("arrayByAddingObjectsFromArray:"), extra)
+			},
+		},
+		{
+			Cmd: Sel("accessibilityAttributeValue:"),
+			Fn: func(self objc.ID, cmd objc.SEL, attribute objc.ID) objc.ID {
+				name := GoStringFromNSString(attribute)
+				if name != axAttrMenuItemCmdChar && name != axAttrMenuItemCmdModifiers {
+					return SendSuper(self, axElementClass, Sel("accessibilityAttributeValue:"), attribute)
+				}
+				_, n := axElementTarget(self, cmd)
+				if n == nil {
+					return 0
+				}
+				char, modifiers, ok := axShortcutOf(n)
+				if !ok {
+					return 0
+				}
+				if name == axAttrMenuItemCmdChar {
+					return NSStringFromGo(char)
+				}
+				return NSNumberFromInt64(modifiers)
+			},
+		},
+	}
+}
+
+// axShortcutAttributeStrings returns the NSString for each of the two accelerator attribute names, in the order an
+// element lists them. They are created once and never released, since they are handed out on every attribute-name
+// query.
+func axShortcutAttributeStrings() []objc.ID {
+	axShortcutAttrsOnce.Do(func() {
+		axShortcutAttrIDs = []objc.ID{NewNSString(axAttrMenuItemCmdChar), NewNSString(axAttrMenuItemCmdModifiers)}
+	})
+	return axShortcutAttrIDs
 }
 
 // axElementAttributeMethods returns the overrides that describe what a node is, what it is called, what it contains and
@@ -2159,6 +2491,9 @@ func axElementStateMethods() []objc.MethodDef {
 			Fn:  func(self objc.ID, _ objc.SEL) bool { return axPerform(self, accessibility.ShowContextMenu) },
 		},
 		{
+			// Offered only by a node that advertises the SetValue action and is not ReadOnly, which is what keeps
+			// VoiceOver from offering to edit the value of a progress bar, a label or a table row; see
+			// axElementAllowedMethods.
 			Cmd: Sel("setAccessibilityValue:"),
 			Fn: func(self objc.ID, _ objc.SEL, value objc.ID) {
 				axSetValue(self, value)
@@ -2168,11 +2503,11 @@ func axElementStateMethods() []objc.MethodDef {
 		// actions from which of those methods its class implements, and there is no such method for AXScrollToVisible:
 		// the action VoiceOver performs on each element its cursor lands on, and the only means it has of bringing
 		// that element into view, so without it moving through a list with VO-Down never scrolls the list. When an
-		// element answers these three selectors as well, AppKit adds the names they give to the ones it derived — it
-		// does not replace them, so every element of this class still says it can be incremented whether or not its
-		// node can — and delivers an action named this way through accessibilityPerformAction:. They are answered from
-		// the node's own action set, so that scrolling into view is offered by exactly the nodes that can do it, which
-		// is every one the root package describes.
+		// element answers these three selectors as well, AppKit adds the names they give to the ones it derived rather
+		// than replacing them, and delivers an action named this way through accessibilityPerformAction:. Both halves
+		// come from the node's own action set — these from it directly, the derived ones through
+		// isAccessibilitySelectorAllowed: (see axElementAllowedMethods) — so each action is offered by exactly the
+		// nodes that can carry it out, which for scrolling into view is every one the root package describes.
 		{
 			Cmd: Sel("accessibilityActionNames"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
@@ -2343,26 +2678,32 @@ func axElementTextMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// A line the element does not have, and an element with no text at all, are both "there is no such range",
+			// which NSAccessibility spells {NSNotFound, 0} (see emptyRange). Answering {0, 0} instead reads as a real
+			// empty range at the very start of the content, which is a position rather than an absence.
 			Cmd: Sel("accessibilityRangeForLine:"),
 			Fn: func(self objc.ID, _ objc.SEL, line int64) NSRange {
 				_, _, info := axTextTarget(self)
 				if info == nil {
-					return NSRange{}
+					return emptyRange
 				}
 				start, end, ok := axLineRange(info, int(line))
 				if !ok {
-					return NSRange{}
+					return emptyRange
 				}
 				loc := axUTF16FromRune(info.Text, start)
 				return NSRange{Location: uint64(loc), Length: uint64(axUTF16FromRune(info.Text, end) - loc)}
 			},
 		},
 		{
+			// An element with no text has no lines either, and -1 is how a line number says so, exactly as
+			// accessibilityInsertionPointLineNumber above says it: answering 0 would have every button, row and group
+			// this class serves place the index on its first line.
 			Cmd: Sel("accessibilityLineForIndex:"),
 			Fn: func(self objc.ID, _ objc.SEL, index int64) int64 {
 				_, _, info := axTextTarget(self)
 				if info == nil {
-					return 0
+					return -1
 				}
 				return int64(axLineForRune(info, axRuneFromUTF16(info.Text, int(index))))
 			},

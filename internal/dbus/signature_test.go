@@ -163,6 +163,10 @@ func TestSignatureOf(t *testing.T) {
 		{name: "map of slices", value: map[byte][]string{}, want: "a{yas}"},
 		{name: "map of maps", value: map[string]map[string]string{}, want: "a{sa{ss}}"},
 		{name: "map with interface values", value: map[string]any{"a": "b"}, want: stringDictSig},
+		// A key type that says nothing on its own is derived from the keys the map holds, exactly as a value type is:
+		// every key here is a string, and the same map marshals as an a{ss} without complaint.
+		{name: "map with interface keys", value: map[any]string{"a": "b"}, want: stringDictSig},
+		{name: "map with interface keys and values", value: map[any]any{"a": "b"}, want: stringDictSig},
 		{name: "named slice", value: []Variant{}, want: "av"},
 		// A dict entry is a complete type only as the element type of an array, which is the one place Array accepts
 		// it: an empty a{sv} is the most common empty container AT-SPI sends, and an empty Dict cannot say what its
@@ -227,6 +231,23 @@ func TestSignatureOfDictChecksEveryEntry(t *testing.T) {
 	c.Contains(err.Error(), "keys have differing types")
 }
 
+func TestSignatureOfMapWithInterfaceKeys(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// A map whose key type is an interface says nothing about its keys through its Go type alone, yet marshaling it
+	// against the signature those keys imply has always worked, so deriving that signature has to work too: otherwise
+	// the same map can be marshaled by hand but not by SetBody.
+	m := map[any]string{"a": "b"}
+	sig, err := SignatureOf(m)
+	c.NoError(err)
+	c.Equal(Signature(stringDictSig), sig)
+	data, err := Marshal(sig, m)
+	c.NoError(err)
+	values, err := Unmarshal(sig, data)
+	c.NoError(err)
+	c.Equal([]any{Dict{{Key: "a", Value: "b"}}}, values)
+}
+
 func TestSignatureOfMultipleValues(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -252,6 +273,11 @@ func TestSignatureOfRejects(t *testing.T) {
 		{name: "empty dict", value: Dict{}},
 		{name: "empty map with interface values", value: map[string]any{}},
 		{name: "map with mixed values", value: map[string]any{"a": "b", "c": int32(1)}},
+		{name: "empty map with interface keys", value: map[any]string{}},
+		{name: "map with mixed keys", value: map[any]string{"a": "b", int32(1): "c"}},
+		{name: "map with a key whose type cannot be derived", value: map[any]string{1: "a"}},
+		{name: "map with an interface key that is not a basic type", value: map[any]string{Variant{Sig: "s"}: "a"}},
+		{name: "map with unsized integer values", value: map[string]int{"a": 1}},
 		{name: "map with a container key", value: map[[2]byte]string{}},
 		{name: "bare dict entry", value: DictEntry{Key: "a", Value: "b"}},
 		{name: "dict with a container key", value: Dict{{Key: Struct{byte(1)}, Value: "x"}}},

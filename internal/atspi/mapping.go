@@ -208,7 +208,7 @@ func Interfaces(n *accessibility.Node) []string {
 	if supportsTableCell(n.Role) {
 		list = append(list, InterfaceTableCell)
 	}
-	if n.Text != nil {
+	if supportsText(n) {
 		list = append(list, InterfaceText)
 	}
 	if n.HasNumber {
@@ -217,13 +217,45 @@ func Interfaces(n *accessibility.Node) []string {
 	return list
 }
 
+// supportsText returns true if a node is given org.a11y.atspi.Text: either it carries navigable text of its own, or its
+// value is text that has nowhere else to be reported and is handed over as a read-only text interface synthesized from
+// it; see [textualValue]. This is the one place the answer is worked out, so that what [Interfaces] advertises and what
+// [nodeObject.Interfaces] implements cannot drift apart.
+func supportsText(n *accessibility.Node) bool {
+	return n.Text != nil || textualValue(n) != ""
+}
+
+// textualValue returns the node's value when that value is text, and an empty string otherwise. AT-SPI carries a value
+// as either the number of org.a11y.atspi.Value or the characters of org.a11y.atspi.Text and has nothing else to put one
+// in, so a value that is neither a number nor the content of a text control — the item a popup menu has chosen, the ink
+// a color well holds, the content a populated table cell reports — would go unreported on Linux altogether, while macOS
+// reports it through accessibilityValue and Windows through the value pattern.
+//
+// A node that carries a number reports it through org.a11y.atspi.Value instead, and one that carries text of its own
+// hands over the real thing rather than a description of it. A protected node is left out whatever it holds:
+// [accessibility.Node] says a password field carries neither a value nor text, and the cost of being wrong about that
+// is the password.
+func textualValue(n *accessibility.Node) string {
+	if n == nil || n.HasNumber || n.Text != nil || n.Protected {
+		return ""
+	}
+	return n.Value
+}
+
 // supportsEditableText returns true if a node's text can be changed through org.a11y.atspi.EditableText, which is the
 // only way AT-SPI has of typing into a control: the Text interface moves the caret and the selection but never changes
-// a character. A node qualifies when it carries text and offers to have it replaced, which is what
-// [accessibility.ReplaceText] and [accessibility.SetValue] mean, and [States] gives exactly those nodes
-// ATSPI_STATE_EDITABLE.
+// a character. It is the predicate [textStates] gives ATSPI_STATE_EDITABLE from as well — a text-bearing role that is
+// carrying its text and is not read-only — so that the state and the interface cannot drift apart: a client told a
+// control is editable and then handed no interface to edit it with has been told a falsehood, and so has one told the
+// reverse.
+//
+// Which actions the node offers is deliberately no part of it. A disabled field keeps its text while axSnapshot strips
+// its actions, and a disabled field is still an editable kind of control — an insensitive GtkEntry reports
+// ATSPI_STATE_EDITABLE too — so whether an edit can be carried out at this moment is answered by the methods refusing,
+// which is what [nodeObject.replaceRunes] and [nodeObject.setTextContents] do without the actions they need, rather
+// than by the interface coming and going.
 func supportsEditableText(n *accessibility.Node) bool {
-	return n.Text != nil && (n.Actions.Has(accessibility.ReplaceText) || n.Actions.Has(accessibility.SetValue))
+	return editableText(n) && !n.ReadOnly
 }
 
 // supportsSelection returns true if a role's children are selected one or more at a time, which is what
@@ -413,9 +445,9 @@ func editableText(n *accessibility.Node) bool {
 }
 
 // textStates returns the states that describe a node's text content, for the roles that have some. A node whose Text is
-// nil gets none of them, however text-like its role: [Interfaces] leaves org.a11y.atspi.Text off such a node, and a
-// state set promising text that the object has no interface to hand over would send an assistive technology asking
-// questions it cannot answer. A password field is exactly that, since a protected node never carries its text.
+// nil gets none of them, however text-like its role, and whatever its value: these states describe a control the user
+// can move a caret and a selection about in, which the read-only text [textualValue] synthesizes from a value is not. A
+// password field carries no text at all, so it has none of them either.
 func textStates(n *accessibility.Node) []StateBit {
 	if n.Text == nil {
 		return nil
@@ -433,7 +465,7 @@ func textStates(n *accessibility.Node) []StateBit {
 	default:
 		return nil
 	}
-	if editableText(n) && !n.ReadOnly {
+	if supportsEditableText(n) {
 		states = append(states, StateEditable)
 	}
 	return states
@@ -445,7 +477,10 @@ func textStates(n *accessibility.Node) []StateBit {
 // container is the node's reported parent, or nil when it has none. It is what the size of the set a row belongs to is
 // read from: a snapshot describes only the rows that can be seen, plus the selection, so the container is the only
 // place that knows how many rows there are altogether, and "row 4 of 6" would otherwise become "row 4 of 6000".
-func Attributes(n, container *accessibility.Node) dbus.Dict {
+//
+// t is the tree the node came from, or nil when the caller has none. It is what the members of a set that is actually
+// all there — a tab, a menu item, a radio button — are numbered from; see [appendPositionAttributes].
+func Attributes(t *accessibility.Tree, n, container *accessibility.Node) dbus.Dict {
 	attributes := make(dbus.Dict, 0, 6)
 	attributes = append(attributes, dbus.DictEntry{Key: toolkitAttribute, Value: toolkitName})
 	if n.Level > 0 {
@@ -464,14 +499,20 @@ func Attributes(n, container *accessibility.Node) dbus.Dict {
 	if n.Placeholder != "" {
 		attributes = append(attributes, dbus.DictEntry{Key: placeholderTextAttribute, Value: n.Placeholder})
 	}
-	return appendPositionAttributes(attributes, n, container)
+	return appendPositionAttributes(attributes, t, n, container)
 }
 
-// appendPositionAttributes appends the attributes that say where a node sits within the grid or the list it belongs to.
-// AT-SPI carries this as object attributes rather than through an interface for everything but a table cell, and even a
-// cell's are worth reporting, since an assistive technology that has not asked for org.a11y.atspi.TableCell still reads
-// them.
-func appendPositionAttributes(attributes dbus.Dict, n, container *accessibility.Node) dbus.Dict {
+// appendPositionAttributes appends the attributes that say where a node sits within the grid, the list or the run of
+// siblings it belongs to. AT-SPI carries this as object attributes rather than through an interface for everything but
+// a table cell, and even a cell's are worth reporting, since an assistive technology that has not asked for
+// org.a11y.atspi.TableCell still reads them.
+//
+// The two ways a position in a set is arrived at are the two kinds of set there are. A row of a table or an item of a
+// list is one of a run only part of which is described — a snapshot carries the rows that can be seen, plus the
+// selection — so its own RowIndex and its container's RowCount are the only things that know where it sits and how many
+// there are. A tab, a menu item and a radio button belong to a set that is all there in the tree, so
+// [accessibility.Tree.PositionInSet] counts it, which is also what the other two adapters report for those three roles.
+func appendPositionAttributes(attributes dbus.Dict, t *accessibility.Tree, n, container *accessibility.Node) dbus.Dict {
 	if hasRowPosition(n.Role) {
 		attributes = append(attributes, dbus.DictEntry{Key: rowIndexAttribute, Value: strconv.Itoa(n.RowIndex + 1)})
 	}
@@ -481,18 +522,26 @@ func appendPositionAttributes(attributes dbus.Dict, n, container *accessibility.
 			Value: strconv.Itoa(n.ColumnIndex + 1),
 		})
 	}
-	if !isSetMember(n.Role) {
-		return attributes
-	}
-	attributes = append(attributes, dbus.DictEntry{
-		Key:   positionInSetAttribute,
-		Value: strconv.Itoa(n.RowIndex + 1),
-	})
-	if container != nil && container.RowCount > 0 {
+	switch {
+	case isRowSetMember(n.Role):
 		attributes = append(attributes, dbus.DictEntry{
-			Key:   setSizeAttribute,
-			Value: strconv.Itoa(container.RowCount),
+			Key:   positionInSetAttribute,
+			Value: strconv.Itoa(n.RowIndex + 1),
 		})
+		if container != nil && container.RowCount > 0 {
+			attributes = append(attributes, dbus.DictEntry{
+				Key:   setSizeAttribute,
+				Value: strconv.Itoa(container.RowCount),
+			})
+		}
+	case isSiblingSetMember(n.Role) && t != nil:
+		if position, size := t.PositionInSet(n.ID); position > 0 {
+			attributes = append(attributes,
+				dbus.DictEntry{Key: positionInSetAttribute, Value: strconv.Itoa(position)},
+				dbus.DictEntry{Key: setSizeAttribute, Value: strconv.Itoa(size)},
+			)
+		}
+	default:
 	}
 	return attributes
 }
@@ -517,11 +566,24 @@ func hasColumnPosition(r role.Enum) bool {
 	}
 }
 
-// isSetMember returns true if a role is one of a numbered run of siblings, which is what posinset and setsize describe.
-// Only the rows are: a cell is placed by its row and column rather than by a position in a run.
-func isSetMember(r role.Enum) bool {
+// isRowSetMember returns true if a role is one of a numbered run of siblings that the snapshot describes only part of,
+// which is numbered from the node's own RowIndex and its container's RowCount. A cell is not one: it is placed by its
+// row and its column rather than by a position in a run.
+func isRowSetMember(r role.Enum) bool {
 	switch r {
 	case role.Row, role.ListItem:
+		return true
+	default:
+		return false
+	}
+}
+
+// isSiblingSetMember returns true if a role is one of a numbered run of siblings that is all there in the tree, so that
+// the run can simply be counted. An assistive technology says "tab 2 of 5" and "radio button 1 of 3" from these, which
+// every ATK-based toolkit reports and which a Unison window would otherwise be silent about on Linux alone.
+func isSiblingSetMember(r role.Enum) bool {
+	switch r {
+	case role.Tab, role.MenuItem, role.RadioButton:
 		return true
 	default:
 		return false

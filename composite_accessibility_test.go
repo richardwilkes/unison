@@ -1229,6 +1229,8 @@ func TestInWindowMenuAccessibility(t *testing.T) {
 	c.True(never != nil)
 	if never != nil {
 		c.True(never.Disabled, "an item whose validator refuses it is disabled")
+		c.False(never.Actions.Has(accessibility.Press), "and cannot be asked to do what it would refuse")
+		c.True(never.Actions.Has(accessibility.ScrollIntoView), "though it can still be brought into view")
 	}
 	nested := byName["More"]
 	c.True(nested != nil)
@@ -1236,6 +1238,27 @@ func TestInWindowMenuAccessibility(t *testing.T) {
 		c.True(nested.Expandable, "an item with a sub-menu opens something")
 	}
 	c.True(len(axNodesWithRole(tree, role.Separator)) > 0, "the separator in the menu is described as one")
+
+	// An item is highlighted by the pointer merely passing over it, whether or not it can be chosen: the item's panel
+	// is never the thing that is disabled, so nothing stops the highlight. A disabled item must still not be reported
+	// as holding the focus, which paired with saying it cannot take the focus is the one thing no tree may say — and
+	// pointing the window's focus at it would offer an assistive technology a move to a node that would then refuse it.
+	if never != nil {
+		screen.MouseMove(axScreenPoint(screen, wnd, never), mod.None)
+		tree = screen.AccessibilityTree(wnd)
+		hoveredDisabled := tree.Node(never.ID)
+		c.True(hoveredDisabled != nil)
+		if hoveredDisabled != nil {
+			c.True(hoveredDisabled.Disabled)
+			c.False(hoveredDisabled.Focused, "a disabled item must not report that it holds the focus")
+			c.False(hoveredDisabled.Focusable, "nor that it could take it")
+			c.False(hoveredDisabled.Actions.Has(accessibility.Focus))
+		}
+		c.NotEqual(never.ID, tree.Focus, "and the window must not point the focus at it")
+		focusedNodes := axFocusedNodes(tree)
+		c.Equal(0, len(focusedNodes),
+			"nothing else in this window can hold the focus, so nothing may claim it: %v", axNodeNames(focusedNodes))
+	}
 
 	// Moving the mouse over an item is what a person choosing from a menu does, and what the menu is pointing at is
 	// where an assistive technology must be told the focus is.
@@ -1369,11 +1392,15 @@ func TestMenuAccessibilityChildrenAreTheItems(t *testing.T) {
 	tree = screen.AccessibilityTree(wnd)
 	menus = axNodesWithRole(tree, role.Menu)
 	c.Equal(2, len(menus), "the sub-menu should have opened")
-	sub := axNamed(tree, "More")
+	var sub *accessibility.Node
 	for _, one := range menus {
 		if one.Name == "More" {
 			sub = one
 		}
+	}
+	c.True(sub != nil, "the sub-menu named after the item that opened it should be among %v", axNodeNames(menus))
+	if sub == nil {
+		return
 	}
 	c.Equal(role.Menu, sub.Role)
 	deeper := axUnignoredNodes(tree, sub)

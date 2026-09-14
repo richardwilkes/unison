@@ -277,7 +277,7 @@ func uiaTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibi
 	}
 	ancestor := t.UnignoredParent(id)
 	for depth := 0; ancestor != 0 && depth < uiaMaxTreeDepth; depth++ {
-		if n := t.Node(ancestor); n != nil && n.ID != id && (n.Role == role.Table || n.Role == role.Tree) {
+		if n := t.Node(ancestor); n != nil && (n.Role == role.Table || n.Role == role.Tree) {
 			// Another table contains this one, which a table nested in a cell really is. Its header describes its own
 			// columns, not this table's, and everything further out belongs to it as well, so the search ends here
 			// rather than climbing out of the container and claiming the outer table's column names.

@@ -146,9 +146,15 @@
 // model described above: a published tree is never modified, so an adapter answers queries from it on whatever thread
 // its platform calls in on — any thread at all on Windows, the D-Bus dispatcher goroutine on Linux, the main thread on
 // macOS — without ever touching a live panel. Requests coming the other way, to press a button or move the focus, are
-// handed to the UI thread with [InvokeTask] and answered optimistically, since an adapter must never wait on a UI
-// thread that may be inside a modal loop or a drag. Everything an application writes — ProvideAccessibility,
-// PerformAccessibilityAction, Callback, ActionCallback — therefore runs on the UI thread like any other callback.
+// handed to the UI thread with [InvokeTask] and answered optimistically on Windows and Linux, since an adapter there
+// must never wait on a UI thread that may be inside a modal loop or a drag. macOS is the exception: AppKit delivers
+// accessibility callbacks on the main thread, which is the UI thread, and VoiceOver reads back the state its request
+// produced the moment it has asked, so a request that only moves the focus, the selection or the view is carried out
+// synchronously, from inside that callback. An [AccessibilityActor] or ActionCallback handling one of those actions may
+// therefore find itself running within an AppKit accessibility callback, and must not do anything there that it would
+// not do from inside a mouse event — running a modal dialog, most of all. Requests that activate something are queued
+// on every platform for exactly that reason. Everything an application writes — ProvideAccessibility,
+// PerformAccessibilityAction, Callback, ActionCallback — runs on the UI thread either way, like any other callback.
 //
 // What an assistive technology would be handed can be asserted on in tests, with no display and no screen reader
 // involved: see [HeadlessScreen.AccessibilityTree], [HeadlessScreen.AccessibilityNodeFor],

@@ -17,8 +17,8 @@ import (
 
 var (
 	oleaut32 = windows.NewLazySystemDLL("oleaut32.dll")
-	// The two BSTR allocators are declared in uia_variant_windows.go rather than here, so that every place a BSTR can
-	// be born sits beside the comment explaining who then owns it. A hygiene test in w32_test.go keeps them there.
+	// The BSTR allocator is declared in uia_variant_windows.go rather than here, so that the one place a BSTR can be
+	// born sits beside the comment explaining who then owns it. A hygiene test in w32_test.go keeps it there.
 	sysFreeStringProc         = oleaut32.NewProc("SysFreeString")
 	sysStringLenProc          = oleaut32.NewProc("SysStringLen")
 	variantClearProc          = oleaut32.NewProc("VariantClear")

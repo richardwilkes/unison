@@ -13,7 +13,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/paintstyle"
-	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DrawablePanel provides a Panel that displays a Drawable.
@@ -42,28 +41,12 @@ func (d *DrawablePanel) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize
 	return prefSize, prefSize, prefSize
 }
 
-// ProvideAccessibility describes the panel to assistive technologies. There is nothing in a drawable that says what it
-// shows, so a panel that nothing has described is skipped rather than announced as an image of nothing. A tooltip is
-// the usual way such a panel is described — markdown hangs an image's alt text there — so it becomes the name. That has
-// to happen here rather than being left to the description the snapshot would otherwise take from the tooltip, since a
-// node marked ignored is never reached to hear it.
-//
-// Skipping it is only right for the image it is by default. A panel an application has given a role of its own is
-// something it means to be found — a drawable made focusable and given a press to stand for a button, say — and
-// splicing that out of the tree would take a live control away from the person using one, so an explicit role is left
-// exposed however little the panel has to say for itself, exactly as a Label or a Tag with one is.
+// ProvideAccessibility describes the panel to assistive technologies. A drawable is all such a panel shows, so it is an
+// image named by its tooltip and skipped when nothing describes it: see axDescribeStaticContent, which Label and Tag
+// share. The drawable is taken as present whether or not one has been set, since a panel of this type is an image
+// whatever it currently holds.
 func (d *DrawablePanel) ProvideAccessibility(b *AccessibilityBuilder) {
-	node := b.Node()
-	auto := node.Role == role.Auto
-	if auto {
-		node.Role = role.Image
-	}
-	if node.Name == "" {
-		node.Name = axTooltipText(d.AsPanel())
-	}
-	if auto && node.Name == "" && xreflect.IsNil(d.Accessibility.LabeledBy) {
-		node.Ignored = true
-	}
+	axDescribeStaticContent(b, "", true)
 }
 
 // DefaultDraw provides the default drawing.

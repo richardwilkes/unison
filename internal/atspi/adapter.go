@@ -75,7 +75,11 @@ type Adapter struct {
 	order      []*windowState
 	appID      atomic.Int32
 	stopping   atomic.Bool
-	lock       sync.RWMutex
+	// returned reports that [Start] handed this adapter to its caller, which is what makes a lost connection worth
+	// reporting: nothing that happens before the caller holds the adapter is its business, and [Start] says so by
+	// returning an error instead. It is read and written under lock, so that it and err are decided together.
+	returned bool
+	lock     sync.RWMutex
 }
 
 // Start connects to the accessibility bus, exports the AT-SPI objects and asks the registry to add the application to
@@ -83,7 +87,9 @@ type Adapter struct {
 // first [Adapter.Publish].
 //
 // An error means the application is not on the accessibility bus at all, most often because there is no accessibility
-// bus to reach or because the registry is not running. Nothing has been left behind when one is returned.
+// bus to reach, because the registry is not running, or because the connection ended while the application was still
+// joining the tree. Nothing has been left behind when one is returned, and [Config.Lost] is never called for an adapter
+// that was not handed back: an adapter that exists reports its own loss, and one that does not is the error.
 func Start(cfg Config) (*Adapter, error) {
 	conn := cfg.conn
 	if conn == nil {
@@ -124,7 +130,21 @@ func Start(cfg Config) (*Adapter, error) {
 	// is restarted behind a launcher that keeps its name produces no other sign that it has gone, and everything
 	// written to a connection that has ended is silently dropped. This is registered last, so that a connection lost
 	// while the application was still being exported and embedded is reported by the error returned above instead.
+	//
+	// A connection that has already ended runs the handler at once, from inside this call, which is what an
+	// accessibility bus that dies between the Embed reply and this line does. There is then nothing to hand back: the
+	// adapter would answer for an application nobody can reach, and a caller that installed it would wait forever for
+	// a report it has already missed. Whether the loss is reported through [Config.Lost] or as the error returned here
+	// is settled under the lock, so that it is always exactly one of the two.
 	conn.OnDisconnect(a.connectionLost)
+	a.lock.Lock()
+	err := a.err
+	a.returned = err == nil
+	a.lock.Unlock()
+	if err != nil {
+		conn.Close() // Everything exported, subscribed and embedded above goes with the connection
+		return nil, err
+	}
 	return a, nil
 }
 
@@ -139,14 +159,18 @@ func (a *Adapter) Err() error {
 }
 
 // connectionLost records why the connection to the accessibility bus ended and, unless it ended because [Adapter.Stop]
-// closed it on purpose, tells whoever asked to be told. It runs on one of the connection's own goroutines.
+// closed it on purpose, tells whoever asked to be told. It runs on one of the connection's own goroutines, and may run
+// from inside [Start] when the connection had already ended by the time the handler was registered; a loss that early
+// is reported by Start returning an error rather than through the callback, since the caller does not yet hold the
+// adapter.
 func (a *Adapter) connectionLost(err error) {
 	a.lock.Lock()
 	if a.err == nil {
 		a.err = err
 	}
+	report := a.returned
 	a.lock.Unlock()
-	if a.stopping.Load() || a.cfg.Lost == nil {
+	if !report || a.stopping.Load() || a.cfg.Lost == nil {
 		return
 	}
 	a.cfg.Lost(err)

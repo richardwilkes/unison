@@ -20,6 +20,11 @@ import (
 // Without it an assistive technology can read a Unison field and move about inside it but can never edit it, while the
 // same field is writable through VoiceOver and through UI Automation's value and text patterns.
 //
+// Which nodes get it is [supportsEditableText]'s answer, which is a kind of control rather than a state of one: a field
+// whose actions the snapshot has stripped because it is disabled keeps both the state and the interface, and answers
+// every method with a refusal. That is what an insensitive GtkEntry does, and it is the only way the state and the
+// interface can agree, since [States] derives ATSPI_STATE_EDITABLE from the same answer.
+//
 // Every offset is a rune index, which is what AT-SPI calls a character, and every answer is optimistic in the same way
 // the rest of the package's requests are: the change has been handed to the user interface thread, and the control
 // still holds what it held until the next snapshot says otherwise.

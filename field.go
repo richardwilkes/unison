@@ -1554,8 +1554,9 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 		// right-click, and the same has to happen here.
 		f.RequestFocus()
 		// A right-click would have put the menu under the pointer; there is no pointer here, so it goes where the
-		// person's attention is, which is the caret.
-		f.ShowContextMenu(f.FromSelectionIndex(f.selectionEnd))
+		// person's attention is, which is the caret — the end of the selection that moves, which after a backward
+		// selection made with shift+Left or shift+Home is its start rather than its end. See axCaret.
+		f.ShowContextMenu(f.FromSelectionIndex(f.axCaret()))
 		return true
 	default:
 		return false

@@ -251,7 +251,7 @@ func TestUIAInvokePattern(t *testing.T) {
 	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaInvokeInvoke(w.providerFor(3).ifacePtr(uiaIfaceInvoke)))
 	c.Equal(1, len(w.recorded()))
 
-	plain := NewUIAWindow(UIAConfig{}, patternTree(), UIAGeometry{})
+	plain := newActionlessUIAWindow(t, patternTree())
 	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
 
 	// An element that carries the pattern but offers no Press refuses too. A column header is the real case: it is
@@ -291,7 +291,7 @@ func TestUIAInvokeRaisesInvoked(t *testing.T) {
 	// carried it out either, and an element that offers no Press never had anything to invoke — which is the case the
 	// event matters most for, since a client waiting on Invoked would otherwise be told the press had happened.
 	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaInvokeInvoke(w.providerFor(3).ifacePtr(uiaIfaceInvoke)))
-	plain := NewUIAWindow(UIAConfig{}, patternTree(), UIAGeometry{})
+	plain := newActionlessUIAWindow(t, patternTree())
 	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
 	pressless := patternTree()
 	pressless.Nodes[2].Actions = 0

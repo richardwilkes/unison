@@ -495,14 +495,15 @@ func TestAXAdapterText(t *testing.T) {
 				t.Errorf("label accessibilityAttributedStringForRange: = %#x, want nil", got)
 			}
 			// The first line owns its trailing line feed, so it runs to UTF-16 offset 9: "héllo " is 6 units, the emoji
-			// is 2 and the line feed is 1.
+			// is 2 and the line feed is 1. A line the field does not have is no range at all, which NSAccessibility
+			// spells {NSNotFound, 0}: {0, 0} would read as a real empty range at the start of the content.
 			for _, c := range []struct {
 				want NSRange
 				line int64
 			}{
 				{line: 0, want: NSRange{Location: 0, Length: 9}},
 				{line: 1, want: NSRange{Location: 9, Length: 5}},
-				{line: 2, want: NSRange{}},
+				{line: 2, want: emptyRange},
 			} {
 				if got := objc.Send[NSRange](field, Sel("accessibilityRangeForLine:"), c.line); got != c.want {
 					t.Errorf("accessibilityRangeForLine:%d = %+v, want %+v", c.line, got, c.want)
@@ -541,6 +542,15 @@ func TestAXAdapterText(t *testing.T) {
 			// A node with no text at all must answer safely rather than reach into a nil TextInfo.
 			if got := objc.Send[int64](label, Sel("accessibilityNumberOfCharacters")); got != 0 {
 				t.Errorf("label accessibilityNumberOfCharacters = %d, want 0", got)
+			}
+			// An element holding no text has no lines either: every line is no range at all, and no index sits on one,
+			// which -1 says the way accessibilityInsertionPointLineNumber says it. Answering {0, 0} and 0 would have
+			// every button, row and group this class serves claim a first line it has no content for.
+			if got := objc.Send[NSRange](label, Sel("accessibilityRangeForLine:"), int64(0)); got != emptyRange {
+				t.Errorf("label accessibilityRangeForLine:0 = %+v, want %+v", got, emptyRange)
+			}
+			if got := objc.Send[int64](label, Sel("accessibilityLineForIndex:"), int64(0)); got != -1 {
+				t.Errorf("label accessibilityLineForIndex:0 = %d, want -1", got)
 			}
 			if got := objc.Send[NSRange](label, Sel("accessibilitySelectedTextRange")); got != (NSRange{}) {
 				t.Errorf("label accessibilitySelectedTextRange = %+v, want the zero range", got)
@@ -2555,5 +2565,768 @@ func TestAXRoleChange(t *testing.T) {
 		if layoutChanged != 1 {
 			t.Errorf("%d layout-changed notifications were posted for the role change, want 1", layoutChanged)
 		}
+	})
+}
+
+// axSelectorAllowed reports what an element answers when AppKit asks whether an accessibility client may invoke a
+// selector on it, which is how the advertised surface of each element is decided.
+func axSelectorAllowed(element objc.ID, selector string) bool {
+	return objc.Send[bool](element, Sel("isAccessibilitySelectorAllowed:"), Sel(selector))
+}
+
+// TestAXSelectorAllowed proves each element advertises only what its node can actually do. The method table is one
+// flat set shared by every node, so without isAccessibilitySelectorAllowed: a label offers AXIncrement and
+// AXDecrement, a button offers the whole text protocol, a group offers AXRows and AXDisclosing, and every element
+// says its value can be set — including a progress bar, which is exactly the read-only node the other two platforms
+// report as READ_ONLY and IsReadOnly. What the element advertises now comes from the same fields the answers come
+// from, so an assistive technology is offered exactly what it will be allowed to do.
+func TestAXSelectorAllowed(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 1400 + iota
+			labelID
+			buttonID
+			sliderID
+			fieldID
+			tableID
+			rowID
+			cellID
+			progressID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
+					Children: []accessibility.NodeID{labelID, buttonID, sliderID, fieldID, tableID, progressID},
+				},
+				labelID: {
+					ID: labelID, Parent: rootID, Role: role.Label, Name: "Status",
+					Bounds: geom.NewRect(0, 0, 80, 20),
+				},
+				buttonID: {
+					ID: buttonID, Parent: rootID, Role: role.Button, Name: "OK", Bounds: geom.NewRect(0, 20, 80, 24),
+					Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Focus),
+				},
+				sliderID: {
+					ID: sliderID, Parent: rootID, Role: role.Slider, Name: "Volume",
+					Bounds: geom.NewRect(0, 44, 100, 20), HasNumber: true, Number: 3, Min: 1, Max: 9, Step: 1,
+					Actions: accessibility.ActionSet(0).With(accessibility.Increment, accessibility.Decrement,
+						accessibility.SetValue),
+				},
+				fieldID: {
+					ID: fieldID, Parent: rootID, Role: role.TextField, Name: "Full name", Value: "Ada",
+					Bounds: geom.NewRect(0, 64, 200, 24),
+					Text:   &accessibility.TextInfo{Text: "Ada", SelStart: 3, SelEnd: 3, Caret: 3},
+					Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetValue,
+						accessibility.SetTextSelection),
+				},
+				tableID: {
+					ID: tableID, Parent: rootID, Children: []accessibility.NodeID{rowID}, Role: role.Table,
+					Name: "Files", Bounds: geom.NewRect(0, 88, 200, 20), RowCount: 1, ColumnCount: 1,
+				},
+				rowID: {
+					ID: rowID, Parent: tableID, Children: []accessibility.NodeID{cellID}, Role: role.Row,
+					Bounds: geom.NewRect(0, 88, 200, 20), RowIndex: 0, Level: 1, Selectable: true, Expandable: true,
+					Actions: accessibility.ActionSet(0).With(accessibility.Select, accessibility.Expand),
+				},
+				cellID: {
+					ID: cellID, Parent: rowID, Role: role.Cell, Name: "notes.txt",
+					Bounds: geom.NewRect(0, 88, 200, 20), RowIndex: 0, ColumnIndex: 0,
+				},
+				// A progress bar is the read-only node: it has a number and no way to change it.
+				progressID: {
+					ID: progressID, Parent: rootID, Role: role.ProgressBar, Name: "Copying",
+					Bounds: geom.NewRect(0, 108, 200, 20), HasNumber: true, Number: 40, Max: 100, ReadOnly: true,
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 6)
+			rows := IDsFromNSArray(children[4].Send(Sel("accessibilityRows")))
+			if len(rows) != 1 {
+				t.Fatalf("the table reported %d rows, want 1", len(rows))
+			}
+			// The elements the expectation rows below answer for, in the order their characters are read.
+			elements := []struct {
+				name    string
+				element objc.ID
+			}{
+				{name: "label", element: children[0]},
+				{name: "button", element: children[1]},
+				{name: "slider", element: children[2]},
+				{name: "text field", element: children[3]},
+				{name: "table", element: children[4]},
+				{name: "row", element: rows[0]},
+				{name: "progress bar", element: children[5]},
+			}
+			// The expectation rows are made of these: one character per element in the order above, "y" for an
+			// element that offers the selector and "n" for one that refuses it.
+			const (
+				axByEveryNode    = "yyyyyyy"
+				axByNoNode       = "nnnnnnn"
+				axByButton       = "nynnnnn"
+				axBySlider       = "nnynnnn"
+				axByTextField    = "nnnynnn"
+				axBySettable     = "nnyynnn"
+				axByRowContainer = "nnnnynn"
+				axByRow          = "nnnnnyn"
+			)
+			for _, c := range []struct {
+				selector string
+				allowed  string
+			}{
+				// Everything the class answers for every node stays on offer, whatever the node is.
+				{selector: "accessibilityRole", allowed: axByEveryNode},
+				{selector: "accessibilityLabel", allowed: axByEveryNode},
+				{selector: "accessibilityValue", allowed: axByEveryNode},
+				{selector: "accessibilityFrame", allowed: axByEveryNode},
+				{selector: "accessibilityParent", allowed: axByEveryNode},
+				{selector: "accessibilityChildren", allowed: axByEveryNode},
+				{selector: "accessibilityMaxValue", allowed: axByEveryNode},
+				{selector: "isAccessibilityFocused", allowed: axByEveryNode},
+				{selector: "setAccessibilityFocused:", allowed: axByEveryNode},
+				// The performers, each offered by exactly the nodes whose action set has it. AppKit derives the
+				// AXIncrement and AXDecrement action names from these two being implemented at all, so a label that
+				// answers them advertises stepping it cannot do.
+				{selector: "accessibilityPerformPress", allowed: axByButton},
+				{selector: "accessibilityPerformConfirm", allowed: axByButton},
+				{selector: "accessibilityPerformIncrement", allowed: axBySlider},
+				{selector: "accessibilityPerformDecrement", allowed: axBySlider},
+				{selector: "accessibilityPerformShowMenu", allowed: axByNoNode},
+				// The text protocol belongs to the nodes that hold text and to no others.
+				{selector: "accessibilityNumberOfCharacters", allowed: axByTextField},
+				{selector: "accessibilitySelectedText", allowed: axByTextField},
+				{selector: "accessibilitySelectedTextRange", allowed: axByTextField},
+				{selector: "accessibilityStringForRange:", allowed: axByTextField},
+				{selector: "accessibilityAttributedStringForRange:", allowed: axByTextField},
+				{selector: "accessibilityRangeForLine:", allowed: axByTextField},
+				{selector: "accessibilityLineForIndex:", allowed: axByTextField},
+				{selector: "accessibilityInsertionPointLineNumber", allowed: axByTextField},
+				{selector: "setAccessibilitySelectedTextRange:", allowed: axByTextField},
+				// The rows of a container, and the disclosure of a row: a group offering either is the symptom.
+				{selector: "accessibilityRows", allowed: axByRowContainer},
+				{selector: "accessibilitySelectedRows", allowed: axByRowContainer},
+				{selector: "accessibilityVisibleRows", allowed: axByRowContainer},
+				{selector: "setAccessibilitySelectedRows:", allowed: axByRowContainer},
+				{selector: "isAccessibilityDisclosed", allowed: axByRow},
+				{selector: "accessibilityDisclosedRows", allowed: axByRow},
+				{selector: "accessibilityDisclosedByRow", allowed: axByRow},
+				{selector: "setAccessibilityDisclosed:", allowed: axByRow},
+				// The settable state. The progress bar is the read-only node: it reports a number that nobody may
+				// set, which is what ReadOnly says and what the other two platforms report as READ_ONLY and
+				// IsReadOnly.
+				{selector: "setAccessibilityValue:", allowed: axBySettable},
+				{selector: "setAccessibilitySelected:", allowed: axByRow},
+				{selector: "setAccessibilityExpanded:", allowed: axByRow},
+			} {
+				if len(c.allowed) != len(elements) {
+					t.Fatalf("the row for %s covers %d elements, want %d", c.selector, len(c.allowed), len(elements))
+				}
+				for i, e := range elements {
+					want := c.allowed[i] == 'y'
+					if got := axSelectorAllowed(e.element, c.selector); got != want {
+						t.Errorf("the %s allows %s = %v, want %v", e.name, c.selector, got, want)
+					}
+				}
+			}
+		})
+		// An element whose node has left the tree speaks for nothing, so it may be asked to do nothing either.
+		stale := a.Element(labelID)
+		if stale == 0 {
+			t.Fatal("the label's element was never created")
+		}
+		Retain(stale)
+		defer Release(stale)
+		next := &accessibility.Tree{
+			Nodes: make(map[accessibility.NodeID]*accessibility.Node), Root: rootID,
+			Generation: 2,
+		}
+		for id, n := range tree.Nodes {
+			next.Nodes[id] = n
+		}
+		delete(next.Nodes, labelID)
+		next.Nodes[rootID] = &accessibility.Node{
+			ID: rootID, Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
+			Children: []accessibility.NodeID{buttonID, sliderID, fieldID, tableID, progressID},
+		}
+		a.Publish(next, accessibility.Diff(tree, next))
+		WithPool(func() {
+			if axSelectorAllowed(stale, "accessibilityPerformPress") {
+				t.Error("a stale element still advertises that it can be pressed")
+			}
+			if axSelectorAllowed(stale, "setAccessibilityValue:") {
+				t.Error("a stale element still advertises that its value can be set")
+			}
+		})
+	})
+}
+
+// TestAXShortcutParser proves the accelerator parser against the strings the menus themselves draw. KeyBinding.String
+// builds them as the modifier glyphs in a fixed order followed by the key's own name, and AXMenuItemCmdModifiers
+// counts the command key by its absence: zero means command alone, and a shortcut without it has to set the
+// no-command bit.
+func TestAXShortcutParser(t *testing.T) {
+	for _, c := range []struct {
+		shortcut  string
+		char      string
+		modifiers int64
+		ok        bool
+	}{
+		{shortcut: "⌘S", char: "S", modifiers: 0, ok: true},
+		{shortcut: "⇧⌘Z", char: "Z", modifiers: axMenuModifierShift, ok: true},
+		{
+			shortcut:  "⌃⌥⇧⌘A",
+			char:      "A",
+			modifiers: axMenuModifierControl | axMenuModifierOption | axMenuModifierShift,
+			ok:        true,
+		},
+		{shortcut: "⌘,", char: ",", modifiers: 0, ok: true},
+		// A key whose name is a word is reported as the word, which is what the menu shows and what an assistive
+		// technology can say.
+		{shortcut: "⌘Delete", char: "Delete", modifiers: 0, ok: true},
+		{shortcut: "⌘NumPad-0", char: "NumPad-0", modifiers: 0, ok: true},
+		// No command key at all, which is the one thing the modifier bits have to say outright.
+		{shortcut: "F1", char: "F1", modifiers: axMenuModifierNoCommand, ok: true},
+		{
+			shortcut:  "⌃Space",
+			char:      "Space",
+			modifiers: axMenuModifierControl | axMenuModifierNoCommand,
+			ok:        true,
+		},
+		// Caps lock and num lock can be drawn but have no bit of their own, so they are dropped.
+		{shortcut: "⇪⌘P", char: "P", modifiers: 0, ok: true},
+		{shortcut: "⇭⌘1", char: "1", modifiers: 0, ok: true},
+		// Nothing to report: no shortcut, and modifiers with no key to go with them.
+		{shortcut: ""},
+		{shortcut: "⌘"},
+		{shortcut: "⇧⌘"},
+	} {
+		char, modifiers, ok := axShortcutOf(&accessibility.Node{Shortcut: c.shortcut})
+		if ok != c.ok {
+			t.Errorf("axShortcutOf(%q) reported ok = %v, want %v", c.shortcut, ok, c.ok)
+			continue
+		}
+		if char != c.char || modifiers != c.modifiers {
+			t.Errorf("axShortcutOf(%q) = %q, %d, want %q, %d", c.shortcut, char, modifiers, c.char, c.modifiers)
+		}
+	}
+}
+
+// TestAXShortcutAttributes proves a node's Shortcut reaches the accessibility system as the accelerator that
+// activates it. AXMenuItemCmdChar and AXMenuItemCmdModifiers are the only attributes macOS has for it, they predate
+// the NSAccessibility protocol and have no property in it, so they are published through the informal protocol the
+// way AppKit's own NSMenuItem publishes them — and everything else has to go on being answered by the superclass.
+func TestAXShortcutAttributes(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 1500 + iota
+			menuID
+			itemID
+			plainID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{menuID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				menuID: {
+					ID: menuID, Parent: rootID, Children: []accessibility.NodeID{itemID, plainID}, Role: role.Menu,
+					Name: "File", Bounds: geom.NewRect(0, 0, 200, 40),
+				},
+				itemID: {
+					ID: itemID, Parent: menuID, Role: role.MenuItem, Name: "Save", Shortcut: "⇧⌘S",
+					Bounds:  geom.NewRect(0, 0, 200, 20),
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				// An item with no key binding of its own, which must advertise neither attribute.
+				plainID: {
+					ID: plainID, Parent: menuID, Role: role.MenuItem, Name: "Save As…",
+					Bounds:  geom.NewRect(0, 20, 200, 20),
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			items := IDsFromNSArray(axTestChildren(t, v, 1)[0].Send(Sel("accessibilityChildren")))
+			if len(items) != 2 {
+				t.Fatalf("the menu has %d children, want 2", len(items))
+			}
+			item, plain := items[0], items[1]
+			names := func(element objc.ID) []string {
+				ids := IDsFromNSArray(element.Send(Sel("accessibilityAttributeNames")))
+				out := make([]string, 0, len(ids))
+				for _, id := range ids {
+					out = append(out, GoStringFromNSString(id))
+				}
+				return out
+			}
+			itemNames := names(item)
+			for _, want := range []string{axAttrMenuItemCmdChar, axAttrMenuItemCmdModifiers} {
+				if !slices.Contains(itemNames, want) {
+					t.Errorf("the item's attributes %v do not include %s", itemNames, want)
+				}
+			}
+			plainNames := names(plain)
+			for _, unwanted := range []string{axAttrMenuItemCmdChar, axAttrMenuItemCmdModifiers} {
+				if slices.Contains(plainNames, unwanted) {
+					t.Errorf("the item with no key binding advertises %s", unwanted)
+				}
+			}
+			// Whatever the superclass answers for every other attribute, it has to go on answering it: the names an
+			// element lists are its own plus the two, never only the two.
+			if len(plainNames) == 0 || len(itemNames) != len(plainNames)+2 {
+				t.Errorf("the item lists %d attributes and the plain item %d, want the item's to be the plain "+
+					"item's two longer", len(itemNames), len(plainNames))
+			}
+			if got := GoStringFromNSString(item.Send(Sel("accessibilityAttributeValue:"),
+				NSStringFromGo(axAttrMenuItemCmdChar))); got != "S" {
+				t.Errorf("the item's %s = %q, want S", axAttrMenuItemCmdChar, got)
+			}
+			if got := Int64FromNSNumber(item.Send(Sel("accessibilityAttributeValue:"),
+				NSStringFromGo(axAttrMenuItemCmdModifiers))); got != axMenuModifierShift {
+				t.Errorf("the item's %s = %d, want %d", axAttrMenuItemCmdModifiers, got, axMenuModifierShift)
+			}
+			for _, attribute := range []string{axAttrMenuItemCmdChar, axAttrMenuItemCmdModifiers} {
+				if got := plain.Send(Sel("accessibilityAttributeValue:"), NSStringFromGo(attribute)); got != 0 {
+					t.Errorf("the item with no key binding answered %s with %#x, want nothing", attribute, got)
+				}
+			}
+			// The protocol path is untouched by the informal one being answered as well.
+			if got := GoStringFromNSString(item.Send(Sel("accessibilityRole"))); got != "AXMenuItem" {
+				t.Errorf("the item's role = %q, want AXMenuItem", got)
+			}
+			if got := GoStringFromNSString(item.Send(Sel("accessibilityLabel"))); got != "Save" {
+				t.Errorf("the item's label = %q, want Save", got)
+			}
+			if got := item.Send(Sel("accessibilityParent")); got != a.Element(menuID) {
+				t.Errorf("the item's parent = %#x, want the menu %#x", got, a.Element(menuID))
+			}
+		})
+	})
+}
+
+// axModalTestTree returns a window whose root reports the given modality, with one button in it.
+func axModalTestTree(modal bool, generation uint64) *accessibility.Tree {
+	const (
+		rootID   accessibility.NodeID = 1601
+		buttonID accessibility.NodeID = 1602
+	)
+	return &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			rootID: {
+				ID: rootID, Children: []accessibility.NodeID{buttonID}, Role: role.Dialog, Name: "Confirm",
+				Bounds: geom.NewRect(0, 0, 320, 240), Modal: modal,
+			},
+			buttonID: {
+				ID: buttonID, Parent: rootID, Role: role.Button, Name: "OK", Bounds: geom.NewRect(0, 0, 80, 24),
+				Actions: accessibility.ActionSet(0).With(accessibility.Press),
+			},
+		},
+		Root:       rootID,
+		Generation: generation,
+	}
+}
+
+// TestAXModalWindow proves a modal dialog is reported as modal. Window.RunModal runs unison's own event loop rather
+// than an NSApp modal session, so no window of ours ever becomes NSApp's modal window and AppKit cannot derive
+// AXModal for itself the way the style mask and the window level give it AXResizable and AXFloating. The adapter sets
+// the NSWindow's own accessibilityModal instead, on the first publish and whenever it changes.
+func TestAXModalWindow(t *testing.T) {
+	runOnMain(func() {
+		modal := axModalTestTree(true, 1)
+		_, a, cleanup := newAXAdapterWithTree(t, modal)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			if !objc.Send[bool](objc.ID(a.wnd), Sel("isAccessibilityModal")) {
+				t.Error("the window of a modal dialog does not report itself as modal")
+			}
+		})
+		// Dismissing the modality tells the window again, so a window reused for something else does not stay modal.
+		ordinary := axModalTestTree(false, 2)
+		a.Publish(ordinary, accessibility.Diff(modal, ordinary))
+		WithPool(func() {
+			if objc.Send[bool](objc.ID(a.wnd), Sel("isAccessibilityModal")) {
+				t.Error("the window still reports itself as modal after the root node stopped being modal")
+			}
+		})
+		// And a publish that changes nothing about the modality leaves it where it is.
+		again := axModalTestTree(true, 3)
+		a.Publish(again, accessibility.Diff(ordinary, again))
+		if !a.modal || !a.modalKnown {
+			t.Errorf("the adapter holds modal = %v, known = %v, want both true", a.modal, a.modalKnown)
+		}
+		WithPool(func() {
+			if !objc.Send[bool](objc.ID(a.wnd), Sel("isAccessibilityModal")) {
+				t.Error("the window does not report itself as modal after the root node became modal again")
+			}
+		})
+	})
+}
+
+// TestAXOrdinaryWindowIsNotModal proves the ordinary case says so: a window whose root is not modal is told as much
+// on the first publish, so nothing is left to whatever the NSWindow happened to hold.
+func TestAXOrdinaryWindowIsNotModal(t *testing.T) {
+	runOnMain(func() {
+		_, a, _, cleanup := newAXTestAdapter(t)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		if !a.modalKnown || a.modal {
+			t.Errorf("the adapter holds modal = %v, known = %v, want false and true", a.modal, a.modalKnown)
+		}
+		WithPool(func() {
+			if objc.Send[bool](objc.ID(a.wnd), Sel("isAccessibilityModal")) {
+				t.Error("an ordinary window reports itself as modal")
+			}
+		})
+	})
+}
+
+// axRecordedNotification is one notification a publish posted, in the order it went out; see axRecordNotifications.
+type axRecordedNotification struct {
+	name    string
+	element objc.ID
+}
+
+// axRecordNotifications records every notification posted, with and without user information, into one list in the
+// order they go out, and returns the function that stops recording. It is what the tests about ordering need, since
+// the layout-changed notification carries user information and the focus one does not, so watching either function
+// alone cannot say which came first.
+func axRecordNotifications(recorded *[]axRecordedNotification) func() {
+	ensureAXNotifyFuncs()
+	realPost := axPostNotify
+	realPostInfo := axPostNotifyInfo
+	axPostNotify = func(element, notification objc.ID) {
+		*recorded = append(*recorded, axRecordedNotification{
+			element: element,
+			name:    GoStringFromNSString(notification),
+		})
+		realPost(element, notification)
+	}
+	axPostNotifyInfo = func(element, notification, userInfo objc.ID) {
+		*recorded = append(*recorded, axRecordedNotification{
+			element: element,
+			name:    GoStringFromNSString(notification),
+		})
+		realPostInfo(element, notification, userInfo)
+	}
+	return func() {
+		axPostNotify = realPost
+		axPostNotifyInfo = realPostInfo
+	}
+}
+
+// The node ids axMovedAndFocusedTree builds.
+const (
+	axMovedRootID accessibility.NodeID = 1700 + iota
+	axMovedGroupID
+	axMovedButtonID
+)
+
+// axMovedAndFocusedTree returns a window holding a group and a button, with the button moved and holding the focus
+// once moved is true.
+func axMovedAndFocusedTree(moved bool) *accessibility.Tree {
+	const (
+		rootID   = axMovedRootID
+		groupID  = axMovedGroupID
+		buttonID = axMovedButtonID
+	)
+	bounds := geom.NewRect(0, 0, 80, 24)
+	if moved {
+		bounds = geom.NewRect(0, 10, 80, 24)
+	}
+	tree := &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			rootID: {
+				ID: rootID, Children: []accessibility.NodeID{groupID}, Role: role.Window,
+				Bounds: geom.NewRect(0, 0, 320, 240),
+			},
+			groupID: {
+				ID: groupID, Parent: rootID, Children: []accessibility.NodeID{buttonID}, Role: role.Group,
+				Name: "Box", Bounds: geom.NewRect(0, 0, 200, 40),
+			},
+			buttonID: {
+				ID: buttonID, Parent: groupID, Role: role.Button, Name: "OK", Bounds: bounds, Focusable: true,
+				Focused: moved,
+				Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Focus),
+			},
+		},
+		Root:       rootID,
+		Generation: 1,
+	}
+	if moved {
+		tree.Focus = buttonID
+	}
+	return tree
+}
+
+// TestAXFocusChangeFlushesLayoutChangedFirst proves everything a publish gathered goes out before the focus does. An
+// assistive technology is told where to look only once it has been told what changed — which is why Diff puts the
+// focus event last of all — and that has to hold for the layout-changed notification too: posted after the focus
+// moved, it tells VoiceOver to re-read the frame of an element its cursor has already left.
+func TestAXFocusChangeFlushesLayoutChangedFirst(t *testing.T) {
+	runOnMain(func() {
+		before := axMovedAndFocusedTree(false)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// Only elements that exist are named, so the button has to have been asked about first.
+		var button objc.ID
+		WithPool(func() {
+			group := axTestChildren(t, v, 1)[0]
+			children := IDsFromNSArray(group.Send(Sel("accessibilityChildren")))
+			if len(children) != 1 {
+				t.Fatalf("the group has %d children, want 1", len(children))
+			}
+			button = children[0]
+		})
+		var recorded []axRecordedNotification
+		defer axRecordNotifications(&recorded)()
+		after := axMovedAndFocusedTree(true)
+		after.Generation = 2
+		events := accessibility.Diff(before, after)
+		if len(events) == 0 || events[len(events)-1].Kind != accessibility.FocusChanged {
+			t.Fatalf("the diff produced %v, want the focus change last of all", events)
+		}
+		a.Publish(after, events)
+		want := []axRecordedNotification{
+			{element: objc.ID(v), name: GoStringFromNSString(AppKitString(axNotifyLayoutChanged))},
+			{element: button, name: GoStringFromNSString(AppKitString(axNotifyFocusedUIElement))},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("the publish posted %v, want %v (the layout change before the focus)", recorded, want)
+		}
+	})
+}
+
+// TestAXLayoutChangedSkippedWhenNothingHasAnElement proves a layout-changed notification naming nothing is not posted
+// at all. The notification is worth something only for the elements it names — VoiceOver re-reads their frames, and
+// one with an empty list leaves its cursor where the old frame was — and every gathered id lacking an element is the
+// ordinary case of something moving that no assistive technology has ever asked about.
+func TestAXLayoutChangedSkippedWhenNothingHasAnElement(t *testing.T) {
+	runOnMain(func() {
+		before := axMovedAndFocusedTree(false)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var recorded []axRecordedNotification
+		stop := axRecordNotifications(&recorded)
+		defer stop()
+		// Nothing has asked about anything yet, so the moved button has no element to name.
+		moved := axMovedAndFocusedTree(false)
+		moved.Generation = 2
+		moved.Nodes[axMovedButtonID].Bounds = geom.NewRect(0, 10, 80, 24)
+		a.Publish(moved, accessibility.Diff(before, moved))
+		if len(recorded) != 0 {
+			t.Errorf("a publish naming only elements that do not exist posted %v, want nothing", recorded)
+		}
+		// Once the button has been asked about, the same change is worth reporting.
+		WithPool(func() { axTestChildren(t, v, 1)[0].Send(Sel("accessibilityChildren")) })
+		back := axMovedAndFocusedTree(false)
+		back.Generation = 3
+		a.Publish(back, accessibility.Diff(moved, back))
+		want := []axRecordedNotification{
+			{element: objc.ID(v), name: GoStringFromNSString(AppKitString(axNotifyLayoutChanged))},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("the publish posted %v, want %v", recorded, want)
+		}
+	})
+}
+
+// TestAXContentsMatchPresentedChildren proves AXContents and AXChildren agree. Both are registered on every element,
+// so a container holding a cell with a single occupant answered its raw children for one and its presented children
+// for the other: an element was created for a cell the presented hierarchy never hands out, and that element then
+// reported the row as its parent while the row did not list it among its children. A scroll area is the one node that
+// answers something different, since what it scrolls is its children other than its scroll bars.
+func TestAXContentsMatchPresentedChildren(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 1800 + iota
+			tableID
+			rowID
+			cellAID
+			boxID
+			cellBID
+			labelAID
+			labelBID
+			scrollID
+			barID
+			contentID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{tableID, scrollID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				tableID: {
+					ID: tableID, Parent: rootID, Children: []accessibility.NodeID{rowID}, Role: role.Table,
+					Name: "Grid", Bounds: geom.NewRect(0, 0, 200, 20), RowCount: 1, ColumnCount: 2,
+				},
+				rowID: {
+					ID: rowID, Parent: tableID, Children: []accessibility.NodeID{cellAID, cellBID}, Role: role.Row,
+					Bounds: geom.NewRect(0, 0, 200, 20), RowIndex: 0, Level: 1,
+				},
+				// One cell holding a single check box, which is presented in the cell's place.
+				cellAID: {
+					ID: cellAID, Parent: rowID, Children: []accessibility.NodeID{boxID}, Role: role.Cell,
+					Bounds: geom.NewRect(0, 0, 40, 20), RowIndex: 0, ColumnIndex: 0,
+				},
+				boxID: {
+					ID: boxID, Parent: cellAID, Role: role.CheckBox, Name: "Done", Bounds: geom.NewRect(2, 2, 16, 16),
+					HasCheck: true, Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				// One cell holding two labels, which stays a cell.
+				cellBID: {
+					ID: cellBID, Parent: rowID, Children: []accessibility.NodeID{labelAID, labelBID}, Role: role.Cell,
+					Bounds: geom.NewRect(40, 0, 160, 20), RowIndex: 0, ColumnIndex: 1,
+				},
+				labelAID: {
+					ID: labelAID, Parent: cellBID, Role: role.Label, Name: "Left",
+					Bounds: geom.NewRect(40, 0, 80, 20),
+				},
+				labelBID: {
+					ID: labelBID, Parent: cellBID, Role: role.Label, Name: "Right",
+					Bounds: geom.NewRect(120, 0, 80, 20),
+				},
+				scrollID: {
+					ID: scrollID, Parent: rootID, Children: []accessibility.NodeID{barID, contentID},
+					Role: role.ScrollArea, Bounds: geom.NewRect(0, 20, 200, 80),
+				},
+				barID: {
+					ID: barID, Parent: scrollID, Role: role.ScrollBar, Bounds: geom.NewRect(190, 20, 10, 80),
+					Orientation: accessibility.OrientationVertical, HasNumber: true, Max: 300, Step: 8,
+				},
+				contentID: {
+					ID: contentID, Parent: scrollID, Role: role.Group, Name: "Long form",
+					Bounds: geom.NewRect(0, 20, 190, 380),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 2)
+			table, scrollArea := children[0], children[1]
+			rows := IDsFromNSArray(table.Send(Sel("accessibilityRows")))
+			if len(rows) != 1 {
+				t.Fatalf("the table reported %d rows, want 1", len(rows))
+			}
+			rowChildren := IDsFromNSArray(rows[0].Send(Sel("accessibilityChildren")))
+			rowContents := IDsFromNSArray(rows[0].Send(Sel("accessibilityContents")))
+			if !slices.Equal(rowChildren, rowContents) {
+				t.Errorf("the row's contents %v are not its children %v", rowContents, rowChildren)
+			}
+			if len(rowChildren) != 2 || rowChildren[0] != a.Element(boxID) || rowChildren[1] != a.Element(cellBID) {
+				t.Errorf("the row is shown holding %v, want the check box %#x and the second cell %#x", rowChildren,
+					a.Element(boxID), a.Element(cellBID))
+			}
+			// The cell the check box stands in for is never handed out, so nothing ever creates an element for it.
+			if got := a.Element(cellAID); got != 0 {
+				t.Errorf("an element %#x exists for the cell the check box stands in for", got)
+			}
+			// A scroll area is the exception: its contents are what it scrolls, which is everything but its bars.
+			if contents := IDsFromNSArray(scrollArea.Send(Sel("accessibilityContents"))); len(contents) != 1 ||
+				contents[0] != a.Element(contentID) {
+				t.Errorf("the scroll area's contents = %v, want just the content %#x", contents,
+					a.Element(contentID))
+			}
+			if got := NSArrayCount(scrollArea.Send(Sel("accessibilityChildren"))); got != 2 {
+				t.Errorf("the scroll area is shown holding %d children, want 2 (the bar included)", got)
+			}
+		})
+	})
+}
+
+// TestAXAttributesChangedNotification proves the secondary attributes and relations are reported. A placeholder, a
+// level, a row or column index or count, an orientation and the LabeledBy, DescribedBy and Controls links all reach
+// an adapter as one AttributesChanged event, and macOS has no notification for any of them: the title-changed
+// notification is the nearest thing it has to "read this element again", which is the same stand-in a changed name
+// uses and all any of these needs, since every one of them is answered from the current snapshot.
+func TestAXAttributesChangedNotification(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 1900 + iota
+			fieldID
+		)
+		build := func(placeholder string) *accessibility.Tree {
+			return &accessibility.Tree{
+				Nodes: map[accessibility.NodeID]*accessibility.Node{
+					rootID: {
+						ID: rootID, Children: []accessibility.NodeID{fieldID}, Role: role.Window,
+						Bounds: geom.NewRect(0, 0, 320, 240),
+					},
+					fieldID: {
+						ID: fieldID, Parent: rootID, Role: role.TextField, Name: "Nickname",
+						Bounds: geom.NewRect(0, 0, 200, 24), Placeholder: placeholder,
+						Text: &accessibility.TextInfo{},
+					},
+				},
+				Root:       rootID,
+				Generation: 1,
+			}
+		}
+		before := build("required")
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() { axTestChildren(t, v, 1) })
+		field := a.Element(fieldID)
+		if field == 0 {
+			t.Fatal("the field's element was never created")
+		}
+		var recorded []axRecordedNotification
+		defer axRecordNotifications(&recorded)()
+		after := build("optional")
+		after.Generation = 2
+		events := accessibility.Diff(before, after)
+		if !slices.ContainsFunc(events, func(e accessibility.Event) bool {
+			return e.Kind == accessibility.AttributesChanged && e.Node == fieldID
+		}) {
+			t.Fatalf("the diff produced %v, want an attributes-changed event for the field", events)
+		}
+		a.Publish(after, events)
+		want := []axRecordedNotification{
+			{element: field, name: GoStringFromNSString(AppKitString(axNotifyTitleChanged))},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("the attribute change posted %v, want %v", recorded, want)
+		}
+		WithPool(func() {
+			if got := GoStringFromNSString(field.Send(Sel("accessibilityPlaceholderValue"))); got != "optional" {
+				t.Errorf("the field's placeholder after the change = %q, want optional", got)
+			}
+		})
 	})
 }

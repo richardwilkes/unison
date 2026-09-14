@@ -30,6 +30,7 @@ const (
 	NodeAdded                             // The node joined the tree
 	NodeRemoved                           // The node left the tree
 	SortChanged                           // The node's Sort direction changed
+	AttributesChanged                     // A secondary attribute or relation changed; see the Diff doc for the list
 	RoleChanged                           // The node's Role changed; Old and New hold the role keys
 	WindowActivated                       // The window became the active one
 	WindowDeactivated                     // The window stopped being the active one
@@ -66,6 +67,8 @@ func (e EventKind) String() string {
 		return "node-removed"
 	case SortChanged:
 		return "sort-changed"
+	case AttributesChanged:
+		return "attributes-changed"
 	case RoleChanged:
 		return "role-changed"
 	case WindowActivated:

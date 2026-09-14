@@ -172,12 +172,25 @@ func (f *NumericField[T]) PerformAccessibilityAction(req accessibility.ActionReq
 // back through its Extract, and would skip the clamp to the field's range besides. So a text that parses to exactly the
 // number it came with says no more than the number does, and the number is taken; anything else is the formatting the
 // field presents its values in, and the text is taken.
+//
+// An empty text is the one case nothing can tell apart: a request that sent no text at all and a request that sent the
+// empty string as the new text look exactly alike, since the field nobody filled in holds its zero value either way —
+// UI Automation's value pattern sends only the text and the AT-SPI value interface sends only the number. Zero is
+// therefore the one number that may not have been meant, and a zero the field cannot hold is refused rather than
+// clamped to whichever end of the range is nearer it, so that a client asking for the text to be emptied is told that
+// nothing happened instead of the field quietly showing a value nobody asked for. A zero the field can hold is taken,
+// since that is what the request says and there is nothing to say otherwise.
 func (f *NumericField[T]) axSetValue(req accessibility.ActionRequest) bool {
-	if req.Value != "" && !axValueIsNumber(req.Value, req.Number) {
+	switch {
+	case req.Value == "":
+		if math.IsNaN(req.Number) {
+			return false
+		}
+		if req.Number == 0 && (f.minimum > 0 || f.maximum < 0) {
+			return false
+		}
+	case !axValueIsNumber(req.Value, req.Number):
 		return f.Field.PerformAccessibilityAction(req)
-	}
-	if math.IsNaN(req.Number) {
-		return false
 	}
 	// Brought into range before it is converted, both because a value out of range is no more acceptable here than one
 	// that was typed and because converting a float far outside an integer type's range is not defined.

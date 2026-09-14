@@ -57,9 +57,11 @@ func sampleTree() *accessibility.Tree {
 			ID: 2, Parent: 1, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 200, 60),
 			Children: []accessibility.NodeID{3, 4},
 		},
-		&accessibility.Node{ID: 3, Parent: 2, Role: role.Label, Name: "Name:", Bounds: geom.NewRect(10, 10, 40, 20)},
 		&accessibility.Node{
-			ID: 4, Parent: 2, Role: role.TextField, Value: "Fred", Bounds: geom.NewRect(60, 10, 100, 20),
+			ID: 3, Parent: 2, Role: role.Label, Name: testLabelName, Bounds: geom.NewRect(10, 10, 40, 20),
+		},
+		&accessibility.Node{
+			ID: 4, Parent: 2, Role: role.TextField, Value: testFieldValue, Bounds: geom.NewRect(60, 10, 100, 20),
 			LabeledBy: []accessibility.NodeID{3}, Controls: []accessibility.NodeID{5},
 		},
 		&accessibility.Node{

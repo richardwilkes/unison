@@ -108,10 +108,11 @@ func (o *nodeObject) getState(call *dbus.Call) {
 	call.Reply(o.states().Words())
 }
 
-// getAttributes implements org.a11y.atspi.Accessible.GetAttributes. The reported parent goes along with the node, since
-// how big the set a row belongs to is only known to the container it sits in.
+// getAttributes implements org.a11y.atspi.Accessible.GetAttributes. The tree and the reported parent go along with the
+// node, since where a node sits within a set is known to neither: how big the set a row belongs to is known only to the
+// container it sits in, and how long a run of tabs or menu items is only to the tree that holds them.
 func (o *nodeObject) getAttributes(call *dbus.Call) {
-	call.Reply(Attributes(o.node, o.data.node(o.data.parent(o.node.ID))))
+	call.Reply(Attributes(o.data.tree, o.node, o.data.node(o.data.parent(o.node.ID))))
 }
 
 // getApplication implements org.a11y.atspi.Accessible.GetApplication.

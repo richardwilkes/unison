@@ -272,6 +272,93 @@ func (d *decoder) variant() (any, error) {
 	return Variant{Sig: sig, Value: v}, nil
 }
 
+// skip advances past one value without building anything from it. sig must be exactly one complete type and must
+// already have been validated. It is what a value that has to be read to find the end of it but must then be thrown
+// away costs, which is the case for a header field whose code the specification requires us to ignore: a peer chooses
+// both the type and the length of that field, and building its values only to discard them let a 16 MiB field array
+// holding an array of empty containers allocate a gigabyte. Only the framing is read: an array declares how many bytes
+// it occupies, so its elements are stepped over without being looked at, and a field that must be ignored is no more
+// ours to interpret than the padding between values is.
+func (d *decoder) skip(sig Signature) error {
+	switch sig[0] {
+	case 'y':
+		_, err := d.take(1)
+		return err
+	case 'n', 'q':
+		_, err := d.getUint16()
+		return err
+	case 'b', 'i', 'u':
+		_, err := d.getUint32()
+		return err
+	case 'x', 't', 'd':
+		_, err := d.getUint64()
+		return err
+	case 's', 'o':
+		n, err := d.getUint32()
+		if err != nil {
+			return err
+		}
+		if n > MaxArraySize {
+			return fmt.Errorf("dbus: string of %d bytes exceeds the %d byte limit", n, MaxArraySize)
+		}
+		_, err = d.take(int(n) + 1)
+		return err
+	case 'g':
+		n, err := d.getByte()
+		if err != nil {
+			return err
+		}
+		_, err = d.take(int(n) + 1)
+		return err
+	case 'v':
+		nested, err := d.getSignature()
+		if err != nil {
+			return err
+		}
+		if err = nested.ValidateSingle(); err != nil {
+			return err
+		}
+		if err = d.enter('v'); err != nil {
+			return err
+		}
+		defer d.leave('v')
+		return d.skip(nested)
+	case 'a':
+		if err := d.enter('a'); err != nil {
+			return err
+		}
+		defer d.leave('a')
+		elem := sig[1:]
+		end, err := d.startContainer(alignmentOf(elem[0]))
+		if err != nil {
+			return err
+		}
+		// The array declares how many bytes its elements occupy, so the elements themselves need not be walked at all.
+		d.pos = end
+		return nil
+	case '(':
+		if err := d.enter('('); err != nil {
+			return err
+		}
+		defer d.leave('(')
+		types, err := sig[1 : len(sig)-1].Types()
+		if err != nil {
+			return err
+		}
+		if err = d.align(8); err != nil {
+			return err
+		}
+		for _, one := range types {
+			if err = d.skip(one); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("dbus: cannot unmarshal type %q", sig)
+	}
+}
+
 // startContainer reads the length of an array and returns the position just past its last element. The caller has
 // already entered the array, so that a length that cannot possibly be read is not read at all.
 func (d *decoder) startContainer(elemAlign int) (end int, err error) {
@@ -310,7 +397,7 @@ func (d *decoder) array(elem Signature) (any, error) {
 		copy(result, b)
 		return result, nil
 	case "s":
-		result := make([]string, 0, 8)
+		result := make([]string, 0, d.elementCapacity(end, elem))
 		for d.pos < end {
 			var s string
 			if s, err = d.getString(); err != nil {
@@ -340,7 +427,7 @@ func (d *decoder) array(elem Signature) (any, error) {
 		}
 		return result, d.checkEnd(end)
 	case "o":
-		result := make([]ObjectPath, 0, 8)
+		result := make([]ObjectPath, 0, d.elementCapacity(end, elem))
 		for d.pos < end {
 			var s string
 			if s, err = d.getString(); err != nil {
@@ -358,7 +445,7 @@ func (d *decoder) array(elem Signature) (any, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		result := make([]ObjectRef, 0, 8)
+		result := make([]ObjectRef, 0, d.elementCapacity(end, elem))
 		for d.pos < end {
 			var v any
 			if v, err = read(); err != nil {
@@ -376,7 +463,7 @@ func (d *decoder) array(elem Signature) (any, error) {
 		if readErr != nil {
 			return nil, readErr
 		}
-		result := make([]any, 0, 8)
+		result := make([]any, 0, d.elementCapacity(end, elem))
 		for d.pos < end {
 			var v any
 			if v, err = read(); err != nil {
@@ -385,6 +472,50 @@ func (d *decoder) array(elem Signature) (any, error) {
 			result = append(result, v)
 		}
 		return result, d.checkEnd(end)
+	}
+}
+
+// maxElementCapacity is the capacity an array is decoded into when the bytes it declares could fill that much of it. It
+// is small on purpose: append grows the slice for an array that really does hold more, while the initial capacity is
+// paid by every array, including the innumerable empty ones that a peer may pack into one message.
+const maxElementCapacity = 8
+
+// elementCapacity returns the capacity to give the slice an array is decoded into, which is however many elements of
+// the type elem the bytes between here and end could possibly hold, up to [maxElementCapacity]. Sizing it from an
+// element count the peer chose is what let one legal message force gigabytes of allocation: an array of empty
+// containers amplified the bytes on the wire by as much as seventy times, since each inner container paid for a
+// capacity of eight, and an array of empty arrays has no bytes left for its elements at all.
+func (d *decoder) elementCapacity(end int, elem Signature) int {
+	return min(maxElementCapacity, (end-d.pos)/minimumElementSize(elem))
+}
+
+// minimumElementSize returns the fewest bytes that a value of the given type can occupy on the wire. The type must
+// already have been validated. A structure or dict entry is measured as the sum of its fields, without the padding
+// that separates it from whatever follows, since underestimating only rounds a capacity up.
+func minimumElementSize(sig Signature) int {
+	switch sig[0] {
+	case 'n', 'q', 'g': // A signature is a one byte length and the NUL that terminates it, with nothing between them
+		return 2
+	case 'b', 'i', 'u', 'a': // An array is its four byte length, which is all that an empty one is
+		return 4
+	case 'v': // A one byte signature, its NUL, and the smallest value any type has
+		return 4
+	case 's', 'o': // A four byte length, no bytes at all, and the NUL that terminates them
+		return 5
+	case 'x', 't', 'd':
+		return 8
+	case '(', '{':
+		types, err := sig[1 : len(sig)-1].Types()
+		if err != nil {
+			return 1
+		}
+		total := 0
+		for _, one := range types {
+			total += minimumElementSize(one)
+		}
+		return max(total, 1)
+	default: // 'y'
+		return 1
 	}
 }
 
@@ -429,7 +560,7 @@ func (d *decoder) dict(sig Signature) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make(Dict, 0, 8)
+	result := make(Dict, 0, d.elementCapacity(end, sig))
 	for d.pos < end {
 		if err = d.align(8); err != nil {
 			return nil, err

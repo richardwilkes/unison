@@ -608,15 +608,36 @@ func (c *Conn) dispatchLoop() {
 			return
 		}
 		for _, msg := range items {
-			switch msg.Type {
-			case TypeSignal:
-				c.dispatchSignal(msg)
-			case TypeMethodCall:
-				c.dispatchMethodCall(msg)
-			default: // route never queues anything else
-			}
+			c.dispatch(msg)
 		}
 	}
+}
+
+// dispatch runs the handlers for one incoming message. Every piece of code that an exporter supplies is guarded where
+// it is called, so that a panic in it costs the one call; this guard is what makes that promise hold for the rest of
+// dispatch as well, including whatever is added to it later. Without it a panic anywhere outside those guards takes
+// the dispatcher goroutine with it, and with it every message the connection would ever have delivered.
+func (c *Conn) dispatch(msg *Message) {
+	// The call is built here rather than where it is answered so that the guard can answer it: a method call whose
+	// dispatch panicked has to be told so, and answering a call that has already been answered does nothing.
+	var call *Call
+	if msg.Type == TypeMethodCall {
+		call = &Call{conn: c, Message: msg}
+	}
+	xos.SafeCall(func() {
+		switch msg.Type {
+		case TypeSignal:
+			c.dispatchSignal(msg)
+		case TypeMethodCall:
+			c.dispatchMethodCall(call)
+		default: // route never queues anything else
+		}
+	}, func(err error) {
+		errs.Log(err, "message", msg.String())
+		if call != nil {
+			call.Error(Failed, publicErrorMessage(err))
+		}
+	})
 }
 
 // dispatchSignal hands a signal to every subscription that wants it.
@@ -636,44 +657,22 @@ func (c *Conn) dispatchSignal(msg *Message) {
 
 // dispatchMethodCall answers an incoming method call, either from one of the object's own interfaces or from one of the
 // standard interfaces that every object implements.
-func (c *Conn) dispatchMethodCall(msg *Message) {
+func (c *Conn) dispatchMethodCall(call *Call) {
+	msg := call.Message
 	obj := c.objectAt(msg.Path)
 	if obj == nil {
 		// A path that has objects only below it is answered by a placeholder rather than refused, so that a client can
 		// walk down to them: without it nothing could, since introspection is the only way to find them and the path
 		// it has to introspect is the one that has no object. See [nodeObject].
 		if !c.hasDescendants(msg.Path) {
-			(&Call{conn: c, Message: msg}).Error(UnknownObject, fmt.Sprintf("no object is exported at %s", msg.Path))
+			call.Error(UnknownObject, fmt.Sprintf("no object is exported at %s", msg.Path))
 			return
 		}
 		obj = nodeObject{}
 	}
-	call := &Call{conn: c, Message: msg, obj: obj}
-	ifaces, ok := call.interfaces()
+	call.obj = obj
+	handle, ok := call.resolve()
 	if !ok {
-		return
-	}
-	iface, method, ifaceFound := findMethod(ifaces, msg.Interface, msg.Member)
-	if method == nil {
-		var builtinFound bool
-		if iface, method, builtinFound = findMethod(call.builtins(), msg.Interface, msg.Member); method == nil {
-			if msg.Interface != "" && !ifaceFound && !builtinFound {
-				call.Error(UnknownInterface, fmt.Sprintf("%s does not implement %s", msg.Path, msg.Interface))
-				return
-			}
-			call.Error(UnknownMethod, fmt.Sprintf("%s has no %s method", msg.Path, msg.Member))
-			return
-		}
-	}
-	if method.In != msg.Signature {
-		call.Error(InvalidArgs, fmt.Sprintf("%s.%s takes (%s), not (%s)", iface.Name, method.Name, method.In,
-			msg.Signature))
-		return
-	}
-	call.out = method.Out
-	handle := method.Handle
-	if handle == nil {
-		call.Error(NotSupported, fmt.Sprintf("%s.%s is declared but not implemented", iface.Name, method.Name))
 		return
 	}
 	xos.SafeCall(func() { handle(call) }, func(err error) {
@@ -682,16 +681,74 @@ func (c *Conn) dispatchMethodCall(msg *Message) {
 	})
 }
 
+// resolve finds the handler for the method the call names, answering the call itself and returning false if there is
+// none. Everything it touches comes from whoever exported the object, so the walk is guarded exactly as the
+// [Call.interfaces] call that produced the list is: a list holding a nil *Interface, or an interface holding a nil
+// *Method, is a mistake in code of the exporter's own that no check made in advance could catch, and it has to cost
+// the one call rather than the dispatcher goroutine and with it the whole connection.
+func (call *Call) resolve() (handle func(*Call), ok bool) {
+	ifaces, ok := call.interfaces()
+	if !ok {
+		return nil, false
+	}
+	xos.SafeCall(func() { handle, ok = call.resolveMethod(ifaces) }, func(err error) {
+		errs.Log(err, "call", call.Message.String())
+		call.Error(Failed, publicErrorMessage(err))
+		handle, ok = nil, false
+	})
+	return handle, ok
+}
+
+// resolveMethod is the part of [Call.resolve] that runs inside its panic guard.
+func (call *Call) resolveMethod(ifaces []*Interface) (handle func(*Call), ok bool) {
+	msg := call.Message
+	iface, method, ifaceFound := findMethod(ifaces, msg.Interface, msg.Member)
+	if method == nil {
+		var builtinFound bool
+		if iface, method, builtinFound = findMethod(call.builtins(), msg.Interface, msg.Member); method == nil {
+			if msg.Interface != "" && !ifaceFound && !builtinFound {
+				call.Error(UnknownInterface, fmt.Sprintf("%s does not implement %s", msg.Path, msg.Interface))
+				return nil, false
+			}
+			call.Error(UnknownMethod, fmt.Sprintf("%s has no %s method", msg.Path, msg.Member))
+			return nil, false
+		}
+	}
+	if method.In != msg.Signature {
+		call.Error(InvalidArgs, fmt.Sprintf("%s.%s takes (%s), not (%s)", iface.Name, method.Name, method.In,
+			msg.Signature))
+		return nil, false
+	}
+	call.out = method.Out
+	if method.Handle == nil {
+		call.Error(NotSupported, fmt.Sprintf("%s.%s is declared but not implemented", iface.Name, method.Name))
+		return nil, false
+	}
+	return method.Handle, true
+}
+
 // interfaces returns the interfaces of the object the call was routed to. Interfaces is supplied by whoever exported
 // the object and runs on the dispatcher goroutine, exactly as a method handler does, so a panic in it answers the one
 // call with a Failed error and returns false rather than taking the whole connection down with it.
+//
+// The list is kept once it has been asked for, since a single call may need it several times: dispatch resolves the
+// method with it and then every builtin handler that walks it, which is each of Properties.Get, GetAll and Set and
+// Introspect, asks for it again. An object that builds its interfaces on demand, which is what a [Conn.ExportSubtree]
+// resolver typically hands out, would otherwise build dozens of methods and closures twice for every property a peer
+// reads. Nothing outside the dispatcher goroutine ever asks, so no lock is needed for it.
 func (call *Call) interfaces() (ifaces []*Interface, ok bool) {
+	if call.ifacesKnown {
+		return call.ifaces, true
+	}
 	ok = true
 	xos.SafeCall(func() { ifaces = call.obj.Interfaces() }, func(err error) {
 		errs.Log(err, "call", call.Message.String())
 		call.Error(Failed, publicErrorMessage(err))
 		ifaces, ok = nil, false
 	})
+	if ok {
+		call.ifaces, call.ifacesKnown = ifaces, true
+	}
 	return ifaces, ok
 }
 

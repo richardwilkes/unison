@@ -241,6 +241,15 @@ func TestMarshalArraySizeLimit(t *testing.T) {
 	c := check.New(t)
 	_, err := Marshal("ay", make([]byte, MaxArraySize+1))
 	c.HasError(err)
+	// A string is bounded by the same limit, since the decoder rejects one over it: marshaling a longer one produced a
+	// body that this package could not itself decode and that no peer would accept.
+	oversized := strings.Repeat("a", MaxArraySize+1)
+	_, err = Marshal("s", oversized)
+	c.HasError(err)
+	_, err = Marshal("o", ObjectPath("/"+oversized))
+	c.HasError(err)
+	_, err = Unmarshal("s", concat(u32At(MaxArraySize+1), []byte{'a', 0}))
+	c.HasError(err)
 }
 
 // The named types below exercise the reflection-based fallbacks, which is how the AT-SPI layer's own enumerated types

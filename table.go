@@ -1691,11 +1691,21 @@ func (t *Table[T]) SetRootRows(rows []T) {
 func (t *Table[T]) SyncToModel() {
 	rowCount := 0
 	roots := t.RootRows()
+	// A filter applied by ApplyFilter presents the rows that passed as a flat list: disclosedChildren shows nothing
+	// beneath any of them, whatever they are, so the table has no hierarchy while one is applied, however many
+	// containers passed the filter. Saying otherwise would draw a disclosure triangle, with a hit rect, that opens onto
+	// nothing and would describe such a row to an assistive technology as expandable, expanded and openable when there
+	// is nothing there to open.
 	t.hasHierarchy = false
-	for _, row := range roots {
-		if !t.hasHierarchy && row.CanHaveChildren() {
-			t.hasHierarchy = true
+	if !t.flatFilter() {
+		for _, row := range roots {
+			if row.CanHaveChildren() {
+				t.hasHierarchy = true
+				break
+			}
 		}
+	}
+	for _, row := range roots {
 		rowCount += t.countDisclosedRowsRecursively(row)
 	}
 	t.rowCache = make([]tableCache[T], rowCount)
@@ -2032,6 +2042,13 @@ func (t *Table[T]) IsFiltered() bool {
 	return t.filteredRows != nil
 }
 
+// flatFilter reports whether the filter in force is one that shows the rows that passed as a flat list, which is what
+// ApplyFilter applies and ApplyHierarchicalFilter does not. Nothing is shown beneath any row while such a filter is
+// applied, so the table has no hierarchy to draw, to describe or to change.
+func (t *Table[T]) flatFilter() bool {
+	return t.filteredRows != nil && !t.hierarchicalFilter
+}
+
 // ApplyFilter applies a filter to the data. When a non-nil filter is applied, all rows (recursively) are passed through
 // the filter. Only those that the filter returns false for will be visible in the table. When a filter is applied, no
 // hierarchy is display and no modifications to the row data should be performed. See ApplyHierarchicalFilter for a
@@ -2298,9 +2315,9 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	if t.header != nil {
 		// A table and its header are separate panels — the header goes into the column-header slot of the scroll panel
 		// whose content is the table — so the header is nowhere within the table's own subtree and nothing else would
-		// say that the two belong together. Both platform adapters look here first and fall back to a proximity search
-		// that gives up when an ancestor holds more than one table, so a window that puts two tables under one common
-		// ancestor would otherwise report no column headers for either of them.
+		// say that the two belong together. All three platform adapters look here first and fall back to a proximity
+		// search that gives up when an ancestor holds more than one table, so a window that puts two tables under one
+		// common ancestor would otherwise report no column headers for either of them.
 		node.Controls = append(node.Controls, b.IDFor(t.header))
 	}
 	// Pressing the table is not activating it; the default behavior would synthesize a click at the center of the
@@ -2468,7 +2485,10 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 	id := entry.row.ID()
 	depth := entry.depth
 	selected := t.IsRowSelected(row)
-	expandable := entry.row.CanHaveChildren()
+	// A container is only something that expands while the table is showing a hierarchy at all. Under a flat filter it
+	// is not: nothing is shown beneath it, the table draws it without a disclosure triangle, and it is described as the
+	// plain row it appears as. See SyncToModel.
+	expandable := t.hasHierarchy && entry.row.CanHaveChildren()
 	expanded := expandable && t.isRowDisclosed(entry.row)
 	// A hierarchical filter shows every container it kept as open, whatever the container's own open state, so the row
 	// is reported as expanded but is not offered for opening and closing, exactly as the disclosure triangle is drawn
@@ -2640,10 +2660,20 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		t.axSelectOnly(id)
 		t.ScrollRowIntoView(row)
 	case accessibility.AddToSelection:
-		t.SelectByIndex(row)
+		if !t.IsRowSelected(row) {
+			// A row that is already in the selection has nothing to be added to it. SelectByIndex would tell the
+			// application its selection had changed regardless, and an assistive technology acts on the row it is
+			// already on often enough — landing on it, then acting on it — that an application would set about whatever
+			// it does on a change to the selection over and over. The mouse path counts the same way.
+			t.SelectByIndex(row)
+		}
 		t.ScrollRowIntoView(row)
 	case accessibility.RemoveFromSelection:
-		t.DeselectByIndex(row)
+		if t.IsRowSelected(row) {
+			// As above: a row that is not selected has nothing to be taken out of the selection, and the row is left
+			// exactly as it was asked to be.
+			t.DeselectByIndex(row)
+		}
 	case accessibility.Expand:
 		return t.axSetRowOpen(row, true)
 	case accessibility.Collapse:
@@ -2661,12 +2691,23 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 }
 
 // axSelectOnly makes the row with the given id the whole of the selection, and the anchor a later shift-click extends
-// from. A plain click does both — SetSelectionMap alone leaves the anchor wherever it last was, on a row that may not
-// even be selected any more — and a person who has just moved the selection with an assistive technology and then
+// from. A plain click does both — setting the selection alone leaves the anchor wherever it last was, on a row that may
+// not even be selected any more — and a person who has just moved the selection with an assistive technology and then
 // shift-clicks expects the same thing to happen as if they had clicked the row themselves.
+//
+// The application is told the selection changed only when it did, exactly as DefaultMouseDown says nothing for a click
+// on the row that is already the whole of the selection. An assistive technology re-selects the row it is already on
+// constantly, and an application told its selection had changed does whatever it does when that happens. The selection
+// is made either way, since it also puts the anchor on the row.
 func (t *Table[T]) axSelectOnly(id tid.TID) {
-	t.SetSelectionMap(map[tid.TID]bool{id: true})
+	changed := t.SelectionCount() != 1 || !t.selMap[id]
+	t.selMap = map[tid.TID]bool{id: true}
+	t.selNeedsPrune = true
 	t.selAnchor = id
+	t.MarkForRedraw()
+	if changed {
+		t.notifyOfSelectionChange()
+	}
 }
 
 // axPerformInCell carries out a request aimed at a panel inside one of the table's cells. The cell is built and
@@ -2679,6 +2720,11 @@ func (t *Table[T]) axPerformInCell(key axCellPanelKey, req accessibility.ActionR
 	if row < 0 || col < 0 || col >= len(t.Columns) {
 		return false
 	}
+	// The key that brought the request here named one of the table's virtual children. What it is being handed to is a
+	// real panel, for which ActionRequest.Key is nil: an application's own action callback on a panel within a cell
+	// would otherwise be given a key it never handed out, and a widget that keys virtual children of its own — a table
+	// header nested in a cell — would take the table's key for one of its own and act at whatever position it matched.
+	req.Key = nil
 	cell := t.cell(row, col)
 	t.installCell(cell, t.CellFrame(row, col))
 	handled := false
@@ -2724,6 +2770,9 @@ func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequ
 	if col >= len(t.Columns) {
 		return false
 	}
+	// The request named the cell, whose key is the table's own; the content it is being passed to is a real panel, for
+	// which ActionRequest.Key is nil. See axPerformInCell.
+	req.Key = nil
 	cell := t.cell(row, col)
 	t.installCell(cell, t.CellFrame(row, col))
 	handled := false
@@ -2787,12 +2836,13 @@ func (t *Table[T]) axRowIndexForID(id tid.TID) int {
 
 // axSetRowOpen opens or closes a row on behalf of an assistive technology, bringing the table up to date with the
 // change exactly as clicking the row's disclosure triangle would. Reports false if the row cannot have children at all,
-// or if a hierarchical filter is applied: such a filter shows every container it kept as open, whatever the container's
-// own open state, so changing an open state beneath it would have nothing to show for it. Every other way of opening
-// and closing a row — the disclosure triangle, the left and right arrow keys, DiscloseRow — refuses for the same
-// reason, and letting an assistive technology through would silently contradict them.
+// or if a filter is applied: a hierarchical filter shows every container it kept as open, whatever the container's own
+// open state, and a flat one shows nothing beneath any row at all, so neither has anything to show for a change to an
+// open state. The disclosure triangle a person would click is not there under either — drawn without a hit rect under a
+// hierarchical filter, not drawn at all under a flat one — so an assistive technology let through would be told a row
+// had opened or closed while everything it can observe stayed exactly as it was.
 func (t *Table[T]) axSetRowOpen(row int, open bool) bool {
-	if t.hierarchicalFilter {
+	if t.IsFiltered() {
 		return false
 	}
 	data := t.rowCache[row].row

@@ -60,7 +60,8 @@ type windowAccessibility struct {
 	targets map[accessibility.NodeID]axTarget
 	// lastPublish is when the most recent publish happened, for the throttle.
 	lastPublish time.Time
-	// generation counts the trees built for this window and becomes accessibility.Tree.Generation.
+	// generation is the number of the most recent tree built for this window, which is a copy of the window's own
+	// Window.axGeneration: this state is dropped when the window is withdrawn and the count is not.
 	generation uint64
 	// publishQueued reports that a publish was throttled and a task has been scheduled to perform it.
 	publishQueued bool
@@ -144,7 +145,9 @@ func (w *Window) buildAccessibilityTree() *accessibility.Tree {
 	if w.ax == nil {
 		w.ax = &windowAccessibility{}
 	}
-	w.ax.generation++
+	// Counted on the window rather than on the state above, which a withdrawal drops. See Window.axGeneration.
+	w.axGeneration++
+	w.ax.generation = w.axGeneration
 	// The previous tree's size is the best guess at this one's, since a window rarely changes shape wholesale between
 	// snapshots. The margin covers the ordinary case of something having just been added.
 	capacity := 16
@@ -214,7 +217,8 @@ func (s *axSnapshot) resolveFocus() {
 			// Said here rather than by the item itself, so that exactly one node in the window reports being focused,
 			// and said along with being focusable: a client that checks whether a node can take the focus before
 			// trusting that it has it — AT-SPI's STATE_FOCUSABLE, UI Automation's IsKeyboardFocusable — would otherwise
-			// be handed a pair it cannot make sense of.
+			// be handed a pair it cannot make sense of. The item is known not to be disabled, since one that is cannot
+			// be what openMenuFocus answered with; see axSnapshot.highlightedMenuItem.
 			item.Focused = true
 			item.Focusable = true
 		}
@@ -302,7 +306,14 @@ func (s *axSnapshot) openMenuFocus() accessibility.NodeID {
 }
 
 // highlightedMenuItem returns the node id of the item a menu panel has highlighted, or zero when it has none, holds no
-// menu, or the item it has highlighted is not in the tree.
+// menu, or the item it has highlighted is not one the focus can be reported on.
+//
+// A disabled item is not one. An item is highlighted by the pointer merely passing over it, whether or not it can be
+// chosen — the item's panel is never disabled, so nothing stops the highlight; it is the node that is published as
+// disabled — so pointing the focus at one would publish a node that says it holds the focus while saying it cannot
+// take it, which is the pair every other path here goes out of its way not to produce. See axSnapshot.visit and
+// axSnapshot.fallbackFocus, which both refuse a disabled node for the same reason. The search carries on to the menu
+// that item was opened from, exactly as it does when nothing is highlighted at all.
 func (s *axSnapshot) highlightedMenuItem(panel *menuPanel) accessibility.NodeID {
 	if panel == nil || panel.menu == nil {
 		return 0
@@ -311,8 +322,10 @@ func (s *axSnapshot) highlightedMenuItem(panel *menuPanel) accessibility.NodeID 
 		if !item.over || item.panel == nil {
 			continue
 		}
-		if id := item.panel.Accessibility.id; id != 0 && s.tree.Nodes[id] != nil {
-			return id
+		if id := item.panel.Accessibility.id; id != 0 {
+			if node := s.tree.Nodes[id]; node != nil && !node.Disabled {
+				return id
+			}
 		}
 	}
 	return 0
@@ -374,6 +387,8 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		s.sweepVirtualIDs(p, b.virtualUsed)
 	}
 	if node.Role == role.Auto {
+		// Resolved before the name is, since which conventions apply — the sibling label, the text of a piece of static
+		// text — is decided by the role. Whatever the callback leaves behind is resolved again after it runs.
 		node.Role = role.Group
 	}
 	s.resolveName(p, node)
@@ -396,6 +411,16 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	widgetIgnored := node.Ignored
 	if p.Accessibility.Callback != nil {
 		SafeCall(func() { p.Accessibility.Callback(node) })
+	}
+	if node.Role == role.Auto || node.Role == role.None {
+		// A published tree holds neither of these, and the callback is entitled to have set either: Panel.Accessibility
+		// takes both, so a callback that decides a panel is a plain group is as likely to write role.None as it is to
+		// leave role.Auto in place. Neither can be acted on this late — the panel has been described and its children
+		// already point at this node as their parent — so both become Group, which is what Auto resolves to anyway and
+		// what a virtual child with no role of its own is given. A panel that means not to be described at all says
+		// so through Accessibility.Role, which is read before any of this runs. See
+		// AccessibilityBuilder.AddVirtualChildOf.
+		node.Role = role.Group
 	}
 	if node.Disabled {
 		// Every request that would act on a disabled node is refused, so advertising one would offer an assistive

@@ -26,13 +26,18 @@ const (
 	eventInterface  = "org.a11y.atspi.Event.Object"
 )
 
-// withoutWireSize checks that a decoded message recorded the number of bytes it arrived as, then strips that from it so
-// that it can be compared with the message it was built from. The wire size is a property of those bytes rather than of
-// the message, and re-encoding drops whatever header fields the decoder did not understand, so it is not part of what a
-// round trip has to preserve; see [Message.size].
+// withoutWireSize checks that a decoded message recorded the number of bytes it arrived as, or zero when it has no body
+// and so keeps nothing of the buffer it was read into, then strips that from it so that it can be compared with the
+// message it was built from. The wire size is a property of those bytes rather than of the message, and re-encoding
+// drops whatever header fields the decoder did not understand, so it is not part of what a round trip has to preserve;
+// see [Message.size].
 func withoutWireSize(t *testing.T, m *Message, wire int) *Message {
 	t.Helper()
-	check.New(t).Equal(wire, m.wireSize)
+	want := 0
+	if len(m.Body) != 0 {
+		want = wire
+	}
+	check.New(t).Equal(want, m.wireSize)
 	m.wireSize = 0
 	return m
 }
@@ -341,9 +346,40 @@ const paddedMember = "Padded"
 // every byte of it alive: the body is a slice of the buffer the whole message was read into.
 func paddedSignal(t *testing.T, serial uint32, padding int) []byte {
 	t.Helper()
+	return signalWithFields(t, serial, true, ignorableField(make([]byte, padding)))
+}
+
+// ignorableField returns a header field whose code is one that the specification requires the decoder to ignore, which
+// is what makes it somewhere for a peer to put bytes that no part of the decoded message will ever account for.
+// Everything from 32 up is unknown, and only the codes from 1 to 9 mean anything at all.
+func ignorableField(value any) any {
+	sig, err := SignatureOf(value)
+	if err != nil {
+		panic(err) // The tests only ever hand this values whose signature can be derived
+	}
+	return Struct{byte(42), Variant{Sig: sig, Value: value}}
+}
+
+// signalWithFields encodes a signal whose header field array holds the fields that every signal needs plus whatever
+// extra ones it is given, bypassing the checks that [Message.Encode] applies. A signal without a body keeps nothing of
+// the buffer it was read into, since the body is the only part of a message that aliases that buffer.
+func signalWithFields(t *testing.T, serial uint32, withBody bool, extra ...any) []byte {
+	t.Helper()
 	c := check.New(t)
-	body, err := Marshal("s", "x")
-	c.NoError(err)
+	var body []byte
+	fields := []any{
+		Struct{byte(fieldPath), Variant{Sig: "o", Value: testPath}},
+		Struct{byte(fieldInterface), Variant{Sig: "s", Value: eventInterface}},
+		Struct{byte(fieldMember), Variant{Sig: "s", Value: paddedMember}},
+		Struct{byte(fieldSender), Variant{Sig: "s", Value: testDestination}},
+	}
+	if withBody {
+		var err error
+		body, err = Marshal("s", "x")
+		c.NoError(err)
+		fields = append(fields, Struct{byte(fieldSignature), Variant{Sig: "g", Value: Signature("s")}})
+	}
+	fields = append(fields, extra...)
 	var e encoder
 	e.putByte('l')
 	e.putByte(byte(TypeSignal))
@@ -351,16 +387,7 @@ func paddedSignal(t *testing.T, serial uint32, padding int) []byte {
 	e.putByte(protocolVersion)
 	e.putUint32(uint32(len(body)))
 	e.putUint32(serial)
-	c.NoError(e.value(headerFieldsSignature, []any{
-		Struct{byte(fieldPath), Variant{Sig: "o", Value: testPath}},
-		Struct{byte(fieldInterface), Variant{Sig: "s", Value: eventInterface}},
-		Struct{byte(fieldMember), Variant{Sig: "s", Value: paddedMember}},
-		Struct{byte(fieldSender), Variant{Sig: "s", Value: testDestination}},
-		Struct{byte(fieldSignature), Variant{Sig: "g", Value: Signature("s")}},
-		// Everything from 32 up is unknown and must be ignored, which is what makes it somewhere to put bytes that no
-		// part of the decoded message will ever account for.
-		Struct{byte(42), Variant{Sig: "ay", Value: make([]byte, padding)}},
-	}))
+	c.NoError(e.value(headerFieldsSignature, fields))
 	e.align(8)
 	return append(e.buf, body...)
 }
@@ -385,6 +412,97 @@ func TestADecodedMessageIsChargedWhatItKeepsAlive(t *testing.T) {
 	built := NewSignal(testPath, eventInterface, paddedMember)
 	c.NoError(built.SetBody("x"))
 	c.True(built.size() < 128, "expected a small message to be charged a small size, but it was %d", built.size())
+	// So is a message that was decoded but has no body, since the body is the only part of it that aliases the buffer
+	// it was read into: charging one the whole megabyte it does not keep alive dropped the later messages that the
+	// queue could perfectly well have held.
+	bodyless, err := Decode(bytes.NewReader(signalWithFields(t, 2, false, ignorableField(make([]byte, padding)))))
+	c.NoError(err)
+	c.Equal(paddedMember, bodyless.Member)
+	c.Equal(0, len(bodyless.Body))
+	c.Equal(0, bodyless.wireSize)
+	c.True(bodyless.size() < 128, "expected a bodyless message to be charged a small size, but it was %d",
+		bodyless.size())
+}
+
+func TestDecodeDoesNotBuildTheValueOfAnUnknownHeaderField(t *testing.T) { // Not parallel: it measures allocation
+	c := check.New(t)
+	const count = 4096
+	empties := make([]any, count)
+	for i := range empties {
+		empties[i] = []string{}
+	}
+	// A field whose code the specification requires the decoder to ignore is the cheapest place on the wire for a peer
+	// to put an array of empty containers, since the value is thrown away the moment it has been built: four bytes
+	// apiece bought hundreds, and the 64 MiB such a field may hold scaled to gigabytes on the reader goroutine. The
+	// value is stepped over instead, so all that a message like this costs is the buffer it was read into.
+	data := signalWithFields(t, 1, true, ignorableField(empties))
+	var (
+		m   *Message
+		err error
+	)
+	allocated := bytesAllocated(func() { m, err = Decode(bytes.NewReader(data)) })
+	c.NoError(err)
+	c.Equal(paddedMember, m.Member)
+	c.True(allocated < 4*uint64(len(data)), "a %d byte message allocated %d bytes", len(data), allocated)
+}
+
+// malformedBodySignal encodes a signal whose body declares a string one byte longer than the body actually holds, so
+// that the body does not match the signature the message declares. bigEndian selects the byte order of the whole
+// message, which is swapped while the body is still well formed, since [swapEndianness] walks the values themselves.
+func malformedBodySignal(t *testing.T, serial uint32, bigEndian bool) []byte {
+	t.Helper()
+	c := check.New(t)
+	m := NewSignal(testPath, eventInterface, malformedMember)
+	m.Serial = serial
+	m.Sender = testDestination
+	c.NoError(m.SetBody("hello"))
+	data, err := m.Encode()
+	c.NoError(err)
+	bodyStart := len(data) - len(m.Body)
+	var order binary.ByteOrder = binary.LittleEndian
+	if bigEndian {
+		data = toBigEndian(data, "s")
+		order = binary.BigEndian
+	}
+	order.PutUint32(data[bodyStart:], uint32(len("hello")+1))
+	return data
+}
+
+// malformedMember is the member name of the signals that [malformedBodySignal] builds.
+const malformedMember = "Malformed"
+
+func TestDecodeMalformedBodyIsAPerMessageError(t *testing.T) {
+	t.Parallel()
+	// A body that does not match the signature its message declares is a fault in that one message. Converting a
+	// big-endian body inside Decode made it a fault in the stream instead, since a connection's reader ends the
+	// connection for any error Decode reports: one such message from a big-endian peer cost every message that would
+	// have followed it, while the identical message from a little-endian peer cost only itself.
+	for _, one := range []struct {
+		name      string
+		bigEndian bool
+	}{
+		{name: "little-endian"},
+		{name: "big-endian", bigEndian: true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+			c := check.New(t)
+			m, err := Decode(bytes.NewReader(malformedBodySignal(t, 1, one.bigEndian)))
+			c.NoError(err)
+			c.Equal(malformedMember, m.Member)
+			_, err = m.Args()
+			c.HasError(err)
+			// A big-endian body that will not convert is the one body that cannot be written out again, since what a
+			// Message holds is always the little-endian encoding; the same fault is reported rather than bytes that
+			// claim to be little-endian and are not.
+			_, err = m.Encode()
+			if one.bigEndian {
+				c.HasError(err)
+			} else {
+				c.NoError(err)
+			}
+		})
+	}
 }
 
 func TestEncodeErrors(t *testing.T) {

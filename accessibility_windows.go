@@ -19,13 +19,16 @@ import (
 // Automation provider in internal/w32, and connects the requests that come back from an assistive technology to the UI
 // thread.
 //
-// Nothing here runs until something sends a window a WM_GETOBJECT asking for UiaRootObjectId, which nothing but UI
-// Automation does. That message reaches w32HandleGetObject in window_windows.go, which is the only thing on this
-// platform that turns snapshot building on; before it happens no window has an adapter and no tree has been built. Once
-// it has happened the window stays described for the rest of its life: UI Automation gives no notification that the
-// last client has gone away, so there is nothing to deactivate on. What it does give is UiaClientsAreListening, which
-// the adapter consults before raising anything, so a window that goes on being described after every client has gone
-// costs the snapshots and nothing more.
+// Nothing here ordinarily runs until something sends a window a WM_GETOBJECT asking for UiaRootObjectId, which nothing
+// but UI Automation does. That message reaches w32HandleGetObject in window_windows.go, and until it arrives no window
+// has an adapter and no tree has been built. The one other way in is AccessibilityEnvKey: an application it forced
+// support on for has activateAccessibility called during finishStartup, so every window's first draw reaches
+// nativeAccessibilityPublish and builds an adapter with no WM_GETOBJECT ever sent, which is the path
+// nativeAccessibilityEnabledChanged below and uiautomationcore_windows.go's lazy provider registration both count on.
+// Once a window has an adapter it stays described for the rest of its life: UI Automation gives no notification that
+// the last client has gone away, so there is nothing to deactivate on. What it does give is UiaClientsAreListening,
+// which the adapter consults before raising anything, so a window that goes on being described after every client has
+// gone costs the snapshots and nothing more.
 //
 // Everything here runs on the UI thread except the action callback, which UI Automation delivers on whichever thread it
 // pleases. That one hands the work to the UI thread and returns at once, so nothing outside this file ever touches a

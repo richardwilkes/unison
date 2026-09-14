@@ -43,7 +43,8 @@ const introspectPrologue = `<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Obj
 // Object is something that a connection exports at a path. Its interfaces may be assembled once and returned every
 // time, which is what a static object does, or built on demand, which is what an object resolved by
 // [Conn.ExportSubtree] typically does. Interfaces is called on the dispatcher goroutine while a call is being answered,
-// so it must not block.
+// so it must not block; it is called at most once per call, however many times the answer is needed while that call is
+// answered.
 //
 // The standard org.freedesktop.DBus.Introspectable, org.freedesktop.DBus.Properties and org.freedesktop.DBus.Peer
 // interfaces are answered for every object and do not need to be returned. An object that declares one of them anyway
@@ -98,7 +99,11 @@ type Call struct {
 	conn    *Conn
 	obj     Object
 	out     Signature
-	replied atomic.Bool
+	// ifaces is what obj said it implements, remembered for the length of the call; see [Call.interfaces]. ifacesKnown
+	// is what tells an object that implements nothing from one that has not been asked yet.
+	ifaces      []*Interface
+	replied     atomic.Bool
+	ifacesKnown bool
 }
 
 // Conn returns the connection the call arrived on.
@@ -224,8 +229,15 @@ func init() {
 
 // validateInterfaces checks everything an object declares about itself, so that an object that could not be described
 // or dispatched is refused when it is exported rather than producing an introspection document that no client can
-// parse, a call that can never be answered, or a property that can neither be read nor written.
+// parse, a call that can never be answered, or a property that can neither be read nor written. A nil entry, at any
+// level, is refused with an error like every other malformed declaration rather than panicking here or on the
+// dispatcher goroutine one call at a time.
 func validateInterfaces(ifaces []*Interface) error {
+	for _, iface := range ifaces {
+		if iface == nil {
+			return errors.New("dbus: a nil interface was declared")
+		}
+	}
 	if name := duplicateName(ifaces, func(iface *Interface) string { return iface.Name }); name != "" {
 		return fmt.Errorf("dbus: %s is declared more than once", name)
 	}
@@ -263,6 +275,11 @@ func duplicateName[T any](items []T, nameOf func(T) string) string {
 
 // validateMethods checks the names and signatures of one interface's methods.
 func validateMethods(iface *Interface) error {
+	for _, method := range iface.Methods {
+		if method == nil {
+			return fmt.Errorf("dbus: %s declares a nil method", iface.Name)
+		}
+	}
 	if name := duplicateName(iface.Methods, func(method *Method) string { return method.Name }); name != "" {
 		return fmt.Errorf("dbus: %s declares the method %q more than once", iface.Name, name)
 	}
@@ -284,6 +301,11 @@ func validateMethods(iface *Interface) error {
 
 // validateSignals checks the names and signatures of one interface's signals.
 func validateSignals(iface *Interface) error {
+	for _, signal := range iface.Signals {
+		if signal == nil {
+			return fmt.Errorf("dbus: %s declares a nil signal", iface.Name)
+		}
+	}
 	if name := duplicateName(iface.Signals, func(signal *Signal) string { return signal.Name }); name != "" {
 		return fmt.Errorf("dbus: %s declares the signal %q more than once", iface.Name, name)
 	}
@@ -301,6 +323,11 @@ func validateSignals(iface *Interface) error {
 // validateProperties checks the names and types of one interface's properties, and that each of them can actually be
 // used: one with neither a getter nor a setter could only ever be answered with an error.
 func validateProperties(iface *Interface) error {
+	for _, prop := range iface.Properties {
+		if prop == nil {
+			return fmt.Errorf("dbus: %s declares a nil property", iface.Name)
+		}
+	}
 	if name := duplicateName(iface.Properties, func(prop *Property) string { return prop.Name }); name != "" {
 		return fmt.Errorf("dbus: %s declares the property %q more than once", iface.Name, name)
 	}

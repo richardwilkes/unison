@@ -110,13 +110,23 @@ func PatternSetForID(id PatternID) PatternSet {
 // mapping in the adapter: a client derives the spoken control type, the patterns it bothers looking for, and the
 // element's treatment in the control and content views from this one value. A role with no reasonable equivalent
 // becomes Custom, which tells the client to rely on the name and the patterns instead of on a built-in behavior.
-func UIAControlType(n *accessibility.Node) ControlTypeID {
+//
+// The tree is needed for one distinction. The Window control type lists IWindowProvider as a required pattern, and the
+// provider hands that interface out for the fragment root alone: a nested node with a window-like role is a
+// dialog-shaped panel rather than a window of its own, as UIAProvider.supports explains, and role.Enum.IsWindow's own
+// doc says such a panel is entitled to report role.Dialog. It therefore reports Pane, which requires no pattern, so
+// that no element advertises a control type whose required pattern it refuses. A nil tree, or one that does not hold
+// the node, cannot say the node is the root, so it is treated as a nested one.
+func UIAControlType(t *accessibility.Tree, n *accessibility.Node) ControlTypeID {
 	if n == nil {
 		return UIA_CustomControlTypeId
 	}
 	switch n.Role {
 	case role.Window, role.Dialog:
-		return UIA_WindowControlTypeId
+		if t != nil && n.ID == t.Root {
+			return UIA_WindowControlTypeId
+		}
+		return UIA_PaneControlTypeId
 	case role.Group:
 		return UIA_GroupControlTypeId
 	case role.TabPanel, role.ScrollArea:
@@ -178,7 +188,12 @@ func UIAControlType(n *accessibility.Node) ControlTypeID {
 	case role.Tooltip:
 		return UIA_ToolTipControlTypeId
 	case role.Document:
-		return UIA_DocumentControlTypeId
+		// A group, rather than the document control type, whose only required control pattern is ITextProvider: this
+		// package implements no Text pattern at all, so a client handed a document element would ask for the pattern
+		// every document is documented to have and be given NULL. Markdown is what sets the role, and it presents its
+		// content through the elements beneath it rather than as one body of text, which is what a group is. The Cocoa
+		// adapter treats the role as a plain group for the same reason.
+		return UIA_GroupControlTypeId
 	case role.Toolbar:
 		return UIA_ToolBarControlTypeId
 	default:
@@ -223,8 +238,20 @@ func uiaRolePatterns(n *accessibility.Node) PatternSet {
 			patterns |= PatternValue
 		}
 		return patterns
-	case role.ToggleButton, role.DisclosureTriangle, role.CheckBox:
+	case role.ToggleButton, role.CheckBox:
 		return PatternToggle
+	case role.DisclosureTriangle:
+		// The triangle a table puts on a container row carries the Expandable and Expanded flags, and
+		// UIAExpandCollapseState is reachable only through the ExpandCollapse pattern, so without it the state the node
+		// reports and the Expand and Collapse actions it offers have no way of arriving at a client. It is gated on the
+		// flag exactly as a row's and a menu item's are: a triangle that expands nothing would otherwise carry a
+		// pattern whose state is permanently LeafNode. The other two adapters report the same state for it — see
+		// isAccessibilityExpanded in internal/cocoa and the EXPANDABLE state in internal/atspi.
+		patterns := PatternToggle
+		if n.Expandable {
+			patterns |= PatternExpandCollapse
+		}
+		return patterns
 	case role.RadioButton:
 		// A radio button is a selection item rather than a toggle, which is how a client knows to announce "n of m"
 		// alongside the state. The numbers themselves come from UIAPositionInSet, since the group a radio button
@@ -248,7 +275,13 @@ func uiaRolePatterns(n *accessibility.Node) PatternSet {
 		// is reported.
 		return PatternValue | PatternExpandCollapse
 	case role.Slider, role.ScrollBar:
-		return PatternRangeValue
+		// Gated on the number for the reason the spin button's and the progress bar's are: the role is public API, so a
+		// panel may set it without ever filling in a number, and IRangeValueProvider answering zero for the value, the
+		// minimum, the maximum and both increments would have a client read the control as "0 percent".
+		if n.HasNumber {
+			return PatternRangeValue
+		}
+		return 0
 	case role.ProgressBar:
 		if n.HasNumber {
 			return PatternRangeValue
@@ -266,7 +299,16 @@ func uiaRolePatterns(n *accessibility.Node) PatternSet {
 		}
 		return PatternSelectionItem
 	case role.Cell:
-		return PatternGridItem | PatternTableItem
+		// A cell that holds a single widget reports that widget's state as its own value — Table.axAddRow clears such a
+		// cell's name and fills in its value precisely so that a change to the widget is a change to the cell — and the
+		// Value pattern is the only way a client can read it. The pattern is gated on there being a value, since a cell
+		// whose name carries its content has nothing to report through it, and it is read-only: a cell offers no
+		// SetValue action, which is what UIAIsValueReadOnly answers from.
+		patterns := PatternGridItem | PatternTableItem
+		if n.Value != "" {
+			patterns |= PatternValue
+		}
+		return patterns
 	case role.MenuItem:
 		patterns := PatternInvoke
 		if n.HasCheck {
@@ -341,24 +383,22 @@ func uiaNamesAnother(t *accessibility.Tree, id accessibility.NodeID) bool {
 }
 
 // UIAHasKeyboardFocus reports whether a node answers the HasKeyboardFocus property with true. At most one element of a
-// fragment ever does: the one the snapshot's Focus names, or the root when nothing inside the window holds the focus at
-// all. A client handed two elements that both claim the keyboard has no way to decide which of them the user is
-// actually on, and the root claiming it while reporting IsKeyboardFocusable false — which it always does, since a root
-// is never focusable — is a pair that cannot be made sense of at all.
+// fragment ever does: the one the snapshot's Focus names, and nothing at all when the snapshot names none. A client
+// handed two elements that both claim the keyboard has no way to decide which of them the user is actually on, and an
+// element claiming it while reporting IsKeyboardFocusable false is a pair that cannot be made sense of at all — which
+// is why the root is not the answer for an empty focus: a root is never focusable, since the builder never marks it so.
 //
-// The root's own Focused flag is not the answer for it, because it means something different there: on the root it says
-// the window is active, not that the window itself is where typing goes. That is also the second half of this property
-// for every other element — a node holds the focus within its window whether or not that window has it, and only the
-// active window's focused element really has the keyboard — so an inactive window answers false everywhere. It is the
-// same answer IRawElementProviderFragmentRoot::GetFocus gives.
+// The root's own Focused flag is not the answer for it either, because it means something different there: on the root
+// it says the window is active, not that the window itself is where typing goes. That is also the second half of this
+// property for every other element — a node holds the focus within its window whether or not that window has it, and
+// only the active window's focused element really has the keyboard — so an inactive window answers false everywhere. It
+// is the same answer IRawElementProviderFragmentRoot::GetFocus gives, including for an empty focus, which it reports as
+// a NULL element.
 func UIAHasKeyboardFocus(t *accessibility.Tree, n *accessibility.Node) bool {
-	if t == nil || n == nil || !uiaRootFocused(t) {
+	if t == nil || n == nil || t.Focus == 0 || !uiaRootFocused(t) {
 		return false
 	}
-	if t.Focus != 0 {
-		return n.ID == t.Focus
-	}
-	return n.ID == t.Root
+	return n.ID == t.Focus
 }
 
 // uiaRootFocused reports whether the window a snapshot describes is the active one.
@@ -636,8 +676,6 @@ const (
 	// UIARaiseStructure is a UiaRaiseStructureChangedEvent call: report UIARaise.Change on UIARaise.Node, naming
 	// UIARaise.Child when the change is a child being added or removed.
 	UIARaiseStructure
-	// UIARaiseNotify is a UiaRaiseNotificationEvent call: announce UIARaise.Text from UIARaise.Node.
-	UIARaiseNotify
 	// UIARaiseDisconnect is not an event at all: it says that UIARaise.Node has left the tree, so its provider should
 	// be marked stale, disconnected from UI Automation and released. It always follows any structure change that
 	// reported the removal.
@@ -653,8 +691,6 @@ func (k UIARaiseKind) String() string {
 		return "property"
 	case UIARaiseStructure:
 		return "structure"
-	case UIARaiseNotify:
-		return "notify"
 	case UIARaiseDisconnect:
 		return "disconnect"
 	default:
@@ -664,9 +700,10 @@ func (k UIARaiseKind) String() string {
 
 // UIARaise is one thing the adapter should tell UI Automation about, as decided by UIADecideRaises. Which fields carry
 // information depends on Kind; the rest are left at their zero values.
+//
+// There is nothing here for an announcement: one is never decided from a snapshot, since nothing in the tree accounts
+// for it, so UIAWindow.Announce raises the notification itself.
 type UIARaise struct {
-	// Text is what to announce, for UIARaiseNotify.
-	Text string
 	// Node is the element the call is made on.
 	Node accessibility.NodeID
 	// Child is the element a structure change is about, when the change names one.
@@ -701,9 +738,6 @@ func (r UIARaise) String() string {
 			buffer.WriteString(",child:")
 			buffer.WriteString(strconv.FormatUint(uint64(r.Child), 10))
 		}
-	case UIARaiseNotify:
-		buffer.WriteString(",text:")
-		buffer.WriteString(strconv.Quote(r.Text))
 	default:
 	}
 	buffer.WriteString("}")
@@ -721,11 +755,17 @@ func (r UIARaise) String() string {
 //     a window that is not the active one makes a screen reader jump to a window the user is not looking at.
 //   - A window that becomes active re-raises the focus, since the client needs to be pointed back at whatever inside
 //     the window has it.
+//   - The focus moving to nothing is raised on the fragment root, since there is no element left to raise it on and a
+//     client that was told nothing would go on pointing at an element that has stopped being focused. No element then
+//     claims HasKeyboardFocus and GetFocus reports a NULL element, so a client that follows the event up is told the
+//     window itself is where the user is.
 //   - A bounding-rectangle change is raised only for the focused node and for the root. Every node's bounds change when
 //     a window is resized, and a client that wanted them all would ask.
 //   - A property change is raised only when the element actually supports the property. A slider reports its value
 //     through the RangeValue pattern and a text field through the Value pattern, so the same ValueChanged event becomes
 //     a different property on each, and becomes nothing at all on an element with neither pattern.
+//   - An attributes change says that one of a group of secondary attributes and relations differs without saying which,
+//     so every property the provider derives from that group is reported; see uiaAttributeProperties.
 //   - When a node's children changed, the client is told once, with ChildrenInvalidated, and the individual additions
 //     and removals anywhere beneath that node are dropped. A client responds to ChildrenInvalidated by reading the
 //     children again, so the per-child events would only make it do the same work repeatedly — and a whole subtree
@@ -747,10 +787,14 @@ func (r UIARaise) String() string {
 //     structure change: those events are what tell a screen reader to enter and leave menu mode and to read a tip that
 //     has just appeared. See menuOrTooltip.
 //
-// The first publish of a window is the one case that produces a call with no event behind it: a dialog announces
-// itself with Window_WindowOpened, which is how a screen reader knows to read the whole dialog out. Diff reports
+// The first publish of a window is the one case that produces a call with no event behind it: the window announces
+// itself with Window_WindowOpened, which is how a screen reader knows to read a dialog out as it appears. Diff reports
 // nothing but the focus for a first publish, since there is no previous tree to compare against, so old being nil is
 // what identifies that moment.
+//
+// Every root raises it, not only a dialog. The Window control type lists the opened and closed events as required, and
+// UIAWindow.Destroy raises Window_WindowClosed for every window, so raising the opening for dialogs alone would tell a
+// client tracking window lifetimes that an ordinary window it was never told about had closed.
 func UIADecideRaises(old, cur *accessibility.Tree, events []accessibility.Event) []UIARaise {
 	if cur == nil {
 		return nil
@@ -763,7 +807,7 @@ func UIADecideRaises(old, cur *accessibility.Tree, events []accessibility.Event)
 	}
 	if root := cur.Node(cur.Root); root != nil {
 		d.rootFocused = root.Focused
-		if old == nil && root.Role == role.Dialog {
+		if old == nil {
 			d.add(UIARaise{Kind: UIARaiseEvent, Node: cur.Root, Event: UIA_Window_WindowOpenedEventId})
 		}
 	}
@@ -789,8 +833,7 @@ type uiaDecider struct {
 }
 
 // add records one call to make, dropping it when it would duplicate one already recorded or when it names a node with
-// no provider behind it. Announcements are never treated as duplicates: saying the same thing twice is a legitimate
-// request.
+// no provider behind it.
 func (d *uiaDecider) add(raise UIARaise) {
 	if raise.Node == 0 {
 		return
@@ -802,12 +845,10 @@ func (d *uiaDecider) add(raise UIARaise) {
 		}
 	default:
 	}
-	if raise.Kind != UIARaiseNotify {
-		if d.seen[raise] {
-			return
-		}
-		d.seen[raise] = true
+	if d.seen[raise] {
+		return
 	}
+	d.seen[raise] = true
 	d.raises = append(d.raises, raise)
 }
 
@@ -847,7 +888,10 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 	case accessibility.NameChanged:
 		d.property(event.Node, UIA_NamePropertyId)
 	case accessibility.DescriptionChanged:
+		// Both properties, because the provider answers both from Node.Description: a client that cached
+		// FullDescription and was told only about HelpText would keep the stale one forever.
 		d.property(event.Node, UIA_HelpTextPropertyId)
+		d.property(event.Node, UIA_FullDescriptionPropertyId)
 	case accessibility.ValueChanged:
 		d.valueProperty(event.Node)
 	case accessibility.NumberChanged:
@@ -881,9 +925,12 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 		}
 	case accessibility.SortChanged:
 		d.property(event.Node, UIA_ItemStatusPropertyId)
+	case accessibility.AttributesChanged:
+		d.attributes(event.Node)
 	case accessibility.RoleChanged:
-		// A role change is a control-type change: UIAControlType is a pure function of the role, and the control type
-		// is what a client derives the spoken name of the element and the patterns it bothers looking for from. The
+		// A role change is a control-type change: the control type follows the role — and, for a window-like role,
+		// whether the node is the fragment root, which a role change never alters — and it is what a client derives
+		// the spoken name of the element and the patterns it bothers looking for from. The
 		// localized control type is not raised alongside it, since this package never answers that property — UI
 		// Automation derives it from the control type, which it has just been told about.
 		d.property(event.Node, UIA_ControlTypePropertyId)
@@ -949,11 +996,56 @@ func (d *uiaDecider) property(id accessibility.NodeID, propertyID PropertyID) {
 	d.add(UIARaise{Kind: UIARaiseProperty, Node: id, Property: propertyID})
 }
 
-// focus records a focus change, which is worth reporting only while the window itself is active.
-func (d *uiaDecider) focus(id accessibility.NodeID) {
-	if d.rootFocused {
-		d.event(id, UIA_AutomationFocusChangedEventId)
+// uiaAttributeProperties lists the properties an accessibility.AttributesChanged event reports, in the order they are
+// reported. They are the ones UIAProvider.propertyValue answers from the fields that event covers:
+//
+//   - HelpText, from Placeholder — the watermark of an unnamed field is announced through it, and Description, which
+//     the same property also answers from, has its own event.
+//   - Level, straight from Level.
+//   - PositionInSet and SizeOfSet, from RowIndex and the container's RowCount by way of UIAPositionInSet.
+//   - Orientation, from Orientation.
+//   - LabeledBy, DescribedBy and ControllerFor, from the three relations.
+//
+// The event does not say which of those changed, so all of them are reported: they are element-wide properties that
+// every element answers, and one with nothing to say for a property answers it empty both times, which a client reads
+// as no change. The Grid and GridItem patterns' row and column properties are deliberately not among them — a client
+// reads those through IGridProvider and IGridItemProvider rather than through GetPropertyValue, so a raise would carry
+// an empty value on both sides — and a change to the shape of a grid arrives as the structure change that follows it.
+var uiaAttributeProperties = []PropertyID{
+	UIA_HelpTextPropertyId,
+	UIA_LevelPropertyId,
+	UIA_PositionInSetPropertyId,
+	UIA_SizeOfSetPropertyId,
+	UIA_OrientationPropertyId,
+	UIA_LabeledByPropertyId,
+	UIA_DescribedByPropertyId,
+	UIA_ControllerForPropertyId,
+}
+
+// attributes records the property changes an attributes change asks for. See uiaAttributeProperties for which they are
+// and why they are all reported at once.
+func (d *uiaDecider) attributes(id accessibility.NodeID) {
+	for _, propertyID := range uiaAttributeProperties {
+		d.property(id, propertyID)
 	}
+}
+
+// focus records a focus change, which is worth reporting only while the window itself is active.
+//
+// The focus moving to nothing is reported on the fragment root. A client answers a focus event by moving its cursor to
+// the element the event names, so saying nothing would leave it on an element that has just stopped being focused; the
+// root is the one element left to name, and a client that asks it about the focus is told there is none — GetFocus
+// reports a NULL element and nothing claims HasKeyboardFocus. It reaches a real window whenever the focused panel is
+// removed or gives the focus up, and when a window becomes active with nothing inside it focused. The Linux adapter
+// reports the same two moments; see internal/atspi/events.go.
+func (d *uiaDecider) focus(id accessibility.NodeID) {
+	if !d.rootFocused {
+		return
+	}
+	if id == 0 {
+		id = d.cur.Root
+	}
+	d.event(id, UIA_AutomationFocusChangedEventId)
 }
 
 // valueProperty records the change of whichever value property the node actually has, and nothing when it has neither.
@@ -987,7 +1079,10 @@ func (d *uiaDecider) state(event accessibility.Event) {
 		d.property(n.ID, UIA_IsDataValidForFormPropertyId)
 	case accessibility.StateSelected:
 		if patterns.Has(PatternSelectionItem) {
-			d.selectionItem(n, n.Selected)
+			// UIAIsSelected rather than the flag itself, so that what the event says and what
+			// ISelectionItemProvider::get_IsSelected answers cannot disagree: a radio button's selected state is its
+			// check state, as the StateChecked branch below already relies on.
+			d.selectionItem(n, UIAIsSelected(n))
 		}
 	case accessibility.StatePressed, accessibility.StateChecked:
 		switch {

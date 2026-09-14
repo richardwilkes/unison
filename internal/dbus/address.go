@@ -89,6 +89,14 @@ func parseAddressEntry(entry string) (transport, error) {
 			if value == "" {
 				return transport{}, fmt.Errorf("dbus: address %q has an empty path", entry)
 			}
+			// A leading "@" is how the abstract namespace is spelled, both in the address this function builds and in
+			// the unix address that Go's net package dials, so a path that begins with one would reach a name in that
+			// namespace rather than the file it asked for. The escaped form, "%40", unescapes to the same byte and so
+			// would do the same thing, which is why this is checked after unescaping.
+			if value[0] == '@' {
+				return transport{}, fmt.Errorf("dbus: address %q has a path beginning with '@'; use the abstract key "+
+					"for a name in the abstract namespace", entry)
+			}
 			resolved = value
 		case "abstract":
 			if value == "" {

@@ -328,7 +328,10 @@ func main() {
 			{Key: "tooltip", Comment: "Transient explanatory text for another element"},
 			{Key: "document", Comment: "A container of rich, readable content"},
 			{Key: "toolbar", Comment: "A container of frequently used controls"},
-			{Key: "unknown", Comment: "A role with no better match"},
+			{
+				Key:     "unknown",
+				Comment: "Only ever what an application asked for; unison never resolves a role to this",
+			},
 		},
 	})
 	processSourceTemplate(wd, &enumInfo{

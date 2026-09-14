@@ -11,10 +11,8 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
-	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
-	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -88,29 +86,10 @@ func (t *Tag) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size
 }
 
 // ProvideAccessibility describes the tag to assistive technologies. A tag is a bubble around a word or two, so what
-// reaches an assistive technology is just that text: the bubble itself is decoration. A tag that holds only a drawable
-// is an image instead, named by whatever has been set for it or by its tooltip and skipped when nothing describes it,
-// exactly as Label and DrawablePanel treat the same case: an empty piece of static text is worse than nothing at all.
+// reaches an assistive technology is just that text: the bubble itself is decoration. Everything else about it is the
+// case Label and DrawablePanel are too; see axDescribeStaticContent.
 func (t *Tag) ProvideAccessibility(b *AccessibilityBuilder) {
-	node := b.Node()
-	text := t.Text.String()
-	if node.Name == "" {
-		node.Name = text
-	}
-	if node.Name == "" && t.Drawable != nil {
-		// A tooltip is the usual way a drawable is described. It has to be consulted here rather than being left to the
-		// description the snapshot would otherwise take from it, since a node marked ignored is never reached to hear
-		// it.
-		node.Name = axTooltipText(t.AsPanel())
-	}
-	if node.Role == role.Auto {
-		if text == "" && t.Drawable != nil {
-			node.Role = role.Image
-		} else {
-			node.Role = role.Label
-		}
-		node.Ignored = text == "" && node.Name == "" && xreflect.IsNil(t.Accessibility.LabeledBy)
-	}
+	axDescribeStaticContent(b, t.Text.String(), t.Drawable != nil)
 }
 
 // DefaultDraw provides the default drawing.

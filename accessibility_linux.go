@@ -276,10 +276,8 @@ func linuxStopA11y() {
 // published on the dead connection is quietly dropped and linuxStartA11y refuses to build a replacement for as long as
 // linuxA11y is non-nil. Dropping the adapter is what turns snapshot building off again and makes a replacement
 // possible; asking the desktop once more is what gets one built, since the ordinary answer is still yes and the
-// launcher will have a new bus up by the time the question reaches it.
-//
-// Only one rebuild is attempted for each thing the desktop says, so a bus that accepts a connection and immediately
-// drops it costs one dial rather than an endless succession of them.
+// launcher will have a new bus up by the time the question reaches it. What that comes to is linuxA11yRejoin's
+// business.
 func linuxA11yConnectionLost(attempt uint64, err error) {
 	if attempt == 0 || linuxA11y == nil || attempt != linuxA11yCurrentAttempt {
 		// The adapter has already been stopped or replaced, so its connection ending is of no consequence to anyone.
@@ -287,11 +285,32 @@ func linuxA11yConnectionLost(attempt uint64, err error) {
 	}
 	errs.Log(errs.NewWithCause("the connection to the accessibility bus was lost", err))
 	linuxStopA11y()
+	linuxA11yRejoin()
+}
+
+// linuxA11yRejoin decides what becomes of an application whose connection to the accessibility bus has died and whose
+// adapter has just been thrown away. UI thread only; it is reached from linuxA11yConnectionLost alone.
+//
+// Snapshot building went with the adapter, since linuxStopA11y turns it off. That is the right answer when the desktop
+// decides, but not when the environment asked for support whatever the desktop reports: such an application builds
+// snapshots whether or not there is a bus to publish them on, so they are turned straight back on here. It has to
+// happen before the one-rebuild guard rather than only in linuxFinishStartA11y, because nothing clears
+// linuxA11yRejoinAttempted on that path — the forced mode never creates the watch that reports the desktop's own
+// answer, and clearing it is what an answer from the desktop is for — so a second loss would otherwise leave the
+// application with snapshots off for the rest of its life.
+//
+// Only one rebuild is attempted for each thing the desktop says, so a bus that accepts a connection and immediately
+// drops it costs one dial rather than an endless succession of them.
+func linuxA11yRejoin() {
+	mode := linuxA11yMode()
+	if mode == linuxA11yForced {
+		activateAccessibility()
+	}
 	if linuxA11yRejoinAttempted {
 		return
 	}
 	linuxA11yRejoinAttempted = true
-	switch linuxA11yMode() {
+	switch mode {
 	case linuxA11yRefused:
 		return
 	case linuxA11yForced:
@@ -312,8 +331,13 @@ func linuxA11yConnectionLost(attempt uint64, err error) {
 	}()
 }
 
-// linuxA11yTerminate leaves the accessibility bus. It is called from nativeTerminate, before the X11 connection is
-// closed, since the fallback that finds the bus address reads a property from the root window.
+// linuxA11yTerminate leaves the accessibility bus. It is called first of all from nativeTerminate, so that the registry
+// is told the application is going before the rest of the platform is taken apart.
+//
+// Nothing here touches the X11 connection, and nothing has to: the last of the three places the bus address is looked
+// for is the root window's AT_SPI_BUS property, which linuxStartA11y reads on the UI thread when a join begins and
+// hands atspi.Config a closure over, precisely so that neither the join goroutine nor this has any use for the
+// connection.
 func linuxA11yTerminate() {
 	linuxA11yRejoinAttempted = false
 	if linuxA11yCancelWatch != nil {
@@ -399,12 +423,21 @@ func nativeAccessibilityAnnounce(text string) {
 	}
 }
 
-// x11RefreshAccessibilityGeometry tells the window's assistive-technology adapter, if it has one, that the screen
-// position, size or scale of its content area has changed. A window that is not being described pays one nil check.
-func (w *Window) x11RefreshAccessibilityGeometry() {
-	if w.ax != nil {
-		w.apiAccessibilityGeometryChanged()
+// x11RefreshAccessibilityGeometry tells the window's assistive-technology adapter, if it has one, where its content
+// area now sits: origin is its upper left corner in the X server's pixels, relative to the root window, which is the
+// space AT-SPI reports coordinates in. A window that is not being described pays one nil check.
+//
+// The origin is handed in rather than looked up because the X11 event loop already has it, from the ConfigureNotify it
+// is handling, while Window.ContentRect would ask the X server for it all over again: nativeContentRect issues a
+// GetGeometry and a TranslateCoordinates, two synchronous round trips, and they would be paid on every one of the
+// stream of events an interactive move or resize produces — before Adapter.SetGeometry even had the chance to discard
+// a geometry that has not changed. The adapter is called directly for the same reason: there is no window here that
+// could be a headless one, since only the X11 event loop calls this.
+func (w *Window) x11RefreshAccessibilityGeometry(origin geom.Point) {
+	if w.ax == nil || linuxA11y == nil || w.wnd.id == 0 {
+		return
 	}
+	linuxA11y.SetGeometry(atspi.WindowKey(w.wnd.id), atspi.Geometry{Origin: origin, Scale: w.BackingScale()})
 }
 
 // linuxA11yAction receives one request an assistive technology has made of a node.
@@ -442,13 +475,7 @@ func linuxA11yAction(req accessibility.ActionRequest) {
 // the scale on the way out of nativeContentRect, so multiplying it back is what recovers the pixels the X server —
 // and therefore AT-SPI — works in.
 func (w *Window) linuxA11yGeometry() atspi.Geometry {
-	return linuxA11yGeometryFor(w.accessibilityGeometry())
-}
-
-// linuxA11yGeometryFor turns the screen origin and backing scale of a window's content area into the geometry the
-// adapter converts node bounds with. It is separate from linuxA11yGeometry so that the conversion can be exercised
-// without a window.
-func linuxA11yGeometryFor(origin, scale geom.Point) atspi.Geometry {
+	origin, scale := w.accessibilityGeometry()
 	return atspi.Geometry{Origin: origin, Scale: scale}
 }
 

@@ -36,11 +36,6 @@ func TestMembership(t *testing.T) {
 			fn:      role.Enum.IsRowLike,
 			members: []role.Enum{role.ListItem, role.Row},
 		},
-		{
-			name:    "IsWindow",
-			fn:      role.Enum.IsWindow,
-			members: []role.Enum{role.Window, role.Dialog},
-		},
 	} {
 		in := make(map[role.Enum]bool, len(one.members))
 		for _, member := range one.members {
@@ -59,7 +54,6 @@ func TestAutoAndNoneAreNeverClassified(t *testing.T) {
 	for _, e := range []role.Enum{role.Auto, role.None} {
 		c.False(e.IsText(), e.Key())
 		c.False(e.IsRowLike(), e.Key())
-		c.False(e.IsWindow(), e.Key())
 	}
 	c.Equal(role.Auto, role.Enum(0), "auto must be the zero value")
 	c.Equal(role.Auto, role.Enum(len(role.All)).EnsureValid(), "an out-of-range value must fall back to auto")

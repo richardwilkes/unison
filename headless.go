@@ -380,9 +380,12 @@ func (s *headlessState) recordError(err error) {
 func (s *headlessState) finish() {
 	// First, while the window list this walks is still intact. A session that turned accessibility support on must not
 	// leave it on for whatever runs next, and the snapshot count is what the zero-cost tests assert on, so the next
-	// session has to start from zero however this one ended.
+	// session has to start from zero however this one ended. The throttle flag is put back for the same reason: the
+	// tests that set it clear it again from a cleanup that goes through Do, which does nothing once the session has
+	// ended, and a flag left set would hand every later session trees up to a publish throttle stale.
 	deactivateAccessibility()
 	axSnapshotCount = 0
+	axThrottleHeadless = false
 	s.announcements = nil
 	windowList = nil
 	modalStack = nil

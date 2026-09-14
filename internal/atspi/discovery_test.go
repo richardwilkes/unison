@@ -10,6 +10,7 @@
 package atspi
 
 import (
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -185,6 +186,48 @@ func TestWatchEnabledSaysNothingOnceItIsCanceled(t *testing.T) {
 	default:
 	}
 	c.Equal(0, len(p.matchRules()))
+}
+
+// TestWatchEnabledSaysNothingOnceItIsCanceledAfterASignal covers the same race one round further in. A signal that
+// arrives just before the watch is canceled leaves a property read in flight, and the answer must reach nobody: for the
+// root package, a yes delivered after the bridge has been torn down builds a fresh adapter against a launcher that may
+// no longer be there.
+func TestWatchEnabledSaysNothingOnceItIsCanceledAfterASignal(t *testing.T) {
+	clearAccessibilityEnvironment(t)
+	c := check.New(t)
+	var reads atomic.Int32
+	asked := make(chan struct{})
+	answer := make(chan struct{})
+	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+		if msg.Interface == dbusPropertiesInterface && msg.Member == "Get" && reads.Add(1) == 2 {
+			// The first read is the one the watch takes as it starts; this is the one the signal below asked for, and
+			// the watch is canceled while it is still owed.
+			close(asked)
+			<-answer
+		}
+		return statusAnswers(peer, msg)
+	})
+	changes := make(chan bool, 8)
+	cancel := WatchEnabled(p.client, func(enabled bool) { changes <- enabled })
+	c.False(nextChange(t, changes), "the state the watch started in is reported first")
+	waitForRules(t, p, 2)
+
+	// A launcher that has just taken its name is asked what it has to say, since its own signal came too early for
+	// anyone to hear it.
+	p.enabled.Store(true)
+	p.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, "",
+		testPeerName)
+	<-asked
+	cancel()
+	close(answer)
+	// Taking the match rules back off the bus is the last thing the watch's own goroutine does, and it is two round
+	// trips to the peer, by which time the goroutine that was holding the answer has decided what to do with it.
+	waitForRules(t, p, 0)
+	select {
+	case reported := <-changes:
+		t.Fatalf("a canceled watch reported %v", reported)
+	default:
+	}
 }
 
 func TestWatchEnabledIgnoresWhatIsNotItsBusiness(t *testing.T) {

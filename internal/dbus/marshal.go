@@ -70,11 +70,17 @@ func (e *encoder) putUint64(v uint64) {
 	e.buf = binary.LittleEndian.AppendUint64(e.buf, v)
 }
 
-// putString writes a string or object path: a 4 byte length, the bytes, then a terminating NUL.
-func (e *encoder) putString(s string) {
+// putString writes a string or object path: a 4 byte length, the bytes, then a terminating NUL. A string longer than
+// [MaxArraySize] is refused, since [decoder.getString] refuses one too: the two directions have to agree, or this
+// package would produce a body that it cannot itself decode and no peer would accept.
+func (e *encoder) putString(s string) error {
+	if len(s) > MaxArraySize {
+		return fmt.Errorf("dbus: string of %d bytes exceeds the %d byte limit", len(s), MaxArraySize)
+	}
 	e.putUint32(uint32(len(s)))
 	e.buf = append(e.buf, s...)
 	e.buf = append(e.buf, 0)
+	return nil
 }
 
 // putSignature writes a signature: a 1 byte length, the bytes, then a terminating NUL.
@@ -150,13 +156,13 @@ func (e *encoder) value(sig Signature, v any) error {
 		if err != nil {
 			return err
 		}
-		e.putString(s)
+		return e.putString(s)
 	case 'o':
 		p, err := asObjectPath(v)
 		if err != nil {
 			return err
 		}
-		e.putString(string(p))
+		return e.putString(string(p))
 	case 'g':
 		s, err := asSignature(v)
 		if err != nil {

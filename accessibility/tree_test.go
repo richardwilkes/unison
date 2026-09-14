@@ -228,31 +228,48 @@ func TestTreePositionInSet(t *testing.T) {
 	}
 }
 
-// TestTreeSurvivesCycles checks the depth guard: a tree whose Children links loop back on themselves is malformed, but
-// the helpers must still return rather than recurse until the stack is gone.
+// TestTreeSurvivesCycles checks that the helpers return on a tree whose links loop back on themselves. Such a tree is
+// malformed, but the helpers are handed whatever an application's widgets built and must answer rather than never come
+// back.
+//
+// The cycle here branches: both of the root's children lead back to the root. That is the shape a bound on the depth
+// alone does not save, since the number of nodes visited doubles with every level rather than the depth merely growing
+// — 2^512 of them before a limit of 512 levels stops the descent, which is a walk that does not return in any amount
+// of time. What makes these return is that each node is descended into once, so the assertions here are counts rather
+// than a stopwatch: every node is reached exactly once, and each helper answers with what it found on the way.
 func TestTreeSurvivesCycles(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	tree := newTree(1,
 		&axNode{
 			ID: 1, Parent: 2, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 100, 100),
-			Children: []axID{2},
+			Children: []axID{2, 3},
 		},
 		&axNode{
 			ID: 2, Parent: 1, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 100, 100),
 			Children: []axID{1},
 		},
+		&axNode{
+			ID: 3, Parent: 1, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 100, 100),
+			Children: []axID{1},
+		},
 	)
-	c.NotPanics(func() {
-		count := 0
-		tree.Walk(func(_ *axNode) bool {
-			count++
-			return true
-		})
-		c.True(count > 0)
+	visits := make(map[axID]int)
+	tree.Walk(func(n *axNode) bool {
+		visits[n.ID]++
+		return true
 	})
-	c.NotPanics(func() { tree.HitTest(geom.NewPoint(50, 50)) })
-	c.NotPanics(func() { tree.UnignoredChildren(1) })
-	c.NotPanics(func() { tree.UnignoredParent(2) })
-	c.NotPanics(func() { tree.Path(2) })
+	c.Equal(map[axID]int{1: 1, 2: 1, 3: 1}, visits, "every node must be visited exactly once")
+
+	// Everything in the cycle is ignored, so there is no child to report: each node is descended into once and
+	// contributes nothing.
+	c.Nil(tree.UnignoredChildren(1))
+
+	// Hit testing reaches the first child, which covers the point, and stops there rather than going round again.
+	c.Equal(axID(2), tree.HitTest(geom.NewPoint(50, 50)))
+
+	// The two that walk upwards follow Parent links, which cannot branch, so they are bounded by counting the steps:
+	// there is no unignored ancestor to find, and the path is whatever the chain held before the count ran out.
+	c.Equal(axID(0), tree.UnignoredParent(2))
+	c.True(len(tree.Path(2)) > 0)
 }

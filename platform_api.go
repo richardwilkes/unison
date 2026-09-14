@@ -536,6 +536,12 @@ func (w *Window) apiAccessibilityShutdown() {
 // one where the application itself lists its windows has to take a window that is no longer on the screen out of that
 // list, while one where the system lists them keeps what was built so that the window is still known when it is shown
 // again. A window that was withdrawn is described afresh when it is next drawn.
+//
+// This is the one place the headless backend does not stand in for all three platforms, since there is no answer that
+// would. It withdraws, as Linux does and as macOS and Windows do not, because withdrawing is the behavior with
+// something to assert on: a test can watch the description go and come back, where the other answer is the absence of
+// any change at all. An application's own headless test therefore pins what Linux does with a hidden window rather
+// than what every platform does, and a test of that behavior should say which platform it is about.
 func (w *Window) apiAccessibilityWindowHidden() bool {
 	if hw := w.wnd.hw; hw != nil {
 		hw.accessibilityShutdown()

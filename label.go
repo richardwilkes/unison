@@ -16,7 +16,6 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
-	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -96,31 +95,12 @@ func (l *Label) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		l.Drawable, l.Side, l.Gap, !l.Enabled())
 }
 
-// ProvideAccessibility describes the label to assistive technologies. A label holding only a drawable is an image,
-// named by whatever alternative text has been set for it or, failing that, by its tooltip; one that nothing describes
-// is skipped, exactly as DrawablePanel skips an image of nothing, and so is one holding nothing at all, since a label
-// used purely for spacing has nothing to say. An explicitly set role is left alone, which is how NewLink turns a label
-// into a link and how Markdown turns one into a heading.
+// ProvideAccessibility describes the label to assistive technologies. A label is static text, or an image when a
+// drawable is all it holds, and one that nothing describes is skipped: see axDescribeStaticContent, which Tag and
+// DrawablePanel share. An explicitly set role is left alone, which is how NewLink turns a label into a link and how
+// Markdown turns one into a heading.
 func (l *Label) ProvideAccessibility(b *AccessibilityBuilder) {
-	node := b.Node()
-	text := l.String()
-	if node.Name == "" {
-		node.Name = text
-	}
-	if node.Name == "" && l.Drawable != nil {
-		// A tooltip is the usual way a drawable is described. It has to be consulted here rather than being left to the
-		// description the snapshot would otherwise take from it, since a node marked ignored is never reached to hear
-		// it.
-		node.Name = axTooltipText(l.AsPanel())
-	}
-	if node.Role == role.Auto {
-		if text == "" && l.Drawable != nil {
-			node.Role = role.Image
-		} else {
-			node.Role = role.Label
-		}
-		node.Ignored = text == "" && node.Name == "" && xreflect.IsNil(l.Accessibility.LabeledBy)
-	}
+	axDescribeStaticContent(b, l.String(), l.Drawable != nil)
 }
 
 // LabelContentSizes returns the preferred size of a label, as well as the preferred size of the text within the label.

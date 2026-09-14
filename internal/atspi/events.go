@@ -349,9 +349,14 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 		a.emitNodeRemoved(pub, ev.Node)
 	case accessibility.BoundsChanged:
 		a.emitBoundsChanged(data, ev.Node)
-	case accessibility.SortChanged:
-		// AT-SPI reports a node's sort direction as an object attribute, so a change to it is a change to the
-		// attributes rather than to anything with an interface of its own.
+	case accessibility.SortChanged, accessibility.AttributesChanged:
+		// AT-SPI reports a node's sort direction as an object attribute, and so it does everything
+		// [accessibility.AttributesChanged] covers that has any AT-SPI spelling at all: the placeholder text, the
+		// level, the row and column indexes, the position in a set and the orientation. A change to one of them is
+		// therefore a change to the attributes rather than to anything with an interface of its own. The relations that
+		// event also covers — what labels a node, what describes it and what it controls — have no AT-SPI signal of
+		// their own to be reported through, so this stands in for them as well, and a client that re-reads the
+		// attributes will re-read the relation set with them.
 		if reportedNode(data, ev.Node) != nil {
 			a.emit(NodePath(ev.Node), InterfaceEventObject, signalAttributesChanged, "", 0, 0, variantInt32(0))
 		}
@@ -404,19 +409,50 @@ func (a *Adapter) emitChildrenChanged(pub *publication, id accessibility.NodeID)
 // emitValueChanged announces that a node's value has changed. Unison reports one such change twice — as the textual
 // value the widget shows and as the number behind it — but AT-SPI has a single accessible-value property for both, and
 // ATK, which every assistive technology was written against, defines it as a number. So the number is what is sent,
-// once per node however many of the two events arrived, and a node that has no number sends nothing: it has no
-// org.a11y.atspi.Value interface for a client to read a value back from, and what such a control shows is its name or
-// its text instead.
+// once per node however many of the two events arrived.
+//
+// A node whose value is text rather than a number has no accessible-value to report at all, and is announced through
+// the read-only org.a11y.atspi.Text interface synthesized from that value instead; see [textualValue] and
+// [Adapter.emitTextValueChanged].
 func (a *Adapter) emitValueChanged(pub *publication, id accessibility.NodeID) {
 	n := reportedNode(pub.data, id)
-	if n == nil || !n.HasNumber || pub.valueAnnounced[id] {
+	if n == nil || pub.valueAnnounced[id] {
 		return
 	}
 	if pub.valueAnnounced == nil {
 		pub.valueAnnounced = make(map[accessibility.NodeID]bool)
 	}
 	pub.valueAnnounced[id] = true
-	a.emitPropertyChange(pub.data, id, propertyAccessibleValue, variantDouble(n.Number))
+	if n.HasNumber {
+		a.emitPropertyChange(pub.data, id, propertyAccessibleValue, variantDouble(n.Number))
+		return
+	}
+	a.emitTextValueChanged(pub, id, n)
+}
+
+// emitTextValueChanged announces a change to a node's textual value as the whole of the old value being deleted and the
+// whole of the new one inserted, which is what the text an assistive technology can read of such a node actually did.
+// Orca re-reads a control when its text changes and ignores it when nothing says anything, so this is what makes the
+// item a popup menu has just chosen, or the ink a color well has just been given, announced at all rather than only
+// discoverable by asking.
+//
+// Nothing is sent for a node that carries text of its own: the real text has its own events, and the value beside it is
+// a description of the same thing. Both halves are read from the two snapshots rather than from the event, since the
+// same node may arrive here from a NumberChanged, whose values are numbers.
+func (a *Adapter) emitTextValueChanged(pub *publication, id accessibility.NodeID, n *accessibility.Node) {
+	old := textualValue(reportedNode(pub.prior, id))
+	now := textualValue(n)
+	if old == now {
+		return
+	}
+	if old != "" {
+		a.emit(NodePath(id), InterfaceEventObject, signalTextChanged, detailDelete, 0, int32(len([]rune(old))),
+			variantString(old))
+	}
+	if now != "" {
+		a.emit(NodePath(id), InterfaceEventObject, signalTextChanged, detailInsert, 0, int32(len([]rune(now))),
+			variantString(now))
+	}
 }
 
 // emitRoleIfChanged announces that a node is no longer the kind of thing it was, which a live control really does
@@ -703,9 +739,10 @@ func (a *Adapter) emitIgnoredChanged(pub *publication, ev *accessibility.Event) 
 	}
 	// The node has joined the reported hierarchy, and the children that were standing in for it are now its own. They
 	// are taken away from the ancestor that used to report them first, so that the node itself lands among what is left
-	// where the new snapshot puts it.
+	// where the new snapshot puts it. Nothing is said to an ancestor the client no longer has, which is one that became
+	// ignored itself earlier in this publish: it has already been told to forget the whole of what was under it.
 	children := pub.data.unignoredChildren(ev.Node)
-	if parent := pub.prior.parent(ev.Node); parent != 0 {
+	if parent := pub.prior.parent(ev.Node); parent != 0 && pub.knows(parent) {
 		for _, id := range children {
 			if reportedNode(pub.prior, id) != nil {
 				a.emitChildRemoved(pub, parent, id)
@@ -1032,12 +1069,19 @@ func (a *Adapter) announceAdd(pub *publication, id accessibility.NodeID) (announ
 // The cache is only told that the object is gone when it really is. A node that has been reparented into another window
 // that is still published goes on answering for that window, and a client told that a live object has gone would drop
 // it with nothing to ever put it back, since the window that holds it now sees no change of its own.
+//
+// Nothing at all is said to a parent the client no longer has, as [Adapter.announceAdd] says nothing to one either.
+// [accessibility.Diff] reports the nodes that have left in ascending id order, and a container's id is lower than its
+// children's, so closing a list with two rows announces the list's departure and then its rows': a children-changed
+// sent from the list at that point would have libatspi resolve the event's source with ref_accessible, which builds a
+// fresh, parentless object for the path it has just been told to drop and keeps it in the application's cache forever,
+// since node ids are never reused.
 func (a *Adapter) emitNodeRemoved(pub *publication, id accessibility.NodeID) {
 	prior := pub.prior
 	if reportedNode(prior, id) == nil {
 		return
 	}
-	if parent := prior.parent(id); parent != 0 {
+	if parent := prior.parent(id); parent != 0 && pub.knows(parent) {
 		a.emitChildRemoved(pub, parent, id)
 	}
 	pub.notePresent(id, false)
@@ -1075,6 +1119,17 @@ func (a *Adapter) emitBoundsChanged(data *windowData, id accessibility.NodeID) {
 // emit queues one AT-SPI event signal. Every event has the same shape — the detail string, two integers whose meaning
 // depends on the event, the value the event carries, and a dictionary of the sender's properties that this package
 // always leaves empty — and is sent from the path of the object it concerns.
+//
+// Every event is queued whether or not anything is listening for its class. The registry keeps a list of the event
+// classes clients have registered for, which org.a11y.atspi.Registry.GetRegisteredEvents hands over and the
+// EventListenerRegistered and EventListenerDeregistered signals keep up to date, and at-spi2-atk consults it precisely
+// to avoid writing what nobody wants — a window that relays out or scrolls costs one bus write per change here.
+// Consulting it is deliberately not done: the list is an optimization hint rather than a part of the protocol, since
+// libatspi adds match rules of its own and a client may listen without ever registering, so a bridge that trusts it
+// drops events that someone was waiting for, and the one thing worse than a wasted write is a screen reader that goes
+// quiet. The write costs a queued message on a connection nothing else is using; being told nothing costs the user the
+// application. If the traffic ever has to come down, the place to do it is the registration list plus those two
+// signals, treating an empty list as "send everything" rather than as "send nothing".
 func (a *Adapter) emit(path dbus.ObjectPath, iface, member, detail string, detail1, detail2 int32, data dbus.Variant) {
 	a.conn.EmitWithSignature(path, iface, member, eventSignature, detail, detail1, detail2, data, dbus.Dict{})
 }

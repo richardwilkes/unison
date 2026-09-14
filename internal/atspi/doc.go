@@ -34,12 +34,13 @@
 //
 // # Threading
 //
-// [Start], [Publish], [SetGeometry], [RemoveWindow], [Announce] and [Stop] are called from the user interface thread.
-// Everything else runs on the connection's dispatcher goroutine, where the answers are read from the published
-// snapshot, never from a live panel: a snapshot is immutable once published, so no locking beyond resolving a path to
-// the window that holds it is needed. The two things that have to wait for the bus — rejoining the accessibility tree
-// when the registry comes back, and telling it the application is going — are done on goroutines of their own, so that
-// neither the user interface thread nor the dispatcher is ever held up by a peer that has stopped reading.
+// [Start], [Adapter.Publish], [Adapter.SetGeometry], [Adapter.RemoveWindow], [Adapter.Announce] and [Adapter.Stop] are
+// called from the user interface thread. Everything else runs on the connection's dispatcher goroutine, where the
+// answers are read from the published snapshot, never from a live panel: a snapshot is immutable once published, so no
+// locking beyond resolving a path to the window that holds it is needed. The two things that have to wait for the bus —
+// rejoining the accessibility tree when the registry comes back, and telling it the application is going — are done on
+// goroutines of their own, so that neither the user interface thread nor the dispatcher is ever held up by a peer that
+// has stopped reading.
 //
 // An assistive technology may also ask for something to be done, such as pressing a button or moving the focus. Those
 // requests are handed to [Config.Action], which the root package arranges to run on the user interface thread, and the

@@ -11,9 +11,16 @@ package accessibility
 
 import "github.com/richardwilkes/toolbox/v2/geom"
 
-// maxTreeDepth bounds how far the tree helpers will descend. Real hierarchies are orders of magnitude shallower than
-// this, so the limit never comes into play; it exists only so that a malformed tree — one whose Children links form a
-// cycle — cannot make these functions recurse until the stack is exhausted.
+// maxTreeDepth bounds how far the two helpers that walk upwards, UnignoredParent and Path, will follow a chain of
+// Parent links. Real hierarchies are orders of magnitude shallower than this, so the limit never comes into play; it
+// exists only so that a malformed tree — one whose Parent links form a cycle — cannot make those two loop forever. A
+// node has exactly one parent, so such a chain cannot branch and counting the steps is enough to bound it.
+//
+// The helpers that walk downwards need more than a bound on the depth. Children links can branch, so a cycle reached
+// by two different paths multiplies the work at every level rather than merely deepening it: with 1 → {2, 3}, 2 → {1}
+// and 3 → {1}, a walk that stopped only at this depth would visit 2^512 nodes on the way, which is not a walk that
+// returns. Those helpers therefore carry the set of ids they have already descended into and visit each node once,
+// which bounds them by the size of the tree however its links are tangled.
 const maxTreeDepth = 512
 
 // Tree is an immutable snapshot of one window's accessibility hierarchy. Nothing in a tree, including the nodes the
@@ -41,28 +48,28 @@ func (t *Tree) Node(id NodeID) *Node {
 
 // Walk calls fn for every node reachable from Root, in pre-order: a node is visited before its children, and children
 // are visited in the order they appear in Children. Returning false from fn stops the walk entirely, so a search can
-// leave early. Child ids that the tree has no node for are skipped. It is safe to call on a nil tree.
+// leave early. Child ids that the tree has no node for are skipped, and each node is visited exactly once however many
+// places in the tree point at it. It is safe to call on a nil tree.
 func (t *Tree) Walk(fn func(n *Node) bool) {
 	if t == nil || fn == nil {
 		return
 	}
-	t.walk(t.Root, 0, fn)
+	t.walk(t.Root, make(map[NodeID]bool, len(t.Nodes)), fn)
 }
 
-// walk implements Walk from one starting node, reporting whether the traversal should continue.
-func (t *Tree) walk(id NodeID, depth int, fn func(n *Node) bool) bool {
+// walk implements Walk from one starting node, reporting whether the traversal should continue. visited holds the ids
+// already reached, which is what keeps a malformed tree from being walked forever; see maxTreeDepth.
+func (t *Tree) walk(id NodeID, visited map[NodeID]bool, fn func(n *Node) bool) bool {
 	n := t.Nodes[id]
-	if n == nil {
+	if n == nil || visited[id] {
 		return true
 	}
+	visited[id] = true
 	if !fn(n) {
 		return false
 	}
-	if depth >= maxTreeDepth {
-		return true
-	}
 	for _, child := range n.Children {
-		if !t.walk(child, depth+1, fn) {
+		if !t.walk(child, visited, fn) {
 			return false
 		}
 	}
@@ -82,25 +89,25 @@ func (t *Tree) HitTest(pt geom.Point) NodeID {
 	if root == nil {
 		return 0
 	}
-	return t.hitTest(t.Root, pt, root.Bounds, 0)
+	return t.hitTest(t.Root, pt, root.Bounds, make(map[NodeID]bool))
 }
 
 // hitTest implements HitTest from one starting node, returning zero when nothing at or below it contains pt. clip is
-// the intersection of the bounds of every node above this one.
-func (t *Tree) hitTest(id NodeID, pt geom.Point, clip geom.Rect, depth int) NodeID {
+// the intersection of the bounds of every node above this one, and visited holds the ids already tested, which is what
+// keeps a malformed tree from being descended forever; see maxTreeDepth.
+func (t *Tree) hitTest(id NodeID, pt geom.Point, clip geom.Rect, visited map[NodeID]bool) NodeID {
 	n := t.Nodes[id]
-	if n == nil || n.Offscreen {
+	if n == nil || n.Offscreen || visited[id] {
 		return 0
 	}
+	visited[id] = true
 	clip = clip.Intersect(n.Bounds)
 	if !pt.In(clip) {
 		return 0
 	}
-	if depth < maxTreeDepth {
-		for _, child := range n.Children {
-			if hit := t.hitTest(child, pt, clip, depth+1); hit != 0 {
-				return hit
-			}
+	for _, child := range n.Children {
+		if hit := t.hitTest(child, pt, clip, visited); hit != 0 {
+			return hit
 		}
 	}
 	return id
@@ -118,19 +125,27 @@ func (t *Tree) UnignoredChildren(id NodeID) []NodeID {
 	if n == nil || len(n.Children) == 0 {
 		return nil
 	}
-	return t.appendUnignoredChildren(nil, n, 0)
+	return t.appendUnignoredChildren(nil, n, nil)
 }
 
 // appendUnignoredChildren appends the unignored children of n to ids, splicing in the children of any Ignored child.
-func (t *Tree) appendUnignoredChildren(ids []NodeID, n *Node, depth int) []NodeID {
+//
+// visited holds the ids already descended into, which is what keeps a malformed tree from being descended forever; see
+// maxTreeDepth. It is created only when there is an Ignored child to descend into, so the ordinary case of a node whose
+// children all speak for themselves allocates nothing beyond the answer.
+func (t *Tree) appendUnignoredChildren(ids []NodeID, n *Node, visited map[NodeID]bool) []NodeID {
 	for _, childID := range n.Children {
 		child := t.Nodes[childID]
 		switch {
-		case child == nil:
+		case child == nil || visited[childID]:
 		case !child.Ignored:
 			ids = append(ids, childID)
-		case depth < maxTreeDepth:
-			ids = t.appendUnignoredChildren(ids, child, depth+1)
+		default:
+			if visited == nil {
+				visited = make(map[NodeID]bool)
+			}
+			visited[childID] = true
+			ids = t.appendUnignoredChildren(ids, child, visited)
 		}
 	}
 	return ids
@@ -186,6 +201,13 @@ func (t *Tree) Path(id NodeID) []NodeID {
 // unignored parent that share its Role, together with how many such siblings there are. Restricting the count to one
 // role is what makes the numbers useful: a list whose items are interleaved with separators still reports its items as
 // one through n. Both results are zero when the node is not in the tree, is Ignored, or has no unignored parent.
+//
+// It counts what the tree holds, which is not the whole collection for a widget that describes only what can be seen.
+// A list or table with more rows than fit describes the rows in its view port and a little beyond (see
+// AccessibilityBuilder.VisibleRect), so row 500 of a million is reported here as something like 6 of 21 — true of the
+// tree and useless to a person. For a node whose Role.IsRowLike reports true, use RowIndex and the containing node's
+// RowCount instead, which are the position and size of the whole collection; that is what both adapters that report a
+// position do.
 func (t *Tree) PositionInSet(id NodeID) (pos, size int) {
 	n := t.Node(id)
 	if n == nil || n.Ignored {

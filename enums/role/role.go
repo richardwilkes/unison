@@ -31,11 +31,3 @@ func (e Enum) IsText() bool {
 func (e Enum) IsRowLike() bool {
 	return e == Row || e == ListItem
 }
-
-// IsWindow returns true if this role is a top-level window: Window or Dialog. The root of a snapshot always has one of
-// them, but it is not the only node that may: Panel.Accessibility.Role is public, and a panel an application lays out
-// as a dialog within its window is entitled to say so. Compare a node's id with accessibility.Tree.Root to ask whether
-// it is the root.
-func (e Enum) IsWindow() bool {
-	return e == Window || e == Dialog
-}

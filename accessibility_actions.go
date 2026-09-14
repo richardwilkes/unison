@@ -17,8 +17,16 @@ import (
 )
 
 // This file is the return path: what happens when an assistive technology asks a node to do something. The platform
-// adapter hands the request to the root package, which marshals it onto the UI thread — the adapters never wait for a
-// result, since the UI thread may be inside a modal loop or a drag — and it arrives here.
+// adapter hands the request to the root package and it arrives here.
+//
+// On Linux and Windows it arrives by way of the UI thread's task queue: the adapter is called on a thread of its
+// platform's choosing and must not wait for a result, since the UI thread may be inside a modal loop or a drag, so the
+// assistive technology is told optimistically that the request will be carried out and learns what actually happened
+// from the events the next snapshot produces. macOS is the exception, and deliberately so. AppKit delivers
+// accessibility callbacks on the main thread, which is the UI thread, and VoiceOver reads the result back the moment it
+// has asked — the frame of the row it just scrolled to has to be the scrolled one by then — so a request that only
+// moves the focus, the selection or the view is carried out on the spot, inside the callback. See axActionRunsInline in
+// accessibility_darwin.go for exactly which those are; everything that may run application code is queued there too.
 
 // axDisabledActions is every action a disabled node may still be asked to perform. Only scrolling into view survives:
 // it acts on the node's ancestors rather than on the node, and an assistive technology moving through a window has to

@@ -10,8 +10,11 @@
 package accessibility
 
 import (
+	"math"
 	"slices"
 	"strconv"
+
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 // Diff returns the events that describe how cur differs from old, in the order an adapter must report them. It is pure
@@ -28,10 +31,15 @@ import (
 //     an adapter has already been told about the parent's new shape, and pre-order guarantees a new parent is reported
 //     before the new children inside it.
 //  5. For each surviving node, in pre-order, its own changes in a fixed order: RoleChanged, NameChanged,
-//     DescriptionChanged, ValueChanged, NumberChanged, SortChanged, BoundsChanged, one StateChanged per changed flag,
-//     then the text events — TextDeleted and TextInserted for the one run of runes that differs, followed by
-//     TextSelectionChanged. RoleChanged comes first because a node's role decides how an adapter interprets everything
-//     else about it, so the adapter must know the new role before it applies the rest.
+//     DescriptionChanged, ValueChanged, NumberChanged, SortChanged, AttributesChanged, BoundsChanged, one StateChanged
+//     per changed flag, then the text events — TextDeleted and TextInserted for the one run of runes that differs,
+//     followed by TextSelectionChanged. RoleChanged comes first because a node's role decides how an adapter interprets
+//     everything else about it, so the adapter must know the new role before it applies the rest. At most one
+//     AttributesChanged is produced per node, and it covers the secondary facts no kind of its own reports:
+//     Placeholder, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Orientation and the LabeledBy, DescribedBy and
+//     Controls relations. Every platform carries those as attributes or relations of an element rather than as its
+//     value, and an assistive technology re-reads the ones it cares about when it is told the element's attributes
+//     changed, so naming which of them moved would buy nothing.
 //  6. WindowActivated or WindowDeactivated when the root's Focused flipped.
 //  7. FocusChanged last, whenever the focus moved, so an adapter has already applied every structural and value change
 //     before it tells its assistive technology where to look.
@@ -130,7 +138,8 @@ func appendChangesForNode(events []Event, prev, cur *Node) []Event {
 	}
 	// A change to the range a value sits in matters as much as a change to the value itself, since an assistive
 	// technology reports the two together, usually as a percentage.
-	if prev.HasNumber != cur.HasNumber || prev.Number != cur.Number || prev.Min != cur.Min || prev.Max != cur.Max {
+	if prev.HasNumber != cur.HasNumber || numbersDiffer(prev.Number, cur.Number) ||
+		numbersDiffer(prev.Min, cur.Min) || numbersDiffer(prev.Max, cur.Max) {
 		events = append(events, Event{
 			Kind: NumberChanged,
 			Node: cur.ID,
@@ -141,11 +150,25 @@ func appendChangesForNode(events []Event, prev, cur *Node) []Event {
 	if prev.Sort != cur.Sort {
 		events = append(events, Event{Kind: SortChanged, Node: cur.ID, Old: prev.Sort.String(), New: cur.Sort.String()})
 	}
-	if prev.Bounds != cur.Bounds {
+	events = appendAttributeChanges(events, prev, cur)
+	if boundsDiffer(prev.Bounds, cur.Bounds) {
 		events = append(events, Event{Kind: BoundsChanged, Node: cur.ID})
 	}
 	events = appendStateChanges(events, prev, cur)
 	return appendTextChanges(events, prev, cur)
+}
+
+// appendAttributeChanges appends the one AttributesChanged a node gets when any of the secondary facts about it moved.
+// See the list in the Diff documentation for what they are and why they share a single event.
+func appendAttributeChanges(events []Event, prev, cur *Node) []Event {
+	if prev.Placeholder != cur.Placeholder || prev.Level != cur.Level || prev.RowIndex != cur.RowIndex ||
+		prev.ColumnIndex != cur.ColumnIndex || prev.RowCount != cur.RowCount ||
+		prev.ColumnCount != cur.ColumnCount || prev.Orientation != cur.Orientation ||
+		!slices.Equal(prev.LabeledBy, cur.LabeledBy) || !slices.Equal(prev.DescribedBy, cur.DescribedBy) ||
+		!slices.Equal(prev.Controls, cur.Controls) {
+		events = append(events, Event{Kind: AttributesChanged, Node: cur.ID})
+	}
+	return events
 }
 
 // appendStateChanges appends one StateChanged per flag that differs between the two snapshots of a node. The order here
@@ -267,4 +290,28 @@ func appendWindowActivation(events []Event, old, cur *Tree) []Event {
 // same float64.
 func formatNumber(value float64) string {
 	return strconv.FormatFloat(value, 'g', -1, 64)
+}
+
+// numbersDiffer reports whether two numeric values are not the same value, counting two NaNs as the same.
+//
+// NaN is equal to nothing at all, itself included, so comparing it with == would report a node carrying one as having
+// changed every time it is described: the identical bad value against itself, forever, as often as the window is
+// published. That is a stream of events an assistive technology has to be handed and can do nothing with, and it
+// contradicts the promise that identical trees produce none. Two NaNs say the same thing — neither is a quantity
+// anything can be said about — so nothing is reported for the pair.
+func numbersDiffer[T float32 | float64](a, b T) bool {
+	if a == b {
+		return false
+	}
+	// The two are unequal, which settles it for every value but a NaN, since only a NaN is unequal to itself. The pair
+	// counts as unchanged just when both of them are one.
+	return !math.IsNaN(float64(a)) || !math.IsNaN(float64(b))
+}
+
+// boundsDiffer reports whether two rectangles hold different geometry, comparing each field with numbersDiffer so that
+// a NaN in either is not read as a change from itself. The == that geom.Rect would otherwise be compared with is what
+// makes a single NaN coordinate a permanent stream of BoundsChanged events.
+func boundsDiffer(a, b geom.Rect) bool {
+	return numbersDiffer(a.X, b.X) || numbersDiffer(a.Y, b.Y) || numbersDiffer(a.Width, b.Width) ||
+		numbersDiffer(a.Height, b.Height)
 }

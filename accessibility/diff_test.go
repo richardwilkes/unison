@@ -10,6 +10,7 @@
 package accessibility_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -202,6 +203,137 @@ func TestDiffValueEvents(t *testing.T) {
 		{Kind: accessibility.SortChanged, Node: 3, Old: "unsorted", New: "ascending"},
 		{Kind: accessibility.BoundsChanged, Node: 3},
 	}, accessibility.Diff(old, cur))
+}
+
+// TestDiffAttributeEvents covers the secondary facts that share one event. None of them has a kind of its own, and
+// each is something an assistive technology re-reads when it is told an element's attributes changed, so what is
+// checked here is that every one of them produces exactly one such event and that a node holding the same values
+// produces none.
+func TestDiffAttributeEvents(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	attributed := func(fill func(n *axNode)) *accessibility.Tree {
+		tree := diffTree()
+		fill(tree.Node(3))
+		return tree
+	}
+	for _, one := range []struct {
+		fill func(n *axNode)
+		name string
+	}{
+		{name: "Placeholder", fill: func(n *axNode) { n.Placeholder = "Search" }},
+		{name: "Level", fill: func(n *axNode) { n.Level = 2 }},
+		{name: "RowIndex", fill: func(n *axNode) { n.RowIndex = 7 }},
+		{name: "ColumnIndex", fill: func(n *axNode) { n.ColumnIndex = 3 }},
+		{name: "RowCount", fill: func(n *axNode) { n.RowCount = 99 }},
+		{name: "ColumnCount", fill: func(n *axNode) { n.ColumnCount = 4 }},
+		{name: "Orientation", fill: func(n *axNode) { n.Orientation = accessibility.OrientationVertical }},
+		{name: "LabeledBy", fill: func(n *axNode) { n.LabeledBy = []axID{2} }},
+		{name: "DescribedBy", fill: func(n *axNode) { n.DescribedBy = []axID{2} }},
+		{name: "Controls", fill: func(n *axNode) { n.Controls = []axID{1} }},
+	} {
+		cur := attributed(one.fill)
+		c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(diffTree(), cur),
+			one.name)
+		c.Nil(accessibility.Diff(cur, attributed(one.fill)), "%s must compare equal to itself", one.name)
+	}
+
+	// However many of them moved at once, the node gets one event: an assistive technology re-reads the attributes it
+	// cares about, so naming each of them separately would only repeat the same instruction.
+	many := attributed(func(n *axNode) {
+		n.Placeholder = "Search"
+		n.Level = 2
+		n.RowIndex = 7
+		n.Orientation = accessibility.OrientationVertical
+		n.Controls = []axID{1}
+	})
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(diffTree(), many))
+
+	// A relation is compared by what it points at rather than by the slice holding it, so the same ids in the same
+	// order are the same relation however they were built.
+	rebuilt := attributed(func(n *axNode) { n.Controls = append([]axID{}, 1, 2) })
+	c.Nil(accessibility.Diff(attributed(func(n *axNode) { n.Controls = []axID{1, 2} }), rebuilt))
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
+		accessibility.Diff(rebuilt, attributed(func(n *axNode) { n.Controls = []axID{2, 1} })),
+		"the order the ids are in is part of the relation")
+
+	// The event comes after the sort direction and before the bounds, which is where an adapter expects it among the
+	// rest of what one node reports.
+	both := attributed(func(n *axNode) {
+		n.Sort = accessibility.SortAscending
+		n.Level = 3
+		n.Bounds = geom.NewRect(1, 2, 3, 4)
+	})
+	c.Equal([]axEvent{
+		{Kind: accessibility.SortChanged, Node: 3, Old: "unsorted", New: "ascending"},
+		{Kind: accessibility.AttributesChanged, Node: 3},
+		{Kind: accessibility.BoundsChanged, Node: 3},
+	}, accessibility.Diff(diffTree(), both))
+}
+
+// TestDiffPlaceholderAloneIsReported pins the case that reaches this from stock unison: a combo field switching its
+// watermark between two prompts while its content stays empty. The node's name, value and text are identical either
+// way and the placeholder is the only difference, so without an event nothing would prompt a screen reader to re-read
+// it and Orca would go on announcing the prompt that is no longer shown.
+func TestDiffPlaceholderAloneIsReported(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	field := func(placeholder string) *accessibility.Tree {
+		tree := fieldTree("", 0, 0)
+		tree.Node(2).Placeholder = placeholder
+		return tree
+	}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
+		accessibility.Diff(field("not set"), field("empty")))
+}
+
+// TestDiffToleratesNaN covers the one value that is not equal to itself. A NaN reaching a node — from a widget whose
+// arithmetic divided by zero, or a bounds computation over an empty rectangle — would otherwise make a tree differ from
+// itself, which is both the documented promise broken and a permanent stream of events to the assistive technology, one
+// batch per publish for as long as the window exists.
+func TestDiffToleratesNaN(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	nan := math.NaN()
+	fnan := float32(math.NaN())
+	for _, one := range []struct {
+		fill func(n *axNode)
+		name string
+	}{
+		{name: "Number", fill: func(n *axNode) { n.HasNumber = true; n.Number = nan }},
+		{name: "Min", fill: func(n *axNode) { n.HasNumber = true; n.Min = nan }},
+		{name: "Max", fill: func(n *axNode) { n.HasNumber = true; n.Max = nan }},
+		{name: "Bounds.X", fill: func(n *axNode) { n.Bounds = geom.NewRect(fnan, 0, 10, 10) }},
+		{name: "Bounds.Y", fill: func(n *axNode) { n.Bounds = geom.NewRect(0, fnan, 10, 10) }},
+		{name: "Bounds.Width", fill: func(n *axNode) { n.Bounds = geom.NewRect(0, 0, fnan, 10) }},
+		{name: "Bounds.Height", fill: func(n *axNode) { n.Bounds = geom.NewRect(0, 0, 10, fnan) }},
+	} {
+		build := func() *accessibility.Tree {
+			tree := diffTree()
+			one.fill(tree.Node(3))
+			return tree
+		}
+		c.Nil(accessibility.Diff(build(), build()), "%s must not differ from itself", one.name)
+	}
+
+	// A NaN arriving where a real value was, or being replaced by one, is a change like any other: what must not be
+	// reported is the pair that never moved.
+	valued := diffTree()
+	valued.Node(3).HasNumber = true
+	valued.Node(3).Number = 4
+	broken := diffTree()
+	broken.Node(3).HasNumber = true
+	broken.Node(3).Number = nan
+	c.Equal([]axEvent{{Kind: accessibility.NumberChanged, Node: 3, Old: "4", New: "NaN"}},
+		accessibility.Diff(valued, broken))
+	c.Equal([]axEvent{{Kind: accessibility.NumberChanged, Node: 3, Old: "NaN", New: "4"}},
+		accessibility.Diff(broken, valued))
+	placed := diffTree()
+	placed.Node(3).Bounds = geom.NewRect(0, 0, 10, 10)
+	adrift := diffTree()
+	adrift.Node(3).Bounds = geom.NewRect(0, 0, fnan, 10)
+	c.Equal([]axEvent{{Kind: accessibility.BoundsChanged, Node: 3}}, accessibility.Diff(placed, adrift))
+	c.Equal([]axEvent{{Kind: accessibility.BoundsChanged, Node: 3}}, accessibility.Diff(adrift, placed))
 }
 
 // TestDiffNumberReportsRangeChanges covers the case where the value itself did not move but the range it sits in did,

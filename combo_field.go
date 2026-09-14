@@ -112,9 +112,18 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 	var openMenu Menu
 	b.ClickCallback = func() {
 		field.RequestFocus()
+		if len(options) == 0 {
+			// A combo field with nothing to choose from opens nothing, exactly as PopupMenu.Click shows no menu for a
+			// popup holding nothing: an empty menu panel has nothing to offer anyone, and the field describes itself as
+			// something that does not expand, which every way of opening it has to agree with.
+			return
+		}
 		initialIndex := 0
 		fac := DefaultMenuFactory()
-		m := fac.NewMenu(PopupMenuTemporaryBaseID, "", nil)
+		// The menu takes the field's own name as its title, which is what an assistive technology announces as the
+		// person moves into the choices; without it they hang off an anonymous menu, with nothing to say which control
+		// they belong to. This is what PopupMenu does with the menu it opens, for the same reason.
+		m := fac.NewMenu(PopupMenuTemporaryBaseID, axControlName(field.AsPanel()), nil)
 		defer m.Dispose()
 		openMenu = m
 		for i, c := range options {
@@ -174,17 +183,29 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 
 	// The field and its dropdown button are one control as far as a person is concerned, so that is what is described:
 	// the field is a combo box that can be expanded, and the button beside it is not exposed at all. The field's own
-	// description of itself fills in everything else about it.
+	// description of itself fills in everything else about it, including the contextual menu of cut, copy, paste and
+	// select-all commands that it offers and carries out — asking the dropdown for that instead would leave the field's
+	// real menu unreachable and would answer the request with something a right-click never does.
+	//
+	// A field built with no options has no choices to show, so it says nothing about expanding: the dropdown opens
+	// nothing either, and an assistive technology told otherwise would be left waiting for choices that are never going
+	// to appear.
 	b.Accessibility.Role = role.None
 	field.Accessibility.Role = role.ComboBox
+	hasOptions := len(options) != 0
 	field.Accessibility.Callback = func(node *accessibility.Node) {
-		node.Expandable = true
+		node.Expandable = hasOptions
 		node.Expanded = axMenuIsOpen(openMenu)
-		node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse, accessibility.ShowContextMenu)
+		if hasOptions {
+			node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse)
+		}
 	}
 	field.Accessibility.ActionCallback = func(req accessibility.ActionRequest) bool {
+		if !hasOptions {
+			return false
+		}
 		switch req.Action {
-		case accessibility.Expand, accessibility.ShowContextMenu:
+		case accessibility.Expand:
 			// Asking for what is already there changes nothing: clicking again would tear the open menu down and build
 			// it back up, which an assistive technology that was told the field is expanded would not expect.
 			if !axMenuIsOpen(openMenu) {

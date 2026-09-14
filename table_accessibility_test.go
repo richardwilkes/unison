@@ -189,8 +189,10 @@ func TestTableAccessibilityCellActsOnContentThatCanRespond(t *testing.T) {
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
 		unison.StartupFinishedCallback(func() {
 			behindDisabled = unison.NewCheckBox()
+			behindDisabled.ClickAnimationTime = 0
 			behindDisabled.SetTitle("Behind")
 			besideButton = unison.NewCheckBox()
+			besideButton.ClickAnimationTime = 0
 			besideButton.SetTitle("Beside")
 			row := newTableTestRow("r0")
 			row.cellFactory = func(_, col int) unison.Paneler {

@@ -747,6 +747,15 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 		}
 		l.ScrollRectIntoView(l.RowRect(row))
 	case accessibility.AddToSelection:
+		if !l.allowMultiple {
+			// Select(true, row) on a list that holds one row at a time replaces the selection rather than adding to
+			// it, so carrying this out would quietly do the opposite of what it says. The rows of such a list are not
+			// described as offering it, but this method is exported and the dispatcher does not check that an action
+			// was advertised, so it is refused here too, the way Press refuses a list with nothing to open a row with.
+			// Taking a row out of the selection is left alone: that does exactly what it says whether or not more than
+			// one row may be selected.
+			return false
+		}
 		changed := !l.Selection.State(row)
 		l.Select(true, row)
 		if changed {

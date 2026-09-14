@@ -61,7 +61,7 @@ const (
 	Tooltip                        // Transient explanatory text for another element
 	Document                       // A container of rich, readable content
 	Toolbar                        // A container of frequently used controls
-	Unknown                        // A role with no better match
+	Unknown                        // Only ever what an application asked for; unison never resolves a role to this
 )
 
 // All possible values.

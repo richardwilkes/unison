@@ -46,7 +46,10 @@ type uiaTestWindow struct {
 }
 
 // newTestUIAWindow creates the adapter for a window that records action requests instead of performing them, with no
-// client listening.
+// client listening. The window is destroyed when the test finishes, whether or not the test destroys it itself — a
+// second Destroy does nothing — so that every test exercises the teardown and none of them leaks its providers: a
+// provider is pinned for the garbage collector while the provider map holds its reference, and only retirement gives
+// that reference up.
 //
 // Silencing the client matters as much as recording the requests: creating an adapter is the window's first publish and
 // Destroy raises Window_WindowClosed, so without this the tests would make real UI Automation calls on any machine
@@ -59,6 +62,24 @@ func newTestUIAWindow(t *testing.T, tree *accessibility.Tree) *uiaTestWindow {
 	w := &uiaTestWindow{}
 	w.UIAWindow = NewUIAWindow(UIAConfig{Action: w.record}, tree,
 		UIAGeometry{Origin: uiaTestOrigin, Scale: uiaTestScale})
+	t.Cleanup(w.Destroy)
+	return w
+}
+
+// newActionlessUIAWindow creates an adapter with nowhere to send action requests, which is what a window the root
+// package gave no action hook amounts to: every request a client makes of it must be refused rather than reported as
+// done. It is destroyed when the test finishes, for the reason newTestUIAWindow gives.
+//
+// Nobody is listening while it is created, whatever the test has installed, because creating an adapter is the window's
+// first publish and that announces the window: a recorder the test set up to watch something else would otherwise be
+// handed a Window_WindowOpened it never asked about.
+func newActionlessUIAWindow(t *testing.T, tree *accessibility.Tree) *UIAWindow {
+	t.Helper()
+	saved := uiaClientsAreListening
+	uiaClientsAreListening = func() bool { return false }
+	w := NewUIAWindow(UIAConfig{}, tree, UIAGeometry{})
+	uiaClientsAreListening = saved
+	t.Cleanup(w.Destroy)
 	return w
 }
 
@@ -261,7 +282,7 @@ func TestUIAVtblSlotOrder(t *testing.T) {
 	c.Equal(sibling.ifacePtr(uiaIfaceFragment), out.ptr(), "Navigate")
 	c.Equal(uintptr(1), sibling.release())
 	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 1, out.fresh()))
-	c.Equal([]int32{UiaAppendRuntimeId, 4, 0}, SafeArrayToInt32(out.array()), "GetRuntimeId")
+	c.Equal([]int32{UiaAppendRuntimeId, 4, 0}, safeArrayToInt32(out.array()), "GetRuntimeId")
 	out.array().Destroy()
 	c.Equal(COM_S_OK, uiaCallSlot(button, uiaIfaceFragment, 2, out.fresh()))
 	c.Equal(UiaRect{Left: 100, Top: 50, Width: 100, Height: 40}, out.rect(), "get_BoundingRectangle")
@@ -410,6 +431,13 @@ func TestUIAQueryInterface(t *testing.T) {
 		uintptr(unsafe.Pointer(&other)), outAddress))
 	c.Equal(COM_E_POINTER, uiaQueryInterface(uiaIfaceSimple, button.ifacePtr(uiaIfaceSimple),
 		uintptr(unsafe.Pointer(&other)), 0))
+
+	// A NULL interface identifier fails too, and the out-parameter is cleared before that is decided: COM requires
+	// QueryInterface to store NULL on every failure, so a caller is never left holding what it passed in. UI Automation
+	// never passes one, which is exactly why the order has to be right here rather than discovered later.
+	*out = 0xDEAD
+	c.Equal(COM_E_POINTER, uiaQueryInterface(uiaIfaceSimple, button.ifacePtr(uiaIfaceSimple), 0, outAddress))
+	c.Equal(uintptr(0), *out)
 }
 
 // TestUIAProviderReferenceCountLifetime verifies that a provider is unpinned only when its last COM reference goes,
@@ -533,7 +561,7 @@ func TestUIAGetRuntimeID(t *testing.T) {
 
 	c.Equal(COM_S_OK, uiaFragmentGetRuntimeID(w.providerFor(4).ifacePtr(uiaIfaceFragment), outAddress))
 	c.True(*out != 0)
-	c.Equal([]int32{UiaAppendRuntimeId, 4, 0}, SafeArrayToInt32(*out))
+	c.Equal([]int32{UiaAppendRuntimeId, 4, 0}, safeArrayToInt32(*out))
 	out.Destroy()
 	c.Equal(COM_E_POINTER, uiaFragmentGetRuntimeID(w.rootProvider().ifacePtr(uiaIfaceFragment), 0))
 }
@@ -587,6 +615,12 @@ func TestUIAFragmentRootAndEmbedded(t *testing.T) {
 
 // TestUIASetFocus verifies that SetFocus asks the window for the focus rather than trying to move it here, and that an
 // element that cannot take the focus says so instead of quietly doing nothing.
+//
+// Three things make it impossible, and each is answered the way the pattern write paths answer it: the element is
+// disabled, which is UIA_E_ELEMENTNOTENABLED; it cannot take the focus at all, or does not offer the Focus action,
+// which is the snapshot's own statement that nothing would happen; or the window has nowhere to send the request.
+// Window.dispatchAccessibilityAction drops a request for an action a node does not offer, so answering S_OK would
+// leave a client waiting for a focus event that is never coming.
 func TestUIASetFocus(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(t, sampleTree())
@@ -601,8 +635,26 @@ func TestUIASetFocus(t *testing.T) {
 	c.Equal(UIA_E_INVALIDOPERATION, uiaFragmentSetFocus(w.providerFor(5).ifacePtr(uiaIfaceFragment)))
 	c.Equal(1, len(w.recorded()))
 
+	// A node that reports itself focusable while offering no Focus action refuses too. The pair is reachable:
+	// axSnapshot.resolveFocus marks the node an open menu points at focusable after visit has narrowed a disabled
+	// node's actions, and an Accessibility.Callback that sets Disabled leaves Focusable alone.
+	actionless := sampleTree()
+	actionless.Nodes[4].Actions = 0
+	actionless.Generation = 2
+	w.Publish(actionless, nil)
+	c.Equal(UIA_E_INVALIDOPERATION, uiaFragmentSetFocus(w.providerFor(4).ifacePtr(uiaIfaceFragment)))
+	c.Equal(1, len(w.recorded()))
+
+	// A disabled node is refused with the answer every pattern write path gives for one, whatever its actions say.
+	disabled := sampleTree()
+	disabled.Nodes[4].Disabled = true
+	disabled.Generation = 3
+	w.Publish(disabled, nil)
+	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaFragmentSetFocus(w.providerFor(4).ifacePtr(uiaIfaceFragment)))
+	c.Equal(1, len(w.recorded()))
+
 	// A window with nowhere to send actions must refuse rather than report success.
-	plain := NewUIAWindow(UIAConfig{}, sampleTree(), UIAGeometry{})
+	plain := newActionlessUIAWindow(t, sampleTree())
 	c.Equal(UIA_E_INVALIDOPERATION, uiaFragmentSetFocus(plain.providerFor(4).ifacePtr(uiaIfaceFragment)))
 }
 
@@ -990,6 +1042,96 @@ func TestUIAGetPropertyValue(t *testing.T) {
 	c.Equal(COM_E_POINTER, uiaSimpleGetPropertyValue(w.providerFor(5).ifacePtr(uiaIfaceSimple), 0, 0))
 }
 
+// TestUIAHelpTextCarriesPlaceholder verifies that the watermark of a field with no description of its own is reported
+// as its help text, which is the conventional carrier for one and the only thing that keeps an unnamed search field
+// from being announced as a bare "edit". A description wins when a node has both: it is what the application said
+// about the control, while the watermark is a hint the widget put in its own empty content, and FullDescription — the
+// other property answered from the description — never carries the watermark at all.
+func TestUIAHelpTextCarriesPlaceholder(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	value, valueAddress := uiaOut[VARIANT](&pin)
+	tree := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2, 3, 4}},
+		&accessibility.Node{ID: 2, Role: role.TextField, Placeholder: "Search"},
+		&accessibility.Node{ID: 3, Role: role.TextField, Placeholder: "Search", Description: "Filters the list"},
+		&accessibility.Node{ID: 4, Role: role.TextField},
+	)
+	w := newTestUIAWindow(t, tree)
+	property := func(node accessibility.NodeID, id PropertyID) *VARIANT {
+		p := w.providerFor(node)
+		c.NotNil(p)
+		c.Equal(COM_S_OK, uiaSimpleGetPropertyValue(p.ifacePtr(uiaIfaceSimple), uintptr(id), valueAddress))
+		return value
+	}
+
+	c.Equal(VT_BSTR, property(2, UIA_HelpTextPropertyId).VT)
+	c.Equal("Search", uiaVariantString(value))
+	value.Clear()
+	c.Equal(VT_EMPTY, property(2, UIA_FullDescriptionPropertyId).VT, "a watermark is not a full description")
+
+	c.Equal(VT_BSTR, property(3, UIA_HelpTextPropertyId).VT)
+	c.Equal("Filters the list", uiaVariantString(value), "a description wins over a watermark")
+	value.Clear()
+	c.Equal(VT_BSTR, property(3, UIA_FullDescriptionPropertyId).VT)
+	c.Equal("Filters the list", uiaVariantString(value))
+	value.Clear()
+
+	c.Equal(VT_EMPTY, property(4, UIA_HelpTextPropertyId).VT, "a field with neither says nothing")
+}
+
+// TestUIAValuePropertyReadsNodeValue verifies that the Value pattern's property is answered through GetPropertyValue
+// as well as through IValueProvider::get_Value, and only by an element that has the pattern.
+//
+// A table cell is what needs it: Table.axAddRow clears the name of a cell that holds one widget and puts that widget's
+// state into the cell's value, precisely so that a change to the widget is a change to the cell, and a screen reader
+// reading across a row asks the cell for its value.
+func TestUIAValuePropertyReadsNodeValue(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	value, valueAddress := uiaOut[VARIANT](&pin)
+	out, outAddress := uiaOut[uintptr](&pin)
+	tree := tableTree()
+	tree.Nodes[8].Name = ""
+	tree.Nodes[8].Value = "checked"
+	w := newTestUIAWindow(t, tree)
+	property := func(node accessibility.NodeID, id PropertyID) *VARIANT {
+		p := w.providerFor(node)
+		c.NotNil(p)
+		c.Equal(COM_S_OK, uiaSimpleGetPropertyValue(p.ifacePtr(uiaIfaceSimple), uintptr(id), valueAddress))
+		return value
+	}
+
+	c.Equal(VT_BSTR, property(8, UIA_ValueValuePropertyId).VT)
+	c.Equal("checked", uiaVariantString(value))
+	value.Clear()
+
+	// The pattern comes with it, both ways a client can reach one, and the value cannot be set through it: a cell
+	// offers no SetValue action.
+	cell := w.providerFor(8)
+	c.Equal(COM_S_OK, uiaSimpleGetPatternProvider(cell.ifacePtr(uiaIfaceSimple), uintptr(UIA_ValuePatternId),
+		outAddress))
+	c.Equal(cell.ifacePtr(uiaIfaceValue), *out)
+	c.Equal(uintptr(1), cell.release())
+	c.Equal(COM_S_OK, uiaValueValue(cell.ifacePtr(uiaIfaceValue), outAddress))
+	c.Equal("checked", BSTRToString(BSTR(*out)))
+	BSTR(*out).Free()
+	boolean, booleanAddress := uiaOut[int32](&pin)
+	c.Equal(COM_S_OK, uiaValueIsReadOnly(cell.ifacePtr(uiaIfaceValue), booleanAddress))
+	c.Equal(int32(1), *boolean)
+
+	// A cell whose name carries its content has no value, so it has no Value pattern and nothing to report through it.
+	c.Equal(VT_EMPTY, property(9, UIA_ValueValuePropertyId).VT)
+	c.Equal(COM_S_OK, uiaSimpleGetPatternProvider(w.providerFor(9).ifacePtr(uiaIfaceSimple),
+		uintptr(UIA_ValuePatternId), outAddress))
+	c.Equal(uintptr(0), *out)
+
+	// Neither does an element with no value of any kind, however the property is asked for.
+	c.Equal(VT_EMPTY, property(7, UIA_ValueValuePropertyId).VT)
+}
+
 // TestUIAStaleProvider verifies what a client holding an element for something that has been destroyed is told. Every
 // method must report that the element is no longer available rather than answering from a snapshot that no longer holds
 // it, and the provider must stay alive while the client still holds it.
@@ -1027,7 +1169,7 @@ func TestUIAStaleProvider(t *testing.T) {
 	// GetRuntimeId is the one exception: UiaDisconnectProvider asks for it while retiring the provider, so it has to
 	// keep answering, and the identifier is derived from the node id alone rather than from the tree.
 	c.Equal(COM_S_OK, uiaFragmentGetRuntimeID(fragment, arrayAddress))
-	c.Equal([]int32{UiaAppendRuntimeId, 5, 0}, SafeArrayToInt32(*array))
+	c.Equal([]int32{UiaAppendRuntimeId, 5, 0}, safeArrayToInt32(*array))
 	array.Destroy()
 	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaFragmentBoundingRectangle(fragment, rectAddress))
 	c.Equal(UiaRect{}, *rect)
@@ -1168,6 +1310,17 @@ func TestUIAWindowPatternIsRootOnly(t *testing.T) {
 	c.Equal(COM_S_OK, uiaSimpleGetPropertyValue(nested.ifacePtr(uiaIfaceSimple),
 		uintptr(UIA_IsDialogPropertyId), valueAddress))
 	c.Equal(VT_EMPTY, value.VT)
+
+	// Nor does it report the Window control type, whose required pattern is the one it has just refused: a
+	// dialog-shaped panel is a pane, while the root really is a window.
+	c.Equal(COM_S_OK, uiaSimpleGetPropertyValue(nested.ifacePtr(uiaIfaceSimple),
+		uintptr(UIA_ControlTypePropertyId), valueAddress))
+	c.Equal(int32(UIA_PaneControlTypeId), uiaVariantInt32(value))
+	value.Clear()
+	c.Equal(COM_S_OK, uiaSimpleGetPropertyValue(w.rootProvider().ifacePtr(uiaIfaceSimple),
+		uintptr(UIA_ControlTypePropertyId), valueAddress))
+	c.Equal(int32(UIA_WindowControlTypeId), uiaVariantInt32(value))
+	value.Clear()
 
 	// The root has the pattern both ways, and every interface it hands out is AddRef'd.
 	root := w.rootProvider()

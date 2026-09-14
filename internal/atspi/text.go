@@ -18,6 +18,12 @@ import (
 // textInterface returns the org.a11y.atspi.Text interface of a node that holds navigable text, which is how an
 // assistive technology reads a control a character, a word, a line or a selection at a time rather than as one string.
 //
+// A node whose value is textual rather than numeric gets the same interface synthesized from that value; see
+// [textualValue]. What it hands over is read-only: the characters, their count and where they are, with no caret to
+// move and no selection to set, since the value is a description of what the control shows rather than content the user
+// is inside. The four methods that would change either therefore refuse, which [nodeObject.dispatchTextSelection]
+// answers for all of them at once.
+//
 // Every offset is a rune index, which is what AT-SPI calls a character. Nothing here changes the control: moving the
 // caret or the selection is handed to the user interface thread and answered optimistically, exactly as the other
 // interfaces do.
@@ -61,13 +67,14 @@ func (o *nodeObject) textInterface() *dbus.Interface {
 	}
 }
 
-// textRunes returns the characters of the node's text. There is nothing to hide here: a password field carries no text
-// at all in a published snapshot — [accessibility.Node] says so, and the snapshot builder returns before filling it in
-// — so it is never given the org.a11y.atspi.Text interface in the first place, and reports ATSPI_ROLE_PASSWORD_TEXT and
-// no character count rather than a string of bullets.
+// textRunes returns the characters of the node's text, which are those of its textual value for a node that carries no
+// text of its own. There is nothing to hide here: a password field carries neither text nor value in a published
+// snapshot — [accessibility.Node] says so, and the snapshot builder returns before filling either in — so it is never
+// given the org.a11y.atspi.Text interface in the first place, and reports ATSPI_ROLE_PASSWORD_TEXT and no character
+// count rather than a string of bullets.
 func (o *nodeObject) textRunes() []rune {
 	if o.node.Text == nil {
-		return nil
+		return []rune(textualValue(o.node))
 	}
 	return []rune(o.node.Text.Text)
 }
@@ -75,6 +82,10 @@ func (o *nodeObject) textRunes() []rune {
 // caret returns the rune index the caret sits at, which is one end of the selection but not always the end: extending a
 // selection backwards with shift+Left or shift+Home leaves the caret at its start, and a client told otherwise puts its
 // review cursor at the wrong end of what it has just read out.
+//
+// Text synthesized from a value has no caret in it at all, and reports the start of the content, which is what an
+// implementation with no caret to report hands back and where a client reading the whole of a short value would put its
+// review cursor anyway. The other convention, -1, needs a client that expects a negative offset.
 func (o *nodeObject) caret() int {
 	if o.node.Text == nil {
 		return 0
@@ -215,19 +226,17 @@ func (o *nodeObject) getCharacterAtOffset(call *dbus.Call) {
 	call.Reply(runes[offset])
 }
 
-// setCaretOffset implements org.a11y.atspi.Text.SetCaretOffset. The answer is optimistic: the request has been handed
-// to the user interface thread, and the caret is still where it was until the next snapshot says otherwise.
+// setCaretOffset implements org.a11y.atspi.Text.SetCaretOffset. An offset the content does not reach is refused rather
+// than brought into it, since a client told that the caret went where it asked would then have to be told, by the next
+// snapshot, that it went somewhere else. The answer is otherwise optimistic: the request has been handed to the user
+// interface thread, and the caret is still where it was until the next snapshot says otherwise.
 func (o *nodeObject) setCaretOffset(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
 		return
 	}
 	offset := int(int32Arg(args, 0))
-	if offset < 0 || offset > len(o.textRunes()) {
-		call.Reply(false)
-		return
-	}
-	call.Reply(o.dispatchTextSelection(offset, offset))
+	call.Reply(o.selectRange(offset, offset))
 }
 
 // getNSelections implements org.a11y.atspi.Text.GetNSelections. A Unison text control has one selection at most, and a
@@ -266,7 +275,7 @@ func (o *nodeObject) addSelection(call *dbus.Call) {
 		call.Reply(false)
 		return
 	}
-	call.Reply(o.dispatchTextSelection(int(int32Arg(args, 0)), int(int32Arg(args, 1))))
+	call.Reply(o.selectRange(int(int32Arg(args, 0)), int(int32Arg(args, 1))))
 }
 
 // removeSelection implements org.a11y.atspi.Text.RemoveSelection, which leaves the caret where the selection ended.
@@ -293,13 +302,29 @@ func (o *nodeObject) setSelection(call *dbus.Call) {
 		call.Reply(false)
 		return
 	}
-	call.Reply(o.dispatchTextSelection(int(int32Arg(args, 1)), int(int32Arg(args, 2))))
+	call.Reply(o.selectRange(int(int32Arg(args, 1)), int(int32Arg(args, 2))))
+}
+
+// selectRange asks the widget to select a range of its text, refusing a range that is reversed or that reaches outside
+// the content rather than bringing it within one. A caller told that the selection it asked for was made and then shown
+// something else by the next snapshot is worse off than one told no: AddSelection(3, 1) on a two-rune field would
+// otherwise become a collapsed caret and still be reported as a selection. It is the same refusal
+// [nodeObject.setCaretOffset] makes, which is why that method goes through here too.
+func (o *nodeObject) selectRange(start, end int) bool {
+	if start < 0 || end < start || end > len(o.textRunes()) {
+		return false
+	}
+	return o.dispatchTextSelection(start, end)
 }
 
 // dispatchTextSelection asks the widget to put its caret or selection somewhere, reporting whether the request was
-// accepted rather than whether it has happened. A control that does not let its selection be set says no.
+// accepted rather than whether it has happened. A control that does not let its selection be set says no, and so does
+// one whose text is synthesized from its value: there is no caret in a value to move, and nothing here could change
+// what the widget shows anyway. The range is brought within the content as a last defense, since every caller but
+// [nodeObject.removeSelection] — which passes an end of the selection the node itself reported — has already refused
+// anything outside it.
 func (o *nodeObject) dispatchTextSelection(start, end int) bool {
-	if !o.node.Actions.Has(accessibility.SetTextSelection) {
+	if o.node.Text == nil || !o.node.Actions.Has(accessibility.SetTextSelection) {
 		return false
 	}
 	count := len(o.textRunes())

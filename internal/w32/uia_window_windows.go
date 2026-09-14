@@ -58,8 +58,9 @@ type UIAWindow struct {
 // answering the WM_GETOBJECT that led to this needs it; every other provider is created when something first asks about
 // its node.
 //
-// Creating the adapter is the window's first publish, so it is also where a dialog announces itself: see raiseEvents,
-// which is given no previous snapshot to compare against here.
+// Creating the adapter is the window's first publish, so it is also where the window reports that it opened — which is
+// how a screen reader knows to read a dialog out: see raiseEvents, which is given no previous snapshot to compare
+// against here.
 //
 // A nil snapshot leaves the adapter with no fragment root — Root and RootUnknown answer nil, and nothing can be raised
 // on it — which is not a state the root package puts it in: a window is never asked for a provider before it has a

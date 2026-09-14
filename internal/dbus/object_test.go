@@ -28,7 +28,9 @@ const (
 	nameProperty    = "Name"
 	countProperty   = "Count"
 	missingMember   = "Missing"
-	changedName     = "changed"
+	// setPropertySig is the signature of org.freedesktop.DBus.Properties.Set.
+	setPropertySig = "ssv"
+	changedName    = "changed"
 
 	mistypedInterface = "org.example.Mistyped"
 )
@@ -413,6 +415,22 @@ func TestExportRejectsInvalidDeclarations(t *testing.T) {
 	}}}))
 }
 
+func TestExportRejectsNilDeclarations(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	// Export promises that the names and signatures an object declares are checked when it is exported rather than
+	// being left to fail one call at a time, and a panic part way through that check is neither of those things.
+	c.HasError(b.client.Export(testPath, declaredObject{ifaces: []*Interface{nil}}))
+	for i, one := range []*Interface{
+		{Name: testInterface, Methods: []*Method{nil}},
+		{Name: testInterface, Signals: []*Signal{nil}},
+		{Name: testInterface, Properties: []*Property{nil}},
+	} {
+		c.HasError(b.client.Export(testPath, declaredObject{ifaces: []*Interface{one}}), "case %d", i)
+	}
+}
+
 func TestIntrospectionEscapesWhatItIsGiven(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -567,19 +585,19 @@ func TestPropertyErrors(t *testing.T) {
 		{member: getMember, sig: "ss", want: NotSupported, args: []any{brokenInterface, "Refused"}},
 		{
 			member: setMember,
-			sig:    "ssv",
+			sig:    setPropertySig,
 			want:   PropertyReadOnly,
 			args:   []any{testInterface, countProperty, Variant{Sig: "i", Value: int32(1)}},
 		},
 		{
 			member: setMember,
-			sig:    "ssv",
+			sig:    setPropertySig,
 			want:   InvalidArgs,
 			args:   []any{testInterface, nameProperty, Variant{Sig: "i", Value: int32(1)}},
 		},
 		{
 			member: setMember,
-			sig:    "ssv",
+			sig:    setPropertySig,
 			want:   UnknownProperty,
 			args:   []any{testInterface, missingMember, Variant{Sig: "s", Value: "x"}},
 		},

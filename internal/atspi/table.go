@@ -337,11 +337,11 @@ func (o *nodeObject) tableOf() accessibility.NodeID {
 // names one that is not a row.
 //
 // The index AT-SPI's GetIndexAt hands out, and that GetRowAtIndex, GetColumnAtIndex and GetRowColumnExtentsAtIndex take
-// back, is a child index of the table: Orca feeds a cell's GetIndexInParent straight into GetRowAtIndex. A Unison
-// table's children are its rows rather than its cells, so these four methods work over the rows and nothing else. The
-// flattened row*columns+column index that ATK's own implementation uses is not an option here, since it names cells
-// that are not children of anything this table reports and would have a client that trusts it reach for objects the
-// table does not have.
+// back, is a child index of the table, so these four methods work over the table's children — which in a Unison table
+// are its rows, since the cells are children of the rows rather than of the table. No index can name a cell here at
+// all. The flattened row*columns+column index that ATK's own implementation hands out is not an option either: it names
+// cells that are not children of anything this table reports, and a client that fed one back would be asking about an
+// object the table does not have.
 func (o *nodeObject) rowAtChildIndex(index int) *accessibility.Node {
 	children := o.children()
 	if index < 0 || index >= len(children) {

@@ -477,6 +477,26 @@ func TestAccessibilityAnnouncements(t *testing.T) {
 		c.Equal("saved", announcements[0])
 	}
 	c.Equal(0, len(screen.Announcements()), "reading the announcements should have emptied the list")
+
+	// Spoken from the user interface thread, which is where most announcements are actually made: a callback that has
+	// just finished something says so from wherever it is running. The call above went through the task queue, since it
+	// was made from the test's own goroutine, while this one is carried out on the spot — the two halves of a promise
+	// that it is safe to call from anywhere.
+	screen.Do(func() { unison.AnnounceForAccessibility("on the user interface thread") })
+	announcements = screen.Announcements()
+	c.Equal(1, len(announcements))
+	if len(announcements) == 1 {
+		c.Equal("on the user interface thread", announcements[0])
+	}
+
+	// Nothing is spoken once support has been turned off again, whichever thread asks.
+	unison.SetAccessibilityEnabled(false)
+	screen.Sync()
+	unison.AnnounceForAccessibility("dropped")
+	screen.Do(func() { unison.AnnounceForAccessibility("also dropped") })
+	c.Equal(0, len(screen.Announcements()))
+	unison.SetAccessibilityEnabled(true)
+	screen.Sync()
 }
 
 // axHasEvent reports whether the events hold one of the given kind naming the given node.
@@ -578,6 +598,11 @@ func TestAccessibilityWindowActivationIsPublishedWithoutARedraw(t *testing.T) {
 // TestAccessibilityHiddenWindowLeavesTheDescription verifies that a window taken off the screen is withdrawn from what
 // an assistive technology holds rather than left standing as the last thing said about it. AT-SPI has only what the
 // application publishes, so a window hidden after it was described would otherwise go on being listed as showing.
+//
+// This is the one thing a headless session deliberately does not do the same way on every platform: it withdraws, as
+// Linux does, while macOS and Windows keep everything they built, since there the system lists the application's
+// windows itself. What is asserted below is therefore what Linux does with a hidden window, not a rule that holds
+// everywhere. See Window.apiAccessibilityWindowHidden.
 func TestAccessibilityHiddenWindowLeavesTheDescription(t *testing.T) {
 	c := check.New(t)
 	var wnd *unison.Window
@@ -835,5 +860,144 @@ func TestAccessibilityNodeForChecksOwnership(t *testing.T) {
 	c.True(screen.AccessibilityNodeFor(copied) == nil,
 		"a panel must not be answered for with the node describing another one")
 	c.True(screen.AccessibilityNodeFor(described) != nil, "while the panel the identity belongs to keeps it")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityCallbackCannotPublishAnUnresolvedRole verifies the invariant accessibility.Node.Role states: a
+// published tree never holds role.Auto or role.None. Panel.Accessibility.Role takes both, so a callback — which runs
+// after everything else about the node has been decided — is entitled to write either, and by then neither can be
+// acted on: the panel has been described and its children already point at its node as their parent. Both become
+// role.Group, exactly as they do for a virtual child a widget invented.
+func TestAccessibilityCallbackCannotPublishAnUnresolvedRole(t *testing.T) {
+	c := check.New(t)
+	var none, auto, provided *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			none = unison.NewPanel()
+			none.Accessibility.Name = "Says none"
+			none.Accessibility.Callback = func(n *accessibility.Node) { n.Role = role.None }
+
+			auto = unison.NewPanel()
+			auto.Accessibility.Name = "Says auto"
+			auto.Accessibility.Role = role.Button
+			auto.Accessibility.Callback = func(n *accessibility.Node) { n.Role = role.Auto }
+
+			// A panel whose children are described, to prove the ones beneath a node the callback tried to hide are
+			// still where the tree said they were rather than being promoted out from under it.
+			child := unison.NewLabel()
+			child.SetTitle("Inside")
+			provided = axColumn(child)
+			provided.Accessibility.Name = "Holds something"
+			provided.Accessibility.Callback = func(n *accessibility.Node) { n.Role = role.None }
+
+			wnd = newHeadlessWindow(t, "unresolved roles", geom.NewRect(10, 10, 300, 300),
+				axColumn(none, auto, provided))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	for _, one := range []struct {
+		panel *unison.Panel
+		name  string
+	}{{panel: none, name: "Says none"}, {panel: auto, name: "Says auto"}, {panel: provided, name: "Holds something"}} {
+		node := screen.AccessibilityNodeFor(one.panel)
+		c.True(node != nil, one.name)
+		if node != nil {
+			c.Equal(role.Group, node.Role, "%s must be published as a group", one.name)
+		}
+	}
+	providedNode := screen.AccessibilityNodeFor(provided)
+	c.True(providedNode != nil)
+	if providedNode != nil {
+		c.Equal(1, len(providedNode.Children), "the panel's children stay beneath it")
+	}
+	tree.Walk(func(n *accessibility.Node) bool {
+		c.NotEqual(role.Auto, n.Role, "no node in a published tree may hold role.Auto: %s", n.Name)
+		c.NotEqual(role.None, n.Role, "no node in a published tree may hold role.None: %s", n.Name)
+		return true
+	})
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityGenerationSurvivesAWithdrawal verifies that the snapshot count a tree carries only ever goes up.
+// Hiding a window releases everything built for it on this backend, the count included if it were held there, and an
+// adapter tells a stale tree from a current one by that number: a window shown again after being hidden would hand it
+// generations it had already been given, so a tree from before the window was hidden would look like the newer one.
+func TestAccessibilityGenerationSurvivesAWithdrawal(t *testing.T) {
+	c := check.New(t)
+	var panel *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			panel = axFocusablePanel("Content")
+			wnd = newHeadlessWindow(t, "generations", geom.NewRect(20, 20, 240, 120), axColumn(panel))
+		}))
+	c.NotNil(wnd)
+
+	first := screen.AccessibilityTree(wnd)
+	c.True(first != nil)
+	if first == nil {
+		return
+	}
+	c.True(first.Generation >= 1, "the first tree is generation one or later")
+	before := screen.AccessibilityTree(wnd).Generation
+	c.True(before > first.Generation, "each description is a generation later than the one before it")
+
+	screen.Do(func() { wnd.Hide() })
+	c.True(screen.AccessibilityNodeFor(panel) == nil, "hiding the window withdraws the description on this backend")
+	screen.Do(func() { wnd.Show() })
+	after := screen.AccessibilityTree(wnd)
+	c.True(after != nil)
+	if after == nil {
+		return
+	}
+	c.True(after.Generation > before,
+		"the count must go on where it left off, not restart: %d after %d", after.Generation, before)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityWindowTitleChangeIsPublished verifies that renaming a window is reported. The title is the
+// accessible name of the window itself, and on Linux and Windows the window element's name comes straight from that
+// node, so a screen reader would go on reporting the name from before a "Save As" until something unrelated happened
+// to redraw the window — which may be never, since nothing about setting a title repaints anything.
+func TestAccessibilityWindowTitleChangeIsPublished(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			wnd = newHeadlessWindow(t, "before", geom.NewRect(20, 20, 240, 120), axColumn(axFocusablePanel("Content")))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	root := tree.Node(tree.Root)
+	c.True(root != nil)
+	if root == nil {
+		return
+	}
+	c.Equal("before", root.Name)
+	screen.AccessibilityEvents(wnd)
+
+	// Set and then read back without asking for the tree in between, so that what is being checked is the publish the
+	// title change itself asked for rather than one this test provoked.
+	screen.Do(func() { wnd.SetTitle("after") })
+	screen.Sync()
+	events := screen.AccessibilityEvents(wnd)
+	c.True(axHasEvent(events, accessibility.NameChanged, tree.Root),
+		"the window's new name should have been reported: %v", events)
+	renamed := screen.AccessibilityTree(wnd)
+	c.True(renamed != nil)
+	if renamed != nil {
+		c.Equal("after", renamed.Node(renamed.Root).Name)
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

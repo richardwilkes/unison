@@ -10,7 +10,7 @@
 package dbus
 
 import (
-	"strconv"
+	"runtime"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -100,16 +100,61 @@ func TestUnmarshalObjectPathArray(t *testing.T) {
 	c.HasError(err)
 }
 
-func TestUnmarshalLargeArrayDeclarationIsCheap(t *testing.T) {
-	t.Parallel()
-	// A huge length must be rejected without allocating anything, even though the data supplied is tiny.
+// bytesAllocated returns how many bytes f allocated. The garbage collector is run first so that nothing left over from
+// earlier work is charged to f, and a test that uses this must not be parallel: every goroutine's allocations are
+// counted together, so anything else running at the same time would be counted as well.
+func bytesAllocated(f func()) uint64 {
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	f()
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+// maxCheapAllocation is what "without allocating anything to speak of" is worth in bytes: enough for the handful of
+// small values that reaching the error at all requires, and nothing like the lengths these tests declare.
+const maxCheapAllocation = 4 << 10
+
+func TestUnmarshalLargeArrayDeclarationIsCheap(t *testing.T) { // Not parallel: it measures allocation
+	c := check.New(t)
+	// A huge length must be rejected without allocating anything, even though the data supplied is tiny, which is what
+	// the measurement here is for: asserting only that an error comes back would pass just as well if the decoder
+	// allocated the whole declared length first.
 	for _, length := range []uint32{MaxArraySize + 1, 1 << 30, 0xFFFFFFFF} {
-		t.Run(strconv.FormatUint(uint64(length), 10), func(t *testing.T) {
-			t.Parallel()
-			c := check.New(t)
-			_, err := Unmarshal("au", u32At(length))
-			c.HasError(err)
-		})
+		data := u32At(length)
+		var err error
+		allocated := bytesAllocated(func() { _, err = Unmarshal("au", data) })
+		c.HasError(err, "declared length %d", length)
+		c.True(allocated < maxCheapAllocation, "a declared length of %d allocated %d bytes", length, allocated)
+	}
+}
+
+// maxEmptyContainerCost is what one empty container inside an array may cost, in bytes, once it has been decoded into
+// an interface value. Each of these is four bytes on the wire, so the cost is what a peer amplifies those four bytes
+// by: sizing every one of them for eight elements it does not have cost over 200 bytes apiece, which turned a legal 64
+// MiB array into gigabytes.
+const maxEmptyContainerCost = 160
+
+func TestUnmarshalDoesNotAmplifyEmptyContainers(t *testing.T) { // Not parallel: it measures allocation
+	c := check.New(t)
+	const count = 4096
+	// An array of empty containers is the cheapest message a peer can write and the most expensive one to decode: the
+	// element count is entirely of its choosing, and nothing but the four byte length of each element is on the wire.
+	for _, sig := range []Signature{"aas", "aao", "aav", "aaas"} {
+		data := u32At(4 * count)
+		for range count {
+			data = append(data, u32At(0)...)
+		}
+		var (
+			values []any
+			err    error
+		)
+		allocated := bytesAllocated(func() { values, err = Unmarshal(sig, data) })
+		c.NoError(err, sig)
+		c.Equal(1, len(values), sig)
+		c.True(allocated < count*maxEmptyContainerCost, "%s of %d empty elements allocated %d bytes for %d on the "+
+			"wire", sig, count, allocated, len(data))
 	}
 }
 

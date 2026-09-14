@@ -32,25 +32,6 @@ import (
 // override, or a headless test ever do. See accessibility_snapshot.go for the snapshot builder that activation turns
 // on and accessibility_actions.go for the path an assistive technology's requests come back through.
 
-// axMaxSelectedRows bounds how many rows a list or table describes solely because they are selected. Rows that can be
-// seen are always described, and the selection is worth describing whether or not it can be seen — an assistive
-// technology asks what is selected — but "select all" in a table of a million rows must not turn into a million nodes.
-const axMaxSelectedRows = 200
-
-// axReach widens the part of a list or table that can be seen by one screenful above and one below it. An assistive
-// technology moves through rows one at a time and can only move onto a row that has been described, so the rows just
-// past either edge have to be there for it to step onto at all; selecting one scrolls it into view, and the description
-// that follows reaches a screenful further still. A screenful in each direction keeps the count bounded while leaving
-// room for the pause between one description and the next.
-func axReach(visible geom.Rect) geom.Rect {
-	if visible.Empty() {
-		return visible
-	}
-	visible.Y -= visible.Height
-	visible.Height *= 3
-	return visible
-}
-
 // AccessibilityEnvKey names the environment variable that forces accessibility support on or off, overriding what the
 // platform reports. Set it to a true value, as understood by strconv.ParseBool (e.g. "1"), to build and publish
 // snapshots whether or not an assistive technology appears to be running, which is useful for debugging what a screen
@@ -97,8 +78,9 @@ var (
 // new id, which an assistive technology reads as the old element having been removed and a new one put in its place:
 // whatever it was saying about the old one stops, and the focus it was tracking is lost. Copying one panel's
 // information onto another (q.Accessibility = p.Accessibility) would hand two live panels the same identity, which is
-// caught and repaired — the second panel to be described is given a fresh id — but the copy still gains nothing, since
-// the ids cannot be shared.
+// caught and repaired — the panel that was copied onto is the one given a fresh id, whichever order the two happen to
+// be described in, since the identity is recorded along with the panel it was handed to — but the copy still gains
+// nothing, since the ids cannot be shared.
 //
 // The fields are ordered for a compact memory layout rather than by importance, since every panel in every window
 // carries one of these whether or not it ever has anything to say.
@@ -488,6 +470,9 @@ func (w *Window) axMarkForPublish() {
 // the first time. On macOS and Windows the system lists the application's windows itself and a hidden one simply drops
 // out of the list, so what was built is kept and the assistive technology finds the elements it already knows when the
 // window comes back.
+//
+// What is not released is the count of snapshots taken of the window, which goes on where it left off when the window
+// is next described. See Window.axGeneration.
 func (w *Window) axWindowHidden() {
 	if w.ax == nil {
 		return

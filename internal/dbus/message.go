@@ -102,9 +102,14 @@ type Message struct {
 	ReplySerial uint32
 	Type        Type
 	Flags       Flags
+	// bigEndianBody records that Body still holds the big-endian encoding the peer sent, which is the case only for a
+	// body that would not convert; see [Message.convertBody]. [Message.Args] reads it in that encoding, and
+	// [Message.Encode] refuses to write it out, so nothing outside this file has to know about it.
+	bigEndianBody bool
 	// wireSize is how many bytes a decoded message arrived as, which is more than its parts add up to: Body is a slice
 	// of the buffer the whole message was read into, so that buffer, header field array and all, stays alive for as
-	// long as the message does. It is zero for a message that was built rather than decoded. See [Message.size].
+	// long as the message does. It is zero for a message that was built rather than decoded, and for one that was
+	// decoded but kept nothing of that buffer. See [Message.size].
 	wireSize int
 }
 
@@ -195,7 +200,9 @@ func (m *Message) SetBodyWithSignature(sig Signature, args ...any) error {
 	return nil
 }
 
-// Args unmarshals the body of the message.
+// Args unmarshals the body of the message. A body that does not match the signature the message declares is an error
+// here, which is where a malformed one belongs: it is a fault in the one message rather than in the stream it arrived
+// on, no matter which byte order the peer that sent it chose.
 func (m *Message) Args() ([]any, error) {
 	if m.Signature == "" {
 		if len(m.Body) != 0 {
@@ -203,7 +210,7 @@ func (m *Message) Args() ([]any, error) {
 		}
 		return nil, nil
 	}
-	return Unmarshal(m.Signature, m.Body)
+	return unmarshal(m.Signature, m.Body, m.bigEndianBody)
 }
 
 // AsError converts an error message into an [Error], returning nil if the message is not an error message. The first
@@ -274,10 +281,11 @@ func (m *Message) String() string {
 
 // size is roughly how many bytes the message occupies, which is what a connection's queues are bounded by. The body
 // dominates everything else a message holds, so the fixed header stands in for the parts of the header that are not
-// worth adding up exactly. A decoded message is charged the whole buffer it arrived as rather than the length of its
-// body, since that is what it actually keeps alive: a peer that pads the header field array with an ignorable unknown
-// field would otherwise be accounted a few dozen bytes while pinning megabytes, and the byte bound on the queues would
-// stop bounding anything.
+// worth adding up exactly. A decoded message whose body aliases the buffer it arrived in is charged that whole buffer
+// rather than the length of its body, since that is what it actually keeps alive: a peer that pads the header field
+// array with an ignorable unknown field would otherwise be accounted a few dozen bytes while pinning megabytes, and the
+// byte bound on the queues would stop bounding anything. A message with no body keeps none of that buffer, so it is
+// charged for its parts alone; see [Decode].
 func (m *Message) size() int {
 	return fixedHeaderSize + len(m.Path) + len(m.Interface) + len(m.Member) + len(m.ErrorName) + len(m.Destination) +
 		len(m.Sender) + len(m.Signature) + max(len(m.Body), m.wireSize)
@@ -288,6 +296,14 @@ func (m *Message) size() int {
 func (m *Message) Encode() ([]byte, error) {
 	if err := m.validate(); err != nil {
 		return nil, err
+	}
+	if m.bigEndianBody {
+		// The body arrived in the big-endian encoding and would not convert, so there is nothing here that could
+		// honestly be written out: the error [Message.Args] reports is reported here too, rather than emitting bytes
+		// labeled little-endian that are not.
+		if err := m.convertBody(); err != nil {
+			return nil, err
+		}
 	}
 	var e encoder
 	e.putByte('l') // Little-endian; see the package documentation
@@ -421,7 +437,11 @@ func (m *Message) validateRequiredFields() error {
 // Either byte order is accepted, since the specification lets every peer choose the one that suits it. A big-endian
 // message is converted as it is decoded, so the [Message] that comes back is indistinguishable from one a little-endian
 // peer sent: its Body holds the little-endian encoding of the same values, which is what [Message.Args] and
-// [Message.Encode] expect and the only form a Message ever holds.
+// [Message.Encode] expect and the only form a Message ever holds. A body that will not convert, because it does not
+// match the signature the message declares, is left as it arrived rather than failing the decode: a malformed body is a
+// fault in the one message, and the caller learns of it from [Message.Args], exactly as it does for a little-endian
+// peer's malformed body. Tolerating that rather than converting on demand is what keeps what [Decode] costs where it
+// has always been: a little-endian body is never walked, and a big-endian one is walked exactly once.
 func Decode(r io.Reader) (*Message, error) {
 	var fixed [fixedHeaderSize]byte
 	if _, err := io.ReadFull(r, fixed[:]); err != nil {
@@ -462,20 +482,14 @@ func Decode(r io.Reader) (*Message, error) {
 	}
 	data := buf.Bytes()
 	m := &Message{
-		Type:     Type(fixed[1]),
-		Flags:    Flags(fixed[2]),
-		Serial:   order.Uint32(fixed[8:12]),
-		wireSize: int(total),
+		Type:   Type(fixed[1]),
+		Flags:  Flags(fixed[2]),
+		Serial: order.Uint32(fixed[8:12]),
 	}
 	// The header field array starts with its length, which is part of the fixed header.
 	d := decoder{data: data, pos: 12, bigEndian: bigEndian}
-	fields, err := d.value(headerFieldsSignature)
-	if err != nil {
+	if err := m.decodeHeaderFields(&d); err != nil {
 		return nil, err
-	}
-	list, ok := fields.([]any)
-	if !ok {
-		return nil, errors.New("dbus: malformed header fields")
 	}
 	// The body starts on an 8 byte boundary, and the padding that puts it there must be NUL like every other run of
 	// padding, which the decoder has no reason to look at because it stops at the end of the header field array.
@@ -484,18 +498,19 @@ func Decode(r io.Reader) (*Message, error) {
 			return nil, errPaddingNotNUL
 		}
 	}
-	if err = m.applyHeaderFields(list); err != nil {
-		return nil, err
-	}
 	if bodyLength != 0 {
 		m.Body = data[fixedHeaderSize+int(padded):]
+		// The body is a slice of the buffer the whole message was read into, so that buffer stays alive for as long as
+		// the message does; a message with no body keeps none of it. See [Message.size].
+		m.wireSize = int(total)
 	}
-	if err = m.validate(); err != nil {
+	if err := m.validate(); err != nil {
 		return nil, err
 	}
 	if bigEndian {
-		if err = m.convertBody(); err != nil {
-			return nil, err
+		// A body that will not convert is left in the encoding it arrived in, which [Message.Args] then reads it in.
+		if m.convertBody() != nil {
+			m.bigEndianBody = true
 		}
 	}
 	return m, nil
@@ -523,20 +538,38 @@ func (m *Message) convertBody() error {
 	return nil
 }
 
-func (m *Message) applyHeaderFields(fields []any) error {
+// decodeHeaderFields reads the header field array, which is an "a(yv)", and applies each field to the message. The
+// array is walked here rather than decoded as one value so that the value of a field whose code the specification
+// requires us to ignore can be stepped over instead of built: a peer chooses the type and the length of such a field,
+// and a 16 MiB one holding an array of empty containers made decoding a single message allocate a gigabyte. See
+// [decoder.skip].
+func (m *Message) decodeHeaderFields(d *decoder) error {
+	// The array, the structure that each field is and the variant that each of those holds are entered once rather
+	// than once per field: the fields are siblings, so one level of each is all that any of them is nested by.
+	if err := d.enter('a'); err != nil {
+		return err
+	}
+	defer d.leave('a')
+	if err := d.enter('('); err != nil {
+		return err
+	}
+	defer d.leave('(')
+	if err := d.enter('v'); err != nil {
+		return err
+	}
+	defer d.leave('v')
+	end, err := d.startContainer(8)
+	if err != nil {
+		return err
+	}
 	var seen uint32
-	for _, one := range fields {
-		st, ok := one.(Struct)
-		if !ok || len(st) != 2 {
-			return errors.New("dbus: malformed header field")
+	for d.pos < end {
+		if err = d.align(8); err != nil {
+			return err
 		}
-		code, ok := st[0].(byte)
-		if !ok {
-			return errors.New("dbus: malformed header field code")
-		}
-		variant, ok := st[1].(Variant)
-		if !ok {
-			return errors.New("dbus: malformed header field value")
+		var code byte
+		if code, err = d.getByte(); err != nil {
+			return err
 		}
 		if code == 0 {
 			return errors.New("dbus: header field code 0 is not valid")
@@ -549,11 +582,28 @@ func (m *Message) applyHeaderFields(fields []any) error {
 			}
 			seen |= 1 << code
 		}
-		if err := m.applyHeaderField(code, variant); err != nil {
+		var sig Signature
+		if sig, err = d.getSignature(); err != nil {
+			return err
+		}
+		if err = sig.ValidateSingle(); err != nil {
+			return err
+		}
+		if code > fieldUnixFDs { // Unknown header fields must be ignored, so nothing is built from their values
+			if err = d.skip(sig); err != nil {
+				return err
+			}
+			continue
+		}
+		var value any
+		if value, err = d.value(sig); err != nil {
+			return err
+		}
+		if err = m.applyHeaderField(code, Variant{Sig: sig, Value: value}); err != nil {
 			return err
 		}
 	}
-	return nil
+	return d.checkEnd(end)
 }
 
 func (m *Message) applyHeaderField(code byte, variant Variant) error {

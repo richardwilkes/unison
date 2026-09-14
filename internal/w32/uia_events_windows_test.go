@@ -33,10 +33,14 @@ import (
 // window.
 const uiaTestHWND = windows.HWND(0x4242)
 
-// uiaRecordedReturnKind marks the UiaReturnRawElementProvider call in a recorder's list, so that where it falls among
-// the events and disconnects around it is checked along with everything else. It is deliberately a value UIARaiseKind
-// itself never takes.
-const uiaRecordedReturnKind = UIARaiseKind(200)
+// uiaRecordedReturnKind and uiaRecordedNotifyKind mark the two calls a recorder holds that no UIARaise stands for: the
+// UiaReturnRawElementProvider that withdraws a window's provider, and the notification an announcement raises, which
+// UIAWindow.Announce makes directly rather than deciding from a snapshot. Marking them lets a test check where each
+// falls among the events and disconnects around it. Both are deliberately values UIARaiseKind itself never takes.
+const (
+	uiaRecordedReturnKind = UIARaiseKind(200)
+	uiaRecordedNotifyKind = UIARaiseKind(201)
+)
 
 // uiaRecordedVariant is what a recorder keeps of a VARIANT it was passed. The VARIANT itself belongs to the adapter,
 // which clears it as soon as the call returns, so the type tag and the raw value are copied here and a string is
@@ -172,7 +176,7 @@ func (r *uiaRecorder) notification(provider unsafe.Pointer, kind NotificationKin
 	processing NotificationProcessing, displayString, activityID BSTR,
 ) uintptr {
 	r.raises = append(r.raises, uiaRecordedRaise{
-		Kind:       UIARaiseNotify,
+		Kind:       uiaRecordedNotifyKind,
 		Provider:   provider,
 		Notify:     kind,
 		Processing: processing,
@@ -223,14 +227,29 @@ func (r *uiaRecorder) at(i int) uiaRecordedRaise {
 	return r.raises[i]
 }
 
-// newRecordingUIAWindow creates a test adapter whose UI Automation calls are recorded. Creating it is the window's
-// first publish, which says nothing at all for an ordinary window and announces a dialog.
+// newRecordingUIAWindow creates a test adapter whose UI Automation calls are recorded, with the window's first publish
+// already forgotten: that publish announces that the window opened, which is TestUIARaiseWindowOpened's business and
+// nothing else's, so a test that asks what one later publish said is not handed it as well.
 func newRecordingUIAWindow(t *testing.T, tree *accessibility.Tree, listening bool) (*uiaTestWindow, *uiaRecorder) {
+	t.Helper()
+	w, r := newOpeningUIAWindow(t, tree, listening)
+	r.reset()
+	return w, r
+}
+
+// newOpeningUIAWindow creates a test adapter whose UI Automation calls are recorded, including the Window_WindowOpened
+// that creating it — the window's first publish — raises.
+//
+// The window is destroyed when the test finishes, for the reason newTestUIAWindow gives; the recorder is still
+// installed at that point, since it was registered first and cleanups run in reverse, so the teardown reaches nothing
+// real.
+func newOpeningUIAWindow(t *testing.T, tree *accessibility.Tree, listening bool) (*uiaTestWindow, *uiaRecorder) {
 	t.Helper()
 	r := uiaRecord(t, listening)
 	w := &uiaTestWindow{}
 	w.UIAWindow = NewUIAWindow(UIAConfig{Action: w.record, HWND: uiaTestHWND}, tree,
 		UIAGeometry{Origin: uiaTestOrigin, Scale: uiaTestScale})
+	t.Cleanup(w.Destroy)
 	return w, r
 }
 
@@ -476,7 +495,7 @@ func TestUIARaiseAnnouncement(t *testing.T) {
 
 	w.Announce("Saved")
 	c.Equal(1, r.count())
-	c.Equal(UIARaiseNotify, r.at(0).Kind)
+	c.Equal(uiaRecordedNotifyKind, r.at(0).Kind)
 	c.Equal(w.RootUnknown(), r.at(0).Provider)
 	c.Equal(NotificationKind_Other, r.at(0).Notify)
 	c.Equal(NotificationProcessing_All, r.at(0).Processing)
@@ -503,21 +522,28 @@ func TestUIARaiseAnnouncement(t *testing.T) {
 	c.Equal(0, r.count())
 }
 
-// TestUIARaiseWindowOpened verifies that a dialog announces itself as it appears, which is how a screen reader knows to
-// read the whole thing out, and that an ordinary window does not.
+// TestUIARaiseWindowOpened verifies that a window announces itself as it appears, which is how a screen reader knows to
+// read a dialog out. Every root raises it, dialog or not: Destroy raises Window_WindowClosed for every window, and a
+// client tracking window lifetimes must not be told that a window it was never told about has closed.
 func TestUIARaiseWindowOpened(t *testing.T) {
 	c := check.New(t)
 	dialog := eventTree()
 	dialog.Node(1).Role = role.Dialog
-	w, r := newRecordingUIAWindow(t, dialog, true)
+	w, r := newOpeningUIAWindow(t, dialog, true)
 	c.Equal(1, r.count())
 	c.Equal(UIARaiseEvent, r.at(0).Kind)
 	c.Equal(w.RootUnknown(), r.at(0).Provider)
 	c.Equal(UIA_Window_WindowOpenedEventId, r.at(0).Event)
 	c.Equal(EventID(20016), r.at(0).Event)
 
-	_, plain := newRecordingUIAWindow(t, eventTree(), true)
-	c.Equal(0, plain.count())
+	plainWindow, plain := newOpeningUIAWindow(t, eventTree(), true)
+	c.Equal(1, plain.count())
+	c.Equal(plainWindow.RootUnknown(), plain.at(0).Provider)
+	c.Equal(UIA_Window_WindowOpenedEventId, plain.at(0).Event)
+
+	// Nothing is announced while nobody is listening, as for every other raise.
+	_, quiet := newOpeningUIAWindow(t, eventTree(), false)
+	c.Equal(0, quiet.count())
 }
 
 // TestUIADestroyRaises verifies the sequence a window's destruction produces: the window reports that it closed while

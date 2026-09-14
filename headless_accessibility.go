@@ -19,6 +19,13 @@ import (
 // accumulates the events it was told about — and nothing else, so what a test sees is exactly what a screen reader
 // would have been handed.
 //
+// A hidden window is the one place it has to pick one platform's behavior over another's. Everything recorded for a
+// window that has gone off the screen is dropped here, which is what AT-SPI calls for and therefore what Linux does;
+// macOS and Windows both keep what they built, since there the system lists the application's windows itself and a
+// hidden one simply drops out of that list. Withdrawing is the answer with something to assert on — a test can watch
+// the description go and come back, where keeping it is the absence of any change — but a test written against it is
+// pinning what Linux does rather than what all three platforms do. See Window.apiAccessibilityWindowHidden.
+//
 // A session starts with accessibility support inactive, exactly as an application whose platform has no assistive
 // technology running does, so a test that never asks for it pays nothing and can assert as much. EnableAccessibility
 // and AccessibilityTree are the two ways of asking.

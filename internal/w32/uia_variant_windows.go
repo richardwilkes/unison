@@ -13,6 +13,8 @@ import (
 	"math"
 	"unicode/utf16"
 	"unsafe"
+
+	"github.com/richardwilkes/toolbox/v2/xruntime"
 )
 
 // The OLE automation allocator's BSTR entry point lives here rather than with the rest of oleaut32.dll, so that the
@@ -135,15 +137,11 @@ func BSTRToString(str BSTR) string {
 	if count == 0 {
 		return ""
 	}
-	return string(utf16.Decode(unsafe.Slice(bstrChars(str), count)))
-}
-
-// bstrChars reinterprets a BSTR as the UTF-16 array it points at. The reinterpretation goes through the address of the
-// local copy because go vet's unsafeptr check rejects a direct uintptr-to-unsafe.Pointer conversion, and rightly so in
-// general — but a BSTR never refers to Go memory, so there is no object here for the garbage collector to lose track
-// of.
-func bstrChars(str BSTR) *uint16 {
-	return *(**uint16)(unsafe.Pointer(&str))
+	// A BSTR satisfies PtrFromUintptr's ~uintptr constraint, so the UTF-16 array it points at is reached the way every
+	// other uintptr-to-pointer conversion in the package is: through the address of a local copy, which checkptr
+	// instrumentation under -race does not treat as pointer arithmetic. A BSTR never refers to Go memory, so there is
+	// nothing here for the garbage collector to lose track of either.
+	return string(utf16.Decode(unsafe.Slice(xruntime.PtrFromUintptr[uint16](str), count)))
 }
 
 // SysAllocStringLen allocates a BSTR holding a copy of count UTF-16 code units from chars, appending the terminating

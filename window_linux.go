@@ -405,9 +405,18 @@ func (w *Window) nativeMaximize() {
 	}
 }
 
+// x11SetMinimized records that the window manager has iconified the window, or restored it, which is what a taskbar,
+// switching workspaces and "show desktop" all do. Window.Minimize does not come through here, so this is the only place
+// that hears about those.
 func (w *Window) x11SetMinimized(minimized bool) {
 	if minimized != w.minimized {
 		w.minimized = minimized
+		// A window that is no longer on the screen has to be taken out of what an assistive technology has been told,
+		// and the event loop does that for the windows it finds it cannot draw, exactly as it does for Window.Minimize;
+		// a window that has come back is described afresh the same way. Without this, only a window that held the
+		// keyboard focus would be withdrawn — by the FocusOut that follows it — and a background window a person cannot
+		// see would go on being listed as showing and visible. See Window.axMarkForPublish.
+		w.axMarkForPublish()
 		if w.MinimizedCallback != nil {
 			SafeCall(func() { w.MinimizedCallback(minimized) })
 		}
@@ -1140,7 +1149,14 @@ func x11ProcessEvent(e x11.Event) {
 			}
 			x := ev.X
 			y := ev.Y
-			if w.wnd.parent != x11Conn.RootWindow() {
+			// The position a ConfigureNotify the X server generated carries is relative to the window's parent, which
+			// under a reparenting window manager is the frame it put around the window rather than the root, so it has
+			// to be translated. A synthetic one — which is what the window manager sends when it has moved a window
+			// without resizing it, since the window's position within its frame did not change — already carries the
+			// position relative to the root and must not be (ICCCM 4.2.3), or the frame's origin would be added to it a
+			// second time. Windows are created with a zero border width, so either way this is the content origin
+			// itself, in the X server's pixels.
+			if !x11.Synthetic(ev) && w.wnd.parent != x11Conn.RootWindow() {
 				var err error
 				if x, y, _, _, err = x11Conn.TranslateCoordinates(w.wnd.parent, x11Conn.RootWindow(), x, y); err != nil {
 					errs.Log(err)
@@ -1155,8 +1171,10 @@ func x11ProcessEvent(e x11.Event) {
 			// A window that has moved or been resized reports its contents somewhere else on the screen. A resize is
 			// marked for redraw above, so the next snapshot would carry the new geometry with it, but a move goes
 			// through w.moved() and never marks anything, so nothing else would tell the adapter that every node in the
-			// window is now somewhere else.
-			w.x11RefreshAccessibilityGeometry()
+			// window is now somewhere else. The origin worked out above is handed over rather than asked for again,
+			// which is what keeps an assistive technology from costing two X round trips per event of every resize and
+			// every drag of a title bar.
+			w.x11RefreshAccessibilityGeometry(geom.NewPoint(float32(x), float32(y)))
 		}
 	case *x11.ClientMessageEvent:
 		if w := x11FindWindow(ev.Window); w != nil {

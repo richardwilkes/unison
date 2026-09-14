@@ -30,8 +30,13 @@ const (
 	// mainWindow and otherWindow are the two windows the adapter tests publish.
 	mainWindow  WindowKey = 1
 	otherWindow WindowKey = 2
-	// testShortcut is the key binding the slider reports for its default action.
-	testShortcut = "Ctrl+V"
+	// testShortcut is the accelerator the slider carries, and testKeyBinding is the AT-SPI key binding triple that
+	// org.a11y.atspi.Action reports it as.
+	testShortcut   = "Ctrl+V"
+	testKeyBinding = ";;" + testShortcut
+	// testLabelName is what the main window's label says, and testFieldValue is what the field beside it holds.
+	testLabelName  = "Name:"
+	testFieldValue = "Fred"
 )
 
 // mainTree is the window the adapter tests work over:
@@ -55,9 +60,11 @@ func mainTree() *accessibility.Tree {
 			ID: 2, Parent: 1, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 200, 60),
 			Children: []accessibility.NodeID{3, 4},
 		},
-		&accessibility.Node{ID: 3, Parent: 2, Role: role.Label, Name: "Name:", Bounds: geom.NewRect(10, 10, 40, 20)},
 		&accessibility.Node{
-			ID: 4, Parent: 2, Role: role.TextField, Value: "Fred", Placeholder: "Your name", Focusable: true,
+			ID: 3, Parent: 2, Role: role.Label, Name: testLabelName, Bounds: geom.NewRect(10, 10, 40, 20),
+		},
+		&accessibility.Node{
+			ID: 4, Parent: 2, Role: role.TextField, Value: testFieldValue, Placeholder: "Your name", Focusable: true,
 			Focused: true, Bounds: geom.NewRect(60, 10, 100, 20), LabeledBy: []accessibility.NodeID{3},
 			Controls: []accessibility.NodeID{5}, Actions: accessibility.ActionSet(0).With(accessibility.Focus),
 		},
@@ -271,7 +278,7 @@ func TestNodeAccessible(t *testing.T) {
 	ta := newTestAdapter(t)
 	c := ta.c
 	c.Equal("Test Window", ta.peer.getProperty(NodePath(1), InterfaceAccessible, "Name"))
-	c.Equal("Name:", ta.peer.getProperty(NodePath(3), InterfaceAccessible, "Name"))
+	c.Equal(testLabelName, ta.peer.getProperty(NodePath(3), InterfaceAccessible, "Name"))
 	c.Equal(rootRef(), ta.peer.getProperty(NodePath(1), InterfaceAccessible, "Parent"),
 		"a window's parent is the application")
 	c.Equal(nodeRef(1), ta.peer.getProperty(NodePath(4), InterfaceAccessible, "Parent"),
@@ -324,13 +331,21 @@ func TestNodeState(t *testing.T) {
 	// org.a11y.atspi.Text interface an assistive technology would read it through.
 	typed := mainTree()
 	typed.Generation++
-	typed.Node(4).Text = &accessibility.TextInfo{Text: "Fred", SelStart: 4, SelEnd: 4}
+	typed.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue, SelStart: 4, SelEnd: 4}
 	ta.Publish(mainWindow, typed, nil, sampleGeometry())
 	states, ok = ta.one(NodePath(4), InterfaceAccessible, "GetState", "").([]uint32)
 	c.True(ok)
 	set[0], set[1] = states[0], states[1]
 	c.True(set.Has(StateEditable))
 	c.True(set.Has(StateSingleLine))
+	// The interface that does the editing arrives with the state, which is what one predicate for the two is for. This
+	// field offers nothing but Focus — the snapshot strips the actions of a field that cannot be used — so what it
+	// hands back is a refusal rather than no interface at all, exactly as an insensitive GtkEntry does.
+	advertised, ok := ta.one(NodePath(4), InterfaceAccessible, "GetInterfaces", "").([]string)
+	c.True(ok)
+	c.True(slices.Contains(advertised, InterfaceEditableText), "an editable field has an interface to edit it through")
+	c.Equal(false, ta.one(NodePath(4), InterfaceEditableText, "DeleteText", "ii", int32(0), int32(1)))
+	ta.noRequest(t)
 
 	// The same field in a window that is not the active one is focusable but not focused.
 	ta.Publish(otherWindow, otherTree(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
@@ -463,8 +478,11 @@ func TestActionInterface(t *testing.T) {
 	ta := newTestAdapter(t)
 	c := ta.c
 	c.Equal(int32(4), ta.peer.getProperty(NodePath(8), InterfaceAction, "NActions"))
+	// A key binding is the semicolon-separated triple mnemonic;full-shortcut;accelerator that every AT-SPI producer
+	// hands back, and a Unison shortcut is only ever the accelerator. Orca splits the string on the semicolons, so a
+	// bare "Ctrl+V" would be taken for a mnemonic path rather than for the accelerator it is.
 	c.Equal([]any{
-		dbus.Struct{"click", "", testShortcut},
+		dbus.Struct{"click", "", testKeyBinding},
 		dbus.Struct{"increment", "", ""},
 		dbus.Struct{"decrement", "", ""},
 		dbus.Struct{"menu", "", ""},
@@ -472,9 +490,10 @@ func TestActionInterface(t *testing.T) {
 	c.Equal("click", ta.one(NodePath(8), InterfaceAction, "GetName", "i", int32(0)))
 	c.Equal("click", ta.one(NodePath(8), InterfaceAction, "GetLocalizedName", "i", int32(0)))
 	c.Equal("", ta.one(NodePath(8), InterfaceAction, "GetDescription", "i", int32(0)))
-	c.Equal(testShortcut, ta.one(NodePath(8), InterfaceAction, "GetKeyBinding", "i", int32(0)))
+	c.Equal(testKeyBinding, ta.one(NodePath(8), InterfaceAction, "GetKeyBinding", "i", int32(0)))
 	c.Equal("", ta.one(NodePath(8), InterfaceAction, "GetKeyBinding", "i", int32(1)))
 	c.Equal("menu", ta.one(NodePath(8), InterfaceAction, "GetName", "i", int32(3)))
+	c.Equal("", keyBinding(""), "a node with no shortcut reports nothing rather than two bare separators")
 
 	c.Equal(true, ta.one(NodePath(8), InterfaceAction, "DoAction", "i", int32(1)))
 	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.Increment}, ta.nextRequest(t))
@@ -572,7 +591,9 @@ func TestCacheGetItems(t *testing.T) {
 	}, items[1], "the window itself comes first, and its parent is the application")
 	c.Equal(dbus.Struct{
 		nodeRef(4), rootRef(), nodeRef(1), int32(1), int32(0),
-		[]string{InterfaceAccessible, InterfaceComponent},
+		// The field carries no text of its own yet, but its value is textual, so what it hands over is the read-only
+		// text synthesized from that value.
+		[]string{InterfaceAccessible, InterfaceComponent, InterfaceText},
 		"", uint32(RoleEntry), "",
 		States(mainTree().Node(4), true, false).Words(),
 	}, items[3], "the text field's parent is the window, since the group between them is ignored")
@@ -630,34 +651,31 @@ func TestIntrospection(t *testing.T) {
 	}
 }
 
+// TestTheObjectsAgreeWithWhatIsAdvertised walks every node of every tree the package's tests build, since the
+// membership rules of the interfaces that come and go are the ones most likely to drift: the main window covers
+// Accessible, Action, Component, Selection, Text and Value, the table window covers Table and TableCell, and the text
+// window covers EditableText along with the text states.
 func TestTheObjectsAgreeWithWhatIsAdvertised(t *testing.T) {
 	t.Parallel()
 	ta := newTestAdapter(t)
 	c := ta.c
-	tree := mainTree()
-	tree.Walk(func(n *accessibility.Node) bool {
-		if n.Ignored {
+	ta.Publish(tableWindow, tableTree(), nil, sampleGeometry())
+	ta.Publish(textWindow, textTree(), nil, sampleGeometry())
+	for _, tree := range []*accessibility.Tree{mainTree(), tableTree(), textTree()} {
+		tree.Walk(func(n *accessibility.Node) bool {
+			if n.Ignored {
+				return true
+			}
+			advertised, ok := ta.one(NodePath(n.ID), InterfaceAccessible, "GetInterfaces", "").([]string)
+			c.True(ok)
+			xml, ok := ta.one(NodePath(n.ID), "org.freedesktop.DBus.Introspectable", "Introspect", "").(string)
+			c.True(ok)
+			// Whatever a node says it implements must actually be there, in the same order, so that a client that walks
+			// the introspection and one that asks the shorter question see the same object.
+			c.Equal(advertised, atspiInterfacesIn(xml), "node %d advertises interfaces it does not implement", n.ID)
 			return true
-		}
-		advertised, ok := ta.one(NodePath(n.ID), InterfaceAccessible, "GetInterfaces", "").([]string)
-		c.True(ok)
-		xml, ok := ta.one(NodePath(n.ID), "org.freedesktop.DBus.Introspectable", "Introspect", "").(string)
-		c.True(ok)
-		// Whatever a node says it implements must actually be there, in the same order, so that a client that walks
-		// the introspection and one that asks the shorter question see the same object.
-		implemented := make([]string, 0, len(advertised))
-		for _, line := range strings.Split(xml, "\n") {
-			name, found := strings.CutPrefix(strings.TrimSpace(line), `<interface name="`)
-			if !found {
-				continue
-			}
-			if name, _, found = strings.Cut(name, `"`); found && strings.HasPrefix(name, "org.a11y.") {
-				implemented = append(implemented, name)
-			}
-		}
-		c.Equal(advertised, implemented, "node %d advertises interfaces it does not implement", n.ID)
-		return true
-	})
+		})
+	}
 }
 
 func TestPublishReplacesTheSnapshot(t *testing.T) {
@@ -861,6 +879,53 @@ func TestTheConnectionDyingIsReported(t *testing.T) {
 	a.Stop()
 }
 
+// TestStartRefusesAConnectionThatHasAlreadyGone covers the gap between the Embed reply and the disconnect handler being
+// registered. An accessibility bus that dies in it leaves nothing to publish over, and an adapter handed back in that
+// state would be installed by the root package and never report anything again, since the loss it would have reported
+// happened before the caller held it. Whichever side of the race wins, the caller has to learn of the loss exactly
+// once: as the error Start returns, or through the callback.
+func TestStartRefusesAConnectionThatHasAlreadyGone(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	for range 20 {
+		p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+			if msg.Interface != InterfaceSocket || msg.Member != embedMember {
+				return registryAnswers(peer, msg)
+			}
+			peer.replyTo(msg, objectRefSignature, desktopRef())
+			xio.CloseIgnoringErrors(peer.side) // The bus goes away the moment the application has joined the tree
+			return true
+		})
+		lost := make(chan error, 1)
+		a, err := Start(Config{
+			ToolkitVersion: testToolkitVersion,
+			Lost:           func(reason error) { lost <- reason },
+			conn:           p.client,
+		})
+		if err != nil {
+			c.Nil(a, "nothing is handed back when the connection has already gone")
+			// The callback belongs to an adapter its owner holds. Reporting a loss for one that was never handed back
+			// would have the root package deal with an adapter it has never seen, which is exactly the state the
+			// error it is given instead describes.
+			select {
+			case reason := <-lost:
+				t.Fatalf("a start that failed must not report a loss as well, but %v was reported", reason)
+			default:
+			}
+			continue
+		}
+		// The other side of the race: the handler was registered while the connection was still alive, so the loss is
+		// the callback's to report.
+		select {
+		case reason := <-lost:
+			c.HasError(reason, "an adapter that was handed back reports the loss itself")
+		case <-time.After(testTimeout):
+			t.Fatal("timed out waiting for the connection loss to be reported")
+		}
+		c.HasError(a.Err())
+	}
+}
+
 // TestStopIsNotReportedAsALoss verifies that the adapter's own shutdown does not look like the bus dying: the root
 // package would otherwise tear down and rebuild an adapter every time a screen reader was switched off.
 func TestStopIsNotReportedAsALoss(t *testing.T) {
@@ -874,15 +939,21 @@ func TestStopIsNotReportedAsALoss(t *testing.T) {
 		conn:           p.client,
 	})
 	c.NoError(err)
+	c.Equal(embedMember, p.nextCall().Member, "the application joined the accessibility tree")
+
+	// The connection's disconnect callbacks run one after another on a goroutine of their own, so this one is not
+	// reached until the adapter's has returned: waiting for it is waiting for the decision about whether the loss is
+	// worth reporting. Waiting for Err to report the closure instead would say nothing at all, since Stop sets it
+	// before it returns, and a regression that dropped the flag Stop sets would still pass.
+	handled := make(chan struct{})
+	a.conn.OnDisconnect(func(_ error) { close(handled) })
 
 	a.Stop()
-	// The connection's callbacks run on a goroutine of its own, so the one that records why it ended is waited for
-	// before insisting that the one that reports a loss was never called.
-	for deadline := time.Now().Add(testTimeout); a.Err() == nil; {
-		if time.Now().After(deadline) {
-			t.Fatal("timed out waiting for the connection to end")
-		}
-		time.Sleep(time.Millisecond)
+	c.Equal("Unembed", p.nextCall().Member, "the registry is told the application is leaving before it goes")
+	select {
+	case <-handled:
+	case <-time.After(testTimeout):
+		t.Fatal("timed out waiting for the connection to end")
 	}
 	select {
 	case reason := <-lost:

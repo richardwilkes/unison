@@ -82,10 +82,10 @@ func NewSafeArrayUnknown(values []unsafe.Pointer) SAFEARRAY {
 	return array
 }
 
-// SafeArrayToInt32 reads a VT_I4 vector back into a slice, returning nil if the array is zero or cannot be read. It
+// safeArrayToInt32 reads a VT_I4 vector back into a slice, returning nil if the array is zero or cannot be read. It
 // exists so that the provider's tests can check what was handed to UI Automation; nothing in the provider itself needs
-// to read an array it built.
-func SafeArrayToInt32(array SAFEARRAY) []int32 {
+// to read an array it built, so it is unexported like the package's other non-binding helpers.
+func safeArrayToInt32(array SAFEARRAY) []int32 {
 	if array == 0 {
 		return nil
 	}

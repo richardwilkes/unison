@@ -46,6 +46,9 @@ const (
 	textAfter  = "Willa"
 )
 
+// changedFieldValue is what the field's textual value is set to, replacing the testFieldValue it starts with.
+const changedFieldValue = "Barney"
+
 // The methods the far end of a stalled connection answers before it stops reading.
 const (
 	helloMember = "Hello"
@@ -700,6 +703,119 @@ func TestANodeThatStopsBeingIgnoredWhileGainingAChild(t *testing.T) {
 		ta.one(NodePath(2), InterfaceAccessible, "GetChildren", ""))
 }
 
+// TestAContainerLeavingWithItsChildren covers the order [accessibility.Diff] reports removals in. It reports them in
+// ascending id order, and a container's id is lower than its children's, so a list that goes away is announced before
+// its rows are. Nothing may then be said from the list's own object: libatspi resolves an event's source with
+// ref_accessible, which builds a fresh, parentless object for a path it has just been told to drop and keeps it in the
+// application's cache forever, since node ids are never reused.
+func TestAContainerLeavingWithItsChildren(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	gone := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(1).Children = []accessibility.NodeID{2, 8, 9}
+		for _, id := range []accessibility.NodeID{5, 6, 7} {
+			delete(tree.Nodes, id)
+		}
+	})
+	events := accessibility.Diff(mainTree(), gone)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NodeRemoved, Node: 5},
+		{Kind: accessibility.NodeRemoved, Node: 6},
+		{Kind: accessibility.NodeRemoved, Node: 7},
+		{Kind: accessibility.ChildrenChanged, Node: 1},
+	}, events, "the list is reported as gone before either of the rows inside it")
+	ta.Publish(mainWindow, gone, events, sampleGeometry())
+
+	// The window is told it has lost the list, and the cache is told about all three objects. The rows say nothing
+	// about the list, which the client no longer has.
+	signals := ta.peer.nextSignals(4)
+	c.Equal([]signalRecord{
+		objectEvent(1, signalChildrenChanged, detailRemove, 2, 0, variantRef(nodeRef(5))),
+		cacheRemoval(5),
+		cacheRemoval(6),
+		cacheRemoval(7),
+	}, signals)
+	replay(c, mainTree(), signals, gone)
+	ta.Announce("Nothing from an object that has gone")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// ignoredGroupTree is a window with two nested groups, the inner one ignored, which is the shape the pair of guards in
+// [Adapter.emitIgnoredChanged] needs: a node whose reported parent can itself stop being reported in the same publish.
+//
+//	80 window "Nest"          (0,0 100x100)  active
+//	└─ 81 group               (0,0 100x100)
+//	   └─ 82 group [ignored]  (0,0 100x50)
+//	      └─ 83 label "Deep"  (0,0 100x20)
+func ignoredGroupTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 80, Role: role.Window, Name: "Nest", Focused: true, Bounds: geom.NewRect(0, 0, 100, 100),
+			Children: []accessibility.NodeID{81},
+		},
+		&accessibility.Node{
+			ID: 81, Parent: 80, Role: role.Group, Name: "Outer", Bounds: geom.NewRect(0, 0, 100, 100),
+			Children: []accessibility.NodeID{82},
+		},
+		&accessibility.Node{
+			ID: 82, Parent: 81, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 100, 50),
+			Children: []accessibility.NodeID{83},
+		},
+		&accessibility.Node{ID: 83, Parent: 82, Role: role.Label, Name: "Deep", Bounds: geom.NewRect(0, 0, 100, 20)},
+	)
+}
+
+// TestAGroupJoiningUnderOneThatHasJustLeft covers the other half of the same guard. The inner group joins the reported
+// hierarchy in the publish in which the outer one leaves it, so the children that were standing in for the inner group
+// have to be taken off the object that reported them — unless that object is the outer group, which the client has
+// already been told to forget.
+func TestAGroupJoiningUnderOneThatHasJustLeft(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	const nestWindow WindowKey = 7
+	nest := ignoredGroupTree()
+	ta.Publish(nestWindow, nest, nil, sampleGeometry())
+	ta.peer.nextSignals(7) // The three reported nodes, the window's own signals and where its focus is
+
+	swapped := ignoredGroupTree()
+	swapped.Generation++
+	swapped.Node(81).Ignored = true
+	swapped.Node(82).Ignored = false
+	events := accessibility.Diff(nest, swapped)
+	c.Equal([]accessibility.Event{
+		{
+			Kind: accessibility.StateChanged, Node: 81, State: accessibility.StateIgnored, Old: falseValue,
+			New: trueValue,
+		},
+		{
+			Kind: accessibility.StateChanged, Node: 82, State: accessibility.StateIgnored, Old: trueValue,
+			New: falseValue,
+		},
+	}, events)
+	ta.Publish(nestWindow, swapped, events, sampleGeometry())
+
+	signals := ta.peer.nextSignals(7)
+	c.Equal([]signalRecord{
+		// The outer group leaves the window, taking its object with it.
+		objectEvent(80, signalChildrenChanged, detailRemove, 0, 0, variantRef(nodeRef(81))),
+		cacheRemoval(81),
+		// The inner group takes its place, and the label that was standing in for it becomes its child again. Nothing
+		// is said to the outer group, which has gone.
+		signals[2],
+		objectEvent(80, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(82))),
+		signals[4],
+		objectEvent(82, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(83))),
+		objectEvent(83, signalPropertyChange, propertyAccessibleParent, 0, 0, variantRef(nodeRef(82))),
+	}, signals)
+	c.Equal(nodeRef(82), ta.cachedID(signals[2]))
+	c.Equal(nodeRef(83), ta.cachedID(signals[4]))
+	replay(c, nest, signals, swapped)
+	ta.Announce("Nothing from the group that left")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
 // TestANodeMovingBetweenParents covers a panel that is reparented within one window. It keeps its id, so
 // [accessibility.Diff] has nothing to report but a pair of ChildrenChanged events — no node was added or removed — and
 // a client that keeps a child list per object, which libatspi does, would go on holding it under its old parent and
@@ -968,7 +1084,7 @@ func TestPropertyAndAttributeChanges(t *testing.T) {
 	})
 	events := accessibility.Diff(mainTree(), changed)
 	c.Equal([]accessibility.Event{
-		{Kind: accessibility.NameChanged, Node: 3, Old: "Name:", New: "Full name:"},
+		{Kind: accessibility.NameChanged, Node: 3, Old: testLabelName, New: "Full name:"},
 		{Kind: accessibility.DescriptionChanged, Node: 5, New: "The things"},
 		{Kind: accessibility.ValueChanged, Node: 8, Old: "4", New: "7"},
 		{Kind: accessibility.NumberChanged, Node: 8, Old: "4", New: "7"},
@@ -984,11 +1100,58 @@ func TestPropertyAndAttributeChanges(t *testing.T) {
 		objectEvent(9, signalAttributesChanged, "", 0, 0, variantInt32(0)),
 	}, ta.peer.nextSignals(4))
 
-	// A control with a textual value and no number behind it has no org.a11y.atspi.Value interface to read one back
-	// from, so there is no accessible-value to report about it.
-	textual := activeMainTree(func(tree *accessibility.Tree) { tree.Node(4).Value = "Barney" })
+	// A control with a textual value and no number behind it has no org.a11y.atspi.Value interface to read a number
+	// back from, so there is no accessible-value to report about it. What it does have is the read-only text
+	// synthesized from that value, and a change to it is the old value being replaced by the new one, which is what
+	// Orca re-reads a control on.
+	textual := activeMainTree(func(tree *accessibility.Tree) { tree.Node(4).Value = changedFieldValue })
 	ta.Publish(mainWindow, textual, accessibility.Diff(mainTree(), textual), sampleGeometry())
-	ta.Announce("Nothing about the field")
+	c.Equal([]signalRecord{
+		objectEvent(4, signalTextChanged, detailDelete, 0, 4, variantString(testFieldValue)),
+		objectEvent(4, signalTextChanged, detailInsert, 0, 6, variantString(changedFieldValue)),
+	}, ta.peer.nextSignals(2))
+
+	// A value that is emptied is deleted with nothing put in its place.
+	emptied := activeMainTree(func(tree *accessibility.Tree) { tree.Node(4).Value = "" })
+	ta.Publish(mainWindow, emptied, accessibility.Diff(textual, emptied), sampleGeometry())
+	c.Equal(objectEvent(4, signalTextChanged, detailDelete, 0, 6, variantString(changedFieldValue)),
+		ta.peer.nextSignal())
+
+	// A node that carries text of its own says nothing about its value: the text has events of its own, and the value
+	// beside it is a description of the same thing. The field gains its text without any event, as in TestTextEvents,
+	// since a node gaining an interface is not something AT-SPI has an event for.
+	withText := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: textAfter, SelStart: 5, SelEnd: 5, Caret: 5}
+	})
+	ta.Publish(mainWindow, withText, nil, sampleGeometry())
+	named := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Value = textAfter
+		tree.Node(4).Text = &accessibility.TextInfo{Text: textAfter, SelStart: 5, SelEnd: 5, Caret: 5}
+	})
+	events = accessibility.Diff(withText, named)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.ValueChanged, Node: 4, Old: testFieldValue, New: textAfter},
+	}, events)
+	ta.Publish(mainWindow, named, events, sampleGeometry())
+	ta.Announce("Nothing else about the field")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestAttributeChangesThatHaveNoSignalOfTheirOwn covers the event [accessibility.Diff] reports for the parts of a node
+// that AT-SPI carries as object attributes rather than through an interface — its level, where it sits in a set, its
+// orientation, its placeholder — along with the relations, which have no AT-SPI signal at all and are reported here
+// as well.
+func TestAttributeChangesThatHaveNoSignalOfTheirOwn(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	changed := activeMainTree(func(tree *accessibility.Tree) { tree.Node(4).Placeholder = "Your full name" })
+	ta.Publish(mainWindow, changed, []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: 4},
+		{Kind: accessibility.AttributesChanged, Node: 404},
+	}, sampleGeometry())
+	c.Equal(objectEvent(4, signalAttributesChanged, "", 0, 0, variantInt32(0)), ta.peer.nextSignal())
+	ta.Announce("Nothing about a node with no object")
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 

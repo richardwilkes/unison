@@ -32,7 +32,14 @@ const (
 	colorSchemeKey = "color-scheme"
 	// colorSchemeMatchRule asks the bus to deliver the portal's setting change signals to us. Signals from another
 	// connection are only delivered to one that has asked for them.
-	colorSchemeMatchRule = "type='signal',interface='" + portalSettingsInterface +
+	//
+	// The sender is named, which is what keeps any other process on the user's session bus from flipping the
+	// application between light and dark with a SettingChanged of its own. The bus resolves the portal's well-known
+	// name to whichever connection owns it and refuses to deliver anything sent by another, which is why the match rule
+	// is where this is enforced: the signals the portal sends carry its unique name, which is not something the
+	// application can know in advance. The accessibility status rules do the same, for the same reason; see
+	// internal/atspi's statusMatchRule.
+	colorSchemeMatchRule = "type='signal',sender='" + portalDestination + "',interface='" + portalSettingsInterface +
 		"',member='" + portalSettingChanged + "'"
 )
 

@@ -135,6 +135,7 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 	if session == nil || onChange == nil || DisabledByEnvironment() {
 		return func() {}
 	}
+	done := make(chan struct{})
 	var latest atomic.Uint64
 	report := func(enabled bool) {
 		latest.Add(1)
@@ -142,11 +143,17 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 	}
 	recheck := func() {
 		// Enabled makes a call, and this runs on the dispatcher goroutine, which must not be held up, so the answer is
-		// fetched from a goroutine of its own.
+		// fetched from a goroutine of its own. Cancellation is checked on both sides of the round trip, as it is for
+		// the first read below: a signal that arrives just before the watch is canceled would otherwise leave a call in
+		// flight whose answer is delivered to a caller that has stopped listening, which for the root package means a
+		// fresh bridge built after the one it had was torn down.
+		if canceled(done) {
+			return
+		}
 		wanted := latest.Add(1)
 		go func() {
 			enabled := Enabled(session)
-			if latest.Load() == wanted {
+			if !canceled(done) && latest.Load() == wanted {
 				onChange(enabled)
 			}
 		}()
@@ -183,7 +190,6 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		}
 		recheck()
 	})
-	done := make(chan struct{})
 	// One goroutine owns the match rules for the life of the watch, so a rule for a watch that is canceled while it is
 	// still being set up cannot be left behind on the bus.
 	go func() {

@@ -193,12 +193,6 @@ func newUIAProvider(window *UIAWindow, node accessibility.NodeID) *UIAProvider {
 	return p
 }
 
-// Node returns the id of the node this provider describes. The node may no longer be in the window's tree, in which
-// case the provider is stale.
-func (p *UIAProvider) Node() accessibility.NodeID {
-	return p.node
-}
-
 // Stale reports whether the node this provider describes has left the tree. A stale provider answers every method with
 // UIA_E_ELEMENTNOTAVAILABLE.
 func (p *UIAProvider) Stale() bool {
@@ -329,11 +323,16 @@ func uiaProviderFromThis(this uintptr, iface uiaIface) *UIAProvider {
 // through, so that the provider can be found, and the answer does not otherwise depend on it. Every interface handed
 // out is AddRef'd first, as COM requires, and the out-parameter is cleared before anything else can fail.
 func uiaQueryInterface(iface uiaIface, this, riid, out uintptr) uint64 {
-	if out == 0 || riid == 0 {
+	if out == 0 {
 		return COM_E_POINTER
 	}
 	target := xruntime.PtrFromUintptr[uintptr](out)
+	// Cleared before the interface identifier is validated, not after: QueryInterface must store NULL in the
+	// out-parameter on every failure, so a caller that passed a NULL riid is not left holding whatever was there.
 	*target = 0
+	if riid == 0 {
+		return COM_E_POINTER
+	}
 	wanted, ok := uiaIfaceForIID(xruntime.PtrFromUintptr[windows.GUID](riid))
 	if !ok {
 		return COM_E_NOINTERFACE
@@ -430,10 +429,30 @@ func (p *UIAProvider) propertyValue(tree *accessibility.Tree, node *accessibilit
 	switch propertyID {
 	case UIA_NamePropertyId:
 		uiaSetString(value, node.Name)
-	case UIA_HelpTextPropertyId, UIA_FullDescriptionPropertyId:
+	case UIA_HelpTextPropertyId:
+		// HelpText carries the watermark of a field that has no description of its own, which is the conventional place
+		// for it and the only way an unnamed search field is announced as anything but a bare "edit". Description wins
+		// when a node has both: it is what the application said about this control, while the watermark is a hint the
+		// widget put in its own empty content, and the two are never concatenated — a client speaks this property as
+		// one piece of help text. macOS reports the watermark through accessibilityPlaceholderValue and AT-SPI through
+		// the placeholder-text attribute, neither of which has an equivalent here.
+		if node.Description != "" {
+			uiaSetString(value, node.Description)
+		} else {
+			uiaSetString(value, node.Placeholder)
+		}
+	case UIA_FullDescriptionPropertyId:
 		uiaSetString(value, node.Description)
+	case UIA_ValueValuePropertyId:
+		// The Value pattern's property, answered here as well so that a client reading it through GetPropertyValue —
+		// which is how a cell's content is read while walking a row — is told what IValueProvider::get_Value would say.
+		// An element without the pattern answers nothing, since the property is not its to report.
+		if UIAPatterns(node).Has(PatternValue) {
+			// Always a BSTR, even for an empty value, which is what the pattern's getter answers with.
+			value.SetBSTR(UIAValueString(node))
+		}
 	case UIA_ControlTypePropertyId:
-		value.SetI4(int32(UIAControlType(node)))
+		value.SetI4(int32(UIAControlType(tree, node)))
 	case UIA_IsEnabledPropertyId:
 		value.SetBool(!node.Disabled)
 	case UIA_IsKeyboardFocusablePropertyId:
@@ -617,10 +636,12 @@ func uiaFragmentNavigate(this, direction, out uintptr) uint64 {
 // begins with UiaAppendRuntimeId, so that UI Automation prepends the root's own identifier and the result stays unique
 // across the windows of the process.
 //
-// This is the one method a stale provider still answers rather than reporting the element as unavailable, and it has to
-// be: UiaDisconnectProvider asks a provider for its runtime identifier in order to find the references UI Automation
-// holds to it, and that call is made while the provider is being retired. The identifier is derived from the node id
-// alone, which never changes, so the answer is right whether or not the node is still in the tree.
+// This is one of the few methods a stale provider still answers rather than reporting the element as unavailable, and
+// it has to be: UiaDisconnectProvider asks a provider for its runtime identifier in order to find the references UI
+// Automation holds to it, and that call is made while the provider is being retired. The identifier is derived from the
+// node id alone, which never changes, so the answer is right whether or not the node is still in the tree. The other
+// two are get_ProviderOptions, which describes the provider rather than the element, and get_FragmentRoot, which a
+// disconnect can also bring back — see the comment on UIAWindow.Destroy.
 func uiaFragmentGetRuntimeID(this, out uintptr) uint64 {
 	if out == 0 {
 		return COM_E_POINTER
@@ -674,13 +695,24 @@ func uiaFragmentGetEmbeddedFragmentRoots(_, out uintptr) uint64 {
 // uiaFragmentSetFocus implements IRawElementProviderFragment::SetFocus by asking the window to give the node the
 // keyboard focus. The request is queued onto the UI thread and this returns at once, which is what UI Automation
 // expects: the focus change is reported later, as an event.
+//
+// A disabled node refuses with UIA_E_ELEMENTNOTENABLED, as every pattern write path here does, and a node that does not
+// offer the Focus action refuses too: the snapshot's action set is its own statement that nothing will happen, and
+// Window.dispatchAccessibilityAction drops such a request, so answering S_OK would have a client waiting for a focus
+// event that is never coming. The two really can disagree with Focusable — axDisabledActions narrows a disabled node's
+// actions while resolveFocus goes on marking an open menu's node focusable, and an Accessibility.Callback that sets
+// Disabled leaves Focusable untouched — which is why both are checked. Both other adapters refuse the same request;
+// see GrabFocus in internal/atspi and axPerform in internal/cocoa.
 func uiaFragmentSetFocus(this uintptr) uint64 {
 	p := uiaProviderFromThis(this, uiaIfaceFragment)
 	_, node, ok := p.current()
 	if !ok {
 		return UIA_E_ELEMENTNOTAVAILABLE
 	}
-	if !node.Focusable {
+	if node.Disabled {
+		return UIA_E_ELEMENTNOTENABLED
+	}
+	if !node.Focusable || !node.Actions.Has(accessibility.Focus) {
 		return UIA_E_INVALIDOPERATION
 	}
 	if !p.window.dispatch(accessibility.ActionRequest{Node: p.node, Action: accessibility.Focus}) {
@@ -838,16 +870,9 @@ func uiaWindowVisualState(this, out uintptr) uint64 {
 // as disabled is disabled because something modal sits in front of it, which is the distinction UI Automation wants
 // here.
 func uiaWindowInteractionStateValue(this, out uintptr) uint64 {
-	if out == 0 {
-		return COM_E_POINTER
-	}
-	*xruntime.PtrFromUintptr[WindowInteractionState](out) = WindowInteractionState_ReadyForUserInteraction
-	_, _, node, hr := uiaPatternNode(this, uiaIfaceWindow)
-	if hr != COM_S_OK {
-		return hr
-	}
-	*xruntime.PtrFromUintptr[WindowInteractionState](out) = UIAWindowInteractionState(node)
-	return COM_S_OK
+	return uiaPatternInt32(this, uiaIfaceWindow, out, func(n *accessibility.Node) int32 {
+		return int32(UIAWindowInteractionState(n))
+	})
 }
 
 // uiaWindowIsTopmost implements IWindowProvider::get_IsTopmost, which is the snapshot's Floating flag: a window created

@@ -108,7 +108,7 @@ func TestSafeArrayInt32RoundTrip(t *testing.T) {
 	bound, hr := SafeArrayGetUBound(array, 1)
 	c.True(hresultSucceeded(hr))
 	c.Equal(int32(2), bound)
-	c.Equal(values, SafeArrayToInt32(array))
+	c.Equal(values, safeArrayToInt32(array))
 	array.Destroy()
 }
 

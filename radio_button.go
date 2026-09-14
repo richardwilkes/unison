@@ -85,6 +85,10 @@ func (r *RadioButton) SetGroup(group *Group) {
 
 // ProvideAccessibility describes the radio button to assistive technologies. A radio button is checked when it is the
 // one selected within its group, so a button that belongs to no group is never checked, however often it is clicked.
+//
+// A button that has a group to be the selection of offers to be made that selection, which is what a sticky Button
+// reported under this same role offers, so that the two describe themselves alike. One with no group has no selection
+// to be and offers only the press.
 func (r *RadioButton) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
 	if node.Role == role.Auto {
@@ -98,6 +102,24 @@ func (r *RadioButton) ProvideAccessibility(b *AccessibilityBuilder) {
 	}
 	node.Name = r.axName(node.Name)
 	node.Actions = node.Actions.With(accessibility.Press)
+	if r.group != nil {
+		node.Actions = node.Actions.With(accessibility.Select)
+	}
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Selecting a radio button makes it the
+// selection of its group, without the click animation and without the callback, exactly as selecting the sticky Button
+// reported under the same role does; a button that belongs to no group has no selection to be. Everything else is left
+// to the shared handling, which clicks the button.
+func (r *RadioButton) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if req.Action == accessibility.Select {
+		if r.group == nil {
+			return false
+		}
+		r.group.Select(r)
+		return true
+	}
+	return r.checkRadioBase.PerformAccessibilityAction(req)
 }
 
 func (r *RadioButton) drawRadio(canvas *Canvas, rect geom.Rect, thickness float32, fg, bg, edge Ink) {

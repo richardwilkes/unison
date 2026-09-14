@@ -31,7 +31,7 @@ const tableWindow WindowKey = 4
 //	├─ 69 table header               (0,0 300x20)
 //	│  ├─ 70 column header "Title"   (0,0 160x20)   column 0
 //	│  └─ 71 column header "Count"   (160,0 140x20) column 1
-//	└─ 61 table "Ledger"             (0,20 300x180) 4 rows, 2 columns, multi-select
+//	└─ 61 table "Ledger"             (0,0 300x200)  4 rows, 2 columns, multi-select
 //	   ├─ 62 row "Alpha"             (0,20 300x20)  row 1, selected
 //	   │  ├─ 63 disclosure triangle  (0,20 20x20)
 //	   │  ├─ 64 cell "Alpha"         (20,20 140x20) row 1, column 0

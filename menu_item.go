@@ -189,8 +189,15 @@ func (mi *menuItem) newPanel() *Panel {
 	mi.panel.MouseEnterCallback = mi.mouseEnter
 	mi.panel.MouseMoveCallback = mi.mouseMove
 	mi.panel.MouseExitCallback = mi.mouseExit
-	mi.panel.MouseDownCallback = mi.mouseDown
-	mi.panel.MouseUpCallback = mi.mouseUp
+	if !mi.isSeparator {
+		// A separator is a line drawn between the things that can be chosen rather than one of them: execute does
+		// nothing for one, so a click over it does nothing either. It goes without the two halves of a click, since a
+		// panel that handles both is described as something that can be pressed, and such a press would be reported as
+		// carried out while nothing had happened. The remaining mouse callbacks stay, so that the pointer passing over
+		// a separator behaves as it does everywhere else in the menu.
+		mi.panel.MouseDownCallback = mi.mouseDown
+		mi.panel.MouseUpCallback = mi.mouseUp
+	}
 	mi.panel.SetSizer(mi.sizer)
 	return mi.panel
 }
