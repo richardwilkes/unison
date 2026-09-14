@@ -576,7 +576,7 @@ func TestUIATableColumnHeadersNested(t *testing.T) {
 
 // TestUIATableColumnHeadersMemo verifies that the answer remembered for one snapshot is never handed to another. The
 // cost of finding a header is what makes remembering it worth doing — a client asks once per cell — but a window that
-// publishes a new snapshot must be described by the new one from that moment on. See uiaHeaderMemo.
+// publishes a new snapshot must be described by the new one from that moment on. See uiaSnapshotMemo.
 func TestUIATableColumnHeadersMemo(t *testing.T) {
 	c := check.New(t)
 	first := tableTree()
@@ -592,21 +592,158 @@ func TestUIATableColumnHeadersMemo(t *testing.T) {
 	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(first, 6), "and going back answers the first again")
 }
 
-// TestUIAForgetHeaderMemo verifies that the memo can be emptied, which is what keeps the last snapshot of a destroyed
+// TestUIAForgetSnapshotMemo verifies that the memo can be emptied, which is what keeps the last snapshot of a destroyed
 // window — and every node in it — from staying reachable for the rest of the process. UIAWindow.Destroy calls it; the
 // only thing a client can notice is that the next question is worked out from scratch.
-func TestUIAForgetHeaderMemo(t *testing.T) {
+func TestUIAForgetSnapshotMemo(t *testing.T) {
 	c := check.New(t)
-	tree := tableTree()
-	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(tree, 6))
 
-	uiaForgetHeaderMemo()
-	c.Nil(uiaHeaderMemo.tree, "the snapshot is no longer held")
-	c.Nil(uiaHeaderMemo.headers)
+	// A table whose name comes from a label outside it, so that all three of the answers the memo holds are worked out
+	// from the one snapshot it can hold at a time.
+	tree := tableTree()
+	tree.Nodes[1].Children = []accessibility.NodeID{2, 13}
+	tree.Nodes[13] = &accessibility.Node{ID: 13, Parent: 1, Role: role.Label, Name: "Files"}
+	tree.Nodes[6].LabeledBy = []accessibility.NodeID{13}
+	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(tree, 6))
+	c.False(UIAIsContentElement(tree, tree.Node(13)), "the label names the table, so it is not content of its own")
+	position, size := UIAPositionInSet(tree, tree.Node(7))
+	c.Equal(2, position)
+	c.Equal(5, size)
+
+	uiaForgetSnapshotMemo()
+	c.Nil(uiaSnapshotMemo.tree, "the snapshot is no longer held")
+	c.Nil(uiaSnapshotMemo.headers, "and neither is anything worked out from it")
+	c.Nil(uiaSnapshotMemo.named)
+	c.False(uiaSnapshotMemo.namedDone)
+	c.Nil(uiaSnapshotMemo.positions)
 
 	c.Equal([]accessibility.NodeID{4, 5}, UIATableColumnHeaders(tree, 6), "and the answer is worked out again")
-	c.Equal(tree, uiaHeaderMemo.tree)
-	uiaForgetHeaderMemo()
+	c.Equal(tree, uiaSnapshotMemo.tree)
+	uiaForgetSnapshotMemo()
+}
+
+// TestUIASnapshotMemoHoldsOneSnapshot verifies that every answer remembered is dropped the moment a different snapshot
+// is asked about, which is what keeps one window's answers from ever being given for another's.
+func TestUIASnapshotMemoHoldsOneSnapshot(t *testing.T) {
+	c := check.New(t)
+	uiaForgetSnapshotMemo()
+	t.Cleanup(uiaForgetSnapshotMemo)
+
+	labels := func(labeledBy []accessibility.NodeID) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2, 3}},
+			&accessibility.Node{ID: 2, Role: role.Label, Name: "Name"},
+			&accessibility.Node{ID: 3, Role: role.TextField, LabeledBy: labeledBy},
+		)
+	}
+	named := labels([]accessibility.NodeID{2})
+	lone := labels(nil)
+
+	c.False(UIAIsContentElement(named, named.Node(2)), "a label another node names is not in the content view")
+	c.Equal(named, uiaSnapshotMemo.tree)
+	c.True(uiaSnapshotMemo.namedDone, "and the whole snapshot's answer was worked out at once")
+
+	c.True(UIAIsContentElement(lone, lone.Node(2)), "while the next snapshot names nothing, and is not answered from"+
+		" the last")
+	c.Equal(lone, uiaSnapshotMemo.tree)
+	c.Nil(uiaSnapshotMemo.named, "a snapshot in which nothing names anything allocates no set at all")
+	c.False(UIAIsContentElement(named, named.Node(2)), "and going back answers the first again")
+
+	// A snapshot the memo has already moved past is the one thing that does not take it over. raisePropertyChanged asks
+	// about the previous tree and then about the current one for every property it raises, so an older tree let in here
+	// would throw away what a client's own thread had built for the snapshot it is walking — once per property. Two
+	// snapshots are of the same window when they name the same root, and Generation orders them.
+	previous := labels(nil)
+	previous.Generation = 6
+	current := labels([]accessibility.NodeID{2})
+	current.Generation = 7
+	c.False(UIAIsContentElement(current, current.Node(2)), "the label the current snapshot names is not content")
+	c.Equal(current, uiaSnapshotMemo.tree)
+	c.True(UIAIsContentElement(previous, previous.Node(2)), "the previous snapshot is answered from itself")
+	c.Equal(current, uiaSnapshotMemo.tree, "without evicting the snapshot the memo is serving")
+	c.True(uiaSnapshotMemo.named[2], "or dropping what had already been worked out from it")
+
+	// A snapshot of another window is not compared by generation at all, however few times that window has published:
+	// generations are counted per window, so a newly opened dialog would otherwise be starved of the memo for as long
+	// as a window that has been publishing for hours held it.
+	other := newTestTree(11, 0,
+		&accessibility.Node{ID: 11, Role: role.Window, Children: []accessibility.NodeID{12, 13}},
+		&accessibility.Node{ID: 12, Role: role.Label, Name: "Name"},
+		&accessibility.Node{ID: 13, Role: role.TextField, LabeledBy: []accessibility.NodeID{12}},
+	)
+	other.Generation = 1
+	c.False(UIAIsContentElement(other, other.Node(12)), "another window's label names something of its own")
+	c.Equal(other, uiaSnapshotMemo.tree, "and its snapshot takes the memo over")
+}
+
+// TestUIAPositionInSetMemo verifies that the two halves of one node's position are worked out once and answered twice,
+// which is what a client reading PositionInSet and SizeOfSet of the same element asks for.
+func TestUIAPositionInSetMemo(t *testing.T) {
+	c := check.New(t)
+	uiaForgetSnapshotMemo()
+	t.Cleanup(uiaForgetSnapshotMemo)
+
+	tree := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.List, Children: []accessibility.NodeID{3, 4}},
+		&accessibility.Node{ID: 3, Role: role.ListItem},
+		&accessibility.Node{ID: 4, Role: role.ListItem},
+	)
+	position, size := UIAPositionInSet(tree, tree.Node(4))
+	c.Equal(2, position)
+	c.Equal(2, size)
+	c.Equal(uiaSetPosition{position: 2, size: 2}, uiaSnapshotMemo.positions[4])
+	position, size = UIAPositionInSet(tree, tree.Node(4))
+	c.Equal(2, position, "asking again answers the same")
+	c.Equal(2, size)
+
+	// An ignored node never reaches the memo: it has no provider to answer a property for, and remembering an answer
+	// for it would put an entry in the map for every layout panel a client ever hit tested.
+	ignored := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.ListItem, Ignored: true},
+	)
+	position, size = UIAPositionInSet(ignored, ignored.Node(2))
+	c.Equal(0, position)
+	c.Equal(0, size)
+	c.Equal(tree, uiaSnapshotMemo.tree, "so the snapshot being answered from is the one that was asked about")
+
+	// A different snapshot is never answered from the last, however alike the two are.
+	other := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.List, Children: []accessibility.NodeID{4}},
+		&accessibility.Node{ID: 4, Role: role.ListItem},
+	)
+	position, size = UIAPositionInSet(other, other.Node(4))
+	c.Equal(1, position)
+	c.Equal(1, size)
+
+	// A snapshot the memo has already moved past is answered from itself and remembered nowhere, so that the publish
+	// path — which asks for both halves of this of the previous snapshot as well as of the current one, for every node
+	// whose attributes changed — cannot evict the snapshot a client is walking. See uiaMemoSwitchTo.
+	current := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.List, Children: []accessibility.NodeID{3, 4}},
+		&accessibility.Node{ID: 3, Role: role.ListItem},
+		&accessibility.Node{ID: 4, Role: role.ListItem},
+	)
+	current.Generation = 9
+	previous := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.List, Children: []accessibility.NodeID{4}},
+		&accessibility.Node{ID: 4, Role: role.ListItem},
+	)
+	previous.Generation = 8
+	position, size = UIAPositionInSet(current, current.Node(4))
+	c.Equal(2, position)
+	c.Equal(2, size)
+	c.Equal(current, uiaSnapshotMemo.tree)
+	position, size = UIAPositionInSet(previous, previous.Node(4))
+	c.Equal(1, position, "the previous snapshot is answered from itself")
+	c.Equal(1, size)
+	c.Equal(current, uiaSnapshotMemo.tree, "without evicting the snapshot the memo is serving")
+	c.Equal(uiaSetPosition{position: 2, size: 2}, uiaSnapshotMemo.positions[4], "or what it had remembered")
+	c.Equal(1, len(uiaSnapshotMemo.positions), "and nothing of the older snapshot's is remembered")
 }
 
 // TestUIAColumnHeaderItem verifies which header a cell says describes its column, including the fallback for a snapshot

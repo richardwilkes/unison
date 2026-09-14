@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // selectedIndexes returns the selected row indexes of the list in ascending order.
@@ -331,4 +332,45 @@ func TestListAccessibilityVaryingRowsKeepsTheSelectionInSight(t *testing.T) {
 	c.True(axNodeWithRowIndex(tree, node, rowCount/2) == nil,
 		"a row that is neither visible nor selected is not described at all")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestListAccessibilitySelectionSetsTheAnchor verifies that adding a row to a list's selection, or taking one out of
+// it, through an assistive technology puts the anchor a later shift-click extends from on that row. Both stand for
+// the ctrl-click that does the same thing, and DefaultMouseDown's DiscontiguousSelectionDown branch moves the anchor to
+// the row it touched whichever way the flip went, so a shift-click after an assistive technology acted has to extend
+// from the same place it would have after the click. Adding used to leave the anchor wherever the previous selection
+// had put it, and removing used to clear it away entirely.
+func TestListAccessibilitySelectionSetsTheAnchor(t *testing.T) {
+	c := check.New(t)
+	shiftClick := func(l *unison.List[string], row int) {
+		where := geom.NewPoint(5, l.RowRect(row).CenterY())
+		l.DefaultMouseDown(where, unison.ButtonLeft, 1, mod.Shift)
+		l.DefaultMouseUp(where, unison.ButtonLeft, mod.Shift)
+	}
+
+	// Adding a row to the selection.
+	l := newTestList("a", "b", "c", "d", "e")
+	l.Factory = &unison.DefaultCellFactory{Height: 20}
+	l.SetFrameRect(geom.NewRect(0, 0, 200, 100))
+	l.Select(false, 0)
+	c.Equal(0, l.Anchor())
+	c.True(l.PerformAccessibilityAction(accessibility.ActionRequest{Key: 2, Action: accessibility.AddToSelection}))
+	c.Equal([]int{0, 2}, selectedIndexes(l))
+	c.Equal(2, l.Anchor(), "the row added is the one a shift-click extends from")
+	shiftClick(l, 4)
+	c.Equal([]int{0, 2, 3, 4}, selectedIndexes(l),
+		"the shift-click should have extended from the row the request added")
+
+	// Taking a row out of the selection.
+	l = newTestList("a", "b", "c", "d", "e")
+	l.Factory = &unison.DefaultCellFactory{Height: 20}
+	l.SetFrameRect(geom.NewRect(0, 0, 200, 100))
+	l.Select(false, 0, 2)
+	c.Equal(0, l.Anchor())
+	c.True(l.PerformAccessibilityAction(accessibility.ActionRequest{Key: 2, Action: accessibility.RemoveFromSelection}))
+	c.Equal([]int{0}, selectedIndexes(l))
+	c.Equal(2, l.Anchor(), "the row taken out is still the one a shift-click extends from")
+	shiftClick(l, 4)
+	c.Equal([]int{0, 2, 3, 4}, selectedIndexes(l),
+		"the shift-click should have extended from the row the request removed")
 }

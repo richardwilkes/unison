@@ -154,10 +154,12 @@ func newTestAdapter(t *testing.T) *testAdapter {
 	return ta
 }
 
-// embedCall returns the Embed call the adapter made when it started, checking that it named the application root.
+// embedCall returns the Embed call the adapter made when it started, checking that it named the application root and
+// was addressed to the connection that owns the registry's name rather than to the name itself; see
+// [TestEmbedIsAddressedToTheRegistrysOwner].
 func (ta *testAdapter) embedCall() *dbus.Message {
 	msg := ta.peer.nextCall()
-	ta.c.Equal(RegistryDestination, msg.Destination)
+	ta.c.Equal(testPeerName, msg.Destination)
 	ta.c.Equal(RootPath, msg.Path)
 	ta.c.Equal(InterfaceSocket, msg.Interface)
 	ta.c.Equal("Embed", msg.Member)
@@ -815,6 +817,67 @@ func TestRemovingAWindowANodeHasLeftKeepsTheNode(t *testing.T) {
 	}
 }
 
+// TestEmbedIsAddressedToTheRegistrysOwner covers where the call that joins the accessibility tree is sent. A reply to
+// a call addressed to a well-known name carries the unique name of whichever connection owns it, which the caller
+// cannot know in advance, so such a reply is accepted from any sender: a peer on the accessibility bus that guesses the
+// serial can answer in the registry's place, and what Embed replies with is the object that becomes the parent of the
+// application root. Addressing the call to the unique name the bus resolved instead is what makes the sender check
+// possible, since the bus fills that field in itself and no peer can choose it.
+func TestEmbedIsAddressedToTheRegistrysOwner(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	forged := dbus.ObjectRef{Name: testOtherName, Path: "/org/a11y/atspi/accessible/forged"}
+	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+		if msg.Interface != InterfaceSocket || msg.Member != embedMember {
+			return registryAnswers(peer, msg)
+		}
+		peer.deliver(peer.calls, msg)
+		// Another peer answers first, with a desktop of its own. It has the serial in front of it, which is no more
+		// than one that guesses it has.
+		peer.replyFrom(testOtherName, msg, objectRefSignature, forged)
+		peer.replyFrom(testPeerName, msg, objectRefSignature, desktopRef())
+		return true
+	})
+	a, err := Start(Config{ToolkitVersion: testToolkitVersion, conn: p.client})
+	c.NoError(err)
+	t.Cleanup(a.Stop)
+	c.Equal(testPeerName, p.nextCall().Destination,
+		"the connection that owns the registry's name is what the call is addressed to")
+	c.Equal(desktopRef(), p.getProperty(RootPath, InterfaceAccessible, "Parent"),
+		"a reply from anyone but the registry must be discarded, leaving the registry's own to answer the call")
+	c.NotEqual(forged, p.getProperty(RootPath, InterfaceAccessible, "Parent"))
+}
+
+// TestTheRegistrysOwnerIsLearnedFromItsReply covers the desktop where the registry is not running yet. Nobody owns its
+// name, so there is no unique name to address the call to and the well-known name is used instead, which is what starts
+// a bus-activatable service; that reply can be forged, exactly as every one of them could be before, and refusing to
+// make the call would mean no accessibility there at all. The reply says who answered it, though — the bus fills the
+// sender in, and no peer can choose it — so nothing has to ask the bus who the registry is in order to tell it the
+// application is leaving.
+func TestTheRegistrysOwnerIsLearnedFromItsReply(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+		if msg.Interface != InterfaceSocket || msg.Member != embedMember {
+			return registryAnswers(peer, msg)
+		}
+		peer.deliver(peer.calls, msg)
+		peer.replyFrom(testPeerName, msg, objectRefSignature, desktopRef())
+		return true
+	})
+	p.noOwners.Store(true)
+	a, err := Start(Config{ToolkitVersion: testToolkitVersion, conn: p.client})
+	c.NoError(err)
+	c.Equal(RegistryDestination, p.nextCall().Destination,
+		"a name nobody owns is what a call has to start the registry with")
+
+	a.Stop()
+	leaving := p.nextCall()
+	c.Equal("Unembed", leaving.Member)
+	c.Equal(testPeerName, leaving.Destination,
+		"the reply to Embed said which connection the registry is, so leaving is addressed to it")
+}
+
 // TestTheRegistryComingBackRejoinsTheAccessibilityTree covers at-spi2-registryd being restarted, which happens on any
 // desktop where the session outlives the assistive technology stack. The connection to the accessibility bus survives
 // it, so nothing else reports it: the application is simply no longer among the desktop's children, everything it sends
@@ -843,7 +906,7 @@ func TestTheRegistryComingBackRejoinsTheAccessibilityTree(t *testing.T) {
 	ta.peer.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", RegistryDestination, "",
 		":1.99")
 	msg := ta.peer.nextCall()
-	c.Equal(RegistryDestination, msg.Destination)
+	c.Equal(":1.99", msg.Destination, "the registry that has just taken the name is the one asked to let us back in")
 	c.Equal(InterfaceSocket, msg.Interface)
 	c.Equal("Embed", msg.Member)
 	args, err := msg.Args()

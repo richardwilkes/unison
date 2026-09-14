@@ -229,9 +229,10 @@ func TestPopupMenuAccessibilityItemsAddedArePublished(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestPopupMenuAccessibilityExpandRunsTheWillShowCallback verifies that expanding a popup that is filled in on demand
-// opens it, as a click on it does, and that one that is still empty afterwards reports that nothing came of it. The
-// items are only there once WillShowMenuCallback has run, so nothing can be decided before it.
+// TestPopupMenuAccessibilityExpandRunsTheWillShowCallback verifies that opening a popup that is filled in on demand
+// shows what its callback put there, and that one that is still empty afterwards reports that nothing came of it. The
+// items are only there once WillShowMenuCallback has run, so nothing can be decided before it — which is also why such
+// a popup is opened through the press it advertises rather than through an expansion it does not.
 func TestPopupMenuAccessibilityExpandRunsTheWillShowCallback(t *testing.T) {
 	c := check.New(t)
 	var filled, staysEmpty *unison.PopupMenu[string]
@@ -263,11 +264,19 @@ func TestPopupMenuAccessibilityExpandRunsTheWillShowCallback(t *testing.T) {
 	if emptyNode == nil {
 		return
 	}
-	// The click is queued rather than performed while the answer is awaited, so the request is taken whatever will
-	// come of it; the next description is what says nothing was shown.
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+	// A popup that is filled in on demand holds nothing until its callback has run, so it is described as one that
+	// opens nothing: it does not advertise an expansion, and an assistive technology therefore uses the press that
+	// opens it, which it does advertise. The expansion is refused before it reaches the widget, and is asked of the
+	// widget itself here so that what the widget makes of one is still covered — the click it queues runs the callback,
+	// and a popup that is still empty afterwards opens nothing.
+	c.False(emptyNode.Actions.Has(accessibility.Expand))
+	c.True(emptyNode.Actions.Has(accessibility.Press))
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   emptyNode.ID,
 		Action: accessibility.Expand,
+	}), "an expansion the popup does not advertise is refused before it reaches the widget")
+	c.True(screen.Do(func() {
+		c.True(staysEmpty.PerformAccessibilityAction(accessibility.ActionRequest{Action: accessibility.Expand}))
 	}))
 	c.Equal(0, len(axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)), "nothing should have opened")
 
@@ -278,14 +287,14 @@ func TestPopupMenuAccessibilityExpandRunsTheWillShowCallback(t *testing.T) {
 	}
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   node.ID,
-		Action: accessibility.Expand,
-	}), "the callback fills the popup in, so expanding it shows the choices, exactly as clicking it does")
+		Action: accessibility.Press,
+	}), "the callback fills the popup in, so pressing it shows the choices, exactly as clicking it does")
 	tree := screen.AccessibilityTree(wnd)
 	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "its choices should have been shown")
 	c.True(slices.Contains(axMenuItemNames(tree), "Slow"), "the choices the callback added are what is in it")
 	var count int
 	screen.Do(func() { count = fills })
-	c.Equal(2, count, "each expansion runs the callback once, as a click would")
+	c.Equal(2, count, "each request runs the callback once, as a click would")
 
 	// Now that the popup holds what its callback put there, it says so.
 	node = screen.AccessibilityNodeFor(filled)

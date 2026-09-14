@@ -114,8 +114,7 @@ func TestNumericFieldAccessibilityObscuredWithholdsTheNumber(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(plain)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(plain))
 	c.Equal(role.SpinButton, node.Role, "a field holding a number is a spin button")
 	c.True(node.HasNumber)
 	c.Equal(float64(5), node.Number)
@@ -124,8 +123,7 @@ func TestNumericFieldAccessibilityObscuredWithholdsTheNumber(t *testing.T) {
 	c.True(node.Actions.Has(accessibility.Increment))
 	c.True(node.Actions.Has(accessibility.Decrement))
 
-	secretNode := screen.AccessibilityNodeFor(secret)
-	c.True(secretNode != nil)
+	secretNode := axMustNode(c, screen.AccessibilityNodeFor(secret))
 	c.True(secretNode.Protected)
 	c.Equal("", secretNode.Value, "an obscured field's text is never handed out")
 	c.False(secretNode.HasNumber, "nor is the number that text was parsed from")

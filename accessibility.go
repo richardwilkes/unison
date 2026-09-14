@@ -388,7 +388,16 @@ func AnnounceForAccessibility(text string) {
 		apiAccessibilityAnnounce(text)
 		return
 	}
-	InvokeTask(func() { apiAccessibilityAnnounce(text) })
+	// The task tests the flag again because it runs later: an announcement made from another goroutine just as the
+	// assistive technology goes away, or just as SetAccessibilityEnabled(false) tears everything down, would otherwise
+	// be spoken after there was anything left to speak it. apiAccessibilityAnnounce tests it as well, since it is the
+	// entry every path arrives through, but saying so here keeps what the deferral costs visible where the deferral is
+	// made.
+	InvokeTask(func() {
+		if accessibilityActive.Load() {
+			apiAccessibilityAnnounce(text)
+		}
+	})
 }
 
 // applyAccessibilityEnvRequest records what AccessibilityEnvKey asks for. This runs during startup, before any window

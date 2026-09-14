@@ -37,6 +37,12 @@ import (
 // about to assert on.
 const headlessMaxAXEvents = 4096
 
+// headlessMaxAXAnnouncements bounds how many announcements the session holds for a test that has not read them, for the
+// same reason headlessMaxAXEvents bounds the events: a real adapter hands each one to the platform and keeps nothing,
+// so a session that announces in a loop and never calls Announcements() must not be able to grow this for the life of
+// the session. The newest are the ones kept.
+const headlessMaxAXAnnouncements = 4096
+
 // accessibilityPublish adopts the tree as what this window currently looks like to an assistive technology and records
 // the events describing how it got there.
 func (hw *headlessWindow) accessibilityPublish(tree *accessibility.Tree, events []accessibility.Event) {
@@ -63,6 +69,9 @@ func (hw *headlessWindow) accessibilityShutdown() {
 // accessibilityAnnounce records text as something that would have been spoken.
 func (s *headlessState) accessibilityAnnounce(text string) {
 	s.announcements = append(s.announcements, text)
+	if extra := len(s.announcements) - headlessMaxAXAnnouncements; extra > 0 {
+		s.announcements = append(s.announcements[:0], s.announcements[extra:]...)
+	}
 }
 
 // EnableAccessibility turns on accessibility support for the session, as the arrival of a screen reader would, and
@@ -80,12 +89,23 @@ func (s *HeadlessScreen) EnableAccessibility() {
 // back reflects the window as it is now. Returns nil if the session has ended, the window is not one of this session's,
 // or accessibility support has been refused.
 func (s *HeadlessScreen) AccessibilityTree(w *Window) *accessibility.Tree {
-	var tree *accessibility.Tree
-	s.Do(func() {
+	described := false
+	if !s.Do(func() {
 		if !activateAccessibility() || !w.IsValid() {
 			return
 		}
 		w.publishAccessibility()
+		described = true
+	}) || !described {
+		return nil
+	}
+	// Read in a second visit to the UI thread rather than alongside the publish above, because Do waits for everything
+	// that publish set in motion only after the closure has returned: turning accessibility support on marks every
+	// window for redraw, and each of those redraws describes its window again, so a tree taken inside the closure would
+	// already have been superseded by the time this returned — and would disagree with what AccessibilityNodeFor,
+	// which reads the window's own record of the last publish, answered for the very same node.
+	var tree *accessibility.Tree
+	s.run(func() {
 		if hw := headlessWindowFor(w); hw != nil {
 			tree = hw.axTree
 		}
@@ -124,6 +144,13 @@ func (s *HeadlessScreen) Announcements() []string {
 // PerformAccessibilityAction asks a node to do something, exactly as an assistive technology would. The window holding
 // the node is found from what was most recently published, so the request must name a node from a tree this session has
 // handed out. Returns true if the request was carried out.
+//
+// An action the node does not advertise in the tree it was last published in is refused without being asked of the
+// window at all, which is what every platform adapter does: each of them reads the action set of the node it is
+// answering for and passes the request on only if what is being asked for is in it — see internal/atspi.Component,
+// w32AccessibilityProvider and the Cocoa element's setAccessibilityFocused:. A test that could reach past that would be
+// exercising a path no assistive technology can take, and would go on passing after the widget stopped offering the
+// action at all.
 func (s *HeadlessScreen) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	handled := false
 	s.Do(func() {
@@ -132,6 +159,11 @@ func (s *HeadlessScreen) PerformAccessibilityAction(req accessibility.ActionRequ
 				continue
 			}
 			if _, ok := w.ax.targets[req.Node]; !ok {
+				continue
+			}
+			if node := w.ax.last.Node(req.Node); node == nil || !node.Actions.Has(req.Action) {
+				// The node has left the published tree, or does not offer this. The search goes on for the same reason
+				// it does below: another window may describe the node and offer it.
 				continue
 			}
 			if handled = w.performAccessibilityAction(req); handled {

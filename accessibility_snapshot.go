@@ -210,24 +210,77 @@ func (s *axSnapshot) buildRoot() {
 	}
 	s.visit(root.tooltipPanel, node.ID, clip)
 	s.visit(root.contentPanel, node.ID, clip)
+	s.markOpenMenuItems()
 	s.resolveFocus()
 }
 
+// markOpenMenuItems publishes every item of every open menu as something the focus can be moved onto, which for a menu
+// item means being what the menu is pointing at.
+//
+// It is not enough to say so of the item that is already highlighted. All three adapters refuse to pass a focus request
+// on to a node that does not offer the focus action — see internal/atspi.Component, w32AccessibilityProvider and the
+// Cocoa element's setAccessibilityFocused: — so marking only the highlighted item would advertise the action in the one
+// place carrying it out changes nothing and withhold it everywhere it would do something: an assistive technology could
+// re-focus the item the person is already on and never move the highlight, which is what moving through a menu with
+// anything other than the arrow keys amounts to. See menuItem.performAccessibilityAction, which does the moving.
+//
+// Nothing is claimed while no menu is open. An item of a closed menu has no panel on the screen at all, and a title on
+// the menu bar with nothing open below it is not something a person is choosing from — the pointer merely passing over
+// one highlights it — so the bar is included only once something has been opened from it, which is exactly when
+// axSnapshot.openMenuFocus will report the focus there. A disabled item is left alone for the reason
+// axSnapshot.highlightedMenuItem refuses to report the focus on one: every request that would act on it is refused, and
+// the narrowing in axSnapshot.visit has already stripped it back to axDisabledActions.
+func (s *axSnapshot) markOpenMenuItems() {
+	root := s.window.root
+	if len(root.openMenuPanels) == 0 {
+		return
+	}
+	for _, p := range root.openMenuPanels {
+		s.markMenuItemsFocusable(p)
+	}
+	s.markMenuItemsFocusable(root.menuBarPanel)
+}
+
+// markMenuItemsFocusable marks each item of one menu panel as something the focus can be moved onto. See
+// markOpenMenuItems.
+func (s *axSnapshot) markMenuItemsFocusable(panel *menuPanel) {
+	if panel == nil || panel.menu == nil {
+		return
+	}
+	for _, item := range panel.menu.items {
+		if node := s.menuItemNode(item); node != nil {
+			node.Focusable = true
+			node.Actions = node.Actions.With(accessibility.Focus)
+		}
+	}
+}
+
 // resolveFocus decides which node, if any, the window reports the keyboard focus on. A node the focus panel was
-// described as has already claimed it during the walk; what is left to decide is the two cases where it did not — an
-// open menu, which takes the focus away from wherever it actually is, and a focus panel that is not in the tree or is
-// in it disabled, which has to fall back to something that is.
+// described as has already claimed it during the walk; what is left to decide is the three cases where it did not — an
+// open menu with something highlighted and an open menu with nothing highlighted, both of which take the focus away
+// from wherever it actually is, and a focus panel that is not in the tree or is in it disabled, which has to fall back
+// to something that is.
 func (s *axSnapshot) resolveFocus() {
 	if id := s.openMenuFocus(); id != 0 {
 		s.focus = id
 		if item := s.tree.Nodes[id]; item != nil {
-			// Said here rather than by the item itself, so that exactly one node in the window reports being focused,
-			// and said along with being focusable: a client that checks whether a node can take the focus before
-			// trusting that it has it — AT-SPI's STATE_FOCUSABLE, UI Automation's IsKeyboardFocusable — would otherwise
-			// be handed a pair it cannot make sense of. The item is known not to be disabled, since one that is cannot
-			// be what openMenuFocus answered with; see axSnapshot.highlightedMenuItem.
+			// Said here rather than by the item itself, so that exactly one node in the window reports being focused.
+			// Being focusable, and offering the action that moves the focus, is said of every item of every open menu
+			// rather than only of this one; see axSnapshot.markOpenMenuItems, which has already run and which cannot
+			// have passed this item over, since an item it refuses is one openMenuFocus refuses too.
 			item.Focused = true
-			item.Focusable = true
+		}
+		s.clearDisplacedFocus(id)
+		return
+	}
+	if id := s.openMenuNode(); id != 0 {
+		s.focus = id
+		if m := s.tree.Nodes[id]; m != nil {
+			m.Focused = true
+			// Scaffolding is what a tree says about a node nothing needs to reach, and the node the focus is reported
+			// on is by definition one an assistive technology must be able to reach. See axSnapshot.fallbackFocus,
+			// which clears it for the same reason.
+			m.Ignored = false
 		}
 		s.clearDisplacedFocus(id)
 		return
@@ -235,6 +288,40 @@ func (s *axSnapshot) resolveFocus() {
 	if s.focus == 0 {
 		s.fallbackFocus()
 	}
+}
+
+// openMenuNode returns the node id of the newest in-window menu that is open, or zero if none is open or none of them
+// is in the tree. It is what the focus is reported on while a menu is open with nothing in it highlighted.
+//
+// That state is ordinary and is reached with the mouse alone: an item is highlighted by the pointer passing over it and
+// menuItem.mouseExit clears the highlight when the pointer leaves, with nothing restoring a last-highlighted item, so
+// moving the pointer off an open menu without closing it leaves every open menu and the bar with nothing highlighted.
+// The keys still go to the newest open menu — rootPanel.preKeyDown, preRuneTyped and preKeyUp all hand them there ahead
+// of the panel that holds the keyboard focus — so the menu is where the person is. Leaving the focus on the control
+// underneath instead would have a screen reader announce, say, the text field the person was in before the menu opened,
+// and offer the arrow and Return keys there while those keys actually drove the menu; every pass of the pointer across
+// the menu would flip the reported focus between the item and that control.
+//
+// Focusable is not invented for the menu, and it is not given the focus action: a menu panel cannot take the keyboard
+// focus — Window.SetFocus would not leave it there and Panel.axDispatchAction refuses a focus request on a panel that
+// is not focusable — so advertising either would offer an assistive technology something it would then be refused. That
+// is the answer axSnapshot.fallbackFocus gives for the same reason, and the arrow keys are how a person moves from here
+// onto an item in any case: the first of them highlights one, and the highlighted item is what the focus is reported on
+// from then on.
+func (s *axSnapshot) openMenuNode() accessibility.NodeID {
+	root := s.window.root
+	for i := len(root.openMenuPanels) - 1; i >= 0; i-- {
+		p := root.openMenuPanels[i].AsPanel()
+		// A menu that hid itself with role.None, or that was hidden while open, was never described, so there is no
+		// node to report the focus on and the menu below it in the stack is the newest one there is.
+		if p.Accessibility.id == 0 || p.Accessibility.owner != p {
+			continue
+		}
+		if node := s.tree.Nodes[p.Accessibility.id]; node != nil && !node.Disabled {
+			return node.ID
+		}
+	}
+	return 0
 }
 
 // fallbackFocus reports the focus on the nearest ancestor of the focus panel that an assistive technology can be shown,
@@ -332,16 +419,31 @@ func (s *axSnapshot) highlightedMenuItem(panel *menuPanel) accessibility.NodeID 
 		return 0
 	}
 	for _, item := range panel.menu.items {
-		if !item.over || item.isSeparator || item.panel == nil {
+		if !item.over {
 			continue
 		}
-		if id := item.panel.Accessibility.id; id != 0 {
-			if node := s.tree.Nodes[id]; node != nil && !node.Disabled {
-				return id
-			}
+		if node := s.menuItemNode(item); node != nil {
+			return node.ID
 		}
 	}
 	return 0
+}
+
+// menuItemNode returns the node describing a menu item, or nil when the item is not one the focus may be reported on or
+// moved to: a separator, one that was never described — it holds no panel yet, or the panel it holds hides itself — or
+// one that was published as disabled. See highlightedMenuItem and markOpenMenuItems, which both ask.
+func (s *axSnapshot) menuItemNode(item *menuItem) *accessibility.Node {
+	if item.isSeparator || item.panel == nil {
+		return nil
+	}
+	id := item.panel.Accessibility.id
+	if id == 0 {
+		return nil
+	}
+	if node := s.tree.Nodes[id]; node != nil && !node.Disabled {
+		return node
+	}
+	return nil
 }
 
 // visit describes p and everything beneath it, adding the result as a child of parent. clip is the region, in
@@ -453,7 +555,8 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		// anyway. The focus falls back to the nearest ancestor that can be used; see axSnapshot.fallbackFocus.
 		node.Focused = false
 	}
-	// Decided after the two above, so that what the node is judged on is what it finally offers and says rather than
+	s.narrowMenuActions(p, node)
+	// Decided after the three above, so that what the node is judged on is what it finally offers and says rather than
 	// what it offered before being disabled stripped it back.
 	if node.Ignored == widgetIgnored {
 		node.Ignored = widgetIgnored || axIsScaffolding(node)
@@ -470,6 +573,28 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		return
 	}
 	s.visitChildren(p, node.ID, visible)
+}
+
+// narrowMenuActions takes away the actions a widget advertises that would open a menu, for a widget whose window is not
+// the one a menu would open in.
+//
+// A menu does not open where the widget that opened it is: menu.createPopup inserts the popup into ActiveWindow()'s
+// root, so every request that would open one from a background window is refused — see axMayPopupMenu, which
+// PopupMenu.PerformAccessibilityAction, Field.PerformAccessibilityAction, the action callback NewComboField installs
+// and Panel.axSynthesizeClick all ask. A node that went on advertising them would offer a screen-reader user an expand
+// or a contextual menu that silently does nothing, which is the same drift the narrowing of a disabled node's actions
+// exists to prevent.
+//
+// It is done here rather than in each of those widgets so that the rule is stated once, and after the widget and the
+// Accessibility.Callback have had their say, since a combo box is a Field that is given its Expand by the callback
+// NewComboField installs. Nothing has to invalidate anything when a window's activation changes: Window.gainedFocus and
+// Window.lostFocus both mark their window for publishing, so the actions go and come back with the focus.
+func (s *axSnapshot) narrowMenuActions(p *Panel, node *accessibility.Node) {
+	opener, ok := p.Self.(axMenuActions)
+	if !ok || axMayPopupMenu(p) {
+		return
+	}
+	node.Actions &^= opener.axMenuOpeningActions(node)
 }
 
 // markChildrenDescribed records that the children of a node have been described by the widget itself rather than being

@@ -87,6 +87,7 @@ const (
 	stateNameInvalidEntry       = "invalid-entry"
 	stateNameManagesDescendants = "manages-descendants"
 	stateNameModal              = "modal"
+	stateNameMultiLine          = "multi-line"
 	stateNameMultiselectable    = "multiselectable"
 	stateNamePressed            = "pressed"
 	stateNameReadOnly           = "read-only"
@@ -94,6 +95,7 @@ const (
 	stateNameSelected           = "selected"
 	stateNameSensitive          = "sensitive"
 	stateNameShowing            = "showing"
+	stateNameSingleLine         = "single-line"
 	stateNameVertical           = "vertical"
 )
 
@@ -147,6 +149,9 @@ type publication struct {
 	roleAnnounced map[accessibility.NodeID]bool
 	// attributesAnnounced holds the nodes whose attributes have already been announced.
 	attributesAnnounced map[accessibility.NodeID]bool
+	// childrenAnnounced holds the parents whose child list has already been worked out, so that two events that both
+	// describe the same list — one per ignored container under a reported ancestor — walk it once.
+	childrenAnnounced map[accessibility.NodeID]bool
 	// held holds the signals about a node's own change that could not be sent when they arrived, because the client
 	// had not been told that the object exists yet. See [Adapter.emitHeld].
 	held []heldSignal
@@ -414,13 +419,16 @@ func (a *Adapter) emitAttributesChanged(pub *publication, id accessibility.NodeI
 	}
 }
 
-// attributeStateChanges returns the AT-SPI states that a change to a node's attributes really is. Two of the things
+// attributeStateChanges returns the AT-SPI states that a change to a node's attributes really is. Three of the things
 // [accessibility.AttributesChanged] covers are not attributes to AT-SPI at all: the orientation is the HORIZONTAL and
-// VERTICAL states that [roleStates] puts in every state set, and the number of rows is what [ManagesDescendants]
-// derives MANAGES_DESCENDANTS from. A client caches a state set until something retracts it, so leaving them out leaves
-// a scroll bar that has been turned on its side reported the old way for the life of the window, and a table filtered
-// down to a handful of rows still claiming to manage descendants — while [Adapter.emitActiveDescendants], which reads
-// the new snapshot, stops sending anything about it, leaving the client with neither route to the current row.
+// VERTICAL states that [roleStates] puts in every state set, the number of rows is what [ManagesDescendants] derives
+// MANAGES_DESCENDANTS from, and how many lines a control lays its text out over is the SINGLE_LINE and MULTI_LINE pair
+// that [lineState] decides. A client caches a state set until something retracts it, so leaving them out leaves a
+// scroll bar that has been turned on its side reported the old way for the life of the window, a table filtered down to
+// a handful of rows still claiming to manage descendants — while [Adapter.emitActiveDescendants], which reads the new
+// snapshot, stops sending anything about it, leaving the client with neither route to the current row — and a
+// single-line field that has wrapped onto a second line still read out as one run, with no line-by-line navigation
+// through it.
 func attributeStateChanges(prior, n *accessibility.Node) []stateChange {
 	var changes []stateChange
 	if prior.Orientation != n.Orientation {
@@ -432,7 +440,32 @@ func attributeStateChanges(prior, n *accessibility.Node) []stateChange {
 	if was, now := ManagesDescendants(prior), ManagesDescendants(n); was != now {
 		changes = append(changes, stateChange{name: stateNameManagesDescendants, on: now})
 	}
+	// As with the orientation, a node whose text has no line count at all — one carrying no text, or a role that never
+	// has either state — has nothing to retract and nothing to gain, so only the side a snapshot actually reported is
+	// moved.
+	if was, now := lineStateName(prior), lineStateName(n); was != now {
+		if was != "" {
+			changes = append(changes, stateChange{name: was, on: false})
+		}
+		if now != "" {
+			changes = append(changes, stateChange{name: now, on: true})
+		}
+	}
 	return changes
+}
+
+// lineStateName returns the detail string of the state that says how many lines a node lays its text out over, or an
+// empty string when the node's state set holds neither of them.
+func lineStateName(n *accessibility.Node) string {
+	state, ok := lineState(n)
+	switch {
+	case !ok:
+		return ""
+	case state == StateMultiLine:
+		return stateNameMultiLine
+	default:
+		return stateNameSingleLine
+	}
 }
 
 // appendOrientationChange appends the state change for one side of the orientation pair, if there is one to append: a
@@ -458,14 +491,49 @@ func appendOrientationChange(changes []stateChange, orientation accessibility.Or
 // lives. Both ends of the move are therefore announced, along with the node's new parent.
 //
 // A list whose membership is the same but whose order is not is reported as well; see [Adapter.emitChildrenReordered].
+//
+// The event often names a node that has no object at all. The root package marks every plain unnamed layout Group
+// ignored, so an ordinary panel whose children are rearranged produces one of these for a node an assistive technology
+// has never heard of — while the child list that really changed is the one of the nearest reported ancestor, which the
+// ignored container's children are spliced into and which [accessibility.Diff] has nothing to say about because its own
+// Children field never moved. Saying nothing there would leave libatspi, which keeps a child array per object, reading
+// those children in the order they had before for the life of the window, which is exactly what
+// [Adapter.emitChildrenReordered] exists to prevent. So the change is worked out against the reported ancestor instead,
+// on both sides, since an ignored container that has itself moved has a different one in each snapshot.
 func (a *Adapter) emitChildrenChanged(pub *publication, id accessibility.NodeID) {
+	switch {
+	case reportedNode(pub.prior, id) != nil && reportedNode(pub.data, id) != nil:
+		a.emitChildListChanges(pub, id)
+	case reportedNode(pub.prior, id) == nil && reportedNode(pub.data, id) == nil:
+		// A container with no object in either snapshot has no child list of its own for anything to have moved within.
+		// What moved within it moved within the list of the ancestor that stands in for it.
+		a.emitChildListChanges(pub, pub.prior.parent(id))
+		a.emitChildListChanges(pub, pub.data.parent(id))
+	default:
+		// A node that has just gained or lost an object is a whole subtree arriving or leaving rather than a move, and
+		// its children change parents with it, which [Adapter.emitIgnoredChanged] deals with.
+	}
+}
+
+// emitChildListChanges announces what has happened to one reported node's list of children: the children it has gained
+// from, or lost to, another parent of the same window, and then the ones that are where they were but no longer in the
+// order they were in. See [Adapter.emitChildrenChanged], which decides whose list an event is really about.
+//
+// It is worked out once per parent however many events lead to it. Two ignored containers under one reported ancestor
+// produce an event each, and both describe the same list; the second pass would find nothing left to say, since every
+// signal it sends is worked out from the list the client is holding by then, but it would walk the whole list again to
+// discover that.
+func (a *Adapter) emitChildListChanges(pub *publication, id accessibility.NodeID) {
 	if reportedNode(pub.prior, id) == nil || reportedNode(pub.data, id) == nil {
-		// A node without an object in both snapshots has no child list of its own for anything to have moved within,
-		// and one that has just gained or lost an object is a whole subtree arriving or leaving rather than a move;
-		// either way its children belong to the nearest reported ancestor, which [Adapter.emitIgnoredChanged] deals
-		// with.
 		return
 	}
+	if pub.childrenAnnounced[id] {
+		return
+	}
+	if pub.childrenAnnounced == nil {
+		pub.childrenAnnounced = make(map[accessibility.NodeID]bool)
+	}
+	pub.childrenAnnounced[id] = true
 	for _, child := range pub.prior.unignoredChildren(id) {
 		if reportedNode(pub.data, child) != nil && pub.data.parent(child) != id {
 			// The child is still in the window, under something else, so this parent has lost it rather than the

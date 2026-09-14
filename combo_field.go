@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
 )
@@ -136,11 +137,12 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 		openMenu = m
 		for i, c := range options {
 			display := displayFor(c)
-			if displayFor(currentValue) == display {
+			isCurrent := displayFor(currentValue) == display
+			if isCurrent {
 				initialIndex = i
 			}
 			value := c
-			m.InsertItem(-1, fac.NewItem(PopupMenuTemporaryBaseID+i+1, display, KeyBinding{}, nil,
+			item := fac.NewItem(PopupMenuTemporaryBaseID+i+1, display, KeyBinding{}, nil,
 				func(_ MenuItem) {
 					// Menu handlers already run from the event loop, after the menu has closed, so the focus request
 					// here is not undone by the menu's own teardown.
@@ -150,7 +152,19 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 					if changedCallback != nil && !matchesCurrent(before) {
 						changedCallback(value)
 					}
-				}))
+				})
+			// Every option is given a check state, the field's current value checked and the rest explicitly not, so
+			// that all of them are described as the one set of exclusive choices they are. An item that has never been
+			// given a state at all is described as a plain command, so marking only the current one would have a person
+			// hear "checked" for it and nothing whatsoever for its alternatives — no "not checked", and nothing saying
+			// the items belong together. PopupMenu marks the items of its own dropdown the same way, for the same
+			// reason.
+			state := check.Off
+			if isCurrent {
+				state = check.On
+			}
+			item.SetCheckState(state)
+			m.InsertItem(-1, item)
 		}
 		m.Popup(field.RectToRoot(field.ContentRect(true)), initialIndex)
 	}
@@ -207,6 +221,7 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 		if hasOptions {
 			node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse)
 		}
+		axNoteOpenMenu(node, openMenu)
 	}
 	field.Accessibility.ActionCallback = func(req accessibility.ActionRequest) bool {
 		if !hasOptions {
@@ -224,15 +239,24 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 			// Asking for what is already there changes nothing, both now and when the queued click comes to run:
 			// clicking again would tear the open menu down and build it back up, which an assistive technology that
 			// was told the field is expanded would not expect. A field that has been taken out of its window in the
-			// meantime has nowhere to show a menu, so nothing is done for it either.
-			if !axMenuIsOpen(openMenu) {
-				InvokeTask(func() {
-					if field.Window() == nil || axMenuIsOpen(openMenu) {
-						return
-					}
-					b.ClickCallback()
-				})
+			// meantime has nowhere to show a menu, so nothing is done for it either, and neither is anything done for
+			// one that has been disabled since: the dispatcher checked that at the moment the request arrived, but the
+			// work happens a task later, and a click could not open the menu of a disabled field. The menu is built in
+			// the active window rather than in this field's, so a request aimed at a field in a background window is
+			// refused outright — see axMayPopupMenu — and refused again when the task runs, since the window may have
+			// lost the focus in between.
+			if axMenuIsOpen(openMenu) {
+				return true
 			}
+			if !axMayPopupMenu(field.AsPanel()) {
+				return false
+			}
+			InvokeTask(func() {
+				if !field.Enabled() || !axMayPopupMenu(field.AsPanel()) || axMenuIsOpen(openMenu) {
+					return
+				}
+				b.ClickCallback()
+			})
 			return true
 		case accessibility.Collapse:
 			axCollapseMenu(field.AsPanel(), openMenu)

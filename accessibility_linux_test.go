@@ -47,6 +47,17 @@ const a11yTestSettle = 250 * time.Millisecond
 // a11yTestBusName is the unique name the fake buses hand out in reply to Hello.
 const a11yTestBusName = ":1.99"
 
+// a11yTestLauncherName is the unique name the fake session bus reports as the owner of the accessibility bus
+// launcher's well-known name, and the sender it puts on the launcher's own signals. It is a connection of its own, as
+// the real launcher is: the status watch believes what this name says about IsEnabled and nothing any other peer says,
+// so the two could not be told apart if the launcher answered to the name of the connection under test.
+const a11yTestLauncherName = ":1.42"
+
+// a11yTestForgedName is the unique name a peer that is not the launcher sends from. Anyone on the session bus may
+// address a signal straight to this connection, so a well-formed PropertiesChanged from one of them is exactly what
+// the watch's sender check is there to refuse.
+const a11yTestForgedName = ":1.66"
+
 // a11yTestBusGUID is the server identifier the fake accessibility bus reports when it accepts the authentication
 // handshake. A client has no use for it beyond its being there.
 const a11yTestBusGUID = "0123456789abcdef0123456789abcdef"
@@ -71,6 +82,15 @@ const dbusPath dbus.ObjectPath = "/org/freedesktop/DBus"
 
 // dbusPropertiesInterface is the interface every object's properties are read through.
 const dbusPropertiesInterface = "org.freedesktop.DBus.Properties"
+
+// The parts of the launcher's status that the fake session bus has to name: the signal that reports a property moving,
+// the property itself, and the body of that signal, which is the interface the property belongs to, the properties
+// that changed with their new values, and the names of the ones that changed without one being sent.
+const (
+	dbusPropertiesChanged          = "PropertiesChanged"
+	a11yIsEnabledProperty          = "IsEnabled"
+	dbusPropertiesChangedSignature = dbus.Signature("sa{sv}as")
+)
 
 // saveA11yState records the process-wide accessibility state these tests change and puts it back afterwards. None of
 // them may call t.Parallel, since all of that state is shared.
@@ -124,6 +144,26 @@ func runQueuedA11yTasks(t *testing.T, expected int) int {
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// settledA11yTasks gives a task the user interface thread may yet be handed time to arrive, runs whatever does, and
+// returns how many it ran. Waiting is the only way to test "nothing else was queued": a signal the watch refuses
+// produces nothing to wait for, and whether it produces anything at all is decided on a goroutine of the watch's own.
+// Nothing is being waited for here, so a slow machine only makes the wait more generous rather than making the test
+// fail.
+func settledA11yTasks(t *testing.T) int {
+	t.Helper()
+	deadline := time.Now().Add(a11yTestSettle)
+	ran := 0
+	for time.Now().Before(deadline) {
+		if length, head := taskQueueState(); length > head {
+			processNextTask()
+			ran++
+			continue
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return ran
 }
 
 // TestLinuxA11yMode covers the decision that is made before the session bus is consulted at all. Only the ordinary
@@ -205,12 +245,18 @@ func TestLinuxA11yStatusInitIsRefusedByEnvironment(t *testing.T) {
 }
 
 // TestLinuxA11yStatusInitAsksOnceAndWatches is the rest of the zero-cost-when-inactive test: on a desktop where nothing
-// is listening, the whole cost of accessibility support is one property read and two match rules on the session
-// connection the color-scheme watcher already holds. Nothing is dialed, nothing is exported and no snapshot is built.
+// is listening, the whole cost of accessibility support is one property read, one name-owner lookup and two match rules
+// on the session connection the color-scheme watcher already holds. Nothing is dialed, nothing is exported and no
+// snapshot is built.
+//
+// The name-owner lookup is what makes the rest of the watch work rather than merely cost something: the launcher's
+// signals carry its unique name, so nothing it says about IsEnabled is believed until the bus has said which
+// connection owns its well-known name. A fake bus that refused that call would leave the watch running with no owner
+// to compare a sender against, which refuses every signal, so both kinds of signal are exercised here as well.
 func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 	c := check.New(t)
 	saveA11yState(t)
-	// So that the one task the watch queues below is the only one there is to run, whatever earlier work in this
+	// So that the tasks the watch queues below are the only ones there are to run, whatever earlier work in this
 	// process left behind. Those closures belong to tests that are over, as the ones a headless session drops on its
 	// way up do.
 	resetTaskQueue()
@@ -233,7 +279,11 @@ func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 	// The property is read by the watch, once those rules are in place, so that a screen reader starting up in between
 	// cannot be missed; it is still read only the once, and the answer — nothing is listening — starts nothing.
 	c.Equal(1, bus.waitForReads(1), "the launcher's IsEnabled property should have been read")
+	// Who owns the launcher's name is asked for before that read, on the same goroutine, so it has certainly been
+	// answered by now.
+	c.Equal(1, bus.ownerLookups(), "and the owner of the launcher's name looked up")
 	c.Equal(1, bus.settledReads(1), "and should have been read exactly once")
+	c.Equal(1, bus.ownerLookups(), "as should the owner have been looked up exactly once")
 
 	// The watch hands the answer to the user interface thread, so it is run here rather than being left in the queue
 	// for whatever runs next, which would write this test's state back after its cleanup had restored it.
@@ -242,6 +292,15 @@ func TestLinuxA11yStatusInitAsksOnceAndWatches(t *testing.T) {
 	c.Nil(linuxA11y, "nothing is listening, so no adapter should have been created")
 	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
 	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
+
+	// What the launcher says from here on is acted on, and what anyone else says is not. The two signals are sent in
+	// this order over the one connection, so they are dispatched in it: a forged one that was acted on would have
+	// queued its task before the launcher's, and both would be waiting here.
+	bus.launcherStatusChanged(a11yTestForgedName, false)
+	bus.launcherStatusChanged(a11yTestLauncherName, false)
+	c.Equal(1, runQueuedA11yTasks(t, 1), "only the launcher's own signal should reach the user interface thread")
+	c.Equal(0, settledA11yTasks(t), "and the forged one must never follow it")
+	c.Nil(linuxA11y, "the launcher said nothing is listening, so no adapter should have been created")
 
 	// Nothing is left on the bus once the watch is dropped.
 	linuxA11yCancelWatch()
@@ -624,6 +683,7 @@ type fakeSessionBus struct {
 	rules  []string
 	lock   sync.Mutex
 	reads  int
+	owners int
 	serial uint32
 }
 
@@ -660,6 +720,8 @@ func (b *fakeSessionBus) run() {
 			b.reply(msg, "s", a11yTestBusName)
 		case msg.Path == dbusPath && (msg.Member == "AddMatch" || msg.Member == "RemoveMatch"):
 			b.match(msg)
+		case msg.Path == dbusPath && msg.Member == "GetNameOwner":
+			b.nameOwner(msg)
 		case msg.Path == atspi.BusPath && msg.Interface == dbusPropertiesInterface && msg.Member == "Get":
 			b.isEnabled(msg)
 		default:
@@ -704,11 +766,49 @@ func (b *fakeSessionBus) isEnabled(msg *dbus.Message) {
 	b.reply(msg, "v", dbus.Variant{Sig: "b", Value: false})
 }
 
+// nameOwner answers which connection owns a well-known name. The status watch asks for the launcher's before it reads
+// anything, since the launcher's signals carry its unique name and that is the only thing that says a PropertiesChanged
+// really came from it. Only the launcher's name is known here, and the lookups are counted so that a test can insist
+// there was only one: a watch that asked again would be a cost an application nothing is listening to pays for nothing.
+func (b *fakeSessionBus) nameOwner(msg *dbus.Message) {
+	args, err := msg.Args()
+	if err != nil || len(args) != 1 || args[0] != atspi.BusDestination {
+		b.write(dbus.NewError(msg, dbus.InvalidArgs, "only the accessibility bus launcher's name has an owner here"))
+		return
+	}
+	b.lock.Lock()
+	b.owners++
+	b.lock.Unlock()
+	b.reply(msg, "s", a11yTestLauncherName)
+}
+
+// launcherStatusChanged emits the signal the launcher sends when its IsEnabled property moves, as the given sender.
+// The watch takes only the connection that owns the launcher's name at its word, so a sender that is not
+// [a11yTestLauncherName] is what a forged signal from another peer on the session bus looks like.
+func (b *fakeSessionBus) launcherStatusChanged(sender string, enabled bool) {
+	msg := dbus.NewSignal(atspi.BusPath, dbusPropertiesInterface, dbusPropertiesChanged)
+	msg.Sender = sender
+	if err := msg.SetBodyWithSignature(dbusPropertiesChangedSignature, atspi.StatusInterface,
+		dbus.Dict{{Key: a11yIsEnabledProperty, Value: dbus.Variant{Sig: "b", Value: enabled}}},
+		[]string{}); err != nil {
+		b.t.Errorf("the fake session bus could not build the launcher's status signal: %v", err)
+		return
+	}
+	b.write(msg)
+}
+
 // isEnabledReads returns how many times the launcher's IsEnabled property has been read.
 func (b *fakeSessionBus) isEnabledReads() int {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 	return b.reads
+}
+
+// ownerLookups returns how many times the owner of the launcher's name has been asked for.
+func (b *fakeSessionBus) ownerLookups() int {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	return b.owners
 }
 
 // waitForReads returns the number of times the launcher's IsEnabled property has been read once it has been read the
@@ -798,9 +898,12 @@ type fakeA11yBus struct {
 	t        *testing.T
 	listener net.Listener
 	conn     net.Conn
-	address  string
-	lock     sync.Mutex
-	serial   uint32
+	// signals holds the signals the adapter has emitted, for the tests that have to see one. It is deep enough that
+	// nothing the tests here produce ever fills it, and the bus's own goroutine never waits on it.
+	signals chan *dbus.Message
+	address string
+	lock    sync.Mutex
+	serial  uint32
 }
 
 // newFakeA11yBus starts a fake accessibility bus on a Unix socket in the test's own directory. Everything it holds is
@@ -812,7 +915,12 @@ func newFakeA11yBus(t *testing.T) *fakeA11yBus {
 	if err != nil {
 		t.Fatalf("unable to listen on %s: %v", path, err)
 	}
-	b := &fakeA11yBus{t: t, listener: listener, address: "unix:path=" + path}
+	b := &fakeA11yBus{
+		t:        t,
+		listener: listener,
+		signals:  make(chan *dbus.Message, 256),
+		address:  "unix:path=" + path,
+	}
 	go b.serve()
 	t.Cleanup(func() {
 		xio.CloseIgnoringErrors(listener)
@@ -839,6 +947,15 @@ func (b *fakeA11yBus) serve() {
 		msg, decodeErr := dbus.Decode(in)
 		if decodeErr != nil {
 			return
+		}
+		if msg.Type == dbus.TypeSignal {
+			// The signals the adapter emits are what says a geometry or a snapshot actually reached it, so they are
+			// kept rather than dropped; see [fakeA11yBus.awaitSignal].
+			select {
+			case b.signals <- msg:
+			default:
+			}
+			continue
 		}
 		if msg.Type != dbus.TypeMethodCall {
 			continue
@@ -884,6 +1001,31 @@ func (b *fakeA11yBus) authenticate(conn net.Conn, in *bufio.Reader) bool {
 		}
 	}
 	return false
+}
+
+// awaitSignal returns the arguments of the next signal the adapter emits from the given interface and member, failing
+// the test if none arrives. Signals are written to the bus in the order they were emitted, so the next one of a kind is
+// the next one that was sent: a call that was supposed to announce nothing announcing something shows up as the wrong
+// signal arriving here rather than as nothing at all.
+func (b *fakeA11yBus) awaitSignal(iface, member string) []any {
+	b.t.Helper()
+	deadline := time.After(a11yTestTimeout)
+	for {
+		select {
+		case msg := <-b.signals:
+			if msg.Interface != iface || msg.Member != member {
+				continue
+			}
+			args, err := msg.Args()
+			if err != nil {
+				b.t.Fatalf("the %s.%s signal could not be decoded: %v", iface, member, err)
+			}
+			return args
+		case <-deadline:
+			b.t.Fatalf("timed out waiting for a %s.%s signal", iface, member)
+			return nil
+		}
+	}
 }
 
 // disconnect takes the connection away without a word, which is what an accessibility bus that has been restarted does

@@ -157,6 +157,26 @@ func (call *Call) reply(sig Signature, args ...any) {
 	call.conn.Enqueue(msg)
 }
 
+// replyEncoded sends a method return whose body has already been marshaled, if the call has not already been answered.
+// It exists for a handler that had to encode its own answer for some other reason — [Call.getAllProperties] marshals
+// the dictionary to find out whether every property in it can be described — so that the bytes it already has are sent
+// rather than the values being encoded all over again. sig must be the signature body was marshaled with.
+func (call *Call) replyEncoded(sig Signature, body []byte) {
+	if !call.replied.CompareAndSwap(false, true) {
+		return
+	}
+	if call.Message.Flags&FlagNoReplyExpected != 0 {
+		return
+	}
+	msg := NewReply(call.Message)
+	// An empty body carries no signature, exactly as [Message.SetBodyWithSignature] leaves one.
+	if len(body) != 0 {
+		msg.Signature = sig
+		msg.Body = body
+	}
+	call.conn.Enqueue(msg)
+}
+
 // Error answers the call with an error. name should be one of the standard error names, such as [Failed], or one
 // specific to the interface. Answering a call that has already been answered does nothing.
 func (call *Call) Error(name, message string) {
@@ -524,11 +544,16 @@ func (call *Call) getAllProperties() {
 	}
 	// A getter that succeeds but hands back something its declared type cannot describe would take the whole reply
 	// down with it, losing every sibling property along with the one that is wrong, so the dictionary is marshaled
-	// here: the fast path pays one encode, and only a dictionary that will not encode is picked over entry by entry.
-	if _, err = Marshal(propertiesSignature, dict); err != nil {
-		dict = call.marshalableProperties(dict)
+	// here rather than being left to the reply. The bytes are what the reply is then given, so the fast path still pays
+	// one encode: GetAll is the call an assistive technology makes to fill its property cache, and encoding the
+	// dictionary once to check it and again to send it would double the cost of every one of them. Only a dictionary
+	// that will not encode is picked over entry by entry, which pays an encode per entry and one more for what is left.
+	body, err := Marshal(propertiesSignature, dict)
+	if err != nil {
+		call.Reply(call.marshalableProperties(dict))
+		return
 	}
-	call.Reply(dict)
+	call.replyEncoded(propertiesSignature, body)
 }
 
 // marshalableProperties returns the entries of a property dictionary that can actually be marshaled, logging the ones

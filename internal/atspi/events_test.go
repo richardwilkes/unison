@@ -934,6 +934,119 @@ func TestChildrenThatOnlyChangedOrder(t *testing.T) {
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
+// TestChildrenReorderedInsideAnIgnoredContainer covers the list that changes without the node that holds it having an
+// object of its own. The root package marks every plain unnamed layout Group ignored, so rearranging the children of an
+// ordinary layout panel produces one ChildrenChanged naming a node an assistive technology has never heard of — while
+// the list that really changed is the window's, whose own Children field never moved and which [accessibility.Diff]
+// therefore says nothing about. Reporting nothing would leave libatspi, which keeps a child array per object, reading
+// those children in the order they had before for the life of the window.
+func TestChildrenReorderedInsideAnIgnoredContainer(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	swapped := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(2).Children = []accessibility.NodeID{4, 3}
+	})
+	events := accessibility.Diff(mainTree(), swapped)
+	c.Equal([]accessibility.Event{{Kind: accessibility.ChildrenChanged, Node: 2}}, events,
+		"the ignored group is the only node whose children moved, and it has no object")
+	ta.Publish(mainWindow, swapped, events, sampleGeometry())
+
+	// The field is taken out of the window's list and put back where the new snapshot has it, which is the pair of
+	// signals a reordering is reported as. The label did not move once it had gone past, so nothing is said about it.
+	signals := ta.peer.nextSignals(2)
+	c.Equal([]signalRecord{
+		objectEvent(1, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(4))),
+		objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(4))),
+	}, signals)
+	replay(c, mainTree(), signals, swapped)
+	c.Equal([]dbus.ObjectRef{nodeRef(4), nodeRef(3), nodeRef(5), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""),
+		"what was announced has to be what the object now reports")
+	ta.Announce("Nothing more about the order")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+
+	// A child that leaves an ignored container is announced as the removal it is, and the reordering pass that now runs
+	// for the window as well has to find nothing left to say: [accessibility.Diff] reports every removal before any
+	// ChildrenChanged, so the list this works from is the one the removal left behind rather than the one before it.
+	gone := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Generation++
+		tree.Node(2).Children = []accessibility.NodeID{4}
+		tree.Node(4).LabeledBy = nil
+		delete(tree.Nodes, 3)
+	})
+	events = accessibility.Diff(swapped, gone)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NodeRemoved, Node: 3},
+		{Kind: accessibility.ChildrenChanged, Node: 2},
+		{Kind: accessibility.AttributesChanged, Node: 4},
+	}, events)
+	ta.Publish(mainWindow, gone, events, sampleGeometry())
+	signals = ta.peer.nextSignals(3)
+	c.Equal([]signalRecord{
+		objectEvent(1, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(3))),
+		cacheRemoval(3),
+		objectEvent(4, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+	}, signals, "the removal alone, with nothing said about the children that did not move")
+	replay(c, swapped, signals, gone)
+	c.Equal([]dbus.ObjectRef{nodeRef(4), nodeRef(5), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""))
+	ta.Announce("Nothing more about the removal")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestANodeMovingBetweenIgnoredContainers covers the other half of the same hole: a node that changes parents without
+// changing the object that reports it. Both containers are ignored, so [accessibility.Diff] names two nodes that have
+// no objects and nothing else, while the window's list of children — which is where both of them are spliced — comes
+// out in a new order. The two events describe the one list, so it is walked once.
+func TestANodeMovingBetweenIgnoredContainers(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+
+	// A second ignored group, ahead of the one the main window already has, and empty to begin with.
+	base := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(1).Children = []accessibility.NodeID{10, 2, 5, 8, 9}
+		tree.Nodes[10] = &accessibility.Node{
+			ID: 10, Parent: 1, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 200, 30),
+		}
+	})
+	ta.Publish(mainWindow, base, nil, sampleGeometry())
+	c.Equal([]dbus.ObjectRef{nodeRef(3), nodeRef(4), nodeRef(5), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""),
+		"an ignored group with nothing in it changes nothing")
+
+	// The field moves from the second group into the first, which puts it ahead of the label.
+	moved := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Generation++
+		tree.Node(1).Children = []accessibility.NodeID{10, 2, 5, 8, 9}
+		tree.Nodes[10] = &accessibility.Node{
+			ID: 10, Parent: 1, Role: role.Group, Ignored: true, Bounds: geom.NewRect(0, 0, 200, 30),
+			Children: []accessibility.NodeID{4},
+		}
+		tree.Node(2).Children = []accessibility.NodeID{3}
+		tree.Node(4).Parent = 10
+	})
+	events := accessibility.Diff(base, moved)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.ChildrenChanged, Node: 10},
+		{Kind: accessibility.ChildrenChanged, Node: 2},
+	}, events, "neither of the nodes that changed has an object")
+	ta.Publish(mainWindow, moved, events, sampleGeometry())
+	signals := ta.peer.nextSignals(2)
+	c.Equal([]signalRecord{
+		objectEvent(1, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(4))),
+		objectEvent(1, signalChildrenChanged, detailAdd, 0, 0, variantRef(nodeRef(4))),
+	}, signals, "one pair for the child that moved, and one event's worth however many named the same list")
+	replay(c, base, signals, moved)
+	c.Equal([]dbus.ObjectRef{nodeRef(4), nodeRef(3), nodeRef(5), nodeRef(8), nodeRef(9)},
+		ta.one(NodePath(1), InterfaceAccessible, "GetChildren", ""))
+	c.Equal(nodeRef(1), ta.peer.getProperty(NodePath(4), InterfaceAccessible, "Parent"),
+		"the object that reports it is the one that always did")
+	ta.Announce("Nothing more about the move")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
 // TestActivationAndAFocusMoveInOneSnapshot covers the pair of events that clicking a control in a window that was not
 // the active one produces. Both name the focus, and it has to be announced once: a client that is told twice says the
 // same thing twice, and would be handed the old node's focused 0 after the new node's focused 1.
@@ -1308,6 +1421,66 @@ func TestAnOrientationChangeIsAStateChange(t *testing.T) {
 		stateEvent(8, stateNameVertical, false),
 	}, ta.peer.nextSignals(2))
 	ta.Announce("Nothing about being horizontal")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestAWrappingFieldMovesTheLineCountStates covers the other part of [accessibility.AttributesChanged] that AT-SPI does
+// not hold as an object attribute. A field reports [accessibility.TextInfo.Multiline] from the number of lines it
+// actually drew, so a single-line field that wraps flips it as the user types and as the field is resized, while
+// SINGLE_LINE and MULTI_LINE are states that [textStates] puts in the set the client caches from the AddAccessible
+// cache item. Reporting the attribute change alone would leave a field that has grown onto a second line still telling
+// an assistive technology it is one line long — read out as a single run, with no line-by-line navigation through it —
+// for the life of the window.
+func TestAWrappingFieldMovesTheLineCountStates(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	// The main window's field carries a value rather than text of its own, so the snapshot the flip is measured
+	// against is one that has given it some. Gaining text is a different change and is not what this is about.
+	typed := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue}
+	})
+	ta.Publish(mainWindow, typed, accessibility.Diff(mainTree(), typed), sampleGeometry())
+
+	wrapped := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue, Multiline: true}
+	})
+	wrapped.Generation++
+	events := accessibility.Diff(typed, wrapped)
+	c.Equal([]accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 4}}, events,
+		"a field that has wrapped onto another line moves as nothing but an attribute change")
+	ta.Publish(mainWindow, wrapped, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(4, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+		stateEvent(4, stateNameSingleLine, false),
+		stateEvent(4, stateNameMultiLine, true),
+	}, ta.peer.nextSignals(3))
+	states := States(wrapped.Node(4), true, false)
+	c.False(states.Has(StateSingleLine), "what was announced has to be what the object now reports")
+	c.True(states.Has(StateMultiLine))
+
+	// A field whose content fits on one line again moves back, since the state set the client is holding says the
+	// opposite of what the object now reports.
+	unwrapped := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue}
+	})
+	unwrapped.Generation += 2
+	ta.Publish(mainWindow, unwrapped, accessibility.Diff(wrapped, unwrapped), sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(4, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+		stateEvent(4, stateNameMultiLine, false),
+		stateEvent(4, stateNameSingleLine, true),
+	}, ta.peer.nextSignals(3))
+
+	// A field that has no text at all has neither state, so only the side a snapshot actually reported is moved: a
+	// state a client was never given must not be retracted, and one it holds must not be left behind.
+	bare := mainTree().Node(4)
+	bareStates := States(bare, true, false)
+	c.False(bareStates.Has(StateSingleLine))
+	c.False(bareStates.Has(StateMultiLine))
+	c.Equal([]stateChange{{name: stateNameMultiLine}}, attributeStateChanges(wrapped.Node(4), bare))
+	c.Equal([]stateChange{{name: stateNameSingleLine, on: true}}, attributeStateChanges(bare, unwrapped.Node(4)))
+	ta.Announce("Nothing about how many lines there are")
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 

@@ -63,6 +63,11 @@ const (
 // Control pattern property identifiers. Each belongs to one control pattern and is meaningful only on an element that
 // supports that pattern, so a property-changed event for one must never be raised on an element that does not.
 //
+// That rule leaves no way to say a pattern has gone away, since the element it went away from is exactly the element
+// the pattern's own properties may not be raised on. The pattern availability properties below are what say it, and
+// UIADecideRaises raises one of those instead: an element that has lost a pattern reports the loss through the
+// availability property and reports nothing at all through the pattern's own. See uiaDecider.patternAvailability.
+//
 // https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-control-pattern-propids
 const (
 	UIA_ValueValuePropertyId                        PropertyID = 30045
@@ -98,6 +103,36 @@ const (
 	UIA_TableItemRowHeaderItemsPropertyId           PropertyID = 30084
 	UIA_TableItemColumnHeaderItemsPropertyId        PropertyID = 30085
 	UIA_ToggleToggleStatePropertyId                 PropertyID = 30086
+)
+
+// Control pattern availability property identifiers. Each reports whether one control pattern is available on an
+// element, and unlike the pattern properties above every element answers one: false is precisely the answer for an
+// element that does not support the pattern, which is what makes these the only properties that may be raised when a
+// pattern appears or vanishes.
+//
+// Nothing answers one through GetPropertyValue. UI Automation works a client's own request for one out by asking the
+// provider for the pattern itself, so a provider that answered here as well would only be repeating what
+// GetPatternProvider already says; what a provider must do is raise the change, since a client caches pattern
+// availability and would otherwise go on asking an element for a pattern it no longer hands out.
+//
+// Only the patterns this package implements are listed, for the reason PatternSet gives: a name here for a pattern the
+// provider never hands out would be a claim about behavior that does not exist.
+//
+// https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-automation-element-propids
+const (
+	UIA_IsExpandCollapsePatternAvailablePropertyId PropertyID = 30028
+	UIA_IsGridItemPatternAvailablePropertyId       PropertyID = 30029
+	UIA_IsGridPatternAvailablePropertyId           PropertyID = 30030
+	UIA_IsInvokePatternAvailablePropertyId         PropertyID = 30031
+	UIA_IsRangeValuePatternAvailablePropertyId     PropertyID = 30033
+	UIA_IsScrollItemPatternAvailablePropertyId     PropertyID = 30035
+	UIA_IsSelectionItemPatternAvailablePropertyId  PropertyID = 30036
+	UIA_IsSelectionPatternAvailablePropertyId      PropertyID = 30037
+	UIA_IsTablePatternAvailablePropertyId          PropertyID = 30038
+	UIA_IsTableItemPatternAvailablePropertyId      PropertyID = 30039
+	UIA_IsTogglePatternAvailablePropertyId         PropertyID = 30041
+	UIA_IsValuePatternAvailablePropertyId          PropertyID = 30043
+	UIA_IsWindowPatternAvailablePropertyId         PropertyID = 30044
 )
 
 // ControlTypeID identifies what kind of control an element is. It is the value of UIA_ControlTypePropertyId and is the

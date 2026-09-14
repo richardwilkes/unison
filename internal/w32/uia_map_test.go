@@ -470,6 +470,21 @@ func TestUIAIdentifierValues(t *testing.T) {
 	c.Equal(PropertyID(30085), UIA_TableItemColumnHeaderItemsPropertyId)
 	c.Equal(PropertyID(30086), UIA_ToggleToggleStatePropertyId)
 
+	// The pattern availability properties, which is how a pattern appearing or vanishing is reported.
+	c.Equal(PropertyID(30028), UIA_IsExpandCollapsePatternAvailablePropertyId)
+	c.Equal(PropertyID(30029), UIA_IsGridItemPatternAvailablePropertyId)
+	c.Equal(PropertyID(30030), UIA_IsGridPatternAvailablePropertyId)
+	c.Equal(PropertyID(30031), UIA_IsInvokePatternAvailablePropertyId)
+	c.Equal(PropertyID(30033), UIA_IsRangeValuePatternAvailablePropertyId)
+	c.Equal(PropertyID(30035), UIA_IsScrollItemPatternAvailablePropertyId)
+	c.Equal(PropertyID(30036), UIA_IsSelectionItemPatternAvailablePropertyId)
+	c.Equal(PropertyID(30037), UIA_IsSelectionPatternAvailablePropertyId)
+	c.Equal(PropertyID(30038), UIA_IsTablePatternAvailablePropertyId)
+	c.Equal(PropertyID(30039), UIA_IsTableItemPatternAvailablePropertyId)
+	c.Equal(PropertyID(30041), UIA_IsTogglePatternAvailablePropertyId)
+	c.Equal(PropertyID(30043), UIA_IsValuePatternAvailablePropertyId)
+	c.Equal(PropertyID(30044), UIA_IsWindowPatternAvailablePropertyId)
+
 	// Heading levels, which are identifiers of their own rather than plain integers.
 	c.Equal(HeadingLevelID(80050), HeadingLevel_None)
 	c.Equal(HeadingLevelID(80051), HeadingLevel1)
@@ -648,7 +663,8 @@ func TestUIAExpandCollapseState(t *testing.T) {
 	}))
 }
 
-// TestUIAItemStatus verifies that the item status reports a column header's sort direction and nothing otherwise.
+// TestUIAItemStatus verifies that the item status reports a column header's sort direction, that a node which is
+// working says so, and nothing otherwise.
 func TestUIAItemStatus(t *testing.T) {
 	c := check.New(t)
 	c.Equal("", UIAItemStatus(nil))
@@ -660,6 +676,21 @@ func TestUIAItemStatus(t *testing.T) {
 	}))
 	c.Equal("Sorted descending", UIAItemStatus(&accessibility.Node{
 		Role: role.ColumnHeader, Sort: accessibility.SortDescending,
+	}))
+
+	// An indeterminate progress bar is the reason Busy is reported here at all: it fills in no number, so this is the
+	// only thing it has to say for itself.
+	indeterminate := &accessibility.Node{Role: role.ProgressBar, Busy: true, ReadOnly: true}
+	c.Equal("Busy", UIAItemStatus(indeterminate))
+	c.Equal(PatternSet(0), UIAPatterns(indeterminate), "and it has no range for a client to read instead")
+	c.Equal("", UIAItemStatus(&accessibility.Node{
+		Role: role.ProgressBar, HasNumber: true, Number: 3, Max: 10, ReadOnly: true,
+	}), "while a determinate one says nothing, since its value carries the news")
+
+	// Both at once is reachable — Node.Busy is public API, and nothing stops a header that is sorting from setting it —
+	// and a client speaks the property as one piece of text.
+	c.Equal("Sorted ascending, Busy", UIAItemStatus(&accessibility.Node{
+		Role: role.ColumnHeader, Sort: accessibility.SortAscending, Busy: true,
 	}))
 }
 
@@ -1099,7 +1130,7 @@ func TestUIADecideRaisesLabelContent(t *testing.T) {
 	c := check.New(t)
 
 	// Nodes 3 and 4 are labels; nodes 2 and 5 are fields that may name them.
-	labelled := func(first, second []accessibility.NodeID) *accessibility.Tree {
+	labeled := func(first, second []accessibility.NodeID) *accessibility.Tree {
 		return newTestTree(1, 0,
 			&accessibility.Node{
 				ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2, 3, 4, 5},
@@ -1127,33 +1158,33 @@ func TestUIADecideRaisesLabelContent(t *testing.T) {
 	}{
 		{
 			name:     "a label that has just been given something to name leaves the content view",
-			old:      labelled(nil, nil),
-			cur:      labelled([]accessibility.NodeID{3}, nil),
+			old:      labeled(nil, nil),
+			cur:      labeled([]accessibility.NodeID{3}, nil),
 			expected: expected(raiseProperty(3, UIA_IsContentElementPropertyId)),
 		},
 		{
 			name:     "a label nothing names any more rejoins it",
-			old:      labelled([]accessibility.NodeID{3}, nil),
-			cur:      labelled(nil, nil),
+			old:      labeled([]accessibility.NodeID{3}, nil),
+			cur:      labeled(nil, nil),
 			expected: expected(raiseProperty(3, UIA_IsContentElementPropertyId)),
 		},
 		{
 			name: "a field that changed which label names it moves both of them",
-			old:  labelled([]accessibility.NodeID{3}, nil),
-			cur:  labelled([]accessibility.NodeID{4}, nil),
+			old:  labeled([]accessibility.NodeID{3}, nil),
+			cur:  labeled([]accessibility.NodeID{4}, nil),
 			expected: expected(raiseProperty(3, UIA_IsContentElementPropertyId),
 				raiseProperty(4, UIA_IsContentElementPropertyId)),
 		},
 		{
 			name:     "a label another field still names has not moved, so nothing is said about it",
-			old:      labelled([]accessibility.NodeID{3}, []accessibility.NodeID{3}),
-			cur:      labelled(nil, []accessibility.NodeID{3}),
+			old:      labeled([]accessibility.NodeID{3}, []accessibility.NodeID{3}),
+			cur:      labeled(nil, []accessibility.NodeID{3}),
 			expected: expected(),
 		},
 		{
 			name:     "an attributes change that leaves the relation alone reports no label at all",
-			old:      labelled([]accessibility.NodeID{3}, nil),
-			cur:      labelled([]accessibility.NodeID{3}, nil),
+			old:      labeled([]accessibility.NodeID{3}, nil),
+			cur:      labeled([]accessibility.NodeID{3}, nil),
 			expected: expected(),
 		},
 	} {
@@ -1163,12 +1194,17 @@ func TestUIADecideRaisesLabelContent(t *testing.T) {
 	}
 }
 
-// TestUIADecideRaisesPatternRemoval verifies that a change which takes a state-gated pattern away is reported just as
-// the change that grants it is. UIAPatterns gates ExpandCollapse on Expandable, RangeValue on HasNumber, a menu item's
-// Toggle on HasCheck and a cell's Value on there being a value, so a snapshot that has just lost one of those states no
-// longer supports the pattern whose property carries the news — and a client that cached the old value would go on
-// announcing it. Both directions are checked, since the granting direction is the one that worked all along.
-func TestUIADecideRaisesPatternRemoval(t *testing.T) {
+// TestUIADecideRaisesPatternAvailability verifies that a change which takes a state-gated pattern away, or grants one,
+// is reported through that pattern's availability property — and that the pattern's own properties are reported only
+// while the current snapshot still hands the pattern out.
+//
+// UIAPatterns gates ExpandCollapse on Expandable, RangeValue on HasNumber, a menu item's Toggle on HasCheck and a
+// cell's Value on there being a value, so a snapshot that has just lost one of those states no longer supports the
+// pattern whose property would carry the news. Raising it anyway is what uia_constants.go says must never happen;
+// saying nothing at all would leave a client announcing rows as expanded forever after they had become leaves. The
+// availability property is the one thing that may be raised on an element without the pattern, so that is what goes
+// out, ahead of anything else about the element. Both directions are checked.
+func TestUIADecideRaisesPatternAvailability(t *testing.T) {
 	c := check.New(t)
 	rows := func(expandable bool) *accessibility.Tree {
 		return newTestTree(1, 0,
@@ -1176,6 +1212,13 @@ func TestUIADecideRaisesPatternRemoval(t *testing.T) {
 			&accessibility.Node{ID: 2, Role: role.Tree, RowCount: 1, Children: []accessibility.NodeID{3}},
 			&accessibility.Node{ID: 3, Role: role.Row, RowIndex: 0, Expandable: expandable, Expanded: expandable},
 		)
+	}
+	scrollableRows := func(expandable, scrollable bool) *accessibility.Tree {
+		tree := rows(expandable)
+		if scrollable {
+			tree.Nodes[3].Actions = tree.Nodes[3].Actions.With(accessibility.ScrollIntoView)
+		}
+		return tree
 	}
 	cells := func(value string) *accessibility.Tree {
 		return newTestTree(1, 0,
@@ -1213,62 +1256,117 @@ func TestUIADecideRaisesPatternRemoval(t *testing.T) {
 			old:      rows(true),
 			cur:      rows(false),
 			event:    stateChanged(3, accessibility.StateExpandable),
-			expected: []UIARaise{raiseProperty(3, UIA_ExpandCollapseExpandCollapseStatePropertyId)},
+			expected: []UIARaise{raiseProperty(3, UIA_IsExpandCollapsePatternAvailablePropertyId)},
 		},
 		{
-			name:     "a row that became expandable",
-			old:      rows(false),
-			cur:      rows(true),
-			event:    stateChanged(3, accessibility.StateExpandable),
-			expected: []UIARaise{raiseProperty(3, UIA_ExpandCollapseExpandCollapseStatePropertyId)},
+			name:  "a row that became expandable",
+			old:   rows(false),
+			cur:   rows(true),
+			event: stateChanged(3, accessibility.StateExpandable),
+			expected: []UIARaise{
+				raiseProperty(3, UIA_IsExpandCollapsePatternAvailablePropertyId),
+				raiseProperty(3, UIA_ExpandCollapseExpandCollapseStatePropertyId),
+			},
+		},
+		{
+			// Every pattern the node gained or lost is reported, in the order the patterns are defined in, and all of
+			// them before whatever else the event asks for.
+			name:  "a row that lost one pattern and gained another",
+			old:   scrollableRows(true, false),
+			cur:   scrollableRows(false, true),
+			event: stateChanged(3, accessibility.StateExpandable),
+			expected: []UIARaise{
+				raiseProperty(3, UIA_IsExpandCollapsePatternAvailablePropertyId),
+				raiseProperty(3, UIA_IsScrollItemPatternAvailablePropertyId),
+			},
 		},
 		{
 			name:     "a cell whose value became empty",
 			old:      cells("Checked"),
 			cur:      cells(""),
 			event:    accessibility.Event{Kind: accessibility.ValueChanged, Node: 4},
-			expected: []UIARaise{raiseProperty(4, UIA_ValueValuePropertyId)},
+			expected: []UIARaise{raiseProperty(4, UIA_IsValuePatternAvailablePropertyId)},
 		},
 		{
-			name:     "a cell that gained a value",
-			old:      cells(""),
-			cur:      cells("Checked"),
-			event:    accessibility.Event{Kind: accessibility.ValueChanged, Node: 4},
-			expected: []UIARaise{raiseProperty(4, UIA_ValueValuePropertyId)},
+			name:  "a cell that gained a value",
+			old:   cells(""),
+			cur:   cells("Checked"),
+			event: accessibility.Event{Kind: accessibility.ValueChanged, Node: 4},
+			expected: []UIARaise{
+				raiseProperty(4, UIA_IsValuePatternAvailablePropertyId),
+				raiseProperty(4, UIA_ValueValuePropertyId),
+			},
 		},
 		{
 			name:     "a slider that stopped reporting a number",
 			old:      sliders(true),
 			cur:      sliders(false),
 			event:    accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
-			expected: []UIARaise{raiseProperty(2, UIA_RangeValueValuePropertyId)},
+			expected: []UIARaise{raiseProperty(2, UIA_IsRangeValuePatternAvailablePropertyId)},
 		},
 		{
-			name:     "a slider that started reporting one",
-			old:      sliders(false),
-			cur:      sliders(true),
-			event:    accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
-			expected: []UIARaise{raiseProperty(2, UIA_RangeValueValuePropertyId)},
+			name:  "a slider that started reporting one",
+			old:   sliders(false),
+			cur:   sliders(true),
+			event: accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
+			expected: []UIARaise{
+				raiseProperty(2, UIA_IsRangeValuePatternAvailablePropertyId),
+				raiseProperty(2, UIA_RangeValueValuePropertyId),
+			},
 		},
 		{
 			name:     "a menu item that stopped being checkable",
 			old:      menuItems(true),
 			cur:      menuItems(false),
 			event:    stateChanged(3, accessibility.StateChecked),
-			expected: []UIARaise{raiseProperty(3, UIA_ToggleToggleStatePropertyId)},
+			expected: []UIARaise{raiseProperty(3, UIA_IsTogglePatternAvailablePropertyId)},
 		},
 		{
-			name:     "a menu item that became checkable",
-			old:      menuItems(false),
-			cur:      menuItems(true),
-			event:    stateChanged(3, accessibility.StateChecked),
-			expected: []UIARaise{raiseProperty(3, UIA_ToggleToggleStatePropertyId)},
+			name:  "a menu item that became checkable",
+			old:   menuItems(false),
+			cur:   menuItems(true),
+			event: stateChanged(3, accessibility.StateChecked),
+			expected: []UIARaise{
+				raiseProperty(3, UIA_IsTogglePatternAvailablePropertyId),
+				raiseProperty(3, UIA_ToggleToggleStatePropertyId),
+			},
 		},
 		{
 			name:  "a node that has never had the pattern still reports nothing",
 			old:   sliders(false),
 			cur:   sliders(false),
 			event: accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
+		},
+		{
+			// An attributes change is the only event that reports a change to the action set, and ScrollItem is gated
+			// on the ScrollIntoView action alone, so this is the one place the pattern's arrival can be reported.
+			name:  "a row that became scrollable",
+			old:   scrollableRows(false, false),
+			cur:   scrollableRows(false, true),
+			event: accessibility.Event{Kind: accessibility.AttributesChanged, Node: 3},
+			expected: []UIARaise{
+				raiseProperty(3, UIA_IsScrollItemPatternAvailablePropertyId),
+				raiseProperty(3, UIA_HelpTextPropertyId),
+				raiseProperty(3, UIA_LevelPropertyId),
+				raiseProperty(3, UIA_HeadingLevelPropertyId),
+				raiseProperty(3, UIA_PositionInSetPropertyId),
+				raiseProperty(3, UIA_SizeOfSetPropertyId),
+				raiseProperty(3, UIA_OrientationPropertyId),
+				raiseProperty(3, UIA_LabeledByPropertyId),
+				raiseProperty(3, UIA_DescribedByPropertyId),
+				raiseProperty(3, UIA_ControllerForPropertyId),
+			},
+		},
+		{
+			// A node only one of the snapshots holds has nothing to compare: its arrival is structural, and a client
+			// that has never seen it has nothing cached about it to correct.
+			name:  "a node the previous snapshot did not hold",
+			old:   newTestTree(1, 0, &accessibility.Node{ID: 1, Role: role.Window, Name: "Window"}),
+			cur:   sliders(true),
+			event: accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
+			expected: []UIARaise{
+				raiseProperty(2, UIA_RangeValueValuePropertyId),
+			},
 		},
 	} {
 		raises := UIADecideRaises(one.old, one.cur, []accessibility.Event{one.event})
@@ -1278,6 +1376,122 @@ func TestUIADecideRaisesPatternRemoval(t *testing.T) {
 		}
 		c.Equal(one.expected, raises, "case %d (%s)", i, one.name)
 	}
+}
+
+// TestUIAReportsProperty verifies what a raised property change is allowed to carry: a pattern's property only from a
+// snapshot in which the element hands that pattern out, and — for the Window pattern — only on the fragment root, which
+// is the only element the provider hands IWindowProvider to. UIAProvider.raisedPropertyValue is what consults this, and
+// it is the only guard there is: a pattern property has no GetPropertyValue answer to agree with, so nothing else would
+// catch a value invented for an element that does not implement the pattern.
+func TestUIAReportsProperty(t *testing.T) {
+	c := check.New(t)
+
+	// The case that made this necessary. A spin button that becomes a password field stops reporting a number, which
+	// takes the RangeValue pattern with it, and Diff still reports the number as changed: the raise goes out, and the
+	// new snapshot must hand a client nothing rather than a value for a pattern the element no longer implements. The
+	// protected node keeps its Number so that a report worked out from the field rather than from the pattern would
+	// show up here as a value instead of as nothing; a real snapshot of a protected field leaves it at zero, which
+	// would reach a client as the field's value having become "0".
+	spinButtons := func(protected bool) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
+			&accessibility.Node{
+				ID: 2, Role: role.SpinButton, Name: "PIN", HasNumber: !protected, Number: 4, Max: 9,
+				Protected: protected,
+			},
+		)
+	}
+	open := spinButtons(false)
+	hidden := spinButtons(true)
+	c.Equal([]UIARaise{raiseProperty(2, UIA_IsRangeValuePatternAvailablePropertyId)},
+		UIADecideRaises(open, hidden, []accessibility.Event{{Kind: accessibility.NumberChanged, Node: 2}}),
+		"the loss is still reported, since a client holding the old value has to be told it is gone, but through the"+
+			" one property that may be raised on an element without the pattern")
+	c.True(UIAReportsProperty(open, open.Node(2), UIA_RangeValueValuePropertyId))
+	c.False(UIAReportsProperty(hidden, hidden.Node(2), UIA_RangeValueValuePropertyId),
+		"while the snapshot that lost the pattern has nothing to report for its property")
+	c.True(UIAReportsProperty(hidden, hidden.Node(2), UIA_ValueValuePropertyId),
+		"the pattern it kept still answers, with the empty string every protected node gives")
+	c.True(UIAReportsProperty(hidden, hidden.Node(2), UIA_NamePropertyId),
+		"and a property no pattern owns is answered by every element")
+	c.True(UIAReportsProperty(hidden, hidden.Node(2), UIA_IsRangeValuePatternAvailablePropertyId),
+		"as is a pattern's availability, which is answered precisely by the element that no longer has the pattern")
+
+	// Modality is the Window pattern's, and the fragment root is the only element that hands that pattern out: a nested
+	// node with a window-like role is a dialog-shaped panel that the provider refuses IWindowProvider, so it must be
+	// refused a modality to report through it as well. Nothing raises one on such a panel either — the decider asks the
+	// same question of the same helper — and both halves are pinned here, since the two used to be independent and only
+	// the raising half recorded the rule.
+	dialogs := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Modal: true, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.Dialog, Name: "Sheet", Modal: true},
+	)
+	c.True(UIAReportsProperty(dialogs, dialogs.Node(1), UIA_WindowIsModalPropertyId),
+		"the fragment root is a window of its own")
+	c.False(UIAReportsProperty(dialogs, dialogs.Node(2), UIA_WindowIsModalPropertyId),
+		"a nested dialog-shaped panel is not, however modal the snapshot says it is")
+	c.False(UIAReportsProperty(nil, dialogs.Node(1), UIA_WindowIsModalPropertyId),
+		"and with no tree to ask, nothing can be said to be the root")
+	c.Equal([]UIARaise{raiseProperty(1, UIA_WindowIsModalPropertyId)},
+		UIADecideRaises(dialogs, dialogs, []accessibility.Event{
+			{Kind: accessibility.StateChanged, Node: 1, State: accessibility.StateModal},
+		}), "so the root reports a change to it")
+	c.Nil(UIADecideRaises(dialogs, dialogs, []accessibility.Event{
+		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateModal},
+	}), "and the panel reports nothing")
+
+	// Which pattern owns which property. A property answered through a pattern interface is the pattern's to report and
+	// nobody else's; everything a client reads through GetPropertyValue is answered by every element.
+	for i, one := range []struct {
+		property PropertyID
+		expected PatternSet
+	}{
+		{property: UIA_ValueValuePropertyId, expected: PatternValue},
+		{property: UIA_ValueIsReadOnlyPropertyId, expected: PatternValue},
+		{property: UIA_RangeValueValuePropertyId, expected: PatternRangeValue},
+		{property: UIA_RangeValueIsReadOnlyPropertyId, expected: PatternRangeValue},
+		{property: UIA_ToggleToggleStatePropertyId, expected: PatternToggle},
+		{property: UIA_ExpandCollapseExpandCollapseStatePropertyId, expected: PatternExpandCollapse},
+		{property: UIA_SelectionItemIsSelectedPropertyId, expected: PatternSelectionItem},
+		{property: UIA_SelectionCanSelectMultiplePropertyId, expected: PatternSelection},
+		{property: UIA_WindowIsModalPropertyId, expected: PatternWindow},
+		{property: UIA_NamePropertyId},
+		{property: UIA_ItemStatusPropertyId},
+		{property: UIA_BoundingRectanglePropertyId},
+		{property: UIA_IsPasswordPropertyId},
+	} {
+		c.Equal(one.expected, UIAPropertyPattern(one.property), "case %d (property %d)", i, one.property)
+	}
+
+	// Every property an attributes change reports is element-wide, so none of them may be gated: a node with nothing to
+	// say for one answers it empty on both sides, which a client reads as no change, and gating them would instead have
+	// a node that never had the pattern drop a property it really does answer.
+	for _, propertyID := range uiaAttributeProperties {
+		c.Equal(PatternSet(0), UIAPropertyPattern(propertyID), "property %d", propertyID)
+	}
+}
+
+// TestUIAPatternAvailableProperty verifies that every pattern this package implements has an availability property,
+// that the two directions of the mapping agree, and that no such property is owned by the pattern it describes — an
+// element without the pattern is exactly the element that has to answer one, so gating it would silence the only thing
+// that can tell a client the pattern has gone.
+func TestUIAPatternAvailableProperty(t *testing.T) {
+	c := check.New(t)
+	seen := make(map[PropertyID]bool, len(uiaPatternInfos))
+	for _, info := range uiaPatternInfos {
+		c.NotEqual(PropertyID(0), info.available, "pattern %s has no availability property", info.name)
+		c.False(seen[info.available], "pattern %s shares an availability property", info.name)
+		seen[info.available] = true
+		c.Equal(info.available, UIAPatternAvailableProperty(info.pattern), "pattern %s", info.name)
+		c.Equal(info.pattern, UIAAvailabilityPattern(info.available), "pattern %s", info.name)
+		c.Equal(PatternSet(0), UIAPropertyPattern(info.available), "pattern %s", info.name)
+		c.True(UIAReportsProperty(nil, nil, info.available), "pattern %s", info.name)
+	}
+	c.Equal(PropertyID(0), UIAPatternAvailableProperty(0))
+	c.Equal(PropertyID(0), UIAPatternAvailableProperty(PatternValue|PatternRangeValue),
+		"the availability of two patterns at once is not a property")
+	c.Equal(PatternSet(0), UIAAvailabilityPattern(UIA_NamePropertyId))
+	c.Equal(PatternSet(0), UIAAvailabilityPattern(UIA_ValueValuePropertyId))
 }
 
 // TestUIADecideRaisesValue verifies that a value change becomes whichever value property the element actually has. A
@@ -1399,7 +1613,12 @@ func TestUIADecideRaisesStates(t *testing.T) {
 			raiseProperty(4, UIA_SelectionCanSelectMultiplePropertyId),
 		}},
 		{state: accessibility.StateMultiselectable, node: 2},
-		{state: accessibility.StateBusy, node: 1},
+		// Being busy is part of the item status, which every element answers, so it is reported for every one. An
+		// indeterminate progress bar is the element that needs it: it reports no number at all, so this is the only
+		// thing that changes as it starts and stops working.
+		{state: accessibility.StateBusy, node: 1, expected: []UIARaise{
+			raiseProperty(1, UIA_ItemStatusPropertyId),
+		}},
 		{state: accessibility.StateReadOnly, node: 1},
 	} {
 		raises := UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{

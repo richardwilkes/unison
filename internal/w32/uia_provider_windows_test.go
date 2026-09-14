@@ -70,15 +70,16 @@ func newTestUIAWindow(t *testing.T, tree *accessibility.Tree) *uiaTestWindow {
 // package gave no action hook amounts to: every request a client makes of it must be refused rather than reported as
 // done. It is destroyed when the test finishes, for the reason newTestUIAWindow gives.
 //
-// Nobody is listening while it is created, whatever the test has installed, because creating an adapter is the window's
-// first publish and that announces the window: a recorder the test set up to watch something else would otherwise be
-// handed a Window_WindowOpened it never asked about.
+// It cuts the test off from UI Automation exactly as newTestUIAWindow does, and for the whole test rather than only
+// while the window is created. Creating an adapter is the window's first publish, which announces the window, but the
+// teardown matters just as much: the t.Cleanup(w.Destroy) registered here raises Window_WindowClosed and disconnects
+// every provider, and silencing only the creation would leave those calls reaching uiautomationcore.dll on any machine
+// with a client attached — with providers for a window handle of zero. A test that wants to watch what would have been
+// raised installs a recorder of its own with uiaRecord afterwards, which replaces the same variables.
 func newActionlessUIAWindow(t *testing.T, tree *accessibility.Tree) *UIAWindow {
 	t.Helper()
-	saved := uiaClientsAreListening
-	uiaClientsAreListening = func() bool { return false }
+	uiaSilenceClients(t)
 	w := NewUIAWindow(UIAConfig{}, tree, UIAGeometry{})
-	uiaClientsAreListening = saved
 	t.Cleanup(w.Destroy)
 	return w
 }
@@ -1276,9 +1277,9 @@ func TestUIADestroy(t *testing.T) {
 	c.Equal(UIA_E_ELEMENTNOTAVAILABLE, uiaFragmentSetFocus(button.ifacePtr(uiaIfaceFragment)))
 	c.Equal(uintptr(0), button.release())
 
-	// The table-header memo is dropped too, whichever window's snapshot it was holding: a strong reference to a tree
+	// The snapshot memo is dropped too, whichever window's snapshot it was holding: a strong reference to a tree
 	// nothing answers from any more would keep every node in it alive for the rest of the process.
-	c.Nil(uiaHeaderMemo.tree)
+	c.Nil(uiaSnapshotMemo.tree)
 
 	// A destroyed adapter must not answer with providers it no longer has, and must not blow up if it is told about
 	// another snapshot.

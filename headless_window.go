@@ -261,6 +261,12 @@ func (hw *headlessWindow) restore() {
 	}
 	if hw.visible {
 		hw.hs.raise(hw.w)
+		// Back on the screen, so it is painted again, exactly as show() does for a window that was hidden. The redraw
+		// the event loop kept pending while the window was minimized would have it drawn on the next pass anyway, but
+		// nothing has posted a wake-up for that pass, and a window that has just been restored must not have to wait
+		// for an unrelated event to be painted — and, when an assistive technology is being served, described afresh
+		// after having been withdrawn.
+		hw.w.MarkForRedraw()
 		hw.hs.setFocus(hw.w)
 	}
 }
@@ -281,8 +287,17 @@ func (hw *headlessWindow) maximize() {
 	hw.w.SetContentRect(target)
 }
 
+// isVisible reports whether the window is on the screen, which a minimized window is not. That is what both platforms
+// that can be asked answer: X11 unmaps an iconified window, so IsWindowVisible is false for it, and AppKit's isVisible
+// is NO for a miniaturized one. It matters beyond hit-testing and capture, which consult hw.visible and w.minimized
+// themselves: the event loop draws the windows that report themselves visible and withdraws from an assistive
+// technology the ones that do not, so a minimized window answering true here would go on being drawn and described as
+// though a person could see it.
+//
+// Asked through the window rather than reading the flag, so that a backing with no window attached — which is what a
+// test that checks the dispatch alone builds — answers rather than crashes.
 func (hw *headlessWindow) isVisible() bool {
-	return hw.visible
+	return hw.visible && !hw.w.IsMinimized()
 }
 
 func (hw *headlessWindow) show() {

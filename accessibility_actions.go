@@ -59,6 +59,32 @@ func (w *Window) performAccessibilityAction(req accessibility.ActionRequest) boo
 	return true
 }
 
+// performAccessibilityActions carries out a set of requests that an assistive technology made as one, describing the
+// window once at the end rather than once per request. UI thread only. Returns true if any of them was carried out.
+//
+// Only one thing an assistive technology asks for names more than one node: which rows of a table, outline or list are
+// selected. The schema has no request that replaces a selection wholesale, so the macOS adapter turns one of those into
+// a Select followed by an AddToSelection apiece (see axSelectRows in internal/cocoa) and hands the set over together.
+// Carried out one at a time through performAccessibilityAction, each would lay the window out, build a complete
+// snapshot, diff it and post the notifications for it, so a set naming k rows would cost k snapshots, k selection
+// notifications and k intermediate selections an assistive technology may read — from inside the single callback it is
+// waiting on. The requests themselves are exactly the ones performAccessibilityAction carries out, gate for gate: each
+// goes through dispatchAccessibilityAction, which refuses a window a modal is blocking, a node that has left the tree
+// and a disabled one. One that is refused leaves the rest alone, since each row of the set stands on its own.
+func (w *Window) performAccessibilityActions(reqs []accessibility.ActionRequest) bool {
+	carried := false
+	for _, req := range reqs {
+		if w.dispatchAccessibilityAction(req) {
+			carried = true
+		}
+	}
+	if carried && accessibilityActive.Load() && w.IsValid() && w.root != nil && w.ax != nil {
+		w.ValidateLayout()
+		w.publishAccessibilityNow()
+	}
+	return carried
+}
+
 // dispatchAccessibilityAction finds the panel a request is aimed at and asks it, then the defaults, to carry the
 // request out. See performAccessibilityAction.
 func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bool {
@@ -174,8 +200,15 @@ func axPanelAtPath(root *Panel, path string) *Panel {
 // only when the press was accepted — a panel that returns false is letting the press go to its parent instead, and
 // never sees the matching release — so a release sent here regardless would be something no real click could produce.
 // The request is reported as not carried out, which is the truth: the press went nowhere.
+//
+// A panel whose click pops a menu up has none when the menu would not land where the panel is. Such a widget refuses
+// the request itself, and refusing is exactly what brings the default behavior into play, so without this the widget's
+// own refusal would be undone by the click synthesized on its behalf. See axMenuOpener and axMayPopupMenu.
 func (p *Panel) axSynthesizeClick() bool {
 	if p.MouseDownCallback == nil || p.MouseUpCallback == nil || !p.Enabled() {
+		return false
+	}
+	if opener, ok := p.Self.(axMenuOpener); ok && opener.axClickOpensMenu() && !axMayPopupMenu(p) {
 		return false
 	}
 	if p.Focusable() {
@@ -189,4 +222,50 @@ func (p *Panel) axSynthesizeClick() bool {
 	}
 	SafeCall(func() { p.MouseUpCallback(where, ButtonLeft, 0) })
 	return true
+}
+
+// axMayPopupMenu reports whether a menu popped up on behalf of this panel would land where the panel is. Every request
+// from an assistive technology that opens a menu has to be refused when it would not.
+//
+// A menu does not open inside the window of the widget that opened it: menu.createPopup inserts the popup panel into
+// ActiveWindow()'s root (menu.go), and macMenu.Popup pops the native menu up over ActiveWindow()'s native window
+// (menu_darwin.go). Both look that window up for themselves, so the question is simply whether the window they are
+// going to find is this panel's. A request aimed at a widget in any other window would put that widget's menu up in
+// whatever window is active, at coordinates translated from the one the widget is in, and a request made while no
+// window is active would quietly do nothing at all while reporting that it had been carried out.
+//
+// Asking ActiveWindow() is what the window's own focus flag cannot do. A transient window — one that takes input
+// without ever becoming the active one, such as a menu or a tooltip window — may perfectly well hold the focus, and
+// ActiveWindow() still passes over it and answers with the next window that is not transient, so a menu opened on
+// behalf of a widget in one goes up somewhere else entirely. Window.mouseDown does let a press through to such a
+// window, and that clause is deliberately not repeated here, because the two answer different questions: there, whether
+// this window may take input at all; here, where the menu that input would open is going to land.
+//
+// Window.dispatchAccessibilityAction cannot make this check for every action, since most of them act on the panel
+// itself and are perfectly reasonable to ask of a background window; only the ones that open a menu are placed
+// somewhere else entirely. Those are also narrowed out of what a node advertises, so that nothing is offered that would
+// then be refused; see axSnapshot.narrowMenuActions.
+func axMayPopupMenu(p *Panel) bool {
+	wnd := p.Window()
+	return wnd != nil && wnd == ActiveWindow()
+}
+
+// axMenuActions is implemented by a widget that advertises actions which would open a menu somewhere other than within
+// its own window. The snapshot builder asks each such widget which of the actions it has just been described with are
+// those, and takes them away when a menu opened on the widget's behalf would not land where the widget is. See
+// axSnapshot.narrowMenuActions and axMayPopupMenu.
+type axMenuActions interface {
+	// axMenuOpeningActions returns the subset of the node's actions that would open a menu, given what the widget has
+	// just been described as. An action that is carried out, or accepted as already done, whatever window the widget is
+	// in is not one of them.
+	axMenuOpeningActions(node *accessibility.Node) accessibility.ActionSet
+}
+
+// axMenuOpener is implemented by a widget whose click pops a menu up rather than doing something within its own window.
+// The distinction matters only to axSynthesizeClick, which stands in for a click on a widget that has nothing else to
+// be activated by: a click on one of these builds its menu somewhere other than where the widget is, so it is subject
+// to axMayPopupMenu exactly as the widget's own handling of the request is.
+type axMenuOpener interface {
+	// axClickOpensMenu reports whether clicking this widget now would pop a menu up.
+	axClickOpensMenu() bool
 }

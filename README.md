@@ -210,14 +210,21 @@ for a panel with no widget type of its own.
 
 A custom widget describes itself by implementing `AccessibilityProvider`, and carries out what an assistive technology
 asks of it by implementing `AccessibilityActor`. Both must be implemented by the widget type itself rather than by the
-embedded `Panel`. The node handed to `ProvideAccessibility` already holds everything derivable from the panel alone —
-its bounds, whether it is enabled, focusable and focused, and the actions those imply — so an implementation sets only
-what it knows better:
+embedded `Panel`, and both are looked up on `Panel.Self`, so a widget whose constructor does not point that at the
+widget is never asked to describe or act on itself. The node handed to `ProvideAccessibility` already holds everything
+derivable from the panel alone — its bounds, whether it is enabled, focusable and focused, and the actions those imply —
+so an implementation sets only what it knows better:
 
 ```go
 type Rating struct {
 	unison.Panel
 	stars int
+}
+
+func NewRating() *Rating {
+	r := &Rating{}
+	r.Self = r // Without this, the two methods below are never found
+	return r
 }
 
 func (r *Rating) ProvideAccessibility(b *unison.AccessibilityBuilder) {

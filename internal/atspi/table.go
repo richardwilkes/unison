@@ -164,7 +164,8 @@ func buildTableHeaders(t *accessibility.Tree) map[accessibility.NodeID][]accessi
 	headers := make(map[accessibility.NodeID][]accessibility.NodeID, len(tables))
 	for _, id := range tables {
 		if header := tableHeaderFor(t, id, linked); header != 0 {
-			if columns := appendColumnHeaders(t, nil, header, 0); len(columns) != 0 {
+			columns := appendColumnHeaders(t, nil, header, make(map[accessibility.NodeID]bool), 0)
+			if len(columns) != 0 {
 				headers[id] = columns
 			}
 		}
@@ -200,7 +201,7 @@ func tableHeaderFor(t *accessibility.Tree, id accessibility.NodeID,
 			// out of the container and announcing the outer table's column names over the inner table's cells.
 			return 0
 		}
-		headers, tables := headersAndTablesWithin(t, ancestor, 0)
+		headers, tables := headersAndTablesWithin(t, ancestor, make(map[accessibility.NodeID]bool), 0)
 		if tables > 1 {
 			return 0
 		}
@@ -215,12 +216,21 @@ func tableHeaderFor(t *accessibility.Tree, id accessibility.NodeID,
 // headersAndTablesWithin returns the header panels within the subtree rooted at a node, along with how many tables it
 // holds. Ignored nodes are walked through — a header can sit inside a layout panel — but an ignored node is never
 // reported as a header, since an assistive technology is never shown one.
-func headersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, depth int,
+//
+// visited holds the ids already descended into, and is what keeps a malformed tree from being scanned forever. The
+// depth bound alone does not: a cycle that branches multiplies the work at every level rather than merely deepening it,
+// so 512 levels of a tree whose nodes point back at each other is more work than any machine will finish, and this runs
+// on the UI thread from [Adapter.Publish]. It is the same defense [accessibility.Tree.Walk], Tree.HitTest and
+// Tree.UnignoredChildren carry, for the same reason. Counting each node once also keeps a table reachable by two paths
+// from reading as two tables, which would end the caller's search rather than answering it.
+func headersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, visited map[accessibility.NodeID]bool,
+	depth int,
 ) (headers []accessibility.NodeID, tables int) {
 	n := t.Node(id)
-	if n == nil || depth >= maxHeaderSearchDepth {
+	if n == nil || depth >= maxHeaderSearchDepth || visited[id] {
 		return nil, 0
 	}
+	visited[id] = true
 	switch {
 	case n.Role == role.TableHeader:
 		if !n.Ignored {
@@ -235,7 +245,7 @@ func headersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, dept
 	default:
 	}
 	for _, child := range n.Children {
-		childHeaders, childTables := headersAndTablesWithin(t, child, depth+1)
+		childHeaders, childTables := headersAndTablesWithin(t, child, visited, depth+1)
 		headers = append(headers, childHeaders...)
 		tables += childTables
 	}
@@ -244,21 +254,27 @@ func headersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, dept
 
 // appendColumnHeaders appends the ColumnHeader descendants of a node, in reading order. A column header holds nothing
 // that is itself a column header, so the walk stops at each one it finds.
-func appendColumnHeaders(t *accessibility.Tree, ids []accessibility.NodeID, id accessibility.NodeID, depth int,
+//
+// visited holds the ids already reached, for the same reason [headersAndTablesWithin] carries one: a branching cycle
+// would otherwise be walked forever, and a node reachable by two paths would be reported as two columns.
+func appendColumnHeaders(t *accessibility.Tree, ids []accessibility.NodeID, id accessibility.NodeID,
+	visited map[accessibility.NodeID]bool, depth int,
 ) []accessibility.NodeID {
-	if depth >= maxHeaderSearchDepth {
+	if depth >= maxHeaderSearchDepth || visited[id] {
 		return ids
 	}
+	visited[id] = true
 	for _, child := range t.UnignoredChildren(id) {
 		n := t.Node(child)
-		if n == nil {
+		if n == nil || visited[child] {
 			continue
 		}
 		if n.Role == role.ColumnHeader {
+			visited[child] = true
 			ids = append(ids, child)
 			continue
 		}
-		ids = appendColumnHeaders(t, ids, child, depth+1)
+		ids = appendColumnHeaders(t, ids, child, visited, depth+1)
 	}
 	return ids
 }
@@ -368,17 +384,29 @@ func (o *nodeObject) childIndexOfRow(row int) int {
 // columnHeader returns the node describing a column of this table, or nil when there is none. The header whose own
 // ColumnIndex matches is the answer; a snapshot that never filled those in — they would all read zero — is answered by
 // position instead, which is right whenever the header panel publishes one element per column in column order.
+//
+// That fallback is offered only when no header carries a column index at all, which is the case it describes. A header
+// panel whose elements do report indexes, but not one per column — say 0 and 2 of three columns — is answered with
+// nothing for the columns it leaves out, rather than with whichever header happens to sit at that position: naming the
+// third column's header over the second column would have an assistive technology read the wrong column name out as
+// the user arrows across, which is worse than reading none.
 func (o *nodeObject) columnHeader(col int) *accessibility.Node {
 	if col < 0 || col >= o.node.ColumnCount {
 		return nil
 	}
 	headers := o.data.columnHeaders(o.node.ID)
+	indexed := false
 	for _, id := range headers {
-		if n := o.data.node(id); n != nil && n.ColumnIndex == col {
+		n := o.data.node(id)
+		if n == nil {
+			continue
+		}
+		if n.ColumnIndex == col {
 			return n
 		}
+		indexed = indexed || n.ColumnIndex != 0
 	}
-	if col < len(headers) {
+	if !indexed && col < len(headers) {
 		return o.data.node(headers[col])
 	}
 	return nil

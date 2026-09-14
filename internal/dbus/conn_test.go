@@ -207,6 +207,25 @@ func (b *fakeBus) errorTo(call *Message, name, message string) {
 	b.write(NewError(call, name, message))
 }
 
+// replyFrom answers a method call that the connection under test made, stamping the reply with the sender that a real
+// bus would have filled in for whichever connection produced it.
+func (b *fakeBus) replyFrom(call *Message, sender string, sig Signature, args ...any) {
+	reply := NewReply(call)
+	reply.Sender = sender
+	if len(args) != 0 {
+		b.c.NoError(reply.SetBodyWithSignature(sig, args...))
+	}
+	b.write(reply)
+}
+
+// errorFrom answers a method call that the connection under test made with an error, stamped with a sender the same way
+// [fakeBus.replyFrom] stamps a return.
+func (b *fakeBus) errorFrom(call *Message, sender, name, message string) {
+	reply := NewError(call, name, message)
+	reply.Sender = sender
+	b.write(reply)
+}
+
 // emit sends a signal to the connection under test.
 func (b *fakeBus) emit(path ObjectPath, iface, member string, sig Signature, args ...any) {
 	msg := NewSignal(path, iface, member)
@@ -936,6 +955,95 @@ func TestConnCarriesOnAfterAMessageThatIsNotValid(t *testing.T) {
 	c.NoError(b.client.Hello())
 }
 
+// TestAReplyIsMatchedOnItsSenderAsWellAsItsSerial covers the check that keeps a call from being completed by whoever
+// guesses its serial first. Serials start at one and count up, so a peer that can reach this connection's unique name
+// could otherwise address a METHOD_RETURN to it with a guessed REPLY_SERIAL and hand a caller forged values, the
+// genuine reply arriving afterwards to be discarded as unmatched. A rejected reply must leave the call pending rather
+// than failing it, which is what makes the genuine reply that follows the one that completes it.
+func TestAReplyIsMatchedOnItsSenderAsWellAsItsSerial(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	// Every case below waits for a reply that only arrives after a rejected one has been ignored, so the connection's
+	// own five second deadline would be the thing under test rather than the check.
+	b.client.timeout = time.Hour
+
+	// A call addressed to a unique name is answered by that connection and by nobody else, so a reply from another one
+	// is dropped and the genuine one still completes the call.
+	msg := NewMethodCall(":1.99", testPath, testInterface, "Greet")
+	c.NoError(msg.SetBody("hello"))
+	wait := callAsync(t, b.client, msg)
+	call := b.nextCall()
+	b.replyFrom(call, ":1.17", "s", "forged")
+	b.replyFrom(call, ":1.99", "s", "genuine")
+	reply, err := wait()
+	c.NoError(err)
+	args, err := reply.Args()
+	c.NoError(err)
+	c.Equal([]any{"genuine"}, args)
+
+	// The bus answers for a unique name that has gone away, and for a message it refuses to deliver, so its own name is
+	// accepted for such a call as well: rejecting it would leave the call waiting for a reply that is never coming.
+	msg = NewMethodCall(":1.99", testPath, testInterface, "Greet")
+	c.NoError(msg.SetBody("hello"))
+	wait = callAsync(t, b.client, msg)
+	call = b.nextCall()
+	b.errorFrom(call, busName, ServiceUnknown, "no such connection")
+	reply, err = wait()
+	c.Nil(reply)
+	c.HasError(err)
+
+	// A call addressed to the bus itself is answered by the bus, so a reply from another connection is dropped here
+	// too. The path is one of the test object's rather than the bus's own, since the fake bus answers everything
+	// addressed to its own object for itself; only the destination decides what is accepted.
+	msg = NewMethodCall(busName, testPath, testInterface, "Greet")
+	c.NoError(msg.SetBody("hello"))
+	wait = callAsync(t, b.client, msg)
+	call = b.nextCall()
+	b.replyFrom(call, ":1.17", "s", "forged")
+	b.replyFrom(call, busName, "s", "genuine")
+	reply, err = wait()
+	c.NoError(err)
+	args, err = reply.Args()
+	c.NoError(err)
+	c.Equal([]any{"genuine"}, args)
+
+	// A call addressed to a well-known name is answered by whichever connection owns it, under the unique name it was
+	// given, which the caller has no way of knowing without asking. Enforcing anything here would reject every
+	// legitimate reply, so the reply is accepted whoever it says it came from. That is why the callers ask the bus who
+	// owns the name and address the unique name it gives back, which turns their calls into the first case above; only
+	// a call made when nothing owns the name yet, which is what starts the service, is still left like this.
+	wait = callAsync(t, b.client, greet(c, "hello"))
+	call = b.nextCall()
+	b.replyFrom(call, ":1.17", "s", "the owner of the name")
+	reply, err = wait()
+	c.NoError(err)
+	args, err = reply.Args()
+	c.NoError(err)
+	c.Equal([]any{"the owner of the name"}, args)
+}
+
+// TestAReplyWithNoSenderCompletesACall covers the peer to peer case: a connection with no bus on the other end has
+// nobody to fill the SENDER field in, so a reply that carries none is the only kind there is. Rejecting those would
+// break every connection made with [Connect], which here is the tests and nothing else: a connection that reaches a
+// bus is dialed, and [Dial] performs the Hello that gives it the unique name every reply to it is then stamped with.
+func TestAReplyWithNoSenderCompletesACall(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	b.client.timeout = time.Hour
+	msg := NewMethodCall(":1.99", testPath, testInterface, "Greet")
+	c.NoError(msg.SetBody("hello"))
+	wait := callAsync(t, b.client, msg)
+	call := b.nextCall()
+	b.replyTo(call, "s", "unstamped")
+	reply, err := wait()
+	c.NoError(err)
+	args, err := reply.Args()
+	c.NoError(err)
+	c.Equal([]any{"unstamped"}, args)
+}
+
 func TestCallRemovesTheSerialItRegistered(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -952,7 +1060,7 @@ func TestCallRemovesTheSerialItRegistered(t *testing.T) {
 	// other call's channel instead, leaving its own entry in the map forever and the other call's reply to be
 	// discarded on arrival and time out five seconds later.
 	const offset = 1000
-	other := make(chan *Message, 1)
+	other := &pending{reply: make(chan *Message, 1)}
 	b.client.mu.Lock()
 	b.client.pending[call.Serial+offset] = other
 	b.client.mu.Unlock()

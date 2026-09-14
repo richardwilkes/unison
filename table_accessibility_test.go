@@ -20,6 +20,7 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	checkenum "github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // TestTableAccessibilityPressOpensRow verifies that pressing a row runs the double-click callback, which is the table's
@@ -522,5 +523,96 @@ func TestTableAccessibilityCellPressLandsWhereAClickWould(t *testing.T) {
 	})
 	c.Equal(1, clicks, "the press should have reached the button drawn on top of the cell's own panel")
 	c.Equal(0, presses, "the panel beneath it must not have taken the press first")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityCellTooltipDoesNotDescribeTheTable verifies that the tooltip a table borrows from the cell the
+// pointer is over stays out of what the table itself is described as. The borrowed tooltip used to be parked in
+// Panel.Tooltip, which is what a node's description falls back to, so the table was announced with one cell's tooltip
+// as its own description — and, since the window asks for a tooltip only while the pointer is within the table, went
+// on being announced with it long after the pointer had left. Moving from one cell to the next reported a description
+// change for the table each time besides. The tooltip itself must still appear, since that is what the borrowing is
+// for.
+func TestTableAccessibilityCellTooltipDoesNotDescribeTheTable(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var away *unison.Label
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			rows := make([]*tableTestRow, 2)
+			for i := range rows {
+				rows[i] = newTableTestRow("r" + strconv.Itoa(i))
+				tip := unison.NewTooltipWithText("tip " + strconv.Itoa(i))
+				rows[i].cellFactory = func(_, col int) unison.Paneler {
+					cell := unison.NewPanel()
+					if col == 0 {
+						cell.Tooltip = tip
+						// Without this the tooltip would not appear until the delay a person's pause has to last.
+						cell.TooltipImmediate = true
+					}
+					return cell
+				}
+			}
+			table = axNewTable(rows...)
+			// Somewhere outside the table for the pointer to move on to, since the defect was about what was left
+			// behind once it had. It sits above the table so that a tooltip, which is shown below the cell it belongs
+			// to, can never be what the pointer lands on instead.
+			away = unison.NewLabel()
+			away.SetTitle("Away")
+			wnd = newHeadlessWindow(t, "cell tips", geom.NewRect(10, 10, 400, 300), axColumn(away, table))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	tree := screen.AccessibilityTree(wnd)
+	tableNode := axMustNode(c, screen.AccessibilityNodeFor(table))
+	tableID := tableNode.ID
+	c.Equal("", tableNode.Description, "nothing has been hovered yet")
+	c.Equal(0, len(axNodesWithRole(tree, role.Tooltip)), "no tooltip is showing yet")
+	screen.AccessibilityEvents(wnd)
+
+	var overFirst, overSecond geom.Point
+	c.True(screen.Do(func() {
+		// Aimed well inside the first column: the center of a cell can fall on a column divider.
+		first := table.CellFrame(0, 0)
+		second := table.CellFrame(1, 0)
+		overFirst = geom.NewPoint(first.X+5, first.CenterY())
+		overSecond = geom.NewPoint(second.X+5, second.CenterY())
+	}))
+
+	// The second row is hovered first and the first row after it, since the tooltip for a cell is shown directly
+	// beneath that cell: going the other way would put the tooltip itself under the pointer.
+	screen.MouseMove(screen.PanelPoint(table, overSecond), mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	tips := axNodesWithRole(tree, role.Tooltip)
+	c.Equal(1, len(tips), "the cell's tooltip should be showing")
+	if len(tips) == 1 {
+		c.Equal("tip 1", tips[0].Name)
+	}
+	c.Equal("", axMustNode(c, screen.AccessibilityNodeFor(table)).Description,
+		"the tooltip belongs to the cell the pointer is over, not to the table")
+	c.False(axHasEvent(screen.AccessibilityEvents(wnd), accessibility.DescriptionChanged, tableID),
+		"borrowing a cell's tooltip must not report that the table's description changed")
+
+	// Onto a cell in the row above, whose tooltip says something else.
+	screen.MouseMove(screen.PanelPoint(table, overFirst), mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	tips = axNodesWithRole(tree, role.Tooltip)
+	c.Equal(1, len(tips), "the other cell's tooltip should be showing now")
+	if len(tips) == 1 {
+		c.Equal("tip 0", tips[0].Name)
+	}
+	c.Equal("", axMustNode(c, screen.AccessibilityNodeFor(table)).Description)
+	c.False(axHasEvent(screen.AccessibilityEvents(wnd), accessibility.DescriptionChanged, tableID),
+		"moving from cell to cell must not report a description change for the table")
+
+	// Out of the table altogether, which is where the borrowed tooltip used to stick.
+	screen.MouseMove(screen.PanelCenter(away), mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(0, len(axNodesWithRole(tree, role.Tooltip)), "the tooltip goes away with the pointer")
+	c.Equal("", axMustNode(c, screen.AccessibilityNodeFor(table)).Description,
+		"the table must not be left described as the cell the pointer last crossed")
+	c.False(axHasEvent(screen.AccessibilityEvents(wnd), accessibility.DescriptionChanged, tableID))
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

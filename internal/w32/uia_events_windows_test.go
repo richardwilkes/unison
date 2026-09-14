@@ -624,7 +624,7 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 	tree := newTestTree(1, 2,
 		&accessibility.Node{
 			ID: 1, Role: role.Window, Name: "Window", Focused: true, Bounds: geom.NewRect(0, 0, 200, 100),
-			Children: []accessibility.NodeID{2, 3, 4, 5, 6, 7},
+			Children: []accessibility.NodeID{2, 3, 4, 5, 6, 7, 8},
 		},
 		&accessibility.Node{
 			ID: 2, Role: role.TextField, Name: "Field", Description: "Type here", Focusable: true, Focused: true,
@@ -640,6 +640,9 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 		&accessibility.Node{ID: 5, Role: role.ListItem, Selectable: true, Selected: true, Expandable: true},
 		&accessibility.Node{ID: 6, Role: role.ColumnHeader, Sort: accessibility.SortAscending},
 		&accessibility.Node{ID: 7, Role: role.List, Multiselectable: true},
+		// A combo box is here for the ExpandCollapse pattern: node 5 is Expandable, but a list item never supports the
+		// pattern whatever it says, and a property is answered only by an element whose pattern it is.
+		&accessibility.Node{ID: 8, Role: role.ComboBox, Expandable: true},
 	)
 	w := newTestUIAWindow(t, tree)
 	for i, one := range []struct {
@@ -697,13 +700,32 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 			c.Equal(int32(UIA_EditControlTypeId), uiaVariantInt32(value))
 		}},
 		{
-			node: 5, property: UIA_ExpandCollapseExpandCollapseStatePropertyId, expected: VT_I4,
+			node: 8, property: UIA_ExpandCollapseExpandCollapseStatePropertyId, expected: VT_I4,
 			check: func(value *VARIANT) {
 				c.Equal(int32(ExpandCollapseState_Collapsed), uiaVariantInt32(value))
 			},
 		},
 		{node: 4, property: UIA_RangeValueValuePropertyId, expected: VT_R8, check: func(value *VARIANT) {
 			c.Equal(5.0, math.Float64frombits(value.Val))
+		}},
+		// The pattern availability properties, which a pattern appearing or vanishing is reported through. Every
+		// element answers one, so the interesting pair is an element that has the pattern and one that does not: node 5
+		// is Expandable, but a list item never carries ExpandCollapse, and false is exactly what a client has to be
+		// told.
+		{
+			node: 4, property: UIA_IsRangeValuePatternAvailablePropertyId, expected: VT_BOOL,
+			check: func(value *VARIANT) {
+				c.True(uiaVariantBool(value))
+			},
+		},
+		{
+			node: 5, property: UIA_IsExpandCollapsePatternAvailablePropertyId, expected: VT_BOOL,
+			check: func(value *VARIANT) {
+				c.False(uiaVariantBool(value))
+			},
+		},
+		{node: 1, property: UIA_IsWindowPatternAvailablePropertyId, expected: VT_BOOL, check: func(value *VARIANT) {
+			c.True(uiaVariantBool(value), "the fragment root is the one element that hands the Window pattern out")
 		}},
 		{node: 2, property: UIA_BoundingRectanglePropertyId, expected: VT_R8 | VT_ARRAY},
 	} {
@@ -727,4 +749,16 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 	c.Equal(VT_EMPTY, value.VT)
 	w.providerFor(2).raisedPropertyValue(tree, UIA_LocalizedControlTypePropertyId, value)
 	c.Equal(VT_EMPTY, value.VT)
+
+	// So does a pattern's property on a node that does not support the pattern, however much the node itself has to say
+	// about it: node 5 is Expandable, but a list item never carries the ExpandCollapse pattern, and a value here would
+	// be one a client could not read back through IExpandCollapseProvider. See UIAReportsProperty, which is what a
+	// snapshot that has lost a state-gated pattern is answered through. The pattern's availability is the one thing
+	// such an element does answer, which is what tells a client holding the pattern that it has gone.
+	w.providerFor(5).raisedPropertyValue(tree, UIA_ExpandCollapseExpandCollapseStatePropertyId, value)
+	c.Equal(VT_EMPTY, value.VT)
+	w.providerFor(5).raisedPropertyValue(tree, UIA_IsExpandCollapsePatternAvailablePropertyId, value)
+	c.Equal(VT_BOOL, value.VT)
+	c.False(uiaVariantBool(value))
+	value.Clear()
 }

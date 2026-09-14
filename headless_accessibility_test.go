@@ -10,6 +10,7 @@
 package unison_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -945,7 +946,12 @@ func TestAccessibilityGenerationSurvivesAWithdrawal(t *testing.T) {
 		return
 	}
 	c.True(first.Generation >= 1, "the first tree is generation one or later")
-	before := screen.AccessibilityTree(wnd).Generation
+	second := screen.AccessibilityTree(wnd)
+	c.True(second != nil)
+	if second == nil {
+		return
+	}
+	before := second.Generation
 	c.True(before > first.Generation, "each description is a generation later than the one before it")
 
 	screen.Do(func() { wnd.Hide() })
@@ -999,5 +1005,231 @@ func TestAccessibilityWindowTitleChangeIsPublished(t *testing.T) {
 	if renamed != nil {
 		c.Equal("after", renamed.Node(renamed.Root).Name)
 	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityFlushDrawingIsPublished verifies that a window painted by FlushDrawing describes what it painted.
+// FlushDrawing draws on the spot and takes the window out of the pending redraws as it does so, so everything that was
+// riding on that redraw — here a panel's name — would be silently dropped from what an assistive technology is told if
+// only the event loop's own redraw pass published. The library reaches this on its own through a menu stack closing, a
+// List flashing its selection, a drag finishing and the color well, dock and table drop paths.
+func TestAccessibilityFlushDrawingIsPublished(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var panel *unison.Panel
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			panel = axFocusablePanel("Before")
+			wnd = newHeadlessWindow(t, "flush", geom.NewRect(20, 20, 240, 120), axColumn(panel))
+		}))
+	c.NotNil(wnd)
+	c.NotNil(panel)
+
+	c.True(screen.AccessibilityTree(wnd) != nil)
+	node := screen.AccessibilityNodeFor(panel)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	c.Equal("Before", node.Name)
+	screen.AccessibilityEvents(wnd)
+
+	// The redraw the rename asks for is consumed by FlushDrawing rather than by the event loop, so nothing else can
+	// publish what changed: what is asserted below is the publish that draw itself made.
+	screen.Do(func() {
+		panel.Accessibility.Name = "After"
+		panel.MarkForRedraw()
+		wnd.FlushDrawing()
+	})
+	events := screen.AccessibilityEvents(wnd)
+	c.True(axHasEvent(events, accessibility.NameChanged, node.ID),
+		"the new name should have been reported: %v", events)
+	renamed := screen.AccessibilityNodeFor(panel)
+	c.True(renamed != nil, "the panel should still be described")
+	if renamed != nil {
+		c.Equal("After", renamed.Name, "the description must be what was just drawn")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityMinimizedWindowLeavesTheDescription verifies that a minimized window is withdrawn from what an
+// assistive technology holds exactly as a hidden one is. A minimized window is not on the screen — X11 unmaps an
+// iconified window and AppKit reports a miniaturized one as not visible — so it is not drawn and nothing is published
+// for it, and the last thing said about it would otherwise stand for as long as the window existed.
+//
+// As with hiding, what is asserted here is what Linux does, since that is the behavior the headless backend picks. See
+// Window.apiAccessibilityWindowHidden.
+func TestAccessibilityMinimizedWindowLeavesTheDescription(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var panel *unison.Panel
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			panel = axFocusablePanel("Content")
+			wnd = newHeadlessWindow(t, "minimized", geom.NewRect(20, 20, 240, 120), axColumn(panel))
+		}))
+	c.NotNil(wnd)
+	c.NotNil(panel)
+
+	c.True(screen.AccessibilityTree(wnd) != nil)
+	c.True(screen.AccessibilityNodeFor(panel) != nil)
+
+	// Asked for through the panel rather than through AccessibilityTree, which would describe the window again and put
+	// back the very thing being checked for.
+	var visible bool
+	screen.Do(func() {
+		wnd.Minimize()
+		visible = wnd.IsVisible()
+	})
+	c.False(visible, "a minimized window is off the screen")
+	c.True(screen.AccessibilityNodeFor(panel) == nil, "a window that has been minimized should no longer be described")
+
+	// Minimize() toggles, so this restores it.
+	screen.Do(func() { wnd.Minimize() })
+	screen.Do(func() { visible = wnd.IsVisible() })
+	c.True(visible, "a restored window is back on the screen")
+	c.True(screen.AccessibilityNodeFor(panel) != nil, "restoring the window should describe it afresh")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityTreeAgreesWithTheNodeItHandsOut verifies that the tree AccessibilityTree returns is the one the
+// session is holding by the time it returns, rather than one a redraw performed during the same call has already
+// superseded. The first call of any test is the one that turns accessibility support on, and activation marks every
+// window for redraw, so there is always a draw waiting to describe the window again while that call is settling. With
+// a panel that renames itself as it draws, a tree captured before those redraws disagrees with what
+// AccessibilityNodeFor — which reads the window's own record of the last publish — answers for the very same node.
+func TestAccessibilityTreeAgreesWithTheNodeItHandsOut(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var panel *unison.Panel
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			panel = axFocusablePanel("draw 0")
+			// Given a size of its own, since a panel the layout hands nothing to is never drawn and its draw
+			// callback would then never run.
+			panel.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+				size := geom.NewSize(80, 40)
+				return size, size, size
+			})
+			draws := 0
+			panel.DrawCallback = func(_ *unison.Canvas, _ geom.Rect) {
+				draws++
+				panel.Accessibility.Name = fmt.Sprintf("draw %d", draws)
+			}
+			wnd = newHeadlessWindow(t, "agreement", geom.NewRect(20, 20, 240, 120), axColumn(panel))
+		}))
+	c.NotNil(wnd)
+	c.NotNil(panel)
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	node := screen.AccessibilityNodeFor(panel)
+	c.True(node != nil)
+	if node == nil {
+		return
+	}
+	fromTree := tree.Node(node.ID)
+	c.True(fromTree != nil, "the tree handed back should hold the node the panel is described by")
+	if fromTree != nil {
+		c.Equal(node.Name, fromTree.Name,
+			"the tree and the node looked up in it must describe the same draw of the panel")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityAnnouncementsAreBounded verifies that the announcements a test has not read cannot grow for the life
+// of the session, as the published events cannot: a real adapter hands each one to the platform and keeps nothing, so
+// the backlog exists only for the test to assert on and a session that announces in a loop must not be able to fill
+// memory with it. The newest are the ones kept, since those are what a test is about to assert on.
+func TestAccessibilityAnnouncementsAreBounded(t *testing.T) {
+	c := check.New(t)
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			newHeadlessWindow(t, "bounded", geom.NewRect(20, 20, 240, 120), unison.NewPanel())
+		}))
+	screen.EnableAccessibility()
+
+	// Spoken from the user interface thread, so that each one is recorded on the spot rather than through a task, and
+	// more of them than the backlog is allowed to hold.
+	const announced = 5000
+	screen.Do(func() {
+		for i := range announced {
+			unison.AnnounceForAccessibility(fmt.Sprintf("announcement %d", i))
+		}
+	})
+	kept := screen.Announcements()
+	c.True(len(kept) > 0, "something should have been recorded")
+	c.True(len(kept) < announced, "the backlog must be bounded, but it held all %d", len(kept))
+	if len(kept) > 0 {
+		c.Equal(fmt.Sprintf("announcement %d", announced-1), kept[len(kept)-1],
+			"the newest announcement must be the last one kept")
+		c.Equal(fmt.Sprintf("announcement %d", announced-len(kept)), kept[0],
+			"what is kept must be the newest run of them, with only the oldest dropped")
+	}
+	c.Equal(0, len(screen.Announcements()), "reading the announcements should have emptied the list")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHeadlessAccessibilityActionMustBeAdvertised verifies that a session refuses an action the node it names does not
+// advertise, which is what every platform adapter does: each reads the action set of the node it is answering for and
+// passes the request on only if what is being asked for is in it. Without the gate a test could drive a path no
+// assistive technology can take — and would go on passing after the widget stopped offering the action at all.
+//
+// A field is what makes the difference visible. It does not offer to be pressed, since a click on one does no more than
+// drop the caret where it lands, yet the default behavior behind the request would have synthesized exactly that click:
+// a panel that handles both halves of a click is one a press can be manufactured for. Nothing happens instead, which is
+// what the focus staying where it was shows, while an action the field does advertise still goes through.
+func TestHeadlessAccessibilityActionMustBeAdvertised(t *testing.T) {
+	c := check.New(t)
+	var button *unison.Button
+	var field *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			button = unison.NewButton()
+			button.SetTitle("Elsewhere")
+			field = unison.NewField()
+			field.SetText("untouched")
+			wnd = newHeadlessWindow(t, "advertised actions", geom.NewRect(10, 10, 300, 200),
+				axColumn(button, field))
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	// The button is the first thing that can take the focus, so the window becoming active hands it there rather than
+	// to the field.
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.False(node.Actions.Has(accessibility.Press), "a field does not offer to be pressed")
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.Press,
+	}), "an action the node does not advertise is refused before it reaches the window")
+
+	var fieldHasFocus, buttonHasFocus bool
+	var text string
+	screen.Do(func() {
+		current := wnd.CurrentFocus()
+		fieldHasFocus = field.Is(current)
+		buttonHasFocus = button.Is(current)
+		text = field.Text()
+	})
+	c.False(fieldHasFocus, "no click was synthesized, so the focus never moved to the field")
+	c.True(buttonHasFocus, "it is still where the window put it when it became active")
+	c.Equal("untouched", text)
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.SetValue,
+		Value:  "replaced",
+	}), "an action it does advertise still goes through")
+	screen.Do(func() { text = field.Text() })
+	c.Equal("replaced", text)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

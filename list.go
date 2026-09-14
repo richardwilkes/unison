@@ -758,6 +758,11 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 		}
 		changed := !l.Selection.State(row)
 		l.Select(true, row)
+		// The row a later shift-click extends from is put on this row, which Select does only when there was no anchor
+		// at all. This request stands for the ctrl-click that adds a row to the selection, and DefaultMouseDown's
+		// DiscontiguousSelectionDown branch moves the anchor to the row it touched every time, so a shift-click after
+		// an assistive technology added a row has to extend from the same place it would have after the click.
+		l.anchor = row
 		if changed {
 			SafeCall(l.NewSelectionCallback)
 		}
@@ -767,9 +772,10 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 			return true
 		}
 		l.Selection.Clear(row)
-		if l.anchor == row {
-			l.anchor = -1
-		}
+		// As for adding: the ctrl-click this stands for leaves the anchor on the row it touched whether it added the
+		// row to the selection or took it out, so taking a row out must not leave the list with no anchor at all —
+		// a shift-click after that would select only the row it landed on rather than extending from here.
+		l.anchor = row
 		l.MarkForRedraw()
 		SafeCall(l.NewSelectionCallback)
 	case accessibility.ScrollIntoView:

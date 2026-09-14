@@ -550,7 +550,16 @@ func (w *Window) apiAccessibilityWindowHidden() bool {
 	return w.nativeAccessibilityWindowHidden()
 }
 
+// apiAccessibilityAnnounce hands text to whatever is speaking for the session. Every path to an announcement arrives
+// here — AnnounceForAccessibility's direct call from the UI thread and the task it queues from any other goroutine —
+// which is why the promise that nothing is spoken while no assistive technology is being served is kept here rather
+// than only where the announcement was made: a task queued a moment before SetAccessibilityEnabled(false), or before
+// the platform adapter was torn down, runs after both, and the headless adapter would record it while macOS would post
+// it to an element that no longer exists.
 func apiAccessibilityAnnounce(text string) {
+	if !accessibilityActive.Load() {
+		return
+	}
 	if hs := activeHeadless(); hs != nil {
 		hs.accessibilityAnnounce(text)
 		return

@@ -229,8 +229,8 @@ func TestAccessibilitySiblingLabelRefusesALink(t *testing.T) {
 
 // TestAccessibilityMenuSeparatorIsNeverTheFocus covers what an open menu may point the focus at. An item is highlighted
 // by the pointer merely passing over it, and a separator is highlighted along with everything else the pointer crosses,
-// so without skipping it the window reported the focus on a divider — published as focusable besides — and took the
-// focus off the control that really held it, every time the pointer passed over one.
+// so without skipping it the window reported the focus on a divider — published as focusable besides — every time the
+// pointer passed over one. What is left holding it is the menu, since that is where every key goes while one is open.
 func TestAccessibilityMenuSeparatorIsNeverTheFocus(t *testing.T) {
 	c := check.New(t)
 	const (
@@ -300,12 +300,30 @@ func TestAccessibilityMenuSeparatorIsNeverTheFocus(t *testing.T) {
 		c.False(separatorNode.Focusable, "nor that it could take it")
 		c.NotEqual(separatorNode.ID, tree.Focus, "and the window must not point the focus at it")
 	}
+	// The focus goes to the menu the pointer is in rather than to the control that holds the keyboard focus: every key
+	// goes to the open menu, so saying the person is back in the field would both announce the wrong thing and offer
+	// the keys of a control that is not the one they reach. See axSnapshot.openMenuNode.
+	var menuNode *accessibility.Node
+	tree.Walk(func(n *accessibility.Node) bool {
+		if n.Role == role.Menu {
+			menuNode = n
+			return false
+		}
+		return true
+	})
+	c.True(menuNode != nil)
+	if menuNode != nil {
+		c.Equal(menuNode.ID, tree.Focus, "the open menu holds the focus while nothing in it may be pointed at")
+		c.True(menuNode.Focused)
+	}
 	fieldNode := screen.AccessibilityNodeFor(field)
 	c.True(fieldNode != nil)
 	if fieldNode != nil {
-		c.Equal(fieldNode.ID, tree.Focus, "the control that really holds the focus must keep it")
-		c.True(fieldNode.Focused)
+		c.False(fieldNode.Focused, "the control the keyboard focus is really on must not claim it while a menu is open")
 	}
+	var stillFocused bool
+	screen.Do(func() { stillFocused = field.Is(wnd.CurrentFocus()) })
+	c.True(stillFocused, "the keyboard focus itself does not move while a menu is open")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

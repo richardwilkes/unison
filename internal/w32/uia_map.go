@@ -49,29 +49,53 @@ const (
 	PatternWindow
 )
 
-// uiaPatternInfo pairs one PatternSet bit with the UI Automation identifier clients ask for it by and a name for
-// diagnostics.
+// uiaPatternInfo pairs one PatternSet bit with the UI Automation identifier clients ask for it by, the property that
+// reports whether the pattern is available on an element, and a name for diagnostics.
 type uiaPatternInfo struct {
-	name    string
-	id      PatternID
-	pattern PatternSet
+	name      string
+	id        PatternID
+	available PropertyID
+	pattern   PatternSet
 }
 
-// uiaPatternInfos lists every pattern this package implements, in bit order.
+// uiaPatternInfos lists every pattern this package implements, in bit order. Every entry carries an availability
+// property, since every pattern that can appear on an element can be taken away from it again; see
+// uiaDecider.patternAvailability.
 var uiaPatternInfos = []uiaPatternInfo{
-	{name: "invoke", id: UIA_InvokePatternId, pattern: PatternInvoke},
-	{name: "toggle", id: UIA_TogglePatternId, pattern: PatternToggle},
-	{name: "value", id: UIA_ValuePatternId, pattern: PatternValue},
-	{name: "range-value", id: UIA_RangeValuePatternId, pattern: PatternRangeValue},
-	{name: "selection", id: UIA_SelectionPatternId, pattern: PatternSelection},
-	{name: "selection-item", id: UIA_SelectionItemPatternId, pattern: PatternSelectionItem},
-	{name: "expand-collapse", id: UIA_ExpandCollapsePatternId, pattern: PatternExpandCollapse},
-	{name: "scroll-item", id: UIA_ScrollItemPatternId, pattern: PatternScrollItem},
-	{name: "grid", id: UIA_GridPatternId, pattern: PatternGrid},
-	{name: "grid-item", id: UIA_GridItemPatternId, pattern: PatternGridItem},
-	{name: "table", id: UIA_TablePatternId, pattern: PatternTable},
-	{name: "table-item", id: UIA_TableItemPatternId, pattern: PatternTableItem},
-	{name: "window", id: UIA_WindowPatternId, pattern: PatternWindow},
+	{name: "invoke", id: UIA_InvokePatternId, available: UIA_IsInvokePatternAvailablePropertyId, pattern: PatternInvoke},
+	{name: "toggle", id: UIA_TogglePatternId, available: UIA_IsTogglePatternAvailablePropertyId, pattern: PatternToggle},
+	{name: "value", id: UIA_ValuePatternId, available: UIA_IsValuePatternAvailablePropertyId, pattern: PatternValue},
+	{
+		name: "range-value", id: UIA_RangeValuePatternId, available: UIA_IsRangeValuePatternAvailablePropertyId,
+		pattern: PatternRangeValue,
+	},
+	{
+		name: "selection", id: UIA_SelectionPatternId, available: UIA_IsSelectionPatternAvailablePropertyId,
+		pattern: PatternSelection,
+	},
+	{
+		name: "selection-item", id: UIA_SelectionItemPatternId,
+		available: UIA_IsSelectionItemPatternAvailablePropertyId, pattern: PatternSelectionItem,
+	},
+	{
+		name: "expand-collapse", id: UIA_ExpandCollapsePatternId,
+		available: UIA_IsExpandCollapsePatternAvailablePropertyId, pattern: PatternExpandCollapse,
+	},
+	{
+		name: "scroll-item", id: UIA_ScrollItemPatternId, available: UIA_IsScrollItemPatternAvailablePropertyId,
+		pattern: PatternScrollItem,
+	},
+	{name: "grid", id: UIA_GridPatternId, available: UIA_IsGridPatternAvailablePropertyId, pattern: PatternGrid},
+	{
+		name: "grid-item", id: UIA_GridItemPatternId, available: UIA_IsGridItemPatternAvailablePropertyId,
+		pattern: PatternGridItem,
+	},
+	{name: "table", id: UIA_TablePatternId, available: UIA_IsTablePatternAvailablePropertyId, pattern: PatternTable},
+	{
+		name: "table-item", id: UIA_TableItemPatternId, available: UIA_IsTableItemPatternAvailablePropertyId,
+		pattern: PatternTableItem,
+	},
+	{name: "window", id: UIA_WindowPatternId, available: UIA_IsWindowPatternAvailablePropertyId, pattern: PatternWindow},
 }
 
 // Has returns true if the set contains every pattern in patterns. Passing more than one bit therefore asks whether all
@@ -105,6 +129,101 @@ func PatternSetForID(id PatternID) PatternSet {
 		}
 	}
 	return 0
+}
+
+// UIAPatternAvailableProperty returns the property that reports whether one pattern is available on an element, or
+// zero when the argument names anything but a single pattern this package implements.
+func UIAPatternAvailableProperty(pattern PatternSet) PropertyID {
+	for _, info := range uiaPatternInfos {
+		if info.pattern == pattern {
+			return info.available
+		}
+	}
+	return 0
+}
+
+// UIAAvailabilityPattern returns the pattern whose availability the given property reports, or zero when the property
+// is not one of those. It is the inverse of UIAPatternAvailableProperty.
+//
+// A pattern availability property is deliberately not one UIAPropertyPattern claims for a pattern: it is answered by
+// every element, and answering it false for an element without the pattern is the whole of its purpose.
+func UIAAvailabilityPattern(propertyID PropertyID) PatternSet {
+	for _, info := range uiaPatternInfos {
+		if info.available == propertyID {
+			return info.pattern
+		}
+	}
+	return 0
+}
+
+// UIAPropertyPattern returns the control pattern that owns a property — the one whose interface a client reads that
+// property through — or zero for a property every element answers in its own right. It is what decides whether a node
+// has anything to say about a property: a property belonging to a pattern the node does not support is not its to
+// report, and the answer is an empty VARIANT rather than a value worked out from fields the client can no longer reach.
+//
+// Only the properties this package reports appear here. UI Automation defines several more per pattern — the range's
+// minimum, maximum and increments, the selection's required flag — but nothing raises those or answers them through
+// GetPropertyValue, so listing them would be a claim about behavior that does not exist.
+func UIAPropertyPattern(propertyID PropertyID) PatternSet {
+	switch propertyID {
+	case UIA_ValueValuePropertyId, UIA_ValueIsReadOnlyPropertyId:
+		return PatternValue
+	case UIA_RangeValueValuePropertyId, UIA_RangeValueIsReadOnlyPropertyId:
+		return PatternRangeValue
+	case UIA_ToggleToggleStatePropertyId:
+		return PatternToggle
+	case UIA_ExpandCollapseExpandCollapseStatePropertyId:
+		return PatternExpandCollapse
+	case UIA_SelectionItemIsSelectedPropertyId:
+		return PatternSelectionItem
+	case UIA_SelectionCanSelectMultiplePropertyId:
+		return PatternSelection
+	case UIA_WindowIsModalPropertyId:
+		return PatternWindow
+	default:
+		return 0
+	}
+}
+
+// UIAProvidedPatterns returns the patterns an element actually hands interfaces out for, which is what UIAPatterns says
+// with one exception: the Window pattern belongs to the fragment root alone. A nested node with a window-like role is a
+// dialog-shaped panel rather than a window of its own, and the provider refuses IWindowProvider for it — see
+// UIAProvider.supports — so a set that still held the bit would have the adapter describe an element through a pattern
+// a client cannot obtain from it. A nil tree, or one that does not hold the node, cannot say the node is the root, so
+// it is treated as a nested one, exactly as UIAControlType treats it.
+//
+// Everything that decides what an element supports goes through this rather than through UIAPatterns, which knows a
+// node and not which one is the root: the provider that hands the interfaces out, UIAReportsProperty, and the decider
+// that reports a pattern appearing or vanishing.
+func UIAProvidedPatterns(t *accessibility.Tree, n *accessibility.Node) PatternSet {
+	patterns := UIAPatterns(n)
+	if patterns.Has(PatternWindow) && (t == nil || n.ID != t.Root) {
+		patterns &^= PatternWindow
+	}
+	return patterns
+}
+
+// UIAProvidesPattern reports whether an element hands out every pattern in pattern. See UIAProvidedPatterns.
+func UIAProvidesPattern(t *accessibility.Tree, n *accessibility.Node, pattern PatternSet) bool {
+	return UIAProvidedPatterns(t, n).Has(pattern)
+}
+
+// UIAReportsProperty reports whether a node answers the given property with a value of its own. Everything but a
+// pattern's property is answered by every element; a pattern's property is answered only while the node hands that
+// pattern out, the fragment-root rule for the Window pattern included, so that what a client is told and what it can
+// read back through the pattern interface cannot disagree.
+//
+// The distinction matters because a pattern can be taken away by a change of state rather than of role — a spin button
+// that becomes Protected loses its number and with it the RangeValue pattern, a row that stops being expandable loses
+// ExpandCollapse, a cell whose value empties loses Value. UIADecideRaises reports the loss through the pattern's
+// availability property and stops raising the pattern's own properties on the element, so a snapshot answered here for
+// one of those is normally a snapshot that supports the pattern; this is the guard that keeps it so. The one pairing
+// that still reaches it is the granting direction, where the element has gained the pattern and the previous snapshot
+// has nothing to report for it: an empty VARIANT is read as "no value here", which is the truth, rather than as a value
+// from a pattern that element never implemented.
+func UIAReportsProperty(t *accessibility.Tree, n *accessibility.Node, propertyID PropertyID) bool {
+	pattern := UIAPropertyPattern(propertyID)
+	return pattern == 0 || UIAProvidesPattern(t, n, pattern)
 }
 
 // UIAControlType returns the UI Automation control type to report for a node. It is the single most consequential
@@ -353,9 +472,10 @@ func UIAIsControlElement(n *accessibility.Node) bool {
 //   - a label that names another element, because that element already reports the label's text as its own name, so
 //     leaving the label in the content view makes a screen reader say it twice.
 //
-// Finding out whether a label names something means looking at every node's LabeledBy, so this costs a walk of the tree
-// for label nodes and nothing at all for the rest. A caller answering the property for many labels at once should
-// remember the answers.
+// Finding out whether a label names something means looking at every node's LabeledBy, so this costs a scan of the
+// snapshot for label nodes and nothing at all for the rest. The scan is made once per snapshot rather than once per
+// label — a client walking a form asks the property of every label there is — and is remembered for the snapshot it was
+// made from; see uiaMemoizedNamesAnother.
 func UIAIsContentElement(t *accessibility.Tree, n *accessibility.Node) bool {
 	if !UIAIsControlElement(n) {
 		return false
@@ -364,25 +484,10 @@ func UIAIsContentElement(t *accessibility.Tree, n *accessibility.Node) bool {
 	case role.Separator, role.ScrollBar, role.Tooltip:
 		return false
 	case role.Label:
-		return !uiaNamesAnother(t, n.ID)
+		return !uiaMemoizedNamesAnother(t, n.ID)
 	default:
 		return true
 	}
-}
-
-// uiaNamesAnother reports whether any node in the tree says it is labeled by the node with the given id.
-func uiaNamesAnother(t *accessibility.Tree, id accessibility.NodeID) bool {
-	if t == nil {
-		return false
-	}
-	for _, n := range t.Nodes {
-		for _, labelID := range n.LabeledBy {
-			if labelID == id {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // UIAHasKeyboardFocus reports whether a node answers the HasKeyboardFocus property with true. At most one element of a
@@ -478,25 +583,42 @@ func UIAExpandCollapseState(n *accessibility.Node) ExpandCollapseState {
 }
 
 // UIAItemStatus returns the value of the ItemStatus property for a node, which is how a sorted column header tells a
-// client which way it is sorted. A node that is not a sort key has no item status, reported as the empty string so that
-// the provider answers VT_EMPTY.
+// client which way it is sorted and how a node that is working tells one that its value is not yet meaningful. A node
+// that is neither has no item status, reported as the empty string so that the provider answers VT_EMPTY.
 //
 // UI Automation has no enumeration for this: the property is free text, and a screen reader speaks it exactly as it is
-// given, so it is a translated phrase rather than the name the SortDirection enumeration goes by. The other two
-// adapters have machine-readable answers to give instead — AT-SPI's sort attribute and AppKit's
-// accessibilitySortDirection — and pass the direction along untranslated.
+// given, so these are translated phrases rather than the names the SortDirection enumeration and the Busy flag go by.
+// The other two adapters have machine-readable answers to give for the direction — AT-SPI's sort attribute and AppKit's
+// accessibilitySortDirection — and pass it along untranslated.
+//
+// Busy is here because ItemStatus is the only property a UI Automation client watches that can carry it. It is what an
+// indeterminate progress bar has to say for itself: such a bar reports no number at all — a range whose maximum equals
+// its minimum is forbidden, and a value of nought that never moves would have a screen reader announce "0 percent" for
+// as long as the work takes, which is why ProgressBar.ProvideAccessibility sets Busy instead — so without this the
+// element would be a progress bar with no value, no range and nothing whatever to say. AT-SPI reports the same flag as
+// STATE_BUSY; see internal/atspi/mapping.go.
+//
+// The two are folded together rather than one winning, since a node may carry both — Node.Busy is public API and
+// nothing stops a sorted column header from setting it — and a client speaks the whole property as one piece of text.
 func UIAItemStatus(n *accessibility.Node) string {
 	if n == nil {
 		return ""
 	}
+	var status string
 	switch n.Sort {
 	case accessibility.SortAscending:
-		return i18n.Text("Sorted ascending")
+		status = i18n.Text("Sorted ascending")
 	case accessibility.SortDescending:
-		return i18n.Text("Sorted descending")
+		status = i18n.Text("Sorted descending")
 	default:
-		return ""
 	}
+	if !n.Busy {
+		return status
+	}
+	if status == "" {
+		return i18n.Text("Busy")
+	}
+	return status + ", " + i18n.Text("Busy")
 }
 
 // UIAWindowInteractionState returns the value of the WindowInteractionState property for a fragment root. A window the
@@ -628,10 +750,19 @@ func UIAHitTest(t *accessibility.Tree, pt geom.Point) accessibility.NodeID {
 // number it: its group is a layout panel the snapshot marks Ignored, so there is no container to ask, which is why
 // UIASelectionContainer reports none for it. The Cocoa adapter answers accessibilityIndex for a radio button the same
 // way.
+//
+// The answer is remembered for the snapshot it was worked out from, since PositionInSet and SizeOfSet are separate
+// properties carrying its two halves and a client reading an element reads both; see uiaSnapshotMemo.
 func UIAPositionInSet(t *accessibility.Tree, n *accessibility.Node) (position, size int) {
 	if t == nil || n == nil || n.Ignored {
 		return 0, 0
 	}
+	return uiaMemoizedPositionInSet(t, n)
+}
+
+// uiaPositionInSet works out the answer UIAPositionInSet gives, for a node the caller has already established is in the
+// tree and not ignored.
+func uiaPositionInSet(t *accessibility.Tree, n *accessibility.Node) (position, size int) {
 	if n.Role.IsRowLike() {
 		if count := uiaContainerRowCount(t, n); count > 0 && n.RowIndex >= 0 && n.RowIndex < count {
 			return n.RowIndex + 1, count
@@ -767,6 +898,11 @@ func (r UIARaise) String() string {
 //   - A property change is raised only when the element actually supports the property. A slider reports its value
 //     through the RangeValue pattern and a text field through the Value pattern, so the same ValueChanged event becomes
 //     a different property on each, and becomes nothing at all on an element with neither pattern.
+//   - A pattern the element has gained or lost between the two snapshots is reported through that pattern's
+//     availability property, ahead of anything else about the element, and an element that has lost one reports nothing
+//     at all through the pattern's own properties. Several patterns are gated on a state, so a state change takes one
+//     away as readily as it grants one, and the availability property is the only one that may be raised on an element
+//     without the pattern. See patternAvailability.
 //   - An attributes change says that one of a group of secondary attributes and relations differs without saying which,
 //     so every property the provider derives from that group is reported; see uiaAttributeProperties.
 //   - When a node's children changed, the client is told once, with ChildrenInvalidated, and the individual additions
@@ -898,6 +1034,9 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 	case accessibility.ValueChanged:
 		d.valueProperty(event.Node)
 	case accessibility.NumberChanged:
+		// A number arriving or departing is one of the changes that grants or removes the RangeValue pattern, which is
+		// why the availability comes first and why a node that no longer has the pattern reports nothing else.
+		d.patternAvailability(event.Node)
 		if d.patterns(event.Node).Has(PatternRangeValue) {
 			d.property(event.Node, UIA_RangeValueValuePropertyId)
 		}
@@ -984,21 +1123,46 @@ func (d *uiaDecider) survivor(id accessibility.NodeID) accessibility.NodeID {
 	return d.cur.Root
 }
 
-// patterns returns the patterns the node with the given id supported in either snapshot.
-//
-// Both snapshots have to be consulted, because several patterns are gated on a state rather than on the role alone:
-// ExpandCollapse on Expandable, RangeValue on HasNumber, a menu item's Toggle on HasCheck, and a cell's Value on there
-// being a value. A pattern's property is worth raising exactly when what a client would read through it has changed,
-// and the change that takes the ability away is as much of a change as the one that grants it — a table row that stops
-// being expandable moves from Expanded to LeafNode, and Table.ApplyFilter with a flat filter does that to every
-// container row at once. Asking only the current snapshot would report the granting and say nothing about the removal,
-// leaving a client announcing rows as expanded forever after they have become leaves. The Linux adapter takes the same
-// approach for the same reason; see the StateExpandable branch of internal/atspi/events.go.
-//
-// Over-reporting is the price, and it is the cheap side of the trade: an element that no longer supports a pattern
-// answers that pattern's property with an empty VARIANT, which a client reads as nothing rather than as a wrong value.
+// patterns returns the patterns the node with the given id hands out as of the current snapshot, which is what decides
+// whether one of that pattern's properties is worth raising on it. A pattern the node has lost is reported through
+// patternAvailability instead, and every caller of this records that first.
 func (d *uiaDecider) patterns(id accessibility.NodeID) PatternSet {
-	return UIAPatterns(d.cur.Node(id)) | UIAPatterns(d.old.Node(id))
+	return UIAProvidedPatterns(d.cur, d.cur.Node(id))
+}
+
+// patternAvailability records the availability of every pattern the node with the given id has gained or lost between
+// the two snapshots, which is how a client holding a pattern interface is told that the pattern has appeared or gone.
+//
+// Several patterns are gated on a state rather than on the role alone: ExpandCollapse on Expandable, RangeValue on
+// HasNumber, a menu item's Toggle on HasCheck, and a cell's Value on there being a value. A state change therefore
+// takes a pattern away as readily as it grants one — a table row that stops being expandable stops having an
+// expand-collapse state at all, and Table.ApplyFilter with a flat filter does that to every container row at once — and
+// a client that was never told would go on announcing rows as expanded long after they had become leaves. The Linux
+// adapter reports the same flips for the same reason; see the StateExpandable branch of internal/atspi/events.go.
+//
+// The availability property is the only thing that can carry the news. A pattern's own properties may not be raised on
+// an element that does not support the pattern, which is exactly the element that has just lost it, so the loss is
+// reported here and the pattern's properties are not reported at all — see uia_constants.go, and patterns, which
+// answers from the current snapshot alone. This is recorded before whatever else the event asks for, so that a client
+// reads that the pattern is gone before it reads anything else about the element.
+//
+// A node only one of the snapshots holds is left alone: its arrival or departure is reported structurally, and a client
+// that has never seen an element has nothing cached about it to correct.
+func (d *uiaDecider) patternAvailability(id accessibility.NodeID) {
+	old := d.old.Node(id)
+	cur := d.cur.Node(id)
+	if old == nil || cur == nil {
+		return
+	}
+	changed := UIAProvidedPatterns(d.old, old) ^ UIAProvidedPatterns(d.cur, cur)
+	if changed == 0 {
+		return
+	}
+	for _, info := range uiaPatternInfos {
+		if changed&info.pattern != 0 {
+			d.property(id, info.available)
+		}
+	}
 }
 
 // event records an automation event.
@@ -1043,7 +1207,12 @@ var uiaAttributeProperties = []PropertyID{
 // attributes records the property changes an attributes change asks for. See uiaAttributeProperties for which they are
 // and why they are all reported at once, and labelContent for the one property the event changes on a node other than
 // the one it names.
+//
+// The availability of any pattern that came or went is reported first. An attributes change is the only event that
+// reports a change to the action set, and the ScrollItem pattern is gated on the ScrollIntoView action alone, so this
+// is the one place a client can be told that the pattern has appeared or gone.
 func (d *uiaDecider) attributes(id accessibility.NodeID) {
+	d.patternAvailability(id)
 	for _, propertyID := range uiaAttributeProperties {
 		d.property(id, propertyID)
 	}
@@ -1114,9 +1283,10 @@ func (d *uiaDecider) focus(id accessibility.NodeID) {
 }
 
 // valueProperty records the change of whichever value property the node actually has, and nothing when it has neither.
-// Which one that is comes from the decider's patterns, so that a node which has just lost the pattern — a cell whose
-// value became empty — still reports the loss to a client holding the old one.
+// A node that has just lost the pattern — a cell whose value became empty — reports that loss through
+// patternAvailability instead, which is recorded first.
 func (d *uiaDecider) valueProperty(id accessibility.NodeID) {
+	d.patternAvailability(id)
 	patterns := d.patterns(id)
 	switch {
 	case patterns.Has(PatternValue):
@@ -1128,14 +1298,15 @@ func (d *uiaDecider) valueProperty(id accessibility.NodeID) {
 }
 
 // state records the calls a state change asks for. A flag with no UI Automation property behind it, or one belonging
-// to a pattern neither snapshot says this node supports, records nothing. Which patterns those are comes from the
-// decider's patterns, which answers from both snapshots so that a state change that takes a pattern away is reported
-// too.
+// to a pattern the current snapshot says this node does not hand out, records nothing more than the availability
+// change: a state is one of the things a pattern is gated on, so the flip that silences a property here is often the
+// same flip that took the pattern away, and patternAvailability is what reports that.
 func (d *uiaDecider) state(event accessibility.Event) {
 	n := d.cur.Node(event.Node)
 	if n == nil {
 		return
 	}
+	d.patternAvailability(event.Node)
 	patterns := d.patterns(event.Node)
 	switch event.State {
 	case accessibility.StateDisabled:
@@ -1189,11 +1360,20 @@ func (d *uiaDecider) state(event accessibility.Event) {
 	case accessibility.StateModal:
 		// Modality is the Window pattern's to report, and the fragment root is the only element that hands that pattern
 		// out — a nested node with a window-like role is a panel rather than a window of its own, as
-		// UIAProvider.supports explains. A client watches the property to know whether to keep the user inside this
-		// window until it is dealt with.
-		if n.ID == d.cur.Root && patterns.Has(PatternWindow) {
+		// UIAProvider.supports explains. That is not an extra condition here: UIAProvidedPatterns, which patterns
+		// answers from, withholds the bit from every node but the root, so a dialog-shaped panel reports nothing and
+		// UIAReportsProperty would refuse it a value even if something did. A client watches the property to know
+		// whether to keep the user inside this window until it is dealt with.
+		if patterns.Has(PatternWindow) {
 			d.property(n.ID, UIA_WindowIsModalPropertyId)
 		}
+	case accessibility.StateBusy:
+		// Whether a node is working is part of its item status, which is the only property a client watches that can
+		// carry it; see UIAItemStatus. An indeterminate progress bar is the case that matters — it starts and stops
+		// being busy without any other property of it changing, since it reports no number at all — and a client that
+		// was never told would keep announcing the bar as idle while it worked, or as working long after it had
+		// finished.
+		d.property(n.ID, UIA_ItemStatusPropertyId)
 	case accessibility.StateIgnored:
 		// An ignored node has no provider, so there is no property to report and nothing to report it on. What has
 		// happened is structural: the node joined or left the tree a client sees, and no node's list of children
@@ -1209,7 +1389,7 @@ func (d *uiaDecider) state(event accessibility.Event) {
 			Change: StructureChangeType_ChildrenInvalidated,
 		})
 	default:
-		// Selectable and Busy have no property a client watches for.
+		// Selectable has no property a client watches for.
 	}
 }
 

@@ -325,6 +325,57 @@ func TestWatchEnabledIgnoresWhatIsNotItsBusiness(t *testing.T) {
 	}
 }
 
+// TestWatchEnabledOnlyListensToTheLauncher covers the hole a match rule cannot close. The bus consults the rules only
+// for the signals it broadcasts: one addressed to this connection is delivered whatever they say, so any peer on the
+// session bus could otherwise unicast a PropertiesChanged for /org/a11y/bus saying IsEnabled=false and have the root
+// package tear the bridge down, leaving a screen-reader user with no way into the application. What the launcher's
+// signals carry, and what nothing else can, is the unique name of the connection that owns the launcher's well-known
+// name, which the watch resolves for itself and keeps current from NameOwnerChanged.
+func TestWatchEnabledOnlyListensToTheLauncher(t *testing.T) {
+	clearAccessibilityEnvironment(t)
+	c := check.New(t)
+	p := newTestPeer(t, statusAnswers)
+	changes := make(chan bool, 8)
+	defer WatchEnabled(p.client, func(enabled bool) { changes <- enabled })()
+	c.False(nextChange(t, changes), "the state the watch started in is reported before anything else")
+	waitForRules(t, p, 2)
+
+	// Another peer saying the status has changed, both of the ways a PropertiesChanged can say it: with the new value,
+	// and by naming the property as one to be asked about again. Neither is the launcher's word.
+	p.emitFrom(testOtherName, BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
+		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})
+	p.emitFrom(testOtherName, BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
+		dbus.Dict{}, []string{isEnabledProperty})
+	// The launcher itself is still listened to, and its signal arrives last, so anything reported before it would be
+	// one of the forgeries.
+	p.enabled.Store(true)
+	p.emit(BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
+		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})
+	c.True(nextChange(t, changes))
+	select {
+	case reported := <-changes:
+		t.Fatalf("nothing else should have been reported, but %v was", reported)
+	default:
+	}
+
+	// The name moving to another connection moves the trust with it: the launcher that owns it now is asked what it has
+	// to say, and the connection that used to own it is just another peer from then on.
+	p.enabled.Store(false)
+	p.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, testPeerName,
+		testOtherName)
+	c.False(nextChange(t, changes), "a launcher that has just taken the name is asked what it has to say")
+	p.emit(BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
+		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})
+	p.emitFrom(testOtherName, BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
+		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: true}}}, []string{})
+	c.True(nextChange(t, changes), "the owner's word is taken, and the connection that lost the name is not")
+	select {
+	case reported := <-changes:
+		t.Fatalf("nothing else should have been reported, but %v was", reported)
+	default:
+	}
+}
+
 func TestBusAddress(t *testing.T) {
 	clearAccessibilityEnvironment(t)
 	c := check.New(t)
@@ -352,6 +403,48 @@ func TestBusAddress(t *testing.T) {
 	quiet := newTestPeer(t, unknownServiceAnswers)
 	_, err = BusAddress(quiet.client, nil)
 	c.HasError(err, "a session bus with no launcher cannot say where the accessibility bus is")
+}
+
+// TestTheLaunchersAddressIsAskedOfItsOwner covers where the question that finds the accessibility bus is sent. A reply
+// to a call addressed to a well-known name carries the unique name of whichever connection owns it, which the caller
+// cannot know in advance, so such a reply is accepted from any sender: a peer on the session bus that guesses the
+// serial can answer in the launcher's place, and the answer is the address of the bus that everything the application
+// says to an assistive technology, and every keystroke one sends back, travels over. Addressing the call to the unique
+// name the bus resolved instead is what makes the sender check possible.
+func TestTheLaunchersAddressIsAskedOfItsOwner(t *testing.T) {
+	clearAccessibilityEnvironment(t)
+	c := check.New(t)
+	asked := make(chan *dbus.Message, 4)
+	forge := true
+	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+		if msg.Interface != BusInterface || msg.Member != "GetAddress" {
+			return statusAnswers(peer, msg)
+		}
+		peer.deliver(asked, msg)
+		if forge {
+			// Another peer answers first, with a bus of its own. It has the serial in front of it, which is no more
+			// than one that guesses it has.
+			peer.replyFrom(testOtherName, msg, "s", "unix:path=/tmp/a-bus-of-somebody-elses")
+		}
+		peer.replyFrom(testPeerName, msg, "s", "unix:path=/tmp/at-spi-bus-for-a-test")
+		return true
+	})
+
+	address, err := BusAddress(p.client, nil)
+	c.NoError(err)
+	c.Equal("unix:path=/tmp/at-spi-bus-for-a-test", address,
+		"a reply from anyone but the launcher must be discarded, leaving the launcher's own to answer the call")
+	c.Equal(testPeerName, (<-asked).Destination,
+		"the connection that owns the launcher's name is what the call is addressed to")
+
+	// A name nobody owns is a launcher that is not running, and a call to the well-known name is what starts one. The
+	// reply to that call cannot be checked, which is the price of there being anything to ask at all.
+	forge = false
+	p.noOwners.Store(true)
+	address, err = BusAddress(p.client, nil)
+	c.NoError(err)
+	c.Equal("unix:path=/tmp/at-spi-bus-for-a-test", address)
+	c.Equal(BusDestination, (<-asked).Destination, "which is the one thing that can start a launcher on demand")
 }
 
 // waitForRules waits until the connection under test has asked the bus for exactly count match rules and returns them.

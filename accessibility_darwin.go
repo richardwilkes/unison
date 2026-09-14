@@ -27,7 +27,7 @@ import (
 // its life: macOS gives no notification that the last assistive technology has gone away, so there is nothing to
 // deactivate on.
 
-// macInitAccessibilityCallbacks installs the two callbacks the Cocoa accessibility adapter reaches the root package
+// macInitAccessibilityCallbacks installs the three callbacks the Cocoa accessibility adapter reaches the root package
 // through. It is called once, from nativeLateInit, and installs nothing but function pointers: no snapshot is built and
 // no adapter is created until an assistive technology asks something.
 func macInitAccessibilityCallbacks() {
@@ -57,6 +57,17 @@ func macInitAccessibilityCallbacks() {
 		}
 		InvokeTask(func() { w.performAccessibilityAction(req) })
 	}
+	cocoa.AccessibilityActionsCallback = func(macWnd cocoa.Window, reqs []accessibility.ActionRequest) {
+		// The adapter hands over a set only for setting which rows are selected, whose requests are all carried out
+		// inline, so there is no per-request choice to make here: they are carried out together, and the window is
+		// described once at the end rather than once per row. The thread check is the one the single-request callback
+		// makes, and for the same reason.
+		if !onUIThread() {
+			InvokeTask(func() { macPerformAccessibilityActions(macWnd, reqs) })
+			return
+		}
+		macPerformAccessibilityActions(macWnd, reqs)
+	}
 }
 
 // macPerformAccessibilityAction finds the window a request names and carries the request out. UI thread only; it is
@@ -68,6 +79,17 @@ func macPerformAccessibilityAction(macWnd cocoa.Window, req accessibility.Action
 		return
 	}
 	w.performAccessibilityAction(req)
+}
+
+// macPerformAccessibilityActions finds the window a set of requests names and carries the whole set out as one. UI
+// thread only.
+func macPerformAccessibilityActions(macWnd cocoa.Window, reqs []accessibility.ActionRequest) {
+	w := macFindWindow(macWnd)
+	if w == nil {
+		slog.Warn("received accessibility action callback for unknown window", "window", macWnd)
+		return
+	}
+	w.performAccessibilityActions(reqs)
 }
 
 // axActionIsNavigation reports whether an action only moves the focus, the selection or the view — the requests an

@@ -46,6 +46,7 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -75,6 +76,14 @@ var (
 	// An inline request re-enters this file, publishing a new snapshot from within the callback; dispatch and
 	// releaseElement exist to make that safe, and the file comment above explains how.
 	AccessibilityActionCallback func(w Window, req accessibility.ActionRequest)
+	// AccessibilityActionsCallback is invoked for the one thing an assistive technology asks that names more than one
+	// node at once: setting which rows of a table, outline or list are selected, which the schema has no single request
+	// for and which the adapter therefore turns into a Select followed by an AddToSelection apiece. The implementation
+	// must carry the whole set out and describe the window once at the end — handing them over one at a time instead
+	// would build a snapshot per row and publish the intermediate selections an assistive technology may read, all
+	// inside the single AppKit callback it is waiting on. It is installed alongside AccessibilityActionCallback, and
+	// every request it is given is one that is carried out inline.
+	AccessibilityActionsCallback func(w Window, reqs []accessibility.ActionRequest)
 )
 
 // The AppKit NSString* constants this adapter uses, named by their exported symbols and resolved on first use through
@@ -136,13 +145,15 @@ const (
 	axKeyUIElements   = "NSAccessibilityUIElementsKey"
 )
 
-// The attribute names a menu item's accelerator is reported through. They are spelled out rather than resolved through
-// AppKitString because they are constants of ApplicationServices rather than of AppKit — kAXMenuItemCmdCharAttribute
-// and kAXMenuItemCmdModifiersAttribute, which are CFStrings with no exported NSString counterpart — and the strings
-// themselves have been these since Mac OS X 10.1.
+// The attribute names a menu item's accelerator and a busy node are reported through. They are spelled out rather than
+// resolved through AppKitString because they are constants of ApplicationServices rather than of AppKit —
+// kAXMenuItemCmdCharAttribute, kAXMenuItemCmdModifiersAttribute and kAXElementBusyAttribute, which are CFStrings with
+// no exported NSString counterpart — and each is spelled the same way in every version of AXAttributeConstants.h that
+// has it.
 const (
 	axAttrMenuItemCmdChar      = "AXMenuItemCmdChar"
 	axAttrMenuItemCmdModifiers = "AXMenuItemCmdModifiers"
+	axAttrElementBusy          = "AXElementBusy"
 )
 
 // The bits of AXMenuItemCmdModifiers (AXMenuItemModifiers in ApplicationServices' AXAttributeConstants.h). Zero means
@@ -216,8 +227,9 @@ var (
 	axActionNameIDs         []objc.ID
 	axActionDescriptionFunc func(name objc.ID) objc.ID
 
-	axShortcutAttrsOnce sync.Once
-	axShortcutAttrIDs   []objc.ID
+	axLegacyAttrsOnce sync.Once
+	axShortcutAttrIDs []objc.ID
+	axBusyAttrID      objc.ID
 
 	axSelectorRulesOnce sync.Once
 	axSelectorRuleMap   map[objc.SEL]func(t *accessibility.Tree, n *accessibility.Node) bool
@@ -377,6 +389,20 @@ func (a *AXAdapter) dispatch(req accessibility.ActionRequest) {
 	AccessibilityActionCallback(a.wnd, req)
 }
 
+// dispatchAll hands a set of requests to the action callback as one, under the same in-flight mark a single request is
+// handed over with and for the same reason: the set is carried out before the callback returns, and the window is
+// described once at the end, so elements may be dropped while AppKit is still standing on them. See dispatch.
+func (a *AXAdapter) dispatchAll(reqs []accessibility.ActionRequest) {
+	a.inflight++
+	defer func() {
+		a.inflight--
+		if a.inflight == 0 {
+			a.drainDeferred()
+		}
+	}()
+	AccessibilityActionsCallback(a.wnd, reqs)
+}
+
 // releaseElement lets go of the adapter's reference to an element. While a request is in flight the release is deferred
 // instead: the element may be the very one AppKit is calling a method on, and releasing it there would free it under
 // AppKit's feet. See drainDeferred.
@@ -489,6 +515,13 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			switch e.State {
 			case accessibility.StateChecked, accessibility.StatePressed:
 				notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
+			case accessibility.StateBusy:
+				// Whether a node is busy is reported as AXElementBusy, an attribute of the informal protocol with no
+				// notification of its own (see axElementLegacyAttributeMethods), and what it says is precisely that the
+				// value cannot be trusted yet — so the value-changed notification is the one that fits: an assistive
+				// technology re-reads the element, finds the flag and says what it now knows. A progress bar switched
+				// between determinate and indeterminate is what produces one, and its value changes with it.
+				notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
 			case accessibility.StateSelected:
 				notices = a.appendSelectionNotice(notices, e.Node)
 			case accessibility.StateExpanded:
@@ -525,7 +558,10 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			// orientation, or one of the LabeledBy, DescribedBy and Controls links. macOS has no notification for any
 			// of them, and the title-changed notification is the nearest thing it has to "read this element again" —
 			// the same stand-in NameChanged uses, and for the same reason: what it is worth is the prompt, since every
-			// one of these is answered from the current snapshot the moment an assistive technology asks.
+			// one of these is answered from the current snapshot the moment an assistive technology asks. The three
+			// relations included: LabeledBy is the element's AXTitleUIElement, Controls its AXLinkedUIElements, and
+			// DescribedBy is folded into its AXHelp (see axHelpFor), so the prompt names nothing the element cannot
+			// answer.
 			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyTitleChanged})
 		case accessibility.DescriptionChanged, accessibility.WindowActivated, accessibility.WindowDeactivated:
 			// NSWindow reports its own activation, and macOS has no notification for a changed help string.
@@ -764,8 +800,8 @@ func (a *AXAdapter) windowPoint(screen NSPoint) geom.Point {
 
 // hitTest returns the element an assistive technology should be given for a screen location, or 0 if the window has
 // nothing there. The deepest node containing the point wins; if it is one of the anonymous grouping nodes an assistive
-// technology is told to look past, the nearest reportable ancestor stands in for it, and the content view stands in for
-// the window's root.
+// technology is told to look past, or a separator, whatever is presented in its place stands in for it, and the content
+// view stands in for the window's root.
 func (a *AXAdapter) hitTest(screen NSPoint) objc.ID {
 	if a.tree == nil {
 		return 0
@@ -774,16 +810,12 @@ func (a *AXAdapter) hitTest(screen NSPoint) objc.ID {
 	if id == 0 {
 		return 0
 	}
-	if n := a.tree.Node(id); n == nil || !axReportable(n) {
-		// An anonymous grouping node, or a separator, which is scaffolding rather than content: the nearest ancestor an
-		// assistive technology is willing to hear about stands in for it. One step is always enough, since
-		// UnignoredParent never lands on an ignored node and a separator never has children.
-		id = a.tree.UnignoredParent(id)
-		if id == 0 {
-			return 0
-		}
+	// An anonymous grouping node, or a separator, is scaffolding rather than content, and what a separator holds is
+	// spliced into its place, so a single step upwards is not enough: axPresentedNode climbs until it reaches something
+	// an assistive technology is willing to hear about, which is the element the presented hierarchy lists.
+	if id = axPresentedNode(a.tree, id); id == 0 {
+		return 0
 	}
-	id = axStandIn(a.tree, id)
 	return a.elementOrView(id)
 }
 
@@ -803,6 +835,64 @@ func axReportable(n *accessibility.Node) bool {
 // triangle is named by its role on this platform, so a label as well would be said after it.
 func axHasLabel(n *accessibility.Node) bool {
 	return n.Role != role.Label && n.Role != role.DisclosureTriangle
+}
+
+// axHelpFor returns what an element answers as its help, the AXHelp an assistive technology speaks after the label and
+// the value: the node's own Description, followed by the text of each node its DescribedBy names.
+//
+// Folding the relation into that string is the nearest this platform has to reporting it. AT-SPI carries it as
+// RelationDescribedBy and UI Automation as the DescribedBy property, each of which hands the client the describing
+// elements themselves, while macOS has no such attribute outside web content — kAXDescribedByAttribute belongs to
+// AXWebConstants.h, and nothing but a WebKit area answers it — so a node carrying only a DescribedBy link would be
+// described on both other platforms and silent here. What a describing node contributes is its own spoken text: its
+// name, which for static text is its content, and failing that whatever text or value it holds.
+//
+// Anything already being said is left out. A describing node whose text is this node's own name, or is the same as
+// another part, would otherwise be heard twice, which is what axHasLabel exists to prevent for the label itself.
+func axHelpFor(t *accessibility.Tree, n *accessibility.Node) string {
+	var parts []string
+	if n.Description != "" {
+		parts = append(parts, n.Description)
+	}
+	for _, id := range n.DescribedBy {
+		describer := t.Node(id)
+		if describer == nil {
+			continue
+		}
+		if text := axSpokenTextOf(describer); text != "" && text != n.Name && !slices.Contains(parts, text) {
+			parts = append(parts, text)
+		}
+	}
+	var buffer strings.Builder
+	for _, part := range parts {
+		if buffer.Len() != 0 {
+			// A full stop between the parts is what has an assistive technology speak them as separate sentences rather
+			// than running them together; a part that already ends in punctuation of its own is given only the space.
+			if r, _ := utf8.DecodeLastRuneInString(buffer.String()); !strings.ContainsRune(".!?:;", r) {
+				buffer.WriteByte('.')
+			}
+			buffer.WriteByte(' ')
+		}
+		buffer.WriteString(part)
+	}
+	return buffer.String()
+}
+
+// axSpokenTextOf returns the text a node contributes when it describes another one: its name, which for static text is
+// the content the snapshot builder puts there, and failing that the text it holds or the value it reports.
+//
+// Empty text is not an answer, only a node with nothing typed in it yet: a describer carrying a TextInfo whose Text is
+// empty falls through to its value the same way a nameless one falls through to its text, rather than stopping the
+// chain one step short and contributing nothing.
+func axSpokenTextOf(n *accessibility.Node) string {
+	switch {
+	case n.Name != "":
+		return n.Name
+	case n.Text != nil && n.Text.Text != "":
+		return n.Text.Text
+	default:
+		return n.Value
+	}
 }
 
 // axRoleDescriptionFor returns AppKit's own description of a role and subrole pair, which is what an element that has
@@ -929,8 +1019,10 @@ func axRoleFor(t *accessibility.Tree, n *accessibility.Node) (roleID, subroleID 
 	case role.Toolbar:
 		return AppKitString(axRoleToolbar), 0
 	default:
-		// role.Separator lands here as well, but it is never reported as an element at all, so what it says its role is
-		// does not matter.
+		// role.Separator lands here as well. It is spliced out of everything a client is shown — the presented
+		// children, the presented parent and the hit test alike — so moving through the hierarchy never reaches one and
+		// what it says its role is hardly matters; it can still be asked, by a client holding an element made for one
+		// by a relation link or a notification that named it.
 		return AppKitString(axRoleUnknown), 0
 	}
 }
@@ -1192,23 +1284,102 @@ func axCellStoodInFor(t *accessibility.Tree, n *accessibility.Node) *accessibili
 }
 
 // axPresentedChildren returns the children an assistive technology is shown beneath a node: its unignored children,
-// with each cell that holds exactly one thing replaced by that thing.
+// with each cell that holds exactly one thing replaced by that thing, and anything that is not reportable at all — a
+// separator — replaced by whatever it holds, exactly as Tree.UnignoredChildren splices out an ignored node.
+//
+// That last splice has to happen here rather than being left to AppKit. An NSView subtree is filtered for the client,
+// so a view answering isAccessibilityElement false is spliced out of its parent's children, but an
+// NSAccessibilityElement's accessibilityChildren array is handed over as it stands: a separator left in it reaches the
+// client as an element of its own — AXUnknown, with the role description to match — that the VoiceOver cursor lands on
+// and announces, however firmly the element itself says it is no element. Dropping it here is what makes
+// accessibilityChildren and axViewChildren, and with them accessibilityVisibleChildren, accessibilitySelectedChildren
+// and accessibilityContents, agree with hitTest, which has always passed over a separator.
 func axPresentedChildren(t *accessibility.Tree, id accessibility.NodeID) []accessibility.NodeID {
-	children := t.UnignoredChildren(id)
-	for i, child := range children {
-		children[i] = axStandIn(t, child)
-	}
-	return children
+	return axAppendPresentedChildren(nil, t, id, nil)
 }
 
-// axPresentedParent returns the parent an assistive technology is shown above a node: its unignored parent, unless the
-// node stands in for a cell, in which case the cell's parent.
-func axPresentedParent(t *accessibility.Tree, n *accessibility.Node) accessibility.NodeID {
-	if cell := axCellStoodInFor(t, n); cell != nil {
-		return t.UnignoredParent(cell.ID)
+// axAppendPresentedChildren appends the presented children of a node to ids, splicing in the presented children of a
+// child that is not reportable in that child's place.
+//
+// Each child is resolved to whatever stands in for it before it is asked whether it is reportable, since the two can
+// differ: a cell holding nothing but a separator stands in as that separator, so testing the cell would put the
+// separator itself back among the presented children — the one thing this splice exists to prevent.
+//
+// visited holds the ids already descended into, which is what keeps a malformed tree from being descended forever; it
+// is created only when there is something to descend into, so the ordinary case — a node with no separator among its
+// children — allocates nothing beyond the answer. Tree.appendUnignoredChildren guards its own splice the same way and
+// for the same reason.
+func axAppendPresentedChildren(ids []accessibility.NodeID, t *accessibility.Tree, id accessibility.NodeID,
+	visited map[accessibility.NodeID]bool,
+) []accessibility.NodeID {
+	for _, childID := range t.UnignoredChildren(id) {
+		standInID := axStandIn(t, childID)
+		standIn := t.Node(standInID)
+		switch {
+		case standIn == nil || visited[standInID]:
+		case axReportable(standIn):
+			ids = append(ids, standInID)
+		default:
+			if visited == nil {
+				visited = make(map[accessibility.NodeID]bool)
+			}
+			visited[standInID] = true
+			ids = axAppendPresentedChildren(ids, t, standInID, visited)
+		}
 	}
-	return t.UnignoredParent(n.ID)
+	return ids
 }
+
+// axPresentedParent returns the parent an assistive technology is shown above a node: the nearest ancestor that is
+// presented at all, which is the node whose presented children list this one.
+//
+// One step upwards is not enough. A node standing in for a cell hangs off the cell's parent rather than the cell, and a
+// node a separator holds is spliced into the separator's place, so the walk steps past a cell that is stood in for and
+// keeps climbing while what it reaches is not reportable. Stopping at the separator would name it as the parent,
+// handing a client the very AXUnknown element the splice in axAppendPresentedChildren keeps out of the children and
+// breaking the round trip the presented hierarchy rests on: the menu lists the item a separator holds, and the item has
+// to name that menu back.
+func axPresentedParent(t *accessibility.Tree, n *accessibility.Node) accessibility.NodeID {
+	for i := 0; n != nil && i < axMaxPresentedDepth; i++ {
+		if cell := axCellStoodInFor(t, n); cell != nil {
+			n = cell
+		}
+		parent := t.Node(t.UnignoredParent(n.ID))
+		if parent == nil {
+			return 0
+		}
+		if axReportable(parent) {
+			return parent.ID
+		}
+		n = parent
+	}
+	return 0
+}
+
+// axPresentedNode returns the node presented in place of the node with the given id: whatever stands in for it, and if
+// that is something a client is never shown — an anonymous grouping node or a separator — the nearest ancestor that is
+// presented, resolved through its own stand-in in turn. It is zero when nothing is presented for the node at all.
+func axPresentedNode(t *accessibility.Tree, id accessibility.NodeID) accessibility.NodeID {
+	for i := 0; i < axMaxPresentedDepth; i++ {
+		n := t.Node(axStandIn(t, id))
+		if n == nil {
+			return 0
+		}
+		if axReportable(n) {
+			return n.ID
+		}
+		if id = axPresentedParent(t, n); id == 0 {
+			return 0
+		}
+	}
+	return 0
+}
+
+// axMaxPresentedDepth bounds how far axPresentedParent and axPresentedNode will climb. It is the counterpart of
+// maxTreeDepth inside the accessibility package: real hierarchies are orders of magnitude shallower, so the limit never
+// comes into play, and it exists only so that a malformed tree — one whose Parent links form a cycle of nodes none of
+// which is reportable — cannot make either of them loop forever.
+const axMaxPresentedDepth = 512
 
 // axVisibleRowsOf returns the row-like children of a node that are not scrolled or clipped out of view.
 func axVisibleRowsOf(t *accessibility.Tree, n *accessibility.Node) []accessibility.NodeID {
@@ -1307,17 +1478,18 @@ func axScrollBarOf(t *accessibility.Tree, n *accessibility.Node, o accessibility
 	return 0
 }
 
-// axContentsOf returns the children of a scroll area other than its scroll bars, which is what it scrolls. Anything
-// else reports the children it is shown, since AXContents is registered on every element and an element that answered
-// the raw children instead would disagree with accessibilityChildren about any container holding a single-occupant
-// cell — handing out an element for a cell the presented hierarchy never mentions, which then names a parent that does
-// not list it (see axStandIn).
+// axContentsOf returns the children a scroll area is shown holding other than its scroll bars, which is what it
+// scrolls. Anything else reports the children it is shown as they stand, since AXContents is registered on every
+// element and an element that answered the raw children instead would disagree with accessibilityChildren about any
+// container holding a single-occupant cell — handing out an element for a cell the presented hierarchy never mentions,
+// which then names a parent that does not list it (see axStandIn) — or about one holding a separator, which the
+// presented hierarchy leaves out entirely.
 func axContentsOf(t *accessibility.Tree, n *accessibility.Node) []accessibility.NodeID {
 	if n.Role != role.ScrollArea {
 		return axPresentedChildren(t, n.ID)
 	}
-	children := t.UnignoredChildren(n.ID)
-	contents := children[:0:0]
+	children := axPresentedChildren(t, n.ID)
+	contents := children[:0]
 	for _, id := range children {
 		if child := t.Node(id); child != nil && child.Role != role.ScrollBar {
 			contents = append(contents, id)
@@ -1426,14 +1598,20 @@ func axSetValue(self, value objc.ID) {
 
 // axSelectRows makes the rows in an NSArray of elements the selection of the table, outline or list they belong to. The
 // schema has no request that replaces a selection wholesale, so the first row is selected outright, which clears the
-// rest, and each further row is added to it; the requests are carried out later, in that order, on the UI thread.
-// Elements that are not rows of this container, or that came from some other window, are ignored, as is an empty
-// array, since nothing here can clear a selection. Each row is resolved against the snapshot as its turn comes, since
-// selecting one may be carried out on the spot and publish a new one; the rows themselves are held alive by the NSArray
-// AppKit passed in.
+// rest, and each further row is added to it. Elements that are not rows of this container, or that came from some other
+// window, are ignored, as is an empty array, since nothing here can clear a selection.
+//
+// The whole set is gathered before any of it is handed over, and is then carried out as one. The alternative — a
+// request per row, each handed over as it is worked out — costs a full snapshot apiece, since a selection request is
+// carried out on the spot and the window is described again the moment it has been (see AccessibilityActionsCallback):
+// naming k rows would build k snapshots, post k selected-rows-changed notifications and publish k intermediate
+// selections an assistive technology may read, all from inside the single AppKit callback it is waiting on. Gathering
+// them costs one of each. It also means every row is resolved against the snapshot that was current when the request
+// arrived, which is the one the client named them from; the rows themselves are held alive by the NSArray AppKit
+// passed in.
 func axSelectRows(self, rows objc.ID) {
 	a, n := axElementTarget(self, 0)
-	if a == nil || n == nil || rows == 0 || AccessibilityActionCallback == nil {
+	if a == nil || n == nil || rows == 0 || AccessibilityActionsCallback == nil {
 		return
 	}
 	// AXSelectedRows is a CFType like any other attribute, so what a client sets it to is checked before it is
@@ -1448,6 +1626,7 @@ func axSelectRows(self, rows objc.ID) {
 	if axTraceOn {
 		axTraceNode(fmt.Sprintf("set selected rows (%d elements)", NSArrayCount(rows)), n)
 	}
+	var reqs []accessibility.ActionRequest
 	action := accessibility.Select
 	for _, element := range IDsFromNSArray(rows) {
 		if !objc.Send[bool](element, Sel("isKindOfClass:"), axElementClass) {
@@ -1461,11 +1640,14 @@ func axSelectRows(self, rows objc.ID) {
 		if axTraceOn {
 			axTraceNode("  "+action.String(), row)
 		}
-		a.dispatch(accessibility.ActionRequest{Node: row.ID, Action: action})
+		reqs = append(reqs, accessibility.ActionRequest{Node: row.ID, Action: action})
 		if !n.Multiselectable {
-			return
+			break
 		}
 		action = accessibility.AddToSelection
+	}
+	if len(reqs) != 0 {
+		a.dispatchAll(reqs)
 	}
 	if axTraceOn {
 		axTrace("  set selected rows done")
@@ -1687,17 +1869,18 @@ func registerAXElementClass() {
 }
 
 // axElementMethods returns UnisonAXElement's method table, in five groups: the attributes that describe a node, the
-// states and actions, the text protocol, the accelerator a node may name, and the one method that says which of all of
-// them apply to the node an element is standing for.
+// states and actions, the text protocol, the attributes only the informal protocol has — the accelerator a node may
+// name and whether it is busy — and the two methods that say which of all of them apply to the node an element is
+// standing for.
 func axElementMethods() []objc.MethodDef {
 	methods := axElementAttributeMethods()
 	methods = append(methods, axElementStateMethods()...)
 	methods = append(methods, axElementTextMethods()...)
-	methods = append(methods, axElementShortcutMethods()...)
+	methods = append(methods, axElementLegacyAttributeMethods()...)
 	return append(methods, axElementAllowedMethods()...)
 }
 
-// axElementAllowedMethods returns the override that trims what each element advertises down to what its node can
+// axElementAllowedMethods returns the two overrides that trim what each element advertises down to what its node can
 // actually do.
 //
 // The method table above is one flat set shared by every node of every snapshot, so without this a plain label offers
@@ -1716,6 +1899,15 @@ func axElementMethods() []objc.MethodDef {
 // input, which would appear to work — or, for the getters this class does not override, quietly changed what the
 // element reports. Super refuses all of those and allows the getters, which is the answer wanted; the setters this
 // class does override are all named by axSelectorRules, so they never reach super at all.
+//
+// isAccessibilitySelectorAllowed: is not the whole story for a setter, though, which is what the second override is
+// for. AppKit only consults it about a setter the class does not implement: for the seven setAccessibility…: selectors
+// this class does implement, an element that answers nothing else reports every one of them as writable whatever the
+// rules say, and the write is then refused further down — the "advertised, then refused" drift this whole facility
+// exists to prevent. Implementing the informal protocol's accessibilityIsAttributeSettable:, which is what an AX
+// client's AXUIElementIsAttributeSettable is answered from, is what makes AppKit ask at all. Verified against a real
+// AXUIElement client: without the second override a plain AXStaticText label reports AXValue, AXFocused and AXSelected
+// settable and swallows a write to each; with it, each of the seven is settable exactly when its rule allows it.
 func axElementAllowedMethods() []objc.MethodDef {
 	return []objc.MethodDef{
 		{
@@ -1736,7 +1928,67 @@ func axElementAllowedMethods() []objc.MethodDef {
 				return allowed(a.tree, n)
 			},
 		},
+		{
+			// The answer is worked out here rather than handed anywhere else. NSAccessibilityElement has no
+			// implementation of this method — it belongs to the informal protocol, and NSObject supplies none either —
+			// so a call to super would raise an unrecognized-selector exception inside a Go callback, which is
+			// uncatchable and takes the process with it; and asking self's own isAccessibilitySelectorAllowed: would run
+			// into NSAccessibilityElement's implementation of that, which consults this method whenever the class
+			// implements it, and recurse until the stack is gone. Both were tried against a real AX client, and both
+			// behave exactly as described. An attribute no setter of this class stands for is not settable, which is
+			// the answer super gives for all the rest.
+			Cmd: Sel("accessibilityIsAttributeSettable:"),
+			Fn: func(self objc.ID, _ objc.SEL, attribute objc.ID) bool {
+				name := GoStringFromNSString(attribute)
+				rule, restricted := axSettableRuleFor(name)
+				if !restricted {
+					return false
+				}
+				a, n := axElementTarget(self, 0)
+				if a == nil || n == nil {
+					// An element whose node has left the tree speaks for nothing, so nothing about it can be set.
+					return false
+				}
+				if axTraceOn {
+					axTraceNode("settable? "+name, n)
+				}
+				return rule(a.tree, n)
+			},
+		},
 	}
+}
+
+// axSettableAttributes pairs each attribute an assistive technology may ask to write with the setter UnisonAXElement
+// implements for it, which is the mapping AppKit makes for itself when it decides whether a class responds to an
+// attribute's setter at all. It is spelled out because accessibilityIsAttributeSettable: asks in terms of attribute
+// names while the rules are keyed by selector, and it has to name every setter in the method table: one missing from
+// here is offered to every node again, whatever its rule says. TestAXEverySetterHasARule proves none is missing.
+//
+// The names are the documented values of the matching kAX*Attribute constants of ApplicationServices, spelled out for
+// the same reason the accelerator's are; see axAttrMenuItemCmdChar.
+var axSettableAttributes = []struct {
+	attribute string
+	setter    string
+}{
+	{attribute: "AXValue", setter: "setAccessibilityValue:"},
+	{attribute: "AXFocused", setter: "setAccessibilityFocused:"},
+	{attribute: "AXSelected", setter: "setAccessibilitySelected:"},
+	{attribute: "AXExpanded", setter: "setAccessibilityExpanded:"},
+	{attribute: "AXDisclosing", setter: "setAccessibilityDisclosed:"},
+	{attribute: "AXSelectedRows", setter: "setAccessibilitySelectedRows:"},
+	{attribute: "AXSelectedTextRange", setter: "setAccessibilitySelectedTextRange:"},
+}
+
+// axSettableRuleFor returns the rule deciding whether the attribute of the given name may be written, and false for an
+// attribute no setter of this class stands for.
+func axSettableRuleFor(attribute string) (rule func(t *accessibility.Tree, n *accessibility.Node) bool, ok bool) {
+	for _, entry := range axSettableAttributes {
+		if entry.attribute == attribute {
+			rule, ok = axSelectorRules()[Sel(entry.setter)]
+			return rule, ok
+		}
+	}
+	return nil, false
 }
 
 // axSuperAllowsSelector reports what NSAccessibilityElement's own isAccessibilitySelectorAllowed: answers for a
@@ -1834,20 +2086,26 @@ func axHoldsRows(t *accessibility.Tree, n *accessibility.Node) bool {
 	}
 }
 
-// axElementShortcutMethods returns the two overrides that publish a node's Shortcut as the accelerator that activates
-// it, which on this platform is AXMenuItemCmdChar and AXMenuItemCmdModifiers: the attributes VoiceOver speaks after a
-// menu item's name, and the counterparts of the key binding AT-SPI reports through Action.GetKeyBinding and the
-// accelerator key UIA reports through UIA_AcceleratorKeyPropertyId.
+// axElementLegacyAttributeMethods returns the two overrides that publish the attributes the NSAccessibility protocol
+// has no property for, which on this platform means a node's Shortcut and its Busy flag:
 //
-// They are published through the informal protocol these two methods belong to because there is nowhere else to put
-// them: the NSAccessibility protocol has no property for either, they predate it, and AppKit's own NSMenuItem still
-// answers them this way — one lists both among its accessibilityAttributeNames and answers each from
-// accessibilityAttributeValue:. Everything else is handed to the superclass untouched, which is what goes on answering
-// every other attribute of every other element.
+//   - AXMenuItemCmdChar and AXMenuItemCmdModifiers carry the accelerator that activates a node — the attributes
+//     VoiceOver speaks after a menu item's name, and the counterparts of the key binding AT-SPI reports through
+//     Action.GetKeyBinding and the accelerator key UIA reports through UIA_AcceleratorKeyPropertyId. Every node that
+//     names a shortcut is reported, not just a menu item: a widget or an application may set Shortcut on anything
+//     through Accessibility.Callback.
+//   - AXElementBusy says the node is working and that its value is not to be trusted yet, which is the whole of what an
+//     indeterminate progress bar has to say (see ProgressBar.ProvideAccessibility) and the counterpart of the BUSY
+//     state AT-SPI reports. It is answered only by a node that is actually busy, exactly as the accelerator is answered
+//     only by a node that names one.
 //
-// Every node that names a shortcut is reported, not just a menu item: a widget or an application may set Shortcut on
-// anything through Accessibility.Callback, and these are the only attributes macOS has to say it with.
-func axElementShortcutMethods() []objc.MethodDef {
+// All three are published through the informal protocol these two methods belong to because there is nowhere else to
+// put them: NSAccessibilityProtocols.h has no property for any of them, they predate it, and AppKit's own NSMenuItem
+// still answers the accelerator this way — one lists both attributes among its accessibilityAttributeNames and answers
+// each from accessibilityAttributeValue:. Everything else is handed to the superclass untouched, which is what goes on
+// answering every other attribute of every other element, and mixing the two protocols this way draws no complaint from
+// AppKit: NSAccessibilityElement implements both of these methods itself.
+func axElementLegacyAttributeMethods() []objc.MethodDef {
 	return []objc.MethodDef{
 		{
 			Cmd: Sel("accessibilityAttributeNames"),
@@ -1857,10 +2115,17 @@ func axElementShortcutMethods() []objc.MethodDef {
 				if n == nil {
 					return names
 				}
-				if _, _, ok := axShortcutOf(n); !ok {
+				var added []objc.ID
+				if _, _, ok := axShortcutOf(n); ok {
+					added = append(added, axShortcutAttributeStrings()...)
+				}
+				if n.Busy {
+					added = append(added, axBusyAttributeString())
+				}
+				if len(added) == 0 {
 					return names
 				}
-				extra := NSArrayFromIDs(axShortcutAttributeStrings()...)
+				extra := NSArrayFromIDs(added...)
 				if names == 0 {
 					return extra
 				}
@@ -1871,12 +2136,20 @@ func axElementShortcutMethods() []objc.MethodDef {
 			Cmd: Sel("accessibilityAttributeValue:"),
 			Fn: func(self objc.ID, cmd objc.SEL, attribute objc.ID) objc.ID {
 				name := GoStringFromNSString(attribute)
-				if name != axAttrMenuItemCmdChar && name != axAttrMenuItemCmdModifiers {
+				if name != axAttrMenuItemCmdChar && name != axAttrMenuItemCmdModifiers && name != axAttrElementBusy {
 					return SendSuper(self, axElementClass, Sel("accessibilityAttributeValue:"), attribute)
 				}
 				_, n := axElementTarget(self, cmd)
 				if n == nil {
 					return 0
+				}
+				if name == axAttrElementBusy {
+					if !n.Busy {
+						return 0
+					}
+					// A CFBoolean rather than a number, which is what the attribute is documented to hold and what
+					// NSNumberFromBool produces; see AXAttributeConstants.h.
+					return NSNumberFromBool(true)
 				}
 				char, modifiers, ok := axShortcutOf(n)
 				if !ok {
@@ -1892,13 +2165,25 @@ func axElementShortcutMethods() []objc.MethodDef {
 }
 
 // axShortcutAttributeStrings returns the NSString for each of the two accelerator attribute names, in the order an
-// element lists them. They are created once and never released, since they are handed out on every attribute-name
-// query.
+// element lists them. See axLegacyAttributeStrings.
 func axShortcutAttributeStrings() []objc.ID {
-	axShortcutAttrsOnce.Do(func() {
-		axShortcutAttrIDs = []objc.ID{NewNSString(axAttrMenuItemCmdChar), NewNSString(axAttrMenuItemCmdModifiers)}
-	})
+	axLegacyAttributeStrings()
 	return axShortcutAttrIDs
+}
+
+// axBusyAttributeString returns the NSString for the busy attribute's name. See axLegacyAttributeStrings.
+func axBusyAttributeString() objc.ID {
+	axLegacyAttributeStrings()
+	return axBusyAttrID
+}
+
+// axLegacyAttributeStrings creates the NSString for each attribute name the informal protocol overrides deal in. They
+// are created once and never released, since they are handed out on every attribute-name query.
+func axLegacyAttributeStrings() {
+	axLegacyAttrsOnce.Do(func() {
+		axShortcutAttrIDs = []objc.ID{NewNSString(axAttrMenuItemCmdChar), NewNSString(axAttrMenuItemCmdModifiers)}
+		axBusyAttrID = NewNSString(axAttrElementBusy)
+	})
 }
 
 // axElementAttributeMethods returns the overrides that describe what a node is, what it is called, what it contains and
@@ -1957,8 +2242,12 @@ func axElementAttributeMethods() []objc.MethodDef {
 		{
 			Cmd: Sel("accessibilityHelp"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
-				if _, n := axElementTarget(self, cmd); n != nil && n.Description != "" {
-					return NSStringFromGo(n.Description)
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
+					return 0
+				}
+				if help := axHelpFor(a.tree, n); help != "" {
+					return NSStringFromGo(help)
 				}
 				return 0
 			},
@@ -2731,11 +3020,14 @@ func axElementTextMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// An element with no text has no such range, which is the absence accessibilityRangeForLine: above spells
+			// {NSNotFound, 0} for the same reason: {0, 0} is a real empty range at the very start of the content, a
+			// position rather than an absence. All three of the range answers agree on it.
 			Cmd: Sel("accessibilityRangeForIndex:"),
 			Fn: func(self objc.ID, _ objc.SEL, index int64) NSRange {
 				_, _, info := axTextTarget(self)
 				if info == nil {
-					return NSRange{}
+					return emptyRange
 				}
 				return axRangeForRune(info.Text, axRuneFromUTF16(info.Text, int(index)))
 			},
@@ -2745,7 +3037,7 @@ func axElementTextMethods() []objc.MethodDef {
 			Fn: func(self objc.ID, _ objc.SEL, pt NSPoint) NSRange {
 				a, n, info := axTextTarget(self)
 				if info == nil {
-					return NSRange{}
+					return emptyRange
 				}
 				local := a.windowPoint(pt).Sub(n.Bounds.Point)
 				return axRangeForRune(info.Text, axRuneForLocalPoint(info, local))

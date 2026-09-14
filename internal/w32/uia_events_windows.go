@@ -150,15 +150,30 @@ func (p *UIAProvider) raisePropertyChanged(old, cur *accessibility.Tree, propert
 }
 
 // raisedPropertyValue fills in the VARIANT holding one property of this provider's node as of one snapshot, leaving it
-// empty when that snapshot does not hold the node at all.
+// empty when that snapshot does not hold the node at all, or holds it without the pattern the property belongs to.
 //
 // The properties a control pattern answers — the value, the toggle state, whether the value may be changed — are filled
 // in here, because a client reads them through the pattern interface rather than through GetPropertyValue and so
 // propertyValue has nothing to say about them. Everything else defers to propertyValue, so that the value a client is
 // told about and the value it reads back cannot disagree.
+//
+// UIAReportsProperty is what keeps that promise for the pattern properties, which have no GetPropertyValue answer to
+// agree with: the two snapshots a change is reported between need not both support the pattern, since a state flag can
+// take one away, and the side that does not support it has nothing to report. Filling it in anyway would hand a client
+// a concrete value for a pattern the element does not implement, which is the one thing the control pattern properties
+// must never do. UIADecideRaises no longer raises a pattern's property on an element that has lost the pattern — the
+// loss goes out as the pattern's availability property instead — so what reaches here is the granting direction, where
+// it is the previous snapshot that has nothing to say.
+//
+// The availability properties themselves are answered here too, from the patterns the snapshot's node hands out. They
+// are the one kind of pattern property every element answers, false being the answer that says the pattern is gone.
 func (p *UIAProvider) raisedPropertyValue(tree *accessibility.Tree, propertyID PropertyID, value *VARIANT) {
 	node := tree.Node(p.node)
-	if node == nil {
+	if node == nil || !UIAReportsProperty(tree, node, propertyID) {
+		return
+	}
+	if pattern := UIAAvailabilityPattern(propertyID); pattern != 0 {
+		value.SetBool(UIAProvidesPattern(tree, node, pattern))
 		return
 	}
 	switch propertyID {
@@ -183,7 +198,9 @@ func (p *UIAProvider) raisedPropertyValue(tree *accessibility.Tree, propertyID P
 		value.SetBool(node.Multiselectable)
 	case UIA_WindowIsModalPropertyId:
 		// The Window pattern's, so it is answered here rather than by propertyValue, which a client never reads it
-		// through: it asks IWindowProvider::get_IsModal instead.
+		// through: it asks IWindowProvider::get_IsModal instead. Reaching this means UIAReportsProperty has already
+		// established that this element hands that pattern out, which the fragment root alone does — a dialog-shaped
+		// panel is refused IWindowProvider, so it is refused a modality to go with it.
 		value.SetBool(node.Modal)
 	case UIA_BoundingRectanglePropertyId:
 		p.setBoundingRectangle(value, node)

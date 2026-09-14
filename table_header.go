@@ -209,7 +209,24 @@ func (h *TableHeader[T]) installCell(cell *Panel, frame geom.Rect) {
 	cell.parent = h.AsPanel()
 }
 
+// uninstallCell detaches a column header that installCell() attached, with one exception. A widget inside a custom
+// column header may have taken the keyboard focus while handling whatever the header was installed for — a click, or
+// an assistive technology's Focus or Press request, which axPerformInColumnHeader carries out the same way — and a
+// panel with no parent cannot find its window, so Window.CurrentFocus() would answer nil, the description published
+// next would report nothing focused, and the person's focus would be silently gone until they pressed Tab. A header
+// holding the focus is therefore left attached, exactly as Table.uninstallCell leaves the focused cell attached.
+//
+// Unlike a table cell, a column header is a panel the header owns for as long as it lives rather than one built afresh
+// on each call, so there is nothing to adopt and no bookkeeping to keep: leaving it attached is the whole of it, and
+// the next install and uninstall, once the focus has gone elsewhere, detaches it.
+//
+// The window's raw focus pointer is consulted rather than Window.CurrentFocus() for the reason given in
+// Table.adoptCellIfFocused: CurrentFocus() reports nil whenever the focused panel cannot find its window, which is
+// exactly the state this exists to avoid creating.
 func (h *TableHeader[T]) uninstallCell(cell *Panel) {
+	if wnd := h.Window(); wnd != nil && wnd.focus != nil && panelContains(cell, wnd.focus) {
+		return
+	}
 	cell.parent = nil
 }
 
@@ -236,7 +253,11 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 	return nil
 }
 
-// DefaultUpdateTooltipCallback provides the default tooltip update handling.
+// DefaultUpdateTooltipCallback provides the default tooltip update handling. The tooltip of the column header the
+// pointer is over is handed to the window through Panel.borrowedTooltip rather than through the header's own Tooltip:
+// a column header is not a child of the header — it is installed only long enough to be drawn or handed an event —
+// so what it has to say is not the header's to keep, and a description of the header built while the borrowed tooltip
+// sat in Tooltip would be a description of one of its columns.
 func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.Rect) geom.Rect {
 	if col := h.table.OverColumn(where.X); col != -1 && col < len(h.ColumnHeaders) {
 		cell := h.ColumnHeaders[col].AsPanel()
@@ -245,16 +266,16 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 			h.installCell(cell, rect)
 			var avoid geom.Rect
 			SafeCall(func() { avoid = cell.UpdateTooltipCallback(where.Sub(rect.Point), h.RectToRoot(rect).Align()) })
-			h.Tooltip = cell.Tooltip
+			h.borrowedTooltip = cell.Tooltip
 			h.uninstallCell(cell)
 			return avoid
 		}
 		if cell.Tooltip != nil {
-			h.Tooltip = cell.Tooltip
+			h.borrowedTooltip = cell.Tooltip
 			return h.RectToRoot(h.ColumnFrame(col)).Align()
 		}
 	}
-	h.Tooltip = nil
+	h.borrowedTooltip = nil
 	return geom.Rect{}
 }
 
@@ -651,7 +672,9 @@ func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequ
 // axPerformInColumnHeader carries out a request aimed at a panel inside one of the column headers. The header is
 // installed at its column's frame, exactly as it is to hand it a mouse event, so that the panel the request is for
 // exists where it was described and can reach its window; the panel is then found at the position within the header it
-// was described at.
+// was described at. A widget that takes the keyboard focus while handling the request — which Focus does outright, and
+// Press does on its way to the click it synthesizes — leaves the header attached, as one that took it from a click
+// would; see uninstallCell.
 func (h *TableHeader[T]) axPerformInColumnHeader(key axCellPanelKey, req accessibility.ActionRequest) bool {
 	col := key.Cell.Col
 	if col < 0 || col >= len(h.ColumnHeaders) || col >= len(h.table.Columns) {

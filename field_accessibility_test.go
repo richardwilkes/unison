@@ -47,6 +47,13 @@ func TestFieldAccessibility(t *testing.T) {
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
 		unison.StartupFinishedCallback(func() {
+			// The window has to be the active one for the fields to offer the contextual menu they could only show
+			// there, and a window becoming active hands the focus to the first thing in it that can take it — which
+			// selects the whole of a field's content. This button is that first thing, so every field below is one
+			// nobody is working in, which is what the caret and the unmeasured lines asserted further down are about.
+			first := unison.NewButton()
+			first.SetTitle("Elsewhere")
+
 			plain = unison.NewField()
 			plain.SetText("Hello")
 
@@ -65,13 +72,15 @@ func TestFieldAccessibility(t *testing.T) {
 			multiLine.SetText("one\ntwo")
 
 			wnd = newHeadlessWindow(t, "fields", geom.NewRect(10, 10, 500, 500),
-				axColumn(plain, watermarked, invalid, secret, multiLine))
+				axColumn(first, plain, watermarked, invalid, secret, multiLine))
 		}))
 	c.NotNil(wnd)
+	// Showing a window does not give it the focus, and a field in a window that is not the active one is published
+	// without the contextual menu it could not show. See axMayPopupMenu and axSnapshot.narrowMenuActions.
+	c.True(screen.Do(func() { wnd.ToFront() }))
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(plain)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(plain))
 	c.Equal(role.TextField, node.Role)
 	c.Equal("Hello", node.Value, "a field's content is its value")
 	c.False(node.Protected)
@@ -92,24 +101,20 @@ func TestFieldAccessibility(t *testing.T) {
 		c.Equal(0, len(node.Text.Lines), "the lines of a field nobody is working in are not measured")
 	}
 
-	watermarkNode := screen.AccessibilityNodeFor(watermarked)
-	c.True(watermarkNode != nil)
+	watermarkNode := axMustNode(c, screen.AccessibilityNodeFor(watermarked))
 	c.Equal("Search", watermarkNode.Placeholder, "the watermark is what an empty field prompts with")
 	c.Equal("", watermarkNode.Value)
 
-	invalidNode := screen.AccessibilityNodeFor(invalid)
-	c.True(invalidNode != nil)
+	invalidNode := axMustNode(c, screen.AccessibilityNodeFor(invalid))
 	c.True(invalidNode.Invalid, "a field whose content was rejected says so")
 
-	secretNode := screen.AccessibilityNodeFor(secret)
-	c.True(secretNode != nil)
+	secretNode := axMustNode(c, screen.AccessibilityNodeFor(secret))
 	c.Equal(role.TextField, secretNode.Role)
 	c.True(secretNode.Protected)
 	c.Equal("", secretNode.Value, "a password is never handed out")
 	c.True(secretNode.Text == nil, "not even the caret within a password is reported")
 
-	multiNode := screen.AccessibilityNodeFor(multiLine)
-	c.True(multiNode != nil)
+	multiNode := axMustNode(c, screen.AccessibilityNodeFor(multiLine))
 	c.Equal(role.TextArea, multiNode.Role, "a field that accepts line feeds is a text area")
 	c.True(multiNode.Text != nil)
 	if multiNode.Text != nil {
@@ -135,8 +140,7 @@ func TestFieldAccessibilityActions(t *testing.T) {
 	c.True(screen.Do(func() { wnd.ToFront() }))
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(field)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   node.ID,
@@ -154,8 +158,7 @@ func TestFieldAccessibilityActions(t *testing.T) {
 	c.Equal(5, end)
 	c.Equal("llo", selected)
 	screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(field)
-	c.True(node != nil)
+	node = axMustNode(c, screen.AccessibilityNodeFor(field))
 	if node.Text != nil {
 		c.Equal(2, node.Text.SelStart, "the selection an assistive technology set is what it reads back")
 		c.Equal(5, node.Text.SelEnd)
@@ -263,8 +266,7 @@ func TestFieldAccessibilityTextEvents(t *testing.T) {
 
 	// The description published here is the one the events that follow are measured against.
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(field)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
 	screen.AccessibilityEvents(wnd)
 
 	screen.Type("c")
@@ -334,8 +336,7 @@ func TestFieldAccessibilityLines(t *testing.T) {
 	// Showing the window hands the focus to the first field within it, so the text area is the one nothing is working
 	// in.
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(area)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(area))
 	c.True(node.Text != nil)
 	if node.Text != nil {
 		c.Equal(0, len(node.Text.Lines), "an unfocused field's lines are not measured")
@@ -346,8 +347,7 @@ func TestFieldAccessibilityLines(t *testing.T) {
 		single.SetSelectionTo(1)
 	}))
 	screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(single)
-	c.True(node != nil)
+	node = axMustNode(c, screen.AccessibilityNodeFor(single))
 	c.True(node.Text != nil)
 	if node.Text != nil {
 		c.Equal(1, len(node.Text.Lines), "the field holds one line of text")
@@ -363,8 +363,7 @@ func TestFieldAccessibilityLines(t *testing.T) {
 
 	c.True(screen.Do(func() { empty.RequestFocus() }))
 	screen.AccessibilityTree(wnd)
-	emptyNode := screen.AccessibilityNodeFor(empty)
-	c.True(emptyNode != nil)
+	emptyNode := axMustNode(c, screen.AccessibilityNodeFor(empty))
 	c.True(emptyNode.Text != nil)
 	if emptyNode.Text != nil {
 		c.Equal(1, len(emptyNode.Text.Lines), "an empty field still has the line its caret sits on")
@@ -382,8 +381,7 @@ func TestFieldAccessibilityLines(t *testing.T) {
 		area.SetSelectionToStart()
 	}))
 	screen.AccessibilityTree(wnd)
-	areaNode := screen.AccessibilityNodeFor(area)
-	c.True(areaNode != nil)
+	areaNode := axMustNode(c, screen.AccessibilityNodeFor(area))
 	c.True(areaNode.Text != nil)
 	if areaNode.Text != nil {
 		c.True(areaNode.Text.Multiline)
@@ -436,8 +434,7 @@ func TestNumericFieldAccessibility(t *testing.T) {
 	c.True(screen.Do(func() { wnd.ToFront() }))
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(field)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
 	c.Equal(role.SpinButton, node.Role)
 	c.Equal("Count", node.Name, "the label before it names it, minus the colon")
 	c.True(node.HasNumber)
@@ -481,8 +478,7 @@ func TestNumericFieldAccessibility(t *testing.T) {
 	c.Equal(0, value, "decrementing past the minimum should have stopped at it")
 
 	screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(field)
-	c.True(node != nil)
+	node = axMustNode(c, screen.AccessibilityNodeFor(field))
 	c.Equal(float64(0), node.Number)
 	c.Equal("0", node.Value)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
@@ -502,10 +498,12 @@ func TestComboFieldAccessibilityKeepsItsRole(t *testing.T) {
 			wnd = newHeadlessWindow(t, "combo role", geom.NewRect(10, 10, 300, 150), axColumn(combo))
 		}))
 	c.NotNil(wnd)
+	// Showing a window does not give it the focus, and a combo box in a window that is not the active one is published
+	// without the expansion it could not carry out. See axMayPopupMenu and axSnapshot.narrowMenuActions.
+	c.True(screen.Do(func() { wnd.ToFront() }))
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(combo)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(combo))
 	c.Equal(role.ComboBox, node.Role, "the field must not overrule what it was told it is")
 	c.True(node.Expandable)
 	c.True(node.Actions.Has(accessibility.Expand))
@@ -555,6 +553,71 @@ func TestFieldAccessibilityContextMenuTakesTheFocus(t *testing.T) {
 	c.True(focused, "the field whose menu was asked for must be the one the menu's commands act on")
 	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(wnd)),
 		"the field's contextual menu should have opened within the window")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldAccessibilityContextMenuRefusedInABackgroundWindow verifies that a field in a window that is not the active
+// one refuses to show its contextual menu. The menu is not built in the field's own window: Field.ShowContextMenu goes
+// through menu.Popup to menu.createPopup, which inserts the popup into ActiveWindow(), so carrying the request out
+// would have put this field's menu up in whatever window was frontmost, at coordinates translated from this one — and
+// with no window active at all it would have done nothing while reporting that it had been carried out. The mouse path
+// never could, since Window.mouseDown delivers nothing to a window that does not have the focus.
+func TestFieldAccessibilityContextMenuRefusedInABackgroundWindow(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var background, front *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 500},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.SetText("background")
+			background = newHeadlessWindow(t, "background", geom.NewRect(10, 10, 250, 150), axColumn(field))
+			front = newHeadlessWindow(t, "front", geom.NewRect(300, 10, 250, 150), axColumn(unison.NewField()))
+		}))
+	c.NotNil(background)
+	c.NotNil(front)
+
+	// The field's own window is the active one to begin with, so what follows is about the window it is in rather than
+	// about the field.
+	c.True(screen.Do(func() { background.ToFront() }))
+	screen.AccessibilityTree(background)
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.True(node.Actions.Has(accessibility.ShowContextMenu))
+
+	c.True(screen.Do(func() { front.ToFront() }))
+	before := axRootChildCount(screen.AccessibilityTree(background))
+	frontBefore := axRootChildCount(screen.AccessibilityTree(front))
+
+	// What is refused is not advertised either. A field that went on offering a contextual menu which silently did
+	// nothing would leave a screen reader saying the menu can be shown while nothing came of asking, so the action goes
+	// with the window's activation: Window.lostFocus marks the window for publishing, and the description that follows
+	// is one without it. See axSnapshot.narrowMenuActions.
+	backgrounded := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.False(backgrounded.Actions.Has(accessibility.ShowContextMenu),
+		"a field that would refuse to show its menu must not offer to")
+	c.True(backgrounded.Actions.Has(accessibility.SetValue),
+		"everything that acts on the field itself is still perfectly reasonable to ask of a background window")
+
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+	}), "asking a field in a window that is not the active one for its menu has to be refused")
+	c.Equal(before, axRootChildCount(screen.AccessibilityTree(background)),
+		"nothing should have been opened in the background window")
+	c.Equal(frontBefore, axRootChildCount(screen.AccessibilityTree(front)),
+		"and nothing should have been opened in the window that is active")
+
+	// Bringing the window back to the front brings the action back with it, since Window.gainedFocus marks it for
+	// publishing just as losing the focus did.
+	c.True(screen.Do(func() { background.ToFront() }))
+	screen.AccessibilityTree(background)
+	restored := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.True(restored.Actions.Has(accessibility.ShowContextMenu), "the active window's field offers its menu again")
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+	}), "and shows it")
+	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(background)),
+		"the menu should have opened in the field's own window")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -726,7 +789,8 @@ func TestNumericFieldAccessibilitySetValuePrefersTheNumber(t *testing.T) {
 	var value float64
 	screen.Do(func() { value = field.Value() })
 	c.Equal(0.25, value, "the number is what was asked for, not the text read back as a percentage")
-	c.Equal("25%", screen.AccessibilityNodeFor(field).Value, "which is shown the way the field formats it")
+	c.Equal("25%", axMustNode(c, screen.AccessibilityNodeFor(field)).Value,
+		"which is shown the way the field formats it")
 
 	// A number outside the range is brought into it, exactly as a typed one is.
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{

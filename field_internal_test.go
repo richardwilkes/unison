@@ -338,3 +338,40 @@ func TestFieldShiftArrowWithoutCrossingAnchorIsUnchanged(t *testing.T) {
 	c.Equal(12, f.selectionEnd)
 	c.Equal(12, f.selectionAnchor)
 }
+
+// TestFieldAXTextLinesAdvancesMatchThePositionFormula verifies that the rune boundaries axTextLines hands an assistive
+// technology are exactly the ones Text.PositionForRuneIndex gives for each of them. They are accumulated over the
+// line's widths rather than summed from the start of the line once per boundary, which is what keeps the cost linear in
+// the line's length rather than quadratic in it, and this runs on every published description of the focused field. A
+// running sum that drifted from the formula would move every character of the line a screen reader draws its cursor
+// around, so the two have to agree to the bit.
+func TestFieldAXTextLinesAdvancesMatchThePositionFormula(t *testing.T) {
+	c := check.New(t)
+
+	// A text area, whose lines are broken by the line feeds in the content. The last of them owns the line feed ending
+	// it, so it has one boundary more than it has runes laid out, which is where the formula clamps to the full width
+	// of the line.
+	f := NewMultiLineField()
+	f.SetText("a long enough line to measure something with\nshort\n")
+	f.SetFrameRect(geom.NewRect(0, 0, 400, 8*f.Font.LineHeight()))
+	axCheckAdvancesAgainstFormula(c, f)
+
+	// A single-line field that wraps, whose lines are broken to the field's width instead.
+	wrapped, _ := wrapTestField(c)
+	axCheckAdvancesAgainstFormula(c, wrapped)
+}
+
+// axCheckAdvancesAgainstFormula compares every boundary axTextLines reports against Text.PositionForRuneIndex, which is
+// what it was written with before the running sum replaced it.
+func axCheckAdvancesAgainstFormula(c check.Checker, f *Field) {
+	c.Helper()
+	lines := f.axTextLines()
+	c.Equal(len(f.lines), len(lines), "there is one reported line per laid-out line")
+	for i, line := range lines {
+		c.Equal((line.End-line.Start)+1, len(line.Advances),
+			"line %d holds one offset per rune, plus the end of the last one", i)
+		for j := range line.Advances {
+			c.Equal(f.lines[i].PositionForRuneIndex(j), line.Advances[j], "line %d, boundary %d", i, j)
+		}
+	}
+}

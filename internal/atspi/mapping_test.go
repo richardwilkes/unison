@@ -354,6 +354,41 @@ func TestStatesOfTextControls(t *testing.T) {
 	c.True(States(&accessibility.Node{Role: role.PopupButton}, true, false).Has(StateHasPopup))
 }
 
+// TestStatesOfWrappingTextControls covers the one text control whose line count the role does not settle: a
+// single-line field that wraps holds one line of text laid out over several, and says so through
+// [accessibility.TextInfo.Multiline]. Reporting it as SINGLE_LINE would have an assistive technology read the whole of
+// it as one run and offer no line-by-line navigation through what the user can see on the screen.
+func TestStatesOfWrappingTextControls(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	wrapped := States(&accessibility.Node{
+		Role: role.TextField,
+		Text: &accessibility.TextInfo{Text: "a long line that wraps", Multiline: true},
+	}, true, false)
+	c.True(wrapped.Has(StateMultiLine), "a wrapping field lays its content out over more than one line")
+	c.False(wrapped.Has(StateSingleLine))
+	c.True(wrapped.Has(StateSelectableText))
+	c.True(wrapped.Has(StateEditable))
+	// A text area is multi-line whatever it happens to hold, so an empty one is not reported as a single-line control
+	// just because nothing has been typed into it yet.
+	empty := States(&accessibility.Node{Role: role.TextArea, Text: &accessibility.TextInfo{}}, true, false)
+	c.True(empty.Has(StateMultiLine))
+	c.False(empty.Has(StateSingleLine))
+	// The other roles that carry text follow the text as well.
+	spin := States(&accessibility.Node{
+		Role: role.SpinButton,
+		Text: &accessibility.TextInfo{Text: "1", Multiline: true},
+	}, true, false)
+	c.True(spin.Has(StateMultiLine))
+	c.False(spin.Has(StateSingleLine))
+	combo := States(&accessibility.Node{
+		Role: role.ComboBox,
+		Text: &accessibility.TextInfo{Text: "one"},
+	}, true, false)
+	c.True(combo.Has(StateSingleLine))
+	c.False(combo.Has(StateMultiLine))
+}
+
 // TestStatesOfTextControlsWithNoText covers the state set of a text control whose content this process will not hand
 // over, which is what a password field is: [accessibility.Node] leaves the Text of a protected node nil, so
 // [Interfaces] gives the object no org.a11y.atspi.Text. Claiming the text states anyway would have an assistive

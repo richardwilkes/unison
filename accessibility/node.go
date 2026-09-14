@@ -206,7 +206,10 @@ type TextInfo struct {
 	// selection is extended, which after a backward selection (shift+Left, shift+Home) is SelStart. When nothing is
 	// selected all three are equal.
 	Caret int
-	// Multiline reports that the control lays its content out over more than one line.
+	// Multiline reports that the control lays its content out over more than one line. It says what the control
+	// actually drew rather than what kind of control it is, so a single-line field that wraps sets it and stops
+	// setting it again as its text and its width change. [Diff] reports a flip as an AttributesChanged, since what an
+	// adapter makes of it is something a client caches until it is told otherwise.
 	Multiline bool
 }
 

@@ -1520,9 +1520,21 @@ func (f *Field) axTextLines() []accessibility.Line {
 			// content is the bound.
 			end = min(end+1, total)
 		}
-		advances := make([]float32, 0, (end-start)+1)
-		for j := 0; j <= end-start; j++ {
-			advances = append(advances, line.PositionForRuneIndex(j))
+		// The boundaries are accumulated rather than each one being summed from the start of the line. Asking
+		// Text.PositionForRuneIndex for every boundary in turn costs the square of the line's rune count, since each
+		// answer sums the widths up to its index, and this runs on every published description of the focused field —
+		// twenty times a second — so one long line, a pasted URL in a single-line field or a long unwrapped run in a
+		// text area, would stall the UI thread for as long as a screen reader was attached. A boundary past the last
+		// width clamps to the full width of the line, exactly as PositionForRuneIndex does: a line that owns the line
+		// feed ending it has one boundary more than it has runes laid out.
+		count := end - start
+		advances := make([]float32, count+1)
+		position := float32(0)
+		for j := range count {
+			if j < len(line.widths) {
+				position += line.widths[j]
+			}
+			advances[j+1] = position
 		}
 		height := max(line.Height(), f.Font.LineHeight())
 		lines = append(lines, accessibility.Line{
@@ -1557,6 +1569,10 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 		f.replaceRunes(req.Start, req.End, req.Value)
 		return true
 	case accessibility.ShowContextMenu:
+		if !axMayPopupMenu(f.AsPanel()) {
+			// The menu would be built in whatever window is active rather than in this one. See axMayPopupMenu.
+			return false
+		}
 		// The menu is built from the cut, copy, paste and select-all actions, every one of which is routed to whatever
 		// holds the focus rather than to this field, so asking an unfocused field for its menu would describe, and then
 		// operate on, whatever else the focus is in. DefaultMouseDown takes the focus before showing the menu for a
@@ -1570,6 +1586,23 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 	default:
 		return false
 	}
+}
+
+// axMenuOpeningActions reports which of the field's actions would open a menu, so that a field in a window none of its
+// menus would land in is published without them rather than advertising what PerformAccessibilityAction, and the action
+// callback NewComboField installs, would then refuse. See axMenuActions.
+//
+// Expand belongs to a combo box, which is a field the dropdown NewComboField installs describes as one; a plain field
+// never advertises it, so naming it here costs such a field nothing. It is not named while the choices are already
+// showing, which is exactly what that callback does with the request: expanding a combo box that is already open is
+// accepted as already done, with no menu opened anywhere. Collapse is never named either, since taking a menu down acts
+// on the menu that is showing rather than on whatever window is active.
+func (f *Field) axMenuOpeningActions(node *accessibility.Node) accessibility.ActionSet {
+	actions := accessibility.ActionSet(0).With(accessibility.ShowContextMenu)
+	if !node.Expanded {
+		actions = actions.With(accessibility.Expand)
+	}
+	return actions
 }
 
 // InstallAccessoryPanel sets a panel into the field, attached to the right end. The editable text area will shrink by

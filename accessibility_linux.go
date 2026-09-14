@@ -33,9 +33,9 @@ import (
 // watch is in place, so that a screen reader started or stopped while the application runs is followed both ways —
 // which makes Linux the one platform where support is also torn down again.
 //
-// The cost to an application nothing is watching is that one property read plus two match rules on a connection that
-// already exists, and nothing whatsoever when there is no session bus. The accessibility bus socket, the goroutines
-// that serve it and every object on it exist only while support is enabled.
+// The cost to an application nothing is watching is one property read, one name-owner lookup and two match rules, all
+// on the session connection that already exists, and nothing whatsoever when there is no session bus. The accessibility
+// bus socket, the goroutines that serve it and every object on it exist only while support is enabled.
 //
 // Everything here runs on the UI thread except four things, each of which hands whatever it has to do straight to the
 // UI thread with InvokeTask and touches none of the linuxA11y* globals itself: the action callback and the report that
@@ -82,9 +82,17 @@ var (
 	linuxA11yJoining bool
 	// linuxA11yRejoinAttempted records that the accessibility bus connection has already been lost once and rebuilt
 	// without the desktop having said anything in between, so that a bus which accepts a connection and immediately
-	// drops it is dialed once rather than forever. It is cleared whenever the desktop reports the status itself, and
-	// whenever the connection that died had been up for longer than linuxA11yRejoinGrace, since neither of those is the
-	// bus the guard is aimed at. UI thread only.
+	// drops it is dialed once rather than forever. It is cleared when the atspi.WatchEnabled callback reports the
+	// status, and when the connection that died had been up for longer than linuxA11yRejoinGrace, since neither of
+	// those is the bus the guard is aimed at.
+	//
+	// Only the watch clears it, and deliberately not the answer linuxA11yRejoin fetches for itself: that answer is a
+	// property read this code asked for rather than the desktop volunteering anything, and a bus that accepts a
+	// connection and drops it while the launcher goes on saying an assistive technology is there would have every
+	// rejoin clear the guard that the next loss is about to consult, which is the endless dial loop the guard exists to
+	// stop. The asymmetry is the invariant; making the two paths agree breaks it.
+	//
+	// UI thread only.
 	linuxA11yRejoinAttempted bool
 	// linuxA11yInstalledAt is when the adapter in linuxA11y was installed, which is what says how long a connection had
 	// been up for when it dies. It deliberately outlives the adapter it describes: linuxA11yRejoin is reached only

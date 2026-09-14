@@ -886,6 +886,14 @@ func (w *Window) IsTransparent() bool {
 func (w *Window) Show() {
 	if w.IsValid() {
 		w.apiShow()
+		// As in Hide, but the other way round: a window that is back on the screen has to be described again, since a
+		// platform that withdrew it while it was off the screen holds nothing about it at all. The mark is made after
+		// the platform call rather than before it because Linux draws the window inline at the end of nativeShow, and
+		// the filtered wait it does first discards the wake-up an earlier mark would have posted: marking here leaves
+		// that inline draw to publish what it painted — every draw does, see Window.draw — and still has a redraw
+		// pending afterwards, so a platform whose show paints nothing describes the window on the next pass instead.
+		// See Window.axMarkForPublish.
+		w.axMarkForPublish()
 	}
 }
 
@@ -1023,6 +1031,16 @@ func (w *Window) Draw(c *Canvas) {
 	}
 }
 
+// draw paints the window and then describes what it painted to an assistive technology.
+//
+// The publish lives here rather than at the event loop's redraw call site because that is not the only path that
+// paints a window: Window.FlushDrawing draws on the spot, and so does every platform's own paint notification —
+// WM_PAINT on Windows, AppKit's update and redraw callbacks on macOS, the X11 Expose and the inline draw at the end of
+// nativeShow on Linux. Each of them begins by taking the window out of redrawSet, so a description that was riding on
+// that pending redraw — a name that changed, a panel that came or went — would simply be dropped by any of them if
+// only the event loop published. It is gated on the window being on the screen, as the event loop's own call site is,
+// because FlushDrawing will paint a window that is hidden or minimized. An application no assistive technology is
+// watching pays one atomic load for each window it draws and nothing else.
 func (w *Window) draw() {
 	delete(redrawSet, w)
 	RebuildDynamicColors()
@@ -1052,6 +1070,28 @@ func (w *Window) draw() {
 		} else {
 			w.glCtx.apiSwapBuffers()
 		}
+		if accessibilityActive.Load() {
+			if w.IsVisible() {
+				// Last, and only for a draw that got as far as putting something on the screen, so that what is
+				// described is what was just painted. The description is built from the panels rather than from the
+				// canvas, so nothing here depends on the rendering state this leaves behind, and a panel that marks
+				// itself for redraw while being described is simply drawn again on the next pass, exactly as one that
+				// does it from its DrawCallback is.
+				w.publishAccessibility()
+			} else {
+				// A window that is not on the screen is described no more, whatever painted it. The event loop never
+				// reaches here for one — it withdraws the window instead, see finishProcessingEvents — but
+				// Window.FlushDrawing draws whatever is in redrawSet with no visibility test of its own, and a window
+				// that is hidden or minimized is a permanent resident of that set. Publishing from there would put back
+				// the description that was just withdrawn and leave it standing, which on AT-SPI, where the application
+				// lists its own windows, is a window a person cannot see reported as showing and visible.
+				//
+				// The redraw goes back so that the withdrawal branch sees the window again on the next pass, since the
+				// delete above has just taken it out of the set the branch works from, and so that the window is drawn
+				// and described afresh when it is shown again.
+				redrawSet[w] = struct{}{}
+			}
+		}
 	}
 }
 
@@ -1075,15 +1115,27 @@ func (w *Window) LastDrawDuration() time.Duration {
 }
 
 // MarkForRedraw marks this window for drawing at the next update. Does nothing if the window has been disposed.
+//
+// The event loop may be blocked waiting for something to happen, so a request made when nothing else is going on has
+// to wake it, or the window would sit unpainted until an unrelated event arrived. One wake-up is posted per pass of
+// the loop: redrawWakePending records that this pass has already asked for the next one, and finishProcessingEvents
+// clears it as each pass begins. Whether the window was already in the set says nothing about whether a wake-up is
+// coming — a window that is valid but not on the screen is put straight back into redrawSet by every pass and is
+// therefore a permanent resident of it, so a request that finds one there is still a request nothing has posted for.
+//
+// X11 is the one place where a posted wake-up can be thrown away rather than delivered: a filtered wait — what shows a
+// window, transfers a selection or asks the window manager for a window's frame — drains the event queue looking for
+// the event it is after and discards the wake-up token along with everything else it is not interested in. Every call
+// that can enter one of those waits repairs the bookkeeping on its way out, so that the flag never goes on claiming a
+// wake-up that nothing will deliver. See x11FilteredWaitDone.
 func (w *Window) MarkForRedraw() {
 	if !w.IsValid() {
 		return
 	}
-	if _, exists := redrawSet[w]; !exists {
-		redrawSet[w] = struct{}{}
-		if len(redrawSet) == 1 {
-			apiPostEmptyEvent()
-		}
+	redrawSet[w] = struct{}{}
+	if !redrawWakePending {
+		redrawWakePending = true
+		apiPostEmptyEvent()
 	}
 }
 
@@ -1146,8 +1198,13 @@ func (w *Window) updateTooltip(target *Panel, where geom.Point) {
 		if target.UpdateTooltipCallback != nil {
 			SafeCall(func() { avoid = target.UpdateTooltipCallback(target.PointFromRoot(where), avoid) })
 		}
-		if target.Tooltip != nil {
+		// A tooltip the panel has borrowed on behalf of something that is not a panel of its own — the table cell or
+		// the column header the pointer is over — comes first, since that is what is actually under the pointer. See
+		// Panel.borrowedTooltip.
+		if tip = target.borrowedTooltip; tip == nil {
 			tip = target.Tooltip
+		}
+		if tip != nil {
 			tip.TooltipImmediate = target.TooltipImmediate
 			break
 		}

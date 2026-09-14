@@ -276,7 +276,10 @@ func TestUIAInvokePattern(t *testing.T) {
 func TestUIAInvokeRaisesInvoked(t *testing.T) {
 	c := check.New(t)
 	w := newTestUIAWindow(t, patternTree())
-	r := uiaRecord(t, true) // Installed after the window, whose own hook says nobody is listening.
+	// Both windows are created before the recorder, since each of them silences UI Automation for the rest of the test:
+	// the recorder has to be the last hook installed for anything raised below to reach it.
+	plain := newActionlessUIAWindow(t, patternTree())
+	r := uiaRecord(t, true) // Installed after the windows, whose own hook says nobody is listening.
 	button := w.providerFor(2)
 	c.NotNil(button)
 
@@ -291,7 +294,6 @@ func TestUIAInvokeRaisesInvoked(t *testing.T) {
 	// carried it out either, and an element that offers no Press never had anything to invoke — which is the case the
 	// event matters most for, since a client waiting on Invoked would otherwise be told the press had happened.
 	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaInvokeInvoke(w.providerFor(3).ifacePtr(uiaIfaceInvoke)))
-	plain := newActionlessUIAWindow(t, patternTree())
 	c.Equal(UIA_E_INVALIDOPERATION, uiaInvokeInvoke(plain.providerFor(2).ifacePtr(uiaIfaceInvoke)))
 	pressless := patternTree()
 	pressless.Nodes[2].Actions = 0

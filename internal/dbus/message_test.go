@@ -425,6 +425,59 @@ func TestADecodedMessageIsChargedWhatItKeepsAlive(t *testing.T) {
 		bodyless.size())
 }
 
+// TestDecodeStepsOverEveryShapeOfIgnorableHeaderField drives the decoder over a header field of every type a peer may
+// choose for one whose code the specification requires us to ignore. Such a value is stepped over rather than built,
+// which means the decoder does the alignment and length arithmetic for that type itself instead of letting the
+// unmarshaler do it, and a mistake in any of it would leave the reader part way through the field: the fields that
+// follow would then be read out of bytes that are not theirs, and the body out of bytes that are not the body. The
+// fields are arranged so that every shape is followed by another one, and the whole message by a body, so that a
+// misaligned reader has something to trip over rather than simply running out of message.
+func TestDecodeStepsOverEveryShapeOfIgnorableHeaderField(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// Every field carries a value whose encoded length differs from its neighbors', since a shape that is stepped over
+	// by the wrong number of bytes only shows up when the number it should have been is not the same.
+	fields := []any{
+		ignorableField(byte(0xA5)), // y
+		ignorableField(int16(-2)),  // n
+		ignorableField(uint16(3)),  // q
+		ignorableField(true),       // b
+		ignorableField(int32(-4)),  // i
+		ignorableField(uint32(5)),  // u
+		ignorableField(int64(-6)),  // x
+		ignorableField(uint64(7)),  // t
+		ignorableField(8.5),        // d
+		ignorableField("a string long enough to need its own padding"),    // s
+		ignorableField(ObjectPath("/org/example/ignored")),                // o
+		ignorableField(Signature("a{sv}")),                                // g
+		ignorableField(Variant{Sig: "t", Value: uint64(9)}),               // v, whose own value is realigned
+		ignorableField(Struct{byte(10), int64(11), "inside a structure"}), // (, which realigns to 8 and walks its types
+		ignorableField([]string{"in", "an", "array"}),                     // a, which jumps straight to the end
+		// A structure holding an array, and a variant holding a structure, so that the two branches that recurse are
+		// entered from something other than the top of a field.
+		ignorableField(Struct{[]uint32{12, 13}, byte(14)}),
+		ignorableField(Variant{Sig: "(ys)", Value: Struct{byte(15), "in a variant in a structure"}}),
+		// One more of the shapes that only reads a length, after everything above, so that a reader left part way
+		// through any of it reads a length out of the wrong bytes rather than reaching the end of the array.
+		ignorableField("the last of them"),
+	}
+	data := signalWithFields(t, 1, true, fields...)
+	m, err := Decode(bytes.NewReader(data))
+	c.NoError(err)
+	// The fields that mean something were decoded, which they could not have been if the reader had lost its place
+	// stepping over the ones that do not, since they are interleaved with them.
+	c.Equal(TypeSignal, m.Type)
+	c.Equal(testPath, m.Path)
+	c.Equal(eventInterface, m.Interface)
+	c.Equal(paddedMember, m.Member)
+	c.Equal(testDestination, m.Sender)
+	// So was the body, which begins at the first eight byte boundary after the header field array: a reader that ended
+	// the array anywhere else would read the body out of the wrong bytes.
+	args, err := m.Args()
+	c.NoError(err)
+	c.Equal([]any{"x"}, args)
+}
+
 func TestDecodeDoesNotBuildTheValueOfAnUnknownHeaderField(t *testing.T) { // Not parallel: it measures allocation
 	c := check.New(t)
 	const count = 4096

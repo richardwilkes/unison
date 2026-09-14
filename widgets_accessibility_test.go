@@ -961,3 +961,77 @@ func axNamedWithRole(tree *accessibility.Tree, name string, r role.Enum) *access
 	})
 	return found
 }
+
+// TestMenuItemAccessibilityExpandDefersOpeningTheSubMenu verifies that asking an item with a sub-menu to expand is
+// answered at once and the sub-menu built afterwards. Opening one goes through menu.createPopup to menu.newPanel, which
+// runs the menu's updater and then every one of its items' validators — application code — and Expand is classified as
+// a navigation action, so on macOS it is carried out inline within the AppKit callback VoiceOver is waiting on. That is
+// precisely what PopupMenu.axExpandLater defers the equivalent click to avoid, and the two paths have to agree.
+func TestMenuItemAccessibilityExpandDefersOpeningTheSubMenu(t *testing.T) {
+	c := check.New(t)
+	const menuID = unison.UserBaseID + 300
+	var wnd *unison.Window
+	updates := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			wnd = newHeadlessWindow(t, "sub-menu expand", geom.NewRect(10, 10, 400, 300), unison.NewPanel())
+			if wnd == nil {
+				return
+			}
+			unison.DefaultMenuFactory().BarForWindow(wnd, func(bar unison.Menu) {
+				f := bar.Factory()
+				edit := f.NewMenu(menuID, "Edit", nil)
+				more := f.NewMenu(menuID+1, "More", func(_ unison.Menu) { updates++ })
+				more.InsertItem(-1, f.NewItem(menuID+2, "Deeper", unison.KeyBinding{}, nil, nil))
+				edit.InsertMenu(-1, more)
+				bar.InsertMenu(-1, edit)
+			})
+			wnd.ToFront()
+		}))
+	c.NotNil(wnd)
+	screen.Sync()
+
+	tree := screen.AccessibilityTree(wnd)
+	title := axMustNode(c, axNamed(tree, "Edit"), "the bar carries the one menu that was added to it")
+	screen.Click(axScreenPoint(screen, wnd, title))
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "clicking the title should have opened the menu")
+	more := axMustNode(c, axNamed(tree, "More"), "the item that opens the sub-menu")
+	c.True(more.Expandable)
+	c.True(more.Actions.Has(accessibility.Expand))
+
+	// Performing the request from the UI thread is what makes the two halves of it observable: the task the request
+	// queues cannot run until the closure has returned to the event loop, so what is seen inside the closure is exactly
+	// what an assistive technology waiting on the callback would have been handed.
+	var handled bool
+	var updatesDuring, menusDuring int
+	c.True(screen.Do(func() {
+		handled = screen.PerformAccessibilityAction(accessibility.ActionRequest{
+			Node:   more.ID,
+			Action: accessibility.Expand,
+		})
+		updatesDuring = updates
+		menusDuring = len(axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu))
+	}))
+	c.True(handled, "the request is accepted, and what came of it shows in the next description of the item")
+	c.Equal(0, updatesDuring, "the sub-menu's updater must not have run from within the callback")
+	c.Equal(1, menusDuring, "nor may the sub-menu have been built there")
+
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(2, len(axNodesWithRole(tree, role.Menu)), "the queued task should have opened the sub-menu")
+	c.Equal(1, updates, "and run the updater exactly once while doing it")
+	expanded := axMustNode(c, tree.Node(more.ID))
+	c.True(expanded.Expanded, "the item says its sub-menu is showing")
+	c.True(axNamed(tree, "Deeper") != nil, "what the sub-menu holds is described")
+
+	// Asking again for what is already there changes nothing, rather than tearing the sub-menu down and building it
+	// back up.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   more.ID,
+		Action: accessibility.Expand,
+	}))
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(2, len(axNodesWithRole(tree, role.Menu)))
+	c.Equal(1, updates, "the sub-menu that was already showing was left alone")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

@@ -556,3 +556,77 @@ func TestParseFrameExtents(t *testing.T) {
 	_, _, _, _, ok = ParseFrameExtents(32, AtomString, value)
 	c.False(ok, "a non-CARDINAL property type must be rejected")
 }
+
+// TestNewConnForTestServesRequests verifies the connection that the root package's own tests drive the platform code
+// against. It is not a real one — nothing is authenticated and no atoms, extensions or helper window exist — so what
+// has to hold is that a request written to it reaches the far end whole and that the reply the far end writes comes
+// back as the values the caller asked for. TranslateCoordinates is what needed it: the ConfigureNotify handling asks
+// the X server where the window manager's frame puts a window, and a test of that decision has to see the request.
+//
+// It is also the one place where the bytes that stand in for an X server can be checked, since the test that uses them
+// only builds on Linux.
+func TestNewConnForTestServesRequests(t *testing.T) {
+	c := check.New(t)
+	const (
+		root   = WindowID(100)
+		parent = WindowID(7)
+	)
+	client, server := net.Pipe()
+	conn, stop := NewConnForTest(client, []Screen{{Root: root}})
+	defer stop()
+	defer xio.CloseIgnoringErrors(server)
+	c.Equal(root, conn.RootWindow())
+	type translation struct {
+		src, dst WindowID
+		x, y     int16
+	}
+	asked := make(chan translation, 1)
+	go func() {
+		var seq uint16
+		header := make([]byte, 4)
+		for {
+			if _, err := io.ReadFull(server, header); err != nil {
+				return // The connection under test has gone away, which the end of the test does on purpose
+			}
+			seq++
+			body := make([]byte, int(binary.LittleEndian.Uint16(header[2:4]))*4-len(header))
+			if _, err := io.ReadFull(server, body); err != nil {
+				return
+			}
+			if header[0] != opTranslateCoordinates {
+				continue // Nothing else this test sends expects an answer
+			}
+			asked <- translation{
+				src: WindowID(binary.LittleEndian.Uint32(body[0:4])),
+				dst: WindowID(binary.LittleEndian.Uint32(body[4:8])),
+				x:   int16(binary.LittleEndian.Uint16(body[8:10])),
+				y:   int16(binary.LittleEndian.Uint16(body[10:12])),
+			}
+			// A reply is 32 bytes: the code, the value the request's own reply byte carries — here whether the two
+			// windows are on the same screen — the sequence, the count of any additional words, and then the values.
+			reply := make([]byte, 32)
+			reply[0] = 1
+			reply[1] = 1
+			binary.LittleEndian.PutUint16(reply[2:4], seq)
+			binary.LittleEndian.PutUint32(reply[8:12], 0)
+			translatedX, translatedY := int16(311), int16(-222)
+			binary.LittleEndian.PutUint16(reply[12:14], uint16(translatedX))
+			binary.LittleEndian.PutUint16(reply[14:16], uint16(translatedY))
+			if _, err := server.Write(reply); err != nil {
+				return
+			}
+		}
+	}()
+	x, y, sameScreen, child, err := conn.TranslateCoordinates(parent, conn.RootWindow(), 10, -20)
+	c.NoError(err)
+	c.Equal(int16(311), x)
+	c.Equal(int16(-222), y)
+	c.True(sameScreen)
+	c.Equal(WindowID(0), child)
+	select {
+	case one := <-asked:
+		c.Equal(translation{src: parent, dst: root, x: 10, y: -20}, one)
+	default:
+		t.Fatal("the request never reached the far end")
+	}
+}

@@ -443,6 +443,13 @@ func Int64FromNSNumber(num objc.ID) int64 {
 	return objc.Send[int64](num, Sel("longLongValue"))
 }
 
+// NSNumberFromBool returns an autoreleased NSNumber holding the given boolean. It is not the same thing as
+// NSNumberFromInt64 of 0 or 1: an NSNumber made this way is a boolean rather than an integer, and bridges to the
+// CFBoolean that the accessibility attributes documented as holding one expect.
+func NSNumberFromBool(value bool) objc.ID {
+	return objc.ID(Cls("NSNumber")).Send(Sel("numberWithBool:"), value)
+}
+
 // NSNumberFromFloat64 returns an autoreleased NSNumber holding the given value.
 func NSNumberFromFloat64(value float64) objc.ID {
 	return objc.ID(Cls("NSNumber")).Send(Sel("numberWithDouble:"), value)

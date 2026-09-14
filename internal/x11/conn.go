@@ -709,6 +709,33 @@ type Conn struct {
 	eventsClosed             bool
 }
 
+// NewConnForTest returns a connection that speaks the X protocol over rwc, with the goroutines that serve it running
+// and screens as its roots, but with none of the setup [NewConn] performs: no display is parsed, nothing is
+// authenticated, no atoms are interned, no extensions are queried and no helper window is made. stop ends it and waits
+// for both of those goroutines to be gone, closing rwc on the way.
+//
+// It exists so that the platform code in the root package, which can only reach this package through what it exports,
+// can be driven against a stand-in for the X server — the ConfigureNotify handling, which asks the server to translate
+// a window's position, is what needed it. Nothing outside a test has any use for it, and a connection it returns is not
+// one anything else may be handed: every part of a real one that such a test does not reach is missing from it.
+func NewConnForTest(rwc net.Conn, screens []Screen) (conn *Conn, stop func()) {
+	c := &Conn{
+		conn:         rwc,
+		events:       make(chan Event, 1),
+		requests:     make(chan *request, 128),
+		closed:       make(chan struct{}),
+		readClosed:   make(chan struct{}),
+		eventNewMap:  newEventMap(),
+		errorCodeMap: newErrorMap(),
+		requestMap:   make(map[uint16]*request),
+		dataTypeMap:  make(map[string]Atom),
+		Roots:        screens,
+	}
+	go c.sendRequests()
+	go c.readResponses()
+	return c, c.abortStartup
+}
+
 // NewConn establishes a connection to the X server.
 func NewConn() (*Conn, error) {
 	var c Conn

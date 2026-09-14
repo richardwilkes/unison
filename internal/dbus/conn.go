@@ -108,6 +108,50 @@ func (o *outgoing) finish(err error) {
 	}
 }
 
+// pending is one method call waiting for its reply: the channel the caller is parked on and the name the call was
+// addressed to, which is what says whose reply may complete it.
+type pending struct {
+	reply       chan *Message
+	destination string
+}
+
+// acceptsReplyFrom reports whether a reply carrying this sender may complete the call. A serial is a small integer that
+// starts at one and counts up, so without this any peer that can reach our unique name could address a METHOD_RETURN to
+// it with a guessed REPLY_SERIAL and hand a caller forged values, the genuine reply then being discarded as unmatched.
+// The bus fills in the SENDER field itself, overwriting whatever the sending connection put there, so what it says is
+// the one thing about a message that a peer cannot choose; comparing it against the name we addressed the call to is
+// therefore enough to tell the two apart.
+//
+// What the sender of a legitimate reply is depends on what the call was addressed to, and only two of the three cases
+// can be checked:
+//
+//   - A unique name (":1.7") is answered by that connection, so the sender is the destination itself. The bus also
+//     answers on its behalf — with NameHasNoOwner when the connection has gone, and with the errors it raises for
+//     messages it refuses to deliver — and those replies carry the bus's own name, so it is accepted here too.
+//   - The bus's own name is answered by the bus, whose replies carry that name. Hello, AddMatch, GetNameOwner and
+//     everything else asked of the bus lands here.
+//   - A well-known name ("org.a11y.Bus") is answered by whichever connection owns it, and that reply carries the
+//     owner's unique name, which is not something the caller can know without asking. Requiring the sender to equal the
+//     destination would reject every legitimate reply, so these are accepted from anyone, which is no check at all.
+//     Every caller here that can asks the bus who owns the name with GetNameOwner and addresses its call to the unique
+//     name it gets back, which makes it the first case above; what is left addressed to a well-known name is the call
+//     made when the bus says nothing owns it yet, since that call is what starts the service, and it is only as safe
+//     as every call was before.
+//
+// A reply with no sender at all is accepted: a connection with no bus on the other end has nobody to fill the field in.
+// That is what [Connect] makes, which in this repository is only ever the tests, every production connection being
+// dialed and given a unique name by the bus it reaches; see [Dial]. A call with no destination is in the same position
+// and is accepted for the same reason.
+func (p *pending) acceptsReplyFrom(sender string) bool {
+	if sender == "" || p.destination == "" || sender == p.destination {
+		return true
+	}
+	if strings.HasPrefix(p.destination, ":") {
+		return sender == busDestination // The bus answers for a unique name that has gone away
+	}
+	return p.destination != busDestination
+}
+
 // Conn is a connection to a D-Bus server. It is safe for concurrent use.
 //
 // Three goroutines serve a connection. The reader decodes messages and either completes the pending [Conn.Call] whose
@@ -125,7 +169,7 @@ type Conn struct {
 	out          *queue[*outgoing]
 	incoming     *queue[*Message]
 	closed       chan struct{}
-	pending      map[uint32]chan *Message
+	pending      map[uint32]*pending
 	objects      map[ObjectPath]Object
 	err          error
 	name         string
@@ -205,7 +249,7 @@ func newConn(rwc io.ReadWriteCloser, in *bufio.Reader) *Conn {
 		out:      newQueue[*outgoing](maxQueued, maxQueuedBytes),
 		incoming: newQueue[*Message](maxQueued, maxQueuedBytes),
 		closed:   make(chan struct{}),
-		pending:  make(map[uint32]chan *Message),
+		pending:  make(map[uint32]*pending),
 		objects:  make(map[ObjectPath]Object),
 		timeout:  callTimeout,
 	}
@@ -289,7 +333,7 @@ func (c *Conn) CallWithFlags(msg *Message, flags Flags) (*Message, error) {
 		c.mu.Unlock()
 		return nil, err
 	}
-	c.pending[serial] = ch
+	c.pending[serial] = &pending{reply: ch, destination: msg.Destination}
 	c.mu.Unlock()
 	defer func() {
 		c.mu.Lock()
@@ -603,15 +647,25 @@ func (c *Conn) readLoop() {
 
 // route completes the call a reply answers or queues the message for the dispatcher. It must not block, since it runs
 // on the reader goroutine.
+//
+// A reply is matched on its serial and on who sent it, and one that answers a serial nobody is waiting for, or that
+// comes from somewhere the call it claims to answer was never sent to, is dropped without being counted as an answer:
+// the call stays pending, so the genuine reply still completes it. See [pending.acceptsReplyFrom].
 func (c *Conn) route(msg *Message) {
 	switch msg.Type {
 	case TypeMethodReturn, TypeError:
 		c.mu.Lock()
-		ch := c.pending[msg.ReplySerial]
-		delete(c.pending, msg.ReplySerial)
+		p := c.pending[msg.ReplySerial]
+		if p != nil {
+			if p.acceptsReplyFrom(msg.Sender) {
+				delete(c.pending, msg.ReplySerial)
+			} else {
+				p = nil
+			}
+		}
 		c.mu.Unlock()
-		if ch != nil {
-			ch <- msg // Buffered, and only ever written to once, so this cannot block
+		if p != nil {
+			p.reply <- msg // Buffered, and only ever written to once, so this cannot block
 		}
 	case TypeSignal, TypeMethodCall:
 		c.dispatchOnce.Do(func() { go c.dispatchLoop() })

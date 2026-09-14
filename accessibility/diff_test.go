@@ -221,6 +221,7 @@ func TestDiffAttributeEvents(t *testing.T) {
 		fill func(n *axNode)
 		name string
 	}{
+		{name: "Actions", fill: func(n *axNode) { n.Actions = n.Actions.With(accessibility.SetValue) }},
 		{name: "Placeholder", fill: func(n *axNode) { n.Placeholder = "Search" }},
 		{name: "Shortcut", fill: func(n *axNode) { n.Shortcut = "Ctrl+S" }},
 		{name: "Level", fill: func(n *axNode) { n.Level = 2 }},
@@ -273,6 +274,30 @@ func TestDiffAttributeEvents(t *testing.T) {
 	}, accessibility.Diff(diffTree(), both))
 }
 
+// TestDiffActionsAloneAreReported pins the case that reaches this from stock unison: List.SetAllowMultipleSelection
+// adding AddToSelection and RemoveFromSelection to every row while nothing else about any row moves. What a node can be
+// asked to do is what each adapter answers AT-SPI's NActions and GetActions from, what decides which accessibility
+// setters a macOS element responds to, and what every adapter checks before it will dispatch a request, so a client
+// holding the old set would go on offering an action that is now refused — or never offer one that has appeared.
+func TestDiffActionsAloneAreReported(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	row := func(actions accessibility.ActionSet) *accessibility.Tree {
+		tree := diffTree()
+		n := tree.Node(3)
+		n.Role = role.Row
+		n.Selectable = true
+		n.Actions = actions
+		return tree
+	}
+	single := accessibility.ActionSet(0).With(accessibility.ScrollIntoView, accessibility.Select)
+	multiple := single.With(accessibility.AddToSelection, accessibility.RemoveFromSelection)
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(row(single), row(multiple)))
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(row(multiple), row(single)),
+		"losing an action is as much a change as gaining one")
+	c.Nil(accessibility.Diff(row(multiple), row(multiple)))
+}
+
 // TestDiffPlaceholderAloneIsReported pins the case that reaches this from stock unison: a combo field switching its
 // watermark between two prompts while its content stays empty. The node's name, value and text are identical either
 // way and the placeholder is the only difference, so without an event nothing would prompt a screen reader to re-read
@@ -287,6 +312,32 @@ func TestDiffPlaceholderAloneIsReported(t *testing.T) {
 	}
 	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
 		accessibility.Diff(field("not set"), field("empty")))
+}
+
+// TestDiffMultilineAloneIsReported pins the case that reaches this from stock unison: a single-line field that wraps
+// reports Multiline from the number of lines it actually drew, so resizing the field around text that already fits
+// flips it while the text, the selection and the caret all stay where they were. Every adapter turns it into something
+// a client caches — the SINGLE_LINE and MULTI_LINE states on AT-SPI — so without an event a field that has grown onto
+// a second line would go on being read out as a single run, with no line-by-line navigation through it, for the life
+// of the window.
+func TestDiffMultilineAloneIsReported(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	field := func(multiline bool) *accessibility.Tree {
+		tree := fieldTree("a long line that wraps", 3, 3)
+		tree.Node(2).Text.Multiline = multiline
+		return tree
+	}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(field(false), field(true)))
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(field(true), field(false)),
+		"shrinking back onto one line is as much a change as growing off it")
+	c.Nil(accessibility.Diff(field(true), field(true)))
+
+	// A node carrying no text lays nothing out over anything, so text arriving already wrapped moves the answer too.
+	bare := fieldTree("", 0, 0)
+	bare.Node(2).Text = nil
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(bare, field(true)))
+	c.Nil(accessibility.Diff(bare, field(false)), "text that fits on one line leaves it where it was")
 }
 
 // TestDiffShortcutAloneIsReported pins the case that reaches this from stock unison: MenuItem.SetKeyBinding rebinding

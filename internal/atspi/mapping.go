@@ -448,27 +448,51 @@ func editableText(n *accessibility.Node) bool {
 // nil gets none of them, however text-like its role, and whatever its value: these states describe a control the user
 // can move a caret and a selection about in, which the read-only text [textualValue] synthesizes from a value is not. A
 // password field carries no text at all, so it has none of them either.
+//
+// Which of SINGLE_LINE and MULTI_LINE a node gets is [lineState]'s answer, and it can move while the window lives, so
+// [attributeStateChanges] retracts the one a node has left and announces the one it has arrived at.
 func textStates(n *accessibility.Node) []StateBit {
-	if n.Text == nil {
+	lines, ok := lineState(n)
+	if !ok {
 		return nil
 	}
-	var states []StateBit
-	switch n.Role {
-	case role.TextField, role.SpinButton, role.ComboBox:
-		states = []StateBit{StateSingleLine, StateSelectableText}
-	case role.TextArea:
-		states = []StateBit{StateMultiLine, StateSelectableText}
-	case role.Document:
+	if n.Role == role.Document {
 		// A document is readable but never editable, so it gets neither EDITABLE nor a line count claim beyond being
 		// more than one line long.
-		return []StateBit{StateMultiLine, StateSelectableText}
-	default:
-		return nil
+		return []StateBit{lines, StateSelectableText}
 	}
+	states := []StateBit{lines, StateSelectableText}
 	if supportsEditableText(n) {
 		states = append(states, StateEditable)
 	}
 	return states
+}
+
+// lineState returns the state that says whether a node lays its text out over one line or several, and whether the
+// node's state set holds either of them at all. It is the one place the answer is worked out, so that the state
+// [textStates] puts in the set a client caches and the change [attributeStateChanges] announces cannot drift apart.
+//
+// Whether the control is one line or several is read from the text rather than worked out from the role, since the two
+// do not line up: a single-line field that wraps lays its content out over several lines, and [accessibility.TextInfo]
+// is where the widget says so. Deciding from the role alone reports such a field to an assistive technology as
+// SINGLE_LINE, which has it read the content as one run and offer no line-by-line navigation through it. A text area is
+// the other way about: it is multi-line however little it happens to hold at the moment, so its role decides. A
+// document is always multi-line, and a node carrying no text has neither state, however text-like its role.
+func lineState(n *accessibility.Node) (state StateBit, ok bool) {
+	if n == nil || n.Text == nil {
+		return 0, false
+	}
+	switch n.Role {
+	case role.TextField, role.SpinButton, role.ComboBox, role.TextArea:
+		if n.Text.Multiline || n.Role == role.TextArea {
+			return StateMultiLine, true
+		}
+		return StateSingleLine, true
+	case role.Document:
+		return StateMultiLine, true
+	default:
+		return 0, false
+	}
 }
 
 // Attributes returns the node's AT-SPI object attributes, which are the pieces of information that have no interface of

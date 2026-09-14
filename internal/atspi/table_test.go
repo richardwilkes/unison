@@ -12,7 +12,9 @@ package atspi
 import (
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/role"
@@ -218,6 +220,97 @@ func TestTableColumnHeaders(t *testing.T) {
 	ta.Publish(tableWindow, ambiguous, nil, sampleGeometry())
 	c.Equal(nullReference(), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(0)))
 	c.Equal("", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(0)))
+}
+
+// TestTableColumnHeadersWithGapsInTheirIndexes covers a header panel that reports column indexes, but not one per
+// column. Answering such a column with the header that happens to sit at that position hands an assistive technology
+// the wrong column name, which it reads out as the user arrows across; the positional answer is only ever right for a
+// header panel that fills no indexes in at all.
+func TestTableColumnHeadersWithGapsInTheirIndexes(t *testing.T) {
+	t.Parallel()
+	ta := newTableAdapter(t)
+	c := ta.c
+	gapped := tableTree()
+	gapped.Generation++
+	gapped.Node(61).ColumnCount = 3
+	gapped.Node(71).ColumnIndex = 2
+	ta.Publish(tableWindow, gapped, nil, sampleGeometry())
+	c.Equal(nodeRef(70), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(0)))
+	c.Equal(nodeRef(71), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(2)))
+	c.Equal(nullReference(), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(1)),
+		"the header panel names no header for the second column, and the third column's is not it")
+	c.Equal("", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(1)))
+	c.Equal([]dbus.ObjectRef{}, ta.peer.getProperty(NodePath(65), InterfaceTableCell, "ColumnHeaderCells"),
+		"a cell in the column with no header reports none")
+
+	// A header panel that fills no column index in at all is still answered by position, which is what the headers of
+	// a table built the ordinary way look like before anything has been said about which column each one describes.
+	positional := tableTree()
+	positional.Generation += 2
+	positional.Node(71).ColumnIndex = 0
+	ta.Publish(tableWindow, positional, nil, sampleGeometry())
+	c.Equal(nodeRef(70), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(0)))
+	c.Equal(nodeRef(71), ta.one(NodePath(61), InterfaceTable, "GetColumnHeader", "i", int32(1)))
+	c.Equal("Count", ta.one(NodePath(61), InterfaceTable, "GetColumnDescription", "i", int32(1)))
+}
+
+// TestTableHeaderSearchOfACyclicTree covers the defense [maxHeaderSearchDepth] claims to be: a tree whose nodes point
+// back at each other. The depth bound alone does not provide it, since a cycle that branches multiplies the work at
+// every level rather than merely deepening it, and [buildTableHeaders] runs on the UI thread from [Adapter.Publish], so
+// a search that does not end is a hung application rather than a slow one. Both recursions the search makes are wound
+// through a cycle here: the walk that looks for the header panel, and the scan of the panel that was found.
+func TestTableHeaderSearchOfACyclicTree(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	tree := treeOf(1,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Cycles", Bounds: geom.NewRect(0, 0, 300, 200),
+			Children: []accessibility.NodeID{2, 5, 6},
+		},
+		// 2, 3 and 4 are ordinary layout panels that hold each other: the walk reaches 2 from the window, 3 and 4 from
+		// 2, and 2 again from each of them.
+		&accessibility.Node{
+			ID: 2, Parent: 1, Role: role.Group, Bounds: geom.NewRect(0, 0, 300, 20),
+			Children: []accessibility.NodeID{3, 4},
+		},
+		&accessibility.Node{
+			ID: 3, Parent: 2, Role: role.Group, Bounds: geom.NewRect(0, 0, 150, 20),
+			Children: []accessibility.NodeID{2},
+		},
+		&accessibility.Node{
+			ID: 4, Parent: 2, Role: role.Group, Bounds: geom.NewRect(150, 0, 150, 20),
+			Children: []accessibility.NodeID{2},
+		},
+		&accessibility.Node{
+			ID: 5, Parent: 1, Role: role.Table, Name: "Tangle", RowCount: 1, ColumnCount: 1,
+			Bounds: geom.NewRect(0, 20, 300, 180),
+		},
+		// The header panel holds a cycle of its own, which is the second recursion.
+		&accessibility.Node{
+			ID: 6, Parent: 1, Role: role.TableHeader, Bounds: geom.NewRect(0, 0, 300, 20),
+			Children: []accessibility.NodeID{7, 8},
+		},
+		&accessibility.Node{
+			ID: 7, Parent: 6, Role: role.Group, Bounds: geom.NewRect(0, 0, 150, 20),
+			Children: []accessibility.NodeID{9, 8},
+		},
+		&accessibility.Node{
+			ID: 8, Parent: 6, Role: role.Group, Bounds: geom.NewRect(150, 0, 150, 20),
+			Children: []accessibility.NodeID{7},
+		},
+		&accessibility.Node{
+			ID: 9, Parent: 7, Role: role.ColumnHeader, Name: "Title", Bounds: geom.NewRect(0, 0, 150, 20),
+		},
+	)
+	done := make(chan map[accessibility.NodeID][]accessibility.NodeID, 1)
+	go func() { done <- buildTableHeaders(tree) }()
+	select {
+	case headers := <-done:
+		c.Equal(map[accessibility.NodeID][]accessibility.NodeID{5: {9}}, headers,
+			"the one header of the one table is still found, and is reported once")
+	case <-time.After(testTimeout):
+		t.Fatal("the header search did not end: a cycle in the tree must not be walked forever")
+	}
 }
 
 func TestTableRowColumnExtentsAtIndex(t *testing.T) {

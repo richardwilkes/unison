@@ -1340,9 +1340,15 @@ func TestInWindowMenuAccessibility(t *testing.T) {
 			c.False(hoveredDisabled.Actions.Has(accessibility.Focus))
 		}
 		c.NotEqual(never.ID, tree.Focus, "and the window must not point the focus at it")
+		// The menu it is in claims the focus instead. Nothing the highlight may be reported on leaves the menu itself
+		// as what the person is in, which is where every key goes while one is open; see axSnapshot.openMenuNode.
 		focusedNodes := axFocusedNodes(tree)
-		c.Equal(0, len(focusedNodes),
-			"nothing else in this window can hold the focus, so nothing may claim it: %v", axNodeNames(focusedNodes))
+		c.Equal(1, len(focusedNodes),
+			"only one node in a window may report being focused: %v", axNodeNames(focusedNodes))
+		if len(focusedNodes) == 1 {
+			c.Equal(role.Menu, focusedNodes[0].Role, "the open menu is what holds the focus")
+			c.Equal(focusedNodes[0].ID, tree.Focus)
+		}
 	}
 
 	// Moving the mouse over an item is what a person choosing from a menu does, and what the menu is pointing at is
@@ -2138,12 +2144,17 @@ func TestPopupMenuAccessibilityWithNothingToChooseFrom(t *testing.T) {
 		c.False(node.Expandable, "a popup with nothing to choose from opens nothing")
 		c.False(node.Actions.Has(accessibility.Expand))
 		c.False(node.Actions.Has(accessibility.Collapse))
-		// The click that would open it is queued rather than performed while the answer is awaited, so the request is
-		// taken whatever will come of it. What did come of it is what the next description of the popup says, and for
-		// one with nothing in it that is the same thing it said before.
-		c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		// What is not advertised cannot be asked for: every adapter refuses to pass on an action the node does not
+		// offer, and a headless session refuses it for the same reason.
+		c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 			Node:   node.ID,
 			Action: accessibility.Expand,
+		}), "an expansion the popup does not advertise is refused before it reaches the widget")
+		// Asked of the widget itself, the request is taken whatever will come of it: the click that would open the
+		// popup is queued rather than performed while the answer is awaited. What did come of it is what the next
+		// description of the popup says, and for one with nothing in it that is the same thing it said before.
+		c.True(screen.Do(func() {
+			c.True(one.PerformAccessibilityAction(accessibility.ActionRequest{Action: accessibility.Expand}))
 		}))
 		c.Equal(0, len(axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)), "nothing should have opened")
 		c.False(axMustNode(c, screen.AccessibilityNodeFor(one)).Expanded,

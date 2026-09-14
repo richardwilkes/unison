@@ -24,9 +24,9 @@ import (
 // runs on — so the file carries no build constraint and its tests run on any platform. uia_patterns_windows.go does
 // nothing but turn these answers into COM out-parameters.
 //
-// The one piece of state here is uiaHeaderMemo, which remembers the single most expensive answer for the snapshot it
-// was worked out from. It changes no answer, only how often one is worked out, and it is guarded so that the arbitrary
-// threads UI Automation calls in on may share it.
+// The one piece of state here is uiaSnapshotMemo, which remembers the most expensive answers this package gives — the
+// ones from uia_map.go included — for the snapshot they were worked out from. It changes no answer, only how often one
+// is worked out, and it is guarded so that the arbitrary threads UI Automation calls in on may share it.
 
 // UIASelectionItemRole returns the role of the items the container of the given role selects among, or role.None when
 // that role is not a selection container. It is what decides which descendants ISelectionProvider::GetSelection looks
@@ -92,7 +92,7 @@ func uiaItemsWithin(t *accessibility.Tree, id accessibility.NodeID, itemRole rol
 // what bounds this rather than depth: a walk downwards follows Children links that may branch and revisit, so a depth
 // bound alone would let a chain of nodes that each list the same child twice take 2^depth visits, and a Children link
 // that points back at an ancestor would never end at all. Each node is therefore both reported and descended into at
-// most once, exactly as accessibility.Tree's own walk does it. The depth bound stays as a second line of defence, since
+// most once, exactly as accessibility.Tree's own walk does it. The depth bound stays as a second line of defense, since
 // the recursion is on the stack. UI Automation asks these questions from arbitrary threads — GetSelection, GetItem,
 // GetColumnHeaders — so a snapshot with a duplicated or cyclic child id must answer rather than hang the client.
 func uiaAppendItems(t *accessibility.Tree, ids []accessibility.NodeID, id accessibility.NodeID, itemRole role.Enum,
@@ -209,7 +209,7 @@ func UIAGridItem(t *accessibility.Tree, id accessibility.NodeID, row, column int
 //  3. Nothing, which the provider reports as an empty array.
 //
 // Which header a table's columns come from is remembered for the snapshot it was worked out from, since a client asks
-// for it once per cell; see uiaHeaderMemo.
+// for it once per cell; see uiaSnapshotMemo.
 func UIATableColumnHeaders(t *accessibility.Tree, id accessibility.NodeID) []accessibility.NodeID {
 	header := uiaMemoizedTableHeaderFor(t, id)
 	if header == 0 {
@@ -218,51 +218,181 @@ func UIATableColumnHeaders(t *accessibility.Tree, id accessibility.NodeID) []acc
 	return uiaItemsWithin(t, header, role.ColumnHeader, nil)
 }
 
-// uiaHeaderMemo remembers which TableHeader describes which table, for one snapshot at a time. Working the answer out
-// takes a walk of the whole tree plus a scan of one subtree per ancestor, and ITableItemProvider::GetColumnHeaderItems
-// asks for it once per cell, so a screen reader stepping through a table would otherwise pay that cost for every cell
-// it reads.
+// uiaSetPosition is one node's answer to UIAPositionInSet: where in its set it sits, and how large that set is.
+type uiaSetPosition struct {
+	position int
+	size     int
+}
+
+// uiaSnapshotMemo remembers, for one snapshot at a time, the answers that cost a walk of that snapshot to work out.
+// Three questions are asked often enough, and cost enough, to be worth remembering:
 //
-// Remembering it is correct only because a published snapshot is immutable: a publish swaps a whole new tree in rather
-// than editing the one providers are answering from, so an answer worked out from a tree cannot go out of date while
-// that tree is still the one being asked about. Only the most recently asked-about tree is kept, which is all a client
-// walking one table needs and which keeps this from holding every snapshot a window ever published alive. It is a
-// strong reference all the same, so UIAWindow.Destroy drops it: otherwise the last snapshot of a window with a table
-// in it, and every node in that snapshot, would stay reachable for the rest of the process.
+//   - Which TableHeader describes which table. Working it out takes a walk of the whole tree plus a scan of one subtree
+//     per ancestor, and ITableItemProvider::GetColumnHeaderItems asks for it once per cell, so a screen reader stepping
+//     through a table would otherwise pay that cost for every cell it reads.
+//   - Which nodes some other node says it is labeled by, which is what decides whether a label belongs to the content
+//     view. Answering it takes a scan of every node in the snapshot, and UIAIsContentElement is asked it of every
+//     label, so a client walking a form would otherwise pay labels × nodes per pass. See uiaMemoizedNamesAnother.
+//   - Where a node sits in its set, which takes a walk up to the container that holds the count plus a scan of the
+//     node's siblings. PositionInSet and SizeOfSet are two properties carrying the two halves of that one answer, and a
+//     client reading an element reads both.
+//
+// Remembering them is correct only because a published snapshot is immutable: a publish swaps a whole new tree in
+// rather than editing the one providers are answering from, so an answer worked out from a tree cannot go out of date
+// while that tree is still the one being asked about. Only one tree is kept, which is what a client walking one window
+// needs and which keeps this from holding every snapshot a window ever published alive; a caller that alternates
+// between two snapshots — raisePropertyChanged, which reports a property's value before and after — works the older
+// tree's answers out every time, exactly as it did before anything was remembered. The one tree kept is a strong
+// reference all the same, so UIAWindow.Destroy drops it: otherwise the last snapshot of a window, and every node in it,
+// would stay reachable for the rest of the process.
+//
+// Every answer is worked out the first time it is asked for rather than when a snapshot arrives, and no map is built
+// until there is something to put in it, so a window nothing asks these questions of allocates nothing here.
 //
 // UI Automation calls providers on whichever thread it likes, so every access is under the lock, the computation
 // included: it is short, and several threads working the same answer out at once is the thing being avoided.
-var uiaHeaderMemo struct {
-	tree    *accessibility.Tree
-	headers map[accessibility.NodeID]accessibility.NodeID
-	lock    sync.Mutex
+var uiaSnapshotMemo struct {
+	tree      *accessibility.Tree
+	headers   map[accessibility.NodeID]accessibility.NodeID
+	named     map[accessibility.NodeID]bool
+	positions map[accessibility.NodeID]uiaSetPosition
+	namedDone bool
+	lock      sync.Mutex
 }
 
-// uiaForgetHeaderMemo drops whatever uiaHeaderMemo is holding, so that a snapshot nothing is answering from any more
-// is not kept alive by it. A window being destroyed calls it; the next question asked of any window works its answer
-// out again, which costs one walk of that window's tree.
-func uiaForgetHeaderMemo() {
-	uiaHeaderMemo.lock.Lock()
-	defer uiaHeaderMemo.lock.Unlock()
-	uiaHeaderMemo.tree = nil
-	uiaHeaderMemo.headers = nil
+// uiaForgetSnapshotMemo drops whatever uiaSnapshotMemo is holding, so that a snapshot nothing is answering from any
+// more is not kept alive by it. A window being destroyed calls it; the next question asked of any window works its
+// answer out again, which costs one walk of that window's tree.
+func uiaForgetSnapshotMemo() {
+	uiaSnapshotMemo.lock.Lock()
+	defer uiaSnapshotMemo.lock.Unlock()
+	uiaMemoSwitchTo(nil)
 }
 
-// uiaMemoizedTableHeaderFor answers uiaTableHeaderFor from uiaHeaderMemo, working the answer out and remembering it
-// whenever the memo does not already hold one for this tree.
-func uiaMemoizedTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibility.NodeID {
-	uiaHeaderMemo.lock.Lock()
-	defer uiaHeaderMemo.lock.Unlock()
-	if uiaHeaderMemo.tree != t || uiaHeaderMemo.headers == nil {
-		uiaHeaderMemo.tree = t
-		uiaHeaderMemo.headers = make(map[accessibility.NodeID]accessibility.NodeID)
+// uiaMemoSwitchTo prepares the memo to answer questions about t and reports whether it will, emptying it unless it is
+// already holding the answers worked out from t. The lock must be held. A nil tree empties it, is never remembered and
+// is never served, since nothing answers from one.
+//
+// A snapshot the memo has already moved past is refused rather than let in, which is what keeps the memo on the
+// snapshot a client is actually walking. The publish path asks about the previous tree and then about the current one
+// for every property it raises — see raisePropertyChanged, and uiaAttributeProperties, of which a single
+// AttributesChanged node raises nine — so an older tree allowed in here would throw away the headers, labels and
+// positions a client's own thread had built for the current snapshot, once per property, to remember answers nothing
+// will ask for a second time. The caller works those out for itself instead.
+//
+// Two snapshots are of the same window when they name the same root: node ids come from one process-wide counter and a
+// panel keeps its id for life, so no two windows share one. Generation orders the snapshots of that window, and a lower
+// one is therefore a tree this memo has already been asked to move on from. A tree from another window is not compared
+// at all and takes the memo over as it always did, which is what keeps a newly opened dialog from being starved of the
+// memo by a window that has been publishing for hours.
+func uiaMemoSwitchTo(t *accessibility.Tree) bool {
+	held := uiaSnapshotMemo.tree
+	if t != nil && held == t {
+		return true
 	}
-	if header, ok := uiaHeaderMemo.headers[id]; ok {
+	if t != nil && held != nil && held.Root == t.Root && held.Generation > t.Generation {
+		return false
+	}
+	uiaSnapshotMemo.tree = t
+	uiaSnapshotMemo.headers = nil
+	uiaSnapshotMemo.named = nil
+	uiaSnapshotMemo.namedDone = false
+	uiaSnapshotMemo.positions = nil
+	return t != nil
+}
+
+// uiaMemoizedTableHeaderFor answers uiaTableHeaderFor from uiaSnapshotMemo, working the answer out and remembering it
+// whenever the memo does not already hold one for this tree. A snapshot the memo will not serve is answered from
+// itself, outside the lock, since working one answer out there would hold every other thread up for the length of a
+// walk of a whole tree.
+func uiaMemoizedTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibility.NodeID {
+	if t == nil {
+		return 0
+	}
+	uiaSnapshotMemo.lock.Lock()
+	if !uiaMemoSwitchTo(t) {
+		uiaSnapshotMemo.lock.Unlock()
+		return uiaTableHeaderFor(t, id)
+	}
+	defer uiaSnapshotMemo.lock.Unlock()
+	if header, ok := uiaSnapshotMemo.headers[id]; ok {
 		return header
 	}
 	header := uiaTableHeaderFor(t, id)
-	uiaHeaderMemo.headers[id] = header
+	if uiaSnapshotMemo.headers == nil {
+		uiaSnapshotMemo.headers = make(map[accessibility.NodeID]accessibility.NodeID)
+	}
+	uiaSnapshotMemo.headers[id] = header
 	return header
+}
+
+// uiaMemoizedNamesAnother reports whether any node in the tree says it is labeled by the node with the given id,
+// answering from uiaSnapshotMemo.
+//
+// The whole snapshot's answer is worked out at once rather than one label at a time, because the scan is the expensive
+// part and one of them collects every named node there is: the question UIAIsContentElement asks of each label is
+// whether that label is among them. A snapshot in which nothing names anything leaves the set nil, which answers every
+// label without having allocated anything at all — and a window with no LabeledBy relation in it is the common case.
+//
+// A snapshot the memo will not serve is scanned for the one answer, outside the lock and remembering nothing. The
+// decider asks this of the previous snapshot for every label whose LabeledBy changed; see labelContent.
+func uiaMemoizedNamesAnother(t *accessibility.Tree, id accessibility.NodeID) bool {
+	if t == nil {
+		return false
+	}
+	uiaSnapshotMemo.lock.Lock()
+	if !uiaMemoSwitchTo(t) {
+		uiaSnapshotMemo.lock.Unlock()
+		return uiaNamedNodes(t)[id]
+	}
+	defer uiaSnapshotMemo.lock.Unlock()
+	if !uiaSnapshotMemo.namedDone {
+		uiaSnapshotMemo.named = uiaNamedNodes(t)
+		uiaSnapshotMemo.namedDone = true
+	}
+	return uiaSnapshotMemo.named[id]
+}
+
+// uiaNamedNodes returns the set of ids that some node in the tree says it is labeled by, or nil when no node names
+// another.
+func uiaNamedNodes(t *accessibility.Tree) map[accessibility.NodeID]bool {
+	var named map[accessibility.NodeID]bool
+	for _, n := range t.Nodes {
+		for _, labelID := range n.LabeledBy {
+			if named == nil {
+				named = make(map[accessibility.NodeID]bool)
+			}
+			named[labelID] = true
+		}
+	}
+	return named
+}
+
+// uiaMemoizedPositionInSet answers uiaPositionInSet from uiaSnapshotMemo, working the answer out and remembering it
+// whenever the memo does not already hold one for this node. The answer is remembered even when it is that the node is
+// not one of a numbered set, since a client asks for both halves of it either way.
+//
+// UIAPositionInSet is the only caller, and has already established that both the tree and the node are there.
+//
+// A snapshot the memo will not serve is answered from itself, outside the lock and remembering nothing. The publish
+// path asks for both halves of this of both snapshots for every AttributesChanged node, the previous one included; see
+// uiaAttributeProperties.
+func uiaMemoizedPositionInSet(t *accessibility.Tree, n *accessibility.Node) (position, size int) {
+	uiaSnapshotMemo.lock.Lock()
+	if !uiaMemoSwitchTo(t) {
+		uiaSnapshotMemo.lock.Unlock()
+		return uiaPositionInSet(t, n)
+	}
+	defer uiaSnapshotMemo.lock.Unlock()
+	if answer, ok := uiaSnapshotMemo.positions[n.ID]; ok {
+		return answer.position, answer.size
+	}
+	position, size = uiaPositionInSet(t, n)
+	if uiaSnapshotMemo.positions == nil {
+		uiaSnapshotMemo.positions = make(map[accessibility.NodeID]uiaSetPosition)
+	}
+	uiaSnapshotMemo.positions[n.ID] = uiaSetPosition{position: position, size: size}
+	return position, size
 }
 
 // uiaTableHeaderFor returns the id of the TableHeader node that describes the columns of the table with the given id,
@@ -319,7 +449,7 @@ func uiaTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibi
 //
 // visited holds the ids already reached, and bounds this the way it bounds uiaAppendItems: each node is looked at once,
 // so a duplicated child cannot count the same table twice — which would end the search for a header that is really
-// there — and a cyclic Children link cannot spin here forever. The depth bound stays as a second line of defence, since
+// there — and a cyclic Children link cannot spin here forever. The depth bound stays as a second line of defense, since
 // the recursion is on the stack.
 func uiaHeadersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, visited map[accessibility.NodeID]bool,
 	depth int,
@@ -380,7 +510,7 @@ func UIAColumnHeaderItem(t *accessibility.Tree, id accessibility.NodeID) accessi
 // UIAValueString returns the text IValueProvider::get_Value reports for a node. A text control's content is its value;
 // everything else with a value reports it in textual form already. A password field reports nothing at all, which is
 // the whole point of the Protected flag: the snapshot never fills in its value or its text either, and this is the
-// second line of that defence.
+// second line of that defense.
 func UIAValueString(n *accessibility.Node) string {
 	if n == nil || n.Protected {
 		return ""

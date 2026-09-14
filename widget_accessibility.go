@@ -54,8 +54,17 @@ func axReach(visible geom.Rect) geom.Rect {
 // node's role can still move between here and the point the builder decides whether to describe the children — an
 // Accessibility.Callback runs after ProvideAccessibility and is entitled to write any role it likes — so a node that
 // asked here and is no longer static text by then would otherwise have its children described a second time.
+//
+// That same record is what makes asking twice within one description harmless. A widget that calls this from more than
+// one place — a heading that describes its content and then defers to an embedded label that does the same — would
+// otherwise append every child's id to the node a second time, leaving the parent listing each of its children twice,
+// every position an assistive technology counts out of that list wrong, and the node's own PositionInSet and SizeOfSet
+// with it. It is the failure AddVirtualChildOf refuses a repeated key for, and it is refused here the same way.
 func (b *AccessibilityBuilder) DescribeChildren() {
 	if b.node.Role != role.Heading && b.node.Role != role.Label {
+		return
+	}
+	if b.snapshot.childrenDescribed[b.node.ID] {
 		return
 	}
 	b.snapshot.markChildrenDescribed(b.node.ID)

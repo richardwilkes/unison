@@ -815,3 +815,102 @@ func axWaitForPublish(t *testing.T, screen *HeadlessScreen, w *Window, was uint6
 		time.Sleep(time.Millisecond)
 	}
 }
+
+// axNodesOf returns the node each request names, which is what a test asserts a set of them by: the requests the widget
+// was given carry the key the dispatcher filled in for the virtual child, and the ones it was asked for do not.
+func axNodesOf(reqs []accessibility.ActionRequest) []accessibility.NodeID {
+	ids := make([]accessibility.NodeID, 0, len(reqs))
+	for _, req := range reqs {
+		ids = append(ids, req.Node)
+	}
+	return ids
+}
+
+// TestAccessibilityBatchedActionsPublishOnce verifies that a set of requests an assistive technology made as one is
+// carried out as one: every request reaches the widget, and the window is described a single time at the end rather
+// than once per request.
+//
+// Setting which rows of a table are selected is the only thing that arrives this way. The schema has no request that
+// replaces a selection wholesale, so the macOS adapter turns one of those into a Select and an AddToSelection apiece
+// and hands the set over together; carried out one at a time, each would lay the window out and build, diff and publish
+// a complete snapshot, so naming k rows would cost k of them — and publish k intermediate selections an assistive
+// technology may read — inside the single callback it is waiting on. The single-request path is measured alongside it,
+// so what the test pins is the difference rather than a number.
+func TestAccessibilityBatchedActionsPublishOnce(t *testing.T) {
+	c := check.New(t)
+	const rows = 5
+	var list *axTestList
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			list = newAXTestList(rows)
+			wnd = axNewTestWindow(t, "batched", geom.NewRect(10, 10, 300, 280), list)
+		}))
+	c.NotNil(list)
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	listNode := screen.AccessibilityNodeFor(list)
+	c.True(listNode != nil)
+	if listNode == nil {
+		return
+	}
+	c.Equal(rows, len(listNode.Children))
+	reqs := make([]accessibility.ActionRequest, 0, 3)
+	for _, id := range listNode.Children[:3] {
+		reqs = append(reqs, accessibility.ActionRequest{Node: id, Action: accessibility.Select})
+	}
+
+	// Read on either side of the call within the same visit to the UI thread, so that nothing else — a redraw, or the
+	// task a throttled publish left behind — can be counted as part of what the requests cost.
+	var carried bool
+	var before, after uint64
+	var acted []accessibility.ActionRequest
+	screen.Do(func() {
+		list.acted = nil
+		before = wnd.ax.generation
+		carried = wnd.performAccessibilityActions(reqs)
+		after = wnd.ax.generation
+		acted = list.acted
+	})
+	c.True(carried, "the list handles every one of these, so the set was carried out")
+	c.Equal(axNodesOf(reqs), axNodesOf(acted),
+		"every request of the set should have reached the widget, in the order it was given")
+	c.Equal(uint64(1), after-before, "a set of three requests should have described the window exactly once")
+	if len(acted) == len(reqs) {
+		for i, req := range acted {
+			c.Equal(i, req.Key, "each request of a set should name the row it was aimed at, as a single one does")
+		}
+	}
+
+	// The same three one at a time, which is what the set is there to avoid: one description apiece.
+	screen.Do(func() {
+		list.acted = nil
+		before = wnd.ax.generation
+		for _, req := range reqs {
+			wnd.performAccessibilityAction(req)
+		}
+		after = wnd.ax.generation
+		acted = list.acted
+	})
+	c.Equal(axNodesOf(reqs), axNodesOf(acted))
+	c.Equal(uint64(len(reqs)), after-before, "one at a time, each request describes the window for itself")
+
+	// A set holding nothing the window will act on describes it not at all: the publish follows the requests that were
+	// carried out, exactly as it does for a single one.
+	screen.Do(func() {
+		list.acted = nil
+		before = wnd.ax.generation
+		carried = wnd.performAccessibilityActions([]accessibility.ActionRequest{
+			{Node: listNode.Children[0], Action: accessibility.Press},
+			{Node: 0, Action: accessibility.Select},
+		})
+		after = wnd.ax.generation
+		acted = list.acted
+	})
+	c.False(carried, "neither request could be carried out")
+	c.Equal(0, len(acted))
+	c.Equal(uint64(0), after-before, "a set that achieved nothing should not have described the window")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

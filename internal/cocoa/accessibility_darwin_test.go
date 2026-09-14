@@ -564,6 +564,15 @@ func TestAXAdapterText(t *testing.T) {
 			if got := objc.Send[int64](label, Sel("accessibilityLineForIndex:"), int64(0)); got != -1 {
 				t.Errorf("label accessibilityLineForIndex:0 = %d, want -1", got)
 			}
+			// The two ranges asked for by index and by position say the same thing the same way: there is no such
+			// range, rather than an empty one at the start of content the element does not have.
+			if got := objc.Send[NSRange](label, Sel("accessibilityRangeForIndex:"), int64(0)); got != emptyRange {
+				t.Errorf("label accessibilityRangeForIndex:0 = %+v, want %+v", got, emptyRange)
+			}
+			atLabel := axTestScreenPoint(a, tree.Node(axTestLabel).Bounds.Center())
+			if got := objc.Send[NSRange](label, Sel("accessibilityRangeForPosition:"), atLabel); got != emptyRange {
+				t.Errorf("label accessibilityRangeForPosition: = %+v, want %+v", got, emptyRange)
+			}
 			if got := objc.Send[NSRange](label, Sel("accessibilitySelectedTextRange")); got != (NSRange{}) {
 				t.Errorf("label accessibilitySelectedTextRange = %+v, want the zero range", got)
 			}
@@ -998,7 +1007,10 @@ func TestAXAdapterNotifications(t *testing.T) {
 // TestAXAdapterStateAndCollections proves the remaining attribute answers — the check, toggle, numeric, orientation,
 // sort, row and tab reports — against nodes built for each of them.
 func TestAXAdapterStateAndCollections(t *testing.T) {
-	defer func() { AccessibilityActionCallback = nil }()
+	defer func() {
+		AccessibilityActionCallback = nil
+		AccessibilityActionsCallback = nil
+	}()
 	runOnMain(func() {
 		w, v, closeWindow := newTestWindowAndView(t)
 		defer closeWindow()
@@ -1137,17 +1149,26 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 		tree := &accessibility.Tree{Nodes: nodes, Root: rootID, Generation: 1}
 		a.Publish(tree, accessibility.Diff(nil, tree))
 		var requests []accessibility.ActionRequest
+		// Every request reaches the same list, however it was handed over, so what each element asks for is asserted
+		// the same way throughout; batches counts the sets, which is what setting the selected rows is handed over as.
+		batches := 0
 		AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
 			requests = append(requests, req)
 		}
+		AccessibilityActionsCallback = func(_ Window, reqs []accessibility.ActionRequest) {
+			batches++
+			requests = append(requests, reqs...)
+		}
 		WithPool(func() {
+			// Seven, not the eight nodes the root holds: the separator is decoration rather than content and is
+			// dropped from the children an assistive technology is shown, the way an ignored node is.
 			children := IDsFromNSArray(objc.ID(v).Send(Sel("accessibilityChildren")))
-			if len(children) != 8 {
-				t.Fatalf("content view has %d children, want 8", len(children))
+			if len(children) != 7 {
+				t.Fatalf("content view has %d children, want 7", len(children))
 			}
 			checkBox, slider, outline := children[0], children[1], children[2]
-			tabList, header, separator, scrollArea := children[3], children[4], children[5], children[6]
-			panel := children[7]
+			tabList, header, scrollArea := children[3], children[4], children[5]
+			panel := children[6]
 			if got := Int64FromNSNumber(checkBox.Send(Sel("accessibilityValue"))); got != 2 {
 				t.Errorf("mixed check box value = %d, want 2", got)
 			}
@@ -1181,8 +1202,10 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 				t.Errorf("row subrole under a tree = %q, want AXOutlineRow", got)
 			}
 			// VoiceOver moves an outline's selection by setting its selected rows: the first replaces the selection
-			// and the rest join it, so that is what must be asked of the rows, in that order.
+			// and the rest join it, so that is what must be asked of the rows, in that order — and the whole set is
+			// handed over at once, so that carrying it out describes the window once rather than once per row.
 			requests = nil
+			batches = 0
 			outline.Send(Sel("setAccessibilitySelectedRows:"), NSArrayFromIDs(rows[0], rows[1]))
 			wantRequests := []accessibility.ActionRequest{
 				{Node: row1ID, Action: accessibility.Select},
@@ -1191,13 +1214,20 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 			if !slices.Equal(requests, wantRequests) {
 				t.Errorf("setting the selected rows asked for %v, want %v", requests, wantRequests)
 			}
+			if batches != 1 {
+				t.Errorf("setting two selected rows was handed over as %d sets, want 1", batches)
+			}
 			// Something that is not one of this outline's rows is passed over rather than acted on.
 			requests = nil
+			batches = 0
 			outline.Send(Sel("setAccessibilitySelectedRows:"), NSArrayFromIDs(checkBox, rows[1]))
 			wantRequests = []accessibility.ActionRequest{{Node: row2ID, Action: accessibility.Select}}
 			if !slices.Equal(requests, wantRequests) {
 				t.Errorf("setting the selected rows with a stray element asked for %v, want %v", requests,
 					wantRequests)
+			}
+			if batches != 1 {
+				t.Errorf("setting the selected rows with a stray element was handed over as %d sets, want 1", batches)
 			}
 			if visible := IDsFromNSArray(outline.Send(Sel("accessibilityVisibleRows"))); len(visible) != 2 {
 				t.Errorf("tree reported %d visible rows, want 2", len(visible))
@@ -1246,8 +1276,11 @@ func TestAXAdapterStateAndCollections(t *testing.T) {
 			if got := objc.Send[int64](header, Sel("accessibilitySortDirection")); got != axSortDirectionDescending {
 				t.Errorf("column header sort direction = %d, want %d", got, axSortDirectionDescending)
 			}
-			if objc.Send[bool](separator, Sel("isAccessibilityElement")) {
-				t.Error("a separator reports itself as an accessibility element, want not")
+			// Nothing ever asks about the separator, so no element is made for it at all: AppKit hands an
+			// NSAccessibilityElement's children to the client as they stand, whatever each one answers
+			// isAccessibilityElement, so one left in the list would be an AXUnknown the VoiceOver cursor lands on.
+			if got := a.Element(separatorID); got != 0 {
+				t.Errorf("an element %#x exists for the separator, which is never handed out", got)
 			}
 			// The first row shows its check box in place of the cell holding it, and the check box answers for the
 			// cell's place in the grid; the cell holding two labels is shown as a cell.
@@ -2586,6 +2619,14 @@ func axSelectorAllowed(element objc.ID, selector string) bool {
 	return objc.Send[bool](element, Sel("isAccessibilitySelectorAllowed:"), Sel(selector))
 }
 
+// axAttributeSettable reports what an element answers when asked whether an accessibility client may write an
+// attribute. It is the informal protocol's question, and it is the one that matters for a setter:
+// AXUIElementIsAttributeSettable is answered from it, and AppKit does not consult isAccessibilitySelectorAllowed: about
+// a setter the class implements unless the class answers this as well.
+func axAttributeSettable(element objc.ID, attribute string) bool {
+	return objc.Send[bool](element, Sel("accessibilityIsAttributeSettable:"), NSStringFromGo(attribute))
+}
+
 // TestAXSelectorAllowed proves each element advertises only what its node can actually do. The method table is one
 // flat set shared by every node, so without isAccessibilitySelectorAllowed: a label offers AXIncrement and
 // AXDecrement, a button offers the whole text protocol, a group offers AXRows and AXDisclosing, and every element
@@ -2596,6 +2637,12 @@ func axSelectorAllowed(element objc.ID, selector string) bool {
 // The selectors no rule names are proved too, since they are answered by NSAccessibilityElement rather than by a rule:
 // the getters it supplies stay on offer, and the setters it supplies — which this class never overrides, so a write to
 // one of them would be swallowed by NSAccessibilityElement's own storage — are refused.
+//
+// The setters are asked about twice over, since the two questions are not the same one. AppKit consults
+// isAccessibilitySelectorAllowed: about a setter only when the class does not implement it, so for the seven this class
+// does implement what an AX client sees comes from accessibilityIsAttributeSettable: instead — which is why a rule
+// proved only through the selector was a rule no client ever saw, and every element reported its value, focus,
+// selection, expansion and selected rows as writable.
 func TestAXSelectorAllowed(t *testing.T) {
 	runOnMain(func() {
 		const (
@@ -2695,6 +2742,39 @@ func TestAXSelectorAllowed(t *testing.T) {
 				axByRowContainer = "nnnnynn"
 				axByRow          = "nnnnnyn"
 			)
+			// The attributes an assistive technology may write are asked about by name rather than by selector, and
+			// that question is the one an AX client's answer comes from: a setter this class implements is never
+			// passed to isAccessibilitySelectorAllowed: at all unless the class answers this as well, so without it
+			// every one of these reads as writable on every element — a plain label included — and the write is then
+			// refused by axPerform or axRequest. Each rule is the one its selector carries above.
+			for _, c := range []struct {
+				attribute string
+				settable  string
+			}{
+				{attribute: "AXValue", settable: axBySettable},
+				{attribute: "AXFocused", settable: axByFocusable},
+				{attribute: "AXSelected", settable: axByRow},
+				{attribute: "AXExpanded", settable: axByRow},
+				{attribute: "AXDisclosing", settable: axByRow},
+				{attribute: "AXSelectedRows", settable: axByRowContainer},
+				{attribute: "AXSelectedTextRange", settable: axByTextField},
+				// An attribute no setter of this class stands for is not settable by anyone, which is what the
+				// superclass answers for the roughly 150 setters it supplies and this class never overrides.
+				{attribute: "AXDescription", settable: axByNoNode},
+				{attribute: "AXRole", settable: axByNoNode},
+				{attribute: "AXSelectedText", settable: axByNoNode},
+			} {
+				if len(c.settable) != len(elements) {
+					t.Fatalf("the row for %s covers %d elements, want %d", c.attribute, len(c.settable),
+						len(elements))
+				}
+				for i, e := range elements {
+					want := c.settable[i] == 'y'
+					if got := axAttributeSettable(e.element, c.attribute); got != want {
+						t.Errorf("the %s reports %s settable = %v, want %v", e.name, c.attribute, got, want)
+					}
+				}
+			}
 			for _, c := range []struct {
 				selector string
 				allowed  string
@@ -2804,15 +2884,20 @@ func TestAXSelectorAllowed(t *testing.T) {
 			if axSelectorAllowed(stale, "setAccessibilityValue:") {
 				t.Error("a stale element still advertises that its value can be set")
 			}
+			if axAttributeSettable(stale, "AXValue") {
+				t.Error("a stale element still reports AXValue as settable")
+			}
 		})
 	})
 }
 
-// TestAXEverySetterHasARule proves that every setter UnisonAXElement implements is named by axSelectorRules. A setter
-// that is not named falls through to NSAccessibilityElement's answer, and NSAccessibilityElement allows a setter its
-// subclass overrides — so a new setter added to the method table without a rule would be offered by every node,
-// including the ones axPerform and axRequest then silently refuse. That is the drift this whole facility exists to
-// prevent, and it cannot be caught by testing selectors a test has to remember to list.
+// TestAXEverySetterHasARule proves that every setter UnisonAXElement implements is named both by axSelectorRules and by
+// axSettableAttributes, which are the two halves of the same answer. A setter with no rule falls through to
+// NSAccessibilityElement's answer, and NSAccessibilityElement allows a setter its subclass overrides; a setter with a
+// rule but no attribute name is never asked about at all, since accessibilityIsAttributeSettable: — the question an AX
+// client's answer comes from — is asked by attribute name. Either way a new setter added to the method table would be
+// offered by every node, including the ones axPerform and axRequest then silently refuse. That is the drift this whole
+// facility exists to prevent, and it cannot be caught by testing selectors a test has to remember to list.
 func TestAXEverySetterHasARule(t *testing.T) {
 	var selName func(sel objc.SEL) string
 	purego.RegisterLibFunc(&selName, libObjC(), "sel_getName")
@@ -2824,6 +2909,22 @@ func TestAXEverySetterHasARule(t *testing.T) {
 		}
 		if _, ok := rules[m.Cmd]; !ok {
 			t.Errorf("%s is implemented but has no rule in axSelectorRules, so every node offers it", name)
+		}
+		if !slices.ContainsFunc(axSettableAttributes, func(entry struct{ attribute, setter string }) bool {
+			return entry.setter == name
+		}) {
+			t.Errorf("%s is implemented but is named by no entry of axSettableAttributes, so no client is ever told "+
+				"which nodes may be written through it", name)
+		}
+	}
+	// And the other way about: an attribute whose setter the class does not implement, or whose selector has no rule,
+	// would have accessibilityIsAttributeSettable: answering for something nothing can carry out.
+	for _, entry := range axSettableAttributes {
+		if _, ok := rules[Sel(entry.setter)]; !ok {
+			t.Errorf("%s names %s, which has no rule in axSelectorRules", entry.attribute, entry.setter)
+		}
+		if !slices.ContainsFunc(axElementMethods(), func(m objc.MethodDef) bool { return m.Cmd == Sel(entry.setter) }) {
+			t.Errorf("%s names %s, which this class does not implement", entry.attribute, entry.setter)
 		}
 	}
 }
@@ -3331,44 +3432,52 @@ func TestAXContentsMatchPresentedChildren(t *testing.T) {
 // level, a row or column index or count, an orientation and the LabeledBy, DescribedBy and Controls links all reach
 // an adapter as one AttributesChanged event, and macOS has no notification for any of them: the title-changed
 // notification is the nearest thing it has to "read this element again", which is the same stand-in a changed name
-// uses and all any of these needs, since every one of them is answered from the current snapshot.
+// uses and all any of these needs, since every one of them is answered from the current snapshot. The relations
+// included — a client told to read the element again finds the LabeledBy as AXTitleUIElement, the Controls as
+// AXLinkedUIElements and the DescribedBy folded into AXHelp, rather than being sent to look at nothing.
 func TestAXAttributesChangedNotification(t *testing.T) {
 	runOnMain(func() {
 		const (
 			rootID accessibility.NodeID = 1900 + iota
 			fieldID
+			hintID
 		)
-		build := func(placeholder string) *accessibility.Tree {
+		build := func(placeholder string, describedBy []accessibility.NodeID) *accessibility.Tree {
 			return &accessibility.Tree{
 				Nodes: map[accessibility.NodeID]*accessibility.Node{
 					rootID: {
-						ID: rootID, Children: []accessibility.NodeID{fieldID}, Role: role.Window,
+						ID: rootID, Children: []accessibility.NodeID{fieldID, hintID}, Role: role.Window,
 						Bounds: geom.NewRect(0, 0, 320, 240),
 					},
 					fieldID: {
 						ID: fieldID, Parent: rootID, Role: role.TextField, Name: "Nickname",
-						Bounds: geom.NewRect(0, 0, 200, 24), Placeholder: placeholder,
+						Bounds: geom.NewRect(0, 0, 200, 24), Placeholder: placeholder, DescribedBy: describedBy,
 						Text: &accessibility.TextInfo{},
+					},
+					hintID: {
+						ID: hintID, Parent: rootID, Role: role.Label, Name: "Shown to other players",
+						Bounds: geom.NewRect(0, 24, 200, 20),
 					},
 				},
 				Root:       rootID,
 				Generation: 1,
 			}
 		}
-		before := build("required")
+		before := build("required", nil)
 		v, a, cleanup := newAXAdapterWithTree(t, before)
 		defer cleanup()
 		if a == nil {
 			return
 		}
-		WithPool(func() { axTestChildren(t, v, 1) })
+		WithPool(func() { axTestChildren(t, v, 2) })
 		field := a.Element(fieldID)
 		if field == 0 {
 			t.Fatal("the field's element was never created")
 		}
 		var recorded []axRecordedNotification
 		defer axRecordNotifications(&recorded)()
-		after := build("optional")
+		titleChanged := GoStringFromNSString(AppKitString(axNotifyTitleChanged))
+		after := build("optional", nil)
 		after.Generation = 2
 		events := accessibility.Diff(before, after)
 		if !slices.ContainsFunc(events, func(e accessibility.Event) bool {
@@ -3377,15 +3486,719 @@ func TestAXAttributesChangedNotification(t *testing.T) {
 			t.Fatalf("the diff produced %v, want an attributes-changed event for the field", events)
 		}
 		a.Publish(after, events)
-		want := []axRecordedNotification{
-			{element: field, name: GoStringFromNSString(AppKitString(axNotifyTitleChanged))},
-		}
+		want := []axRecordedNotification{{element: field, name: titleChanged}}
 		if !slices.Equal(recorded, want) {
 			t.Errorf("the attribute change posted %v, want %v", recorded, want)
 		}
 		WithPool(func() {
 			if got := GoStringFromNSString(field.Send(Sel("accessibilityPlaceholderValue"))); got != "optional" {
 				t.Errorf("the field's placeholder after the change = %q, want optional", got)
+			}
+		})
+		// A changed DescribedBy arrives as the same event, and the prompt it produces now names something the element
+		// answers: the help it reads back carries the describing node's text.
+		recorded = nil
+		described := build("optional", []accessibility.NodeID{hintID})
+		described.Generation = 3
+		events = accessibility.Diff(after, described)
+		if !slices.ContainsFunc(events, func(e accessibility.Event) bool {
+			return e.Kind == accessibility.AttributesChanged && e.Node == fieldID
+		}) {
+			t.Fatalf("the diff produced %v, want an attributes-changed event for the field", events)
+		}
+		a.Publish(described, events)
+		if !slices.Equal(recorded, want) {
+			t.Errorf("the relation change posted %v, want %v", recorded, want)
+		}
+		WithPool(func() {
+			if got := GoStringFromNSString(field.Send(Sel("accessibilityHelp"))); got != "Shown to other players" {
+				t.Errorf("the field's help after the relation change = %q, want %q", got, "Shown to other players")
+			}
+		})
+	})
+}
+
+// TestAXSeparatorsAreNotPresented proves a separator never reaches a client as an element of its own. AppKit hands an
+// NSAccessibilityElement's accessibilityChildren over as it stands — unlike an NSView subtree, it does not drop the
+// children that answer isAccessibilityElement false — so a separator left in the list is an AXUnknown element the
+// VoiceOver cursor lands on and announces, which is exactly what a divider must not be. It is spliced out the way an
+// ignored node is, anything it holds taking its place, and every list built on the presented children agrees: the
+// children, the visible ones, the selected ones, the contents, and the hit test, which has always passed over one.
+func TestAXSeparatorsAreNotPresented(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 2000 + iota
+			rootSeparatorID
+			menuID
+			openID
+			menuSeparatorID
+			closeID
+			holdingSeparatorID
+			quitID
+			scrollID
+			scrollSeparatorID
+			contentID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{menuID, rootSeparatorID, scrollID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				menuID: {
+					ID: menuID, Parent: rootID, Role: role.Menu, Name: "File",
+					Children: []accessibility.NodeID{openID, menuSeparatorID, closeID, holdingSeparatorID},
+					Bounds:   geom.NewRect(0, 0, 200, 80),
+				},
+				openID: {
+					ID: openID, Parent: menuID, Role: role.MenuItem, Name: "Open", Bounds: geom.NewRect(0, 0, 200, 20),
+					Selected: true, Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				menuSeparatorID: {
+					ID: menuSeparatorID, Parent: menuID, Role: role.Separator, Bounds: geom.NewRect(0, 20, 200, 1),
+					Orientation: accessibility.OrientationHorizontal,
+				},
+				// An item scrolled out of sight, which is still a child but not a visible one.
+				closeID: {
+					ID: closeID, Parent: menuID, Role: role.MenuItem, Name: "Close",
+					Bounds: geom.NewRect(0, 21, 200, 20), Offscreen: true,
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				// A separator that holds something has that something spliced into its place, exactly as an ignored
+				// node does.
+				holdingSeparatorID: {
+					ID: holdingSeparatorID, Parent: menuID, Children: []accessibility.NodeID{quitID},
+					Role: role.Separator, Bounds: geom.NewRect(0, 41, 200, 20),
+				},
+				quitID: {
+					ID: quitID, Parent: holdingSeparatorID, Role: role.MenuItem, Name: "Quit",
+					Bounds:  geom.NewRect(0, 41, 200, 20),
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				rootSeparatorID: {
+					ID: rootSeparatorID, Parent: rootID, Role: role.Separator, Bounds: geom.NewRect(0, 90, 320, 1),
+				},
+				scrollID: {
+					ID: scrollID, Parent: rootID, Children: []accessibility.NodeID{scrollSeparatorID, contentID},
+					Role: role.ScrollArea, Bounds: geom.NewRect(0, 100, 200, 80),
+				},
+				scrollSeparatorID: {
+					ID: scrollSeparatorID, Parent: scrollID, Role: role.Separator,
+					Bounds: geom.NewRect(0, 100, 200, 1),
+				},
+				contentID: {
+					ID: contentID, Parent: scrollID, Role: role.Group, Name: "Scrolled content",
+					Bounds: geom.NewRect(0, 101, 200, 79),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			// The window's own children: the separator between them is gone, so the content view reports two.
+			children := axTestChildren(t, v, 2)
+			menu, scrollArea := children[0], children[1]
+			if menu != a.Element(menuID) || scrollArea != a.Element(scrollID) {
+				t.Errorf("the window is shown holding %v, want the menu %#x and the scroll area %#x", children,
+					a.Element(menuID), a.Element(scrollID))
+			}
+			items := IDsFromNSArray(menu.Send(Sel("accessibilityChildren")))
+			want := []objc.ID{a.Element(openID), a.Element(closeID), a.Element(quitID)}
+			if !slices.Equal(items, want) {
+				t.Errorf("the menu is shown holding %v, want Open, Close and the Quit the separator holds %v", items,
+					want)
+			}
+			// Everything built on the presented children says the same thing.
+			if got := IDsFromNSArray(menu.Send(Sel("accessibilityVisibleChildren"))); !slices.Equal(got,
+				[]objc.ID{a.Element(openID), a.Element(quitID)}) {
+				t.Errorf("the menu's visible children = %v, want Open %#x and Quit %#x", got, a.Element(openID),
+					a.Element(quitID))
+			}
+			if got := IDsFromNSArray(menu.Send(Sel("accessibilitySelectedChildren"))); !slices.Equal(got,
+				[]objc.ID{a.Element(openID)}) {
+				t.Errorf("the menu's selected children = %v, want just Open %#x", got, a.Element(openID))
+			}
+			if got := IDsFromNSArray(menu.Send(Sel("accessibilityContents"))); !slices.Equal(got, want) {
+				t.Errorf("the menu's contents %v are not the children it is shown holding %v", got, want)
+			}
+			// A scroll area's contents are what it scrolls, which is neither its bars nor a divider drawn in it.
+			if got := IDsFromNSArray(scrollArea.Send(Sel("accessibilityContents"))); !slices.Equal(got,
+				[]objc.ID{a.Element(contentID)}) {
+				t.Errorf("the scroll area's contents = %v, want just the content %#x", got, a.Element(contentID))
+			}
+			// The parent chain is spliced the same way the children are, which is what makes the two invert each
+			// other: everything the menu is shown holding names the menu back. Quit is held by the separator, so
+			// answering its unignored parent would name the separator — handing the client the AXUnknown element
+			// through AXParent instead of AXChildren, and leaving the menu listing a child that lists no such parent.
+			for _, c := range []struct {
+				name    string
+				element objc.ID
+			}{
+				{name: "Open", element: a.Element(openID)},
+				{name: "Close", element: a.Element(closeID)},
+				{name: "the Quit the separator holds", element: a.Element(quitID)},
+			} {
+				if got := c.element.Send(Sel("accessibilityParent")); got != menu {
+					t.Errorf("%s names parent %#x, want the menu %#x", c.name, got, menu)
+				}
+			}
+			if got := a.Element(contentID).Send(Sel("accessibilityParent")); got != scrollArea {
+				t.Errorf("the scrolled content names parent %#x, want the scroll area %#x", got, scrollArea)
+			}
+			if got := menu.Send(Sel("accessibilityParent")); got != objc.ID(v) {
+				t.Errorf("the menu names parent %#x, want the content view %#x", got, objc.ID(v))
+			}
+			// Nothing ever asked about a separator, and asking for a parent above one did not make one either, so no
+			// element was made for any of them.
+			for _, c := range []struct {
+				name string
+				id   accessibility.NodeID
+			}{
+				{name: "the window's separator", id: rootSeparatorID},
+				{name: "the menu's separator", id: menuSeparatorID},
+				{name: "the separator holding an item", id: holdingSeparatorID},
+				{name: "the scroll area's separator", id: scrollSeparatorID},
+			} {
+				if got := a.Element(c.id); got != 0 {
+					t.Errorf("an element %#x exists for %s", got, c.name)
+				}
+			}
+			// The hit test has always resolved past a separator, and now agrees with the hierarchy about where it
+			// lands: on the menu holding the divider, and on the content view standing in for the window's root.
+			onMenuSeparator := axTestScreenPoint(a, geom.NewPoint(100, 20))
+			if got := objc.ID(v).Send(Sel("accessibilityHitTest:"), onMenuSeparator); got != menu {
+				t.Errorf("hit test on the menu's separator = %#x, want the menu %#x", got, menu)
+			}
+			onRootSeparator := axTestScreenPoint(a, geom.NewPoint(300, 90))
+			if got := objc.ID(v).Send(Sel("accessibilityHitTest:"), onRootSeparator); got != objc.ID(v) {
+				t.Errorf("hit test on the window's separator = %#x, want the content view %#x", got, objc.ID(v))
+			}
+		})
+	})
+}
+
+// TestAXCellHoldingSeparatorSplicesBothWays proves the children a client is shown and the parent it is shown still
+// invert each other when a cell holds nothing but a separator. Such a cell stands in as that separator (see axStandIn),
+// so a splice that asked the child rather than the stand-in whether it was reportable would put the separator back
+// among the row's children — the one thing the splice exists to prevent — and a parent that took a single step upwards
+// would answer the separator for the thing the separator holds. The hit test has to resolve the same way: a point in
+// the cell but not on what it holds must land on the row, not on the divider standing in for the cell.
+func TestAXCellHoldingSeparatorSplicesBothWays(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 2300 + iota
+			tableID
+			rowID
+			dividedCellID
+			dividerID
+			buttonID
+			plainCellID
+			labelID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{tableID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				tableID: {
+					ID: tableID, Parent: rootID, Children: []accessibility.NodeID{rowID}, Role: role.Table,
+					Name: "Downloads", Bounds: geom.NewRect(0, 0, 200, 60),
+				},
+				rowID: {
+					ID: rowID, Parent: tableID, Children: []accessibility.NodeID{dividedCellID, plainCellID},
+					Role: role.Row, Bounds: geom.NewRect(0, 20, 200, 20), RowIndex: 0,
+				},
+				// A cell holding nothing but a separator: the cell stands in as the separator, and the separator is
+				// spliced out in favor of what it holds, so the button is what the row is shown holding.
+				dividedCellID: {
+					ID: dividedCellID, Parent: rowID, Children: []accessibility.NodeID{dividerID}, Role: role.Cell,
+					Bounds: geom.NewRect(0, 20, 100, 20), RowIndex: 0, ColumnIndex: 0,
+				},
+				dividerID: {
+					ID: dividerID, Parent: dividedCellID, Children: []accessibility.NodeID{buttonID},
+					Role: role.Separator, Bounds: geom.NewRect(0, 20, 60, 20),
+				},
+				buttonID: {
+					ID: buttonID, Parent: dividerID, Role: role.Button, Name: "Reveal",
+					Bounds:  geom.NewRect(0, 20, 40, 20),
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				// An ordinary single-occupant cell alongside it, which stands in as its occupant as it always has.
+				plainCellID: {
+					ID: plainCellID, Parent: rowID, Children: []accessibility.NodeID{labelID}, Role: role.Cell,
+					Bounds: geom.NewRect(100, 20, 100, 20), RowIndex: 0, ColumnIndex: 1,
+				},
+				labelID: {
+					ID: labelID, Parent: plainCellID, Role: role.Label, Name: "Idle",
+					Bounds: geom.NewRect(100, 20, 100, 20),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			table := axTestChildren(t, v, 1)[0]
+			rows := IDsFromNSArray(table.Send(Sel("accessibilityChildren")))
+			if !slices.Equal(rows, []objc.ID{a.Element(rowID)}) {
+				t.Fatalf("the table is shown holding %v, want the row %#x", rows, a.Element(rowID))
+			}
+			row := rows[0]
+			cells := IDsFromNSArray(row.Send(Sel("accessibilityChildren")))
+			want := []objc.ID{a.Element(buttonID), a.Element(labelID)}
+			if !slices.Equal(cells, want) {
+				t.Errorf("the row is shown holding %v, want the button the divider holds and the label %v", cells, want)
+			}
+			// Both of them name the row back, however many layers of scaffolding stand between them and it.
+			for _, c := range []struct {
+				name    string
+				element objc.ID
+			}{
+				{name: "the button a divided cell holds", element: a.Element(buttonID)},
+				{name: "the label an ordinary cell holds", element: a.Element(labelID)},
+			} {
+				if got := c.element.Send(Sel("accessibilityParent")); got != row {
+					t.Errorf("%s names parent %#x, want the row %#x", c.name, got, row)
+				}
+			}
+			// The hit test resolves the same way, so nothing is ever handed an element for the divider or for the cell
+			// it stands in for: a point on the button is the button, and a point elsewhere in that cell is the row.
+			for _, c := range []struct {
+				name string
+				want objc.ID
+				pt   geom.Point
+			}{
+				{name: "on the button", pt: geom.NewPoint(20, 25), want: a.Element(buttonID)},
+				{name: "on the divider beside it", pt: geom.NewPoint(50, 25), want: row},
+				{name: "in the cell past the divider", pt: geom.NewPoint(80, 25), want: row},
+				{name: "on the label", pt: geom.NewPoint(150, 25), want: a.Element(labelID)},
+			} {
+				if got := objc.ID(v).Send(Sel("accessibilityHitTest:"), axTestScreenPoint(a, c.pt)); got != c.want {
+					t.Errorf("hit test %s = %#x, want %#x", c.name, got, c.want)
+				}
+			}
+			for _, c := range []struct {
+				name string
+				id   accessibility.NodeID
+			}{
+				{name: "the divider a cell holds", id: dividerID},
+				{name: "the cell the divider stands in for", id: dividedCellID},
+				{name: "the cell the label stands in for", id: plainCellID},
+			} {
+				if got := a.Element(c.id); got != 0 {
+					t.Errorf("an element %#x exists for %s", got, c.name)
+				}
+			}
+		})
+	})
+}
+
+// TestAXPresentedWalksCannotLoop proves the walks that resolve what is presented stop on a malformed tree. The stand-in
+// is a step downwards and the presented parent a chain of steps upwards, so links that point at each other would have
+// either of them circling forever; the splice carries the set of ids it has descended into and the climb counts its
+// steps, the way the accessibility package's own walks do.
+func TestAXPresentedWalksCannotLoop(t *testing.T) {
+	const (
+		rootID accessibility.NodeID = 2400 + iota
+		cellID
+		dividerID
+	)
+	// A cell whose only occupant is a separator whose only child is the cell again, each naming the other as its
+	// parent: the cell stands in as the separator, and the separator's presented parent is the cell's parent, which is
+	// the separator.
+	tree := &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			rootID: {
+				ID: rootID, Children: []accessibility.NodeID{cellID}, Role: role.Window,
+				Bounds: geom.NewRect(0, 0, 320, 240),
+			},
+			cellID: {
+				ID: cellID, Parent: dividerID, Children: []accessibility.NodeID{dividerID}, Role: role.Cell,
+				Bounds: geom.NewRect(0, 0, 100, 20),
+			},
+			dividerID: {
+				ID: dividerID, Parent: cellID, Children: []accessibility.NodeID{cellID}, Role: role.Separator,
+				Bounds: geom.NewRect(0, 0, 100, 20),
+			},
+		},
+		Root:       rootID,
+		Generation: 1,
+	}
+	if got := axPresentedChildren(tree, rootID); len(got) != 0 {
+		t.Errorf("the root is shown holding %v, want nothing: the cell holds only a divider that holds only the cell",
+			got)
+	}
+	if got := axPresentedParent(tree, tree.Node(dividerID)); got != 0 {
+		t.Errorf("the divider's presented parent = %d, want none", got)
+	}
+	if got := axPresentedNode(tree, cellID); got != 0 {
+		t.Errorf("the cell is presented as %d, want nothing", got)
+	}
+}
+
+// TestAXBusyElement proves an indeterminate progress bar has something to say. Such a bar reports no number at all —
+// there is no telling how far along it is — and the whole of what it has to report is Node.Busy, which the
+// NSAccessibility protocol has no property for: AXElementBusy, an attribute of the informal protocol, is the only place
+// macOS has to put it, and it is the counterpart of the BUSY state AT-SPI reports. Without it such a bar reaches a
+// screen reader as a progress bar with no value, no range and nothing to say.
+func TestAXBusyElement(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 2100 + iota
+			busyID
+			determinateID
+			itemID
+		)
+		build := func(busy bool) *accessibility.Tree {
+			return &accessibility.Tree{
+				Nodes: map[accessibility.NodeID]*accessibility.Node{
+					rootID: {
+						ID: rootID, Children: []accessibility.NodeID{busyID, determinateID, itemID}, Role: role.Window,
+						Bounds: geom.NewRect(0, 0, 320, 240),
+					},
+					// The indeterminate bar: busy, with no number of its own.
+					busyID: {
+						ID: busyID, Parent: rootID, Role: role.ProgressBar, Name: "Loading",
+						Bounds: geom.NewRect(0, 0, 200, 20), Busy: busy, ReadOnly: true,
+					},
+					determinateID: {
+						ID: determinateID, Parent: rootID, Role: role.ProgressBar, Name: "Copying",
+						Bounds: geom.NewRect(0, 20, 200, 20), HasNumber: true, Number: 40, Max: 100, ReadOnly: true,
+					},
+					// A node that is busy and names an accelerator as well, which has to list both without either
+					// standing on the other.
+					itemID: {
+						ID: itemID, Parent: rootID, Role: role.MenuItem, Name: "Refresh", Shortcut: "⌘R",
+						Bounds: geom.NewRect(0, 40, 200, 20), Busy: busy,
+						Actions: accessibility.ActionSet(0).With(accessibility.Press),
+					},
+				},
+				Root:       rootID,
+				Generation: 1,
+			}
+		}
+		before := build(true)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 3)
+			busy, determinate, item := children[0], children[1], children[2]
+			names := func(element objc.ID) []string {
+				ids := IDsFromNSArray(element.Send(Sel("accessibilityAttributeNames")))
+				out := make([]string, 0, len(ids))
+				for _, id := range ids {
+					out = append(out, GoStringFromNSString(id))
+				}
+				return out
+			}
+			busyNames, plainNames, itemNames := names(busy), names(determinate), names(item)
+			if !slices.Contains(busyNames, axAttrElementBusy) {
+				t.Errorf("the indeterminate bar's attributes %v do not include %s", busyNames, axAttrElementBusy)
+			}
+			if slices.Contains(plainNames, axAttrElementBusy) {
+				t.Errorf("the determinate bar advertises %s", axAttrElementBusy)
+			}
+			// Whatever the superclass lists goes on being listed: the busy attribute is one more, not all there is.
+			if len(plainNames) == 0 || len(busyNames) != len(plainNames)+1 {
+				t.Errorf("the indeterminate bar lists %d attributes and the determinate one %d, want the "+
+					"indeterminate one's to be a single attribute longer", len(busyNames), len(plainNames))
+			}
+			for _, want := range []string{axAttrElementBusy, axAttrMenuItemCmdChar, axAttrMenuItemCmdModifiers} {
+				if !slices.Contains(itemNames, want) {
+					t.Errorf("the busy item's attributes %v do not include %s", itemNames, want)
+				}
+			}
+			// The value is a boolean rather than a number, which is what the attribute is documented to hold: an
+			// NSNumber made from a BOOL bridges to a CFBoolean, and its Objective-C type is a char rather than a long
+			// long.
+			value := busy.Send(Sel("accessibilityAttributeValue:"), NSStringFromGo(axAttrElementBusy))
+			if value == 0 {
+				t.Fatalf("the indeterminate bar answered %s with nothing", axAttrElementBusy)
+			}
+			if !objc.Send[bool](value, Sel("boolValue")) {
+				t.Errorf("the indeterminate bar's %s = false, want true", axAttrElementBusy)
+			}
+			if got := GoStringFromCString(objc.Send[*byte](value, Sel("objCType"))); got != "c" {
+				t.Errorf("the indeterminate bar's %s has Objective-C type %q, want c (a boolean)",
+					axAttrElementBusy, got)
+			}
+			if got := determinate.Send(Sel("accessibilityAttributeValue:"),
+				NSStringFromGo(axAttrElementBusy)); got != 0 {
+				t.Errorf("the determinate bar answered %s with %#x, want nothing", axAttrElementBusy, got)
+			}
+			// The protocol path is untouched by the informal one being answered as well.
+			if got := GoStringFromNSString(busy.Send(Sel("accessibilityRole"))); got != "AXProgressIndicator" {
+				t.Errorf("the indeterminate bar's role = %q, want AXProgressIndicator", got)
+			}
+			if got := GoStringFromNSString(busy.Send(Sel("accessibilityLabel"))); got != "Loading" {
+				t.Errorf("the indeterminate bar's label = %q, want Loading", got)
+			}
+		})
+		// A bar that stops being busy has changed what it has to say about itself, and macOS has no notification of
+		// its own for the flag: the value-changed notification is what tells an assistive technology to read the
+		// element again, since what the flag says is precisely that the value could not be trusted yet.
+		busyElement := a.Element(busyID)
+		itemElement := a.Element(itemID)
+		if busyElement == 0 || itemElement == 0 {
+			t.Fatal("the busy elements were never created")
+		}
+		var recorded []axRecordedNotification
+		defer axRecordNotifications(&recorded)()
+		after := build(false)
+		after.Generation = 2
+		events := accessibility.Diff(before, after)
+		if !slices.ContainsFunc(events, func(e accessibility.Event) bool {
+			return e.Kind == accessibility.StateChanged && e.State == accessibility.StateBusy && e.Node == busyID
+		}) {
+			t.Fatalf("the diff produced %v, want a busy state change for the bar", events)
+		}
+		a.Publish(after, events)
+		valueChanged := GoStringFromNSString(AppKitString(axNotifyValueChanged))
+		want := []axRecordedNotification{
+			{element: busyElement, name: valueChanged},
+			{element: itemElement, name: valueChanged},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("the busy change posted %v, want %v", recorded, want)
+		}
+		WithPool(func() {
+			if got := busyElement.Send(Sel("accessibilityAttributeValue:"),
+				NSStringFromGo(axAttrElementBusy)); got != 0 {
+				t.Errorf("a bar that stopped being busy answered %s with %#x, want nothing", axAttrElementBusy, got)
+			}
+		})
+	})
+}
+
+// TestAXHelpCarriesDescribedBy proves a DescribedBy link is not silently dropped. AT-SPI reports it as
+// RelationDescribedBy and UI Automation as the DescribedBy property, each handing the client the describing elements
+// themselves; macOS has no such attribute outside web content, so the describing nodes' text is folded into the
+// element's AXHelp instead, after whatever the node's own Description says. Without it a node carrying only a
+// DescribedBy link is described on both other platforms and silent on this one.
+func TestAXHelpCarriesDescribedBy(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 2200 + iota
+			fieldID
+			hintID
+			echoID
+			buttonID
+			sliderID
+			readoutID
+			retryID
+			emptyTextID
+			plainID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
+					Children: []accessibility.NodeID{
+						fieldID, hintID, echoID, buttonID, sliderID, readoutID, retryID, emptyTextID, plainID,
+					},
+				},
+				// A node with both: its own description, then the text of what describes it.
+				fieldID: {
+					ID: fieldID, Parent: rootID, Role: role.TextField, Name: "Full name",
+					Description: "Your full name", Bounds: geom.NewRect(0, 0, 200, 24),
+					DescribedBy: []accessibility.NodeID{hintID, echoID},
+					Text:        &accessibility.TextInfo{},
+				},
+				hintID: {
+					ID: hintID, Parent: rootID, Role: role.Label, Name: "Must match your passport.",
+					Bounds: geom.NewRect(0, 24, 200, 20),
+				},
+				// A describer whose text is the node's own name, which would otherwise be heard twice.
+				echoID: {
+					ID: echoID, Parent: rootID, Role: role.Label, Name: "Full name",
+					Bounds: geom.NewRect(0, 44, 200, 20),
+				},
+				// A node with no description of its own: the help is the describing text alone.
+				buttonID: {
+					ID: buttonID, Parent: rootID, Role: role.Button, Name: "Save",
+					Bounds: geom.NewRect(0, 64, 80, 24), DescribedBy: []accessibility.NodeID{hintID},
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				// A describer with no name of its own falls back to what it reports as its value.
+				sliderID: {
+					ID: sliderID, Parent: rootID, Role: role.Slider, Name: "Volume",
+					Bounds: geom.NewRect(0, 88, 100, 20), HasNumber: true, Number: 42, Max: 100,
+					DescribedBy: []accessibility.NodeID{readoutID},
+				},
+				readoutID: {
+					ID: readoutID, Parent: rootID, Role: role.Label, Value: "42 percent",
+					Bounds: geom.NewRect(100, 88, 60, 20),
+				},
+				// A describer carrying text that is empty. Empty text is not an answer, only a field nothing has been
+				// typed into yet, so the chain falls through it to the value the describer reports rather than stopping
+				// there and contributing nothing.
+				retryID: {
+					ID: retryID, Parent: rootID, Role: role.Button, Name: "Retry",
+					Bounds: geom.NewRect(0, 112, 80, 24), DescribedBy: []accessibility.NodeID{emptyTextID},
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+				emptyTextID: {
+					ID: emptyTextID, Parent: rootID, Role: role.TextField, Value: "Last attempt timed out",
+					Bounds: geom.NewRect(100, 112, 140, 24), Text: &accessibility.TextInfo{},
+				},
+				plainID: {
+					ID: plainID, Parent: rootID, Role: role.Button, Name: "Cancel",
+					Bounds:  geom.NewRect(80, 64, 80, 24),
+					Actions: accessibility.ActionSet(0).With(accessibility.Press),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 9)
+			for _, c := range []struct {
+				name    string
+				want    string
+				element objc.ID
+			}{
+				{
+					name:    "the field",
+					element: children[0],
+					want:    "Your full name. Must match your passport.",
+				},
+				{name: "the button", element: children[3], want: "Must match your passport."},
+				{name: "the slider", element: children[4], want: "42 percent"},
+				{name: "the button described by empty text", element: children[6], want: "Last attempt timed out"},
+				{name: "the button with no help at all", element: children[8], want: ""},
+			} {
+				got := GoStringFromNSString(c.element.Send(Sel("accessibilityHelp")))
+				if got != c.want {
+					t.Errorf("%s answers help %q, want %q", c.name, got, c.want)
+				}
+			}
+			// A node with nothing to say answers nil rather than an empty string, since an empty AXHelp is still an
+			// attribute a client has to ask for and speak around.
+			if got := children[8].Send(Sel("accessibilityHelp")); got != 0 {
+				t.Errorf("the button with no help answered %#x, want nothing", got)
+			}
+		})
+	})
+}
+
+// TestAXSelectedRowsCostsOnePublish proves that setting a table's selected rows costs one description of the window
+// however many rows it names. The schema has no request that replaces a selection wholesale, so the adapter turns one
+// of these into a Select and an AddToSelection apiece; handed over one at a time they would each be carried out on the
+// spot and each publish a snapshot, so naming k rows would build k trees, post k selected-rows-changed notifications
+// and publish k intermediate selections an assistive technology may read — from inside the single AppKit callback it is
+// waiting on. The callback here does what the root package's does: it carries the whole set out and publishes once.
+func TestAXSelectedRowsCostsOnePublish(t *testing.T) {
+	defer func() {
+		AccessibilityActionCallback = nil
+		AccessibilityActionsCallback = nil
+	}()
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 2300 + iota
+			tableID
+			row0ID
+			row1ID
+			row2ID
+		)
+		rowActions := accessibility.ActionSet(0).With(accessibility.Select, accessibility.AddToSelection,
+			accessibility.RemoveFromSelection)
+		build := func(generation uint64, selected ...accessibility.NodeID) *accessibility.Tree {
+			nodes := map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Children: []accessibility.NodeID{tableID}, Role: role.Window,
+					Bounds: geom.NewRect(0, 0, 320, 240),
+				},
+				tableID: {
+					ID: tableID, Parent: rootID, Children: []accessibility.NodeID{row0ID, row1ID, row2ID},
+					Role: role.Table, Name: "Files", Bounds: geom.NewRect(0, 0, 200, 60), RowCount: 3, ColumnCount: 1,
+					Multiselectable: true,
+				},
+			}
+			for i, id := range []accessibility.NodeID{row0ID, row1ID, row2ID} {
+				nodes[id] = &accessibility.Node{
+					ID: id, Parent: tableID, Role: role.Row, Name: "Row " + string(rune('A'+i)),
+					Bounds: geom.NewRect(0, float32(20*i), 200, 20), RowIndex: i, Level: 1, Selectable: true,
+					Selected: slices.Contains(selected, id), Actions: rowActions,
+				}
+			}
+			return &accessibility.Tree{Nodes: nodes, Root: rootID, Generation: generation}
+		}
+		before := build(1, row0ID)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var table, rows []objc.ID
+		WithPool(func() {
+			table = axTestChildren(t, v, 1)
+			rows = IDsFromNSArray(table[0].Send(Sel("accessibilityRows")))
+		})
+		if len(rows) != 3 {
+			t.Fatalf("the table reported %d rows, want 3", len(rows))
+		}
+		var handed [][]accessibility.ActionRequest
+		singles := 0
+		publishes := 0
+		AccessibilityActionCallback = func(_ Window, _ accessibility.ActionRequest) { singles++ }
+		AccessibilityActionsCallback = func(_ Window, reqs []accessibility.ActionRequest) {
+			handed = append(handed, slices.Clone(reqs))
+			// What the root package does once the whole set has been carried out: describe the window again, from
+			// inside the callback the assistive technology is waiting on.
+			publishes++
+			current := a.tree
+			next := build(uint64(publishes)+1, row1ID, row2ID)
+			a.Publish(next, accessibility.Diff(current, next))
+		}
+		var recorded []axRecordedNotification
+		defer axRecordNotifications(&recorded)()
+		WithPool(func() {
+			table[0].Send(Sel("setAccessibilitySelectedRows:"), NSArrayFromIDs(rows[1], rows[2]))
+		})
+		wantRequests := [][]accessibility.ActionRequest{{
+			{Node: row1ID, Action: accessibility.Select},
+			{Node: row2ID, Action: accessibility.AddToSelection},
+		}}
+		if len(handed) != 1 || !slices.EqualFunc(handed, wantRequests, slices.Equal) {
+			t.Errorf("setting two selected rows handed over %v, want the single set %v", handed, wantRequests)
+		}
+		if singles != 0 {
+			t.Errorf("%d of the requests were handed over one at a time, want none of them", singles)
+		}
+		if publishes != 1 {
+			t.Errorf("setting two selected rows published %d times, want 1", publishes)
+		}
+		// One notification, against the table rather than against either row: a table's selection is what changed, and
+		// a client re-reads AXSelectedRows when it arrives.
+		want := []axRecordedNotification{
+			{element: table[0], name: GoStringFromNSString(AppKitString(axNotifySelectedRowsChanged))},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("setting two selected rows posted %v, want %v", recorded, want)
+		}
+		WithPool(func() {
+			selected := IDsFromNSArray(table[0].Send(Sel("accessibilitySelectedRows")))
+			if !slices.Equal(selected, []objc.ID{rows[1], rows[2]}) {
+				t.Errorf("the table's selected rows after the request = %v, want the last two %v", selected,
+					[]objc.ID{rows[1], rows[2]})
 			}
 		})
 	})

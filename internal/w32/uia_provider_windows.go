@@ -320,13 +320,14 @@ func (p *UIAProvider) current() (tree *accessibility.Tree, node *accessibility.N
 // supports reports whether this provider hands out one of the interfaces, which is what QueryInterface,
 // GetPatternProvider and every control-pattern method answer from. Every element implements the two provider
 // interfaces; the fragment root alone implements the three window-level ones; and a pattern interface exists only when
-// UIAPatterns says the node supports that pattern.
+// UIAProvidedPatterns says the node hands that pattern out.
 //
 // IWindowProvider is both a pattern interface and a window-level one, and the root-only half is what decides: a nested
 // node that reports role.Dialog — a dialog-shaped panel inside a window — is not a window of its own, and answering
 // get_CanMaximize, get_WindowVisualState or get_IsTopmost for it would be describing the containing window through an
 // element that is not it. UIAPatterns cannot make that distinction, since it knows a node and not which one is the
-// root, so it is made here and everything that hands out an interface goes through this.
+// root, so UIAProvidedPatterns makes it from the tree and everything that asks what an element supports — this, the
+// property values a raise carries, and the decision to raise one at all — answers from that one set.
 //
 // Answering from the live snapshot is a knowing deviation from COM, which requires the set of interfaces an object
 // implements to be fixed for its lifetime: a client that obtained an IID from a successful QueryInterface is entitled
@@ -343,18 +344,23 @@ func (p *UIAProvider) supports(iface uiaIface) bool {
 	case uiaIfaceFragmentRoot, uiaIfaceAdviseEvents:
 		return p.isRoot()
 	case uiaIfaceWindow:
-		return p.isRoot() && p.hasPattern(PatternWindow)
+		return p.hasPattern(PatternWindow)
 	default:
 		pattern := uiaPatternForIface(iface)
 		return pattern != 0 && p.hasPattern(pattern)
 	}
 }
 
-// hasPattern reports whether the node this provider describes supports a pattern as of the current snapshot. A stale
-// provider, and one whose node has left the tree, support nothing.
+// hasPattern reports whether the node this provider describes hands a pattern out as of the current snapshot. A stale
+// provider, and one whose node has left the tree, hand out nothing.
+//
+// UIAProvidedPatterns rather than UIAPatterns, so that the root-only half of the Window pattern is applied here and
+// wherever else the adapter asks what an element supports — UIAReportsProperty, which decides what a raised property
+// change carries, and uiaDecider.patternAvailability, which decides what is raised at all. A nested dialog-shaped panel
+// is refused IWindowProvider by that one rule rather than by each caller remembering it.
 func (p *UIAProvider) hasPattern(pattern PatternSet) bool {
-	_, node, ok := p.current()
-	return ok && UIAPatterns(node).Has(pattern)
+	tree, node, ok := p.current()
+	return ok && UIAProvidesPattern(tree, node, pattern)
 }
 
 // uiaProviderFromThis recovers the provider a COM method was called on. this is the address of the interface's virtual
@@ -518,6 +524,9 @@ func (p *UIAProvider) propertyValue(tree *accessibility.Tree, node *accessibilit
 			value.SetI4(int32(node.Level))
 		}
 	case UIA_PositionInSetPropertyId:
+		// The two halves of one answer, asked for as two properties, so UIAPositionInSet is asked twice — and answers
+		// the second time from what it remembered of the first; see uiaSnapshotMemo. Neither is reported at all unless
+		// the node is one of a numbered set, since a position of zero is not a position.
 		if position, _ := UIAPositionInSet(tree, node); position > 0 {
 			value.SetI4(int32(position))
 		}

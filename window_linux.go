@@ -452,6 +452,33 @@ func (w *Window) nativeVisible() bool {
 	return x11Conn.IsWindowVisible(w.wnd.id)
 }
 
+// x11FilteredWaitDone repairs the redraw wake-up bookkeeping after a call that may have blocked in one of
+// internal/x11's filtered waits. It is called on the UI thread, from every place in this package that can reach such a
+// wait: showing a window, answering a selection request, asking the window manager for a window's frame widths, and
+// each clipboard or drag & drop transfer.
+//
+// A filtered wait takes the event it is after out of the queue and leaves everything else in it, but the wake-up
+// Window.MarkForRedraw posts is not an event: x11.Conn.PostEmptyEvent sends a bare token, which a filtered wait
+// consumes and then loops on without returning. The pending redraw the token was posted for is left with nothing
+// coming to wake the event loop for it, while redrawWakePending goes on saying that this pass has already asked, so
+// every further request of the pass posts nothing either — and a redraw marked after that pass's draw loop, from the
+// focus callbacks that ToFront's activation provokes, say, leaves the window unpainted until an unrelated event
+// happens to arrive.
+//
+// Posting another token whenever a redraw is still pending is what puts that right. A spare wake-up, for a wait that
+// swallowed nothing, costs one more pass of the loop that finds the redraw already done. With nothing pending there is
+// no token worth replacing, so the flag is merely cleared, leaving the rest of the pass free to post for itself.
+func x11FilteredWaitDone() {
+	if !redrawWakePending {
+		return
+	}
+	if len(redrawSet) == 0 {
+		redrawWakePending = false
+		return
+	}
+	apiPostEmptyEvent()
+}
+
 // x11ShowTimeout bounds how long nativeShow waits for the window manager to actually map a newly shown window.
 // MapWindow is intercepted by the window manager (SubstructureRedirect), so a hung window manager — or one that keeps
 // the window unmapped, such as by assigning it to a non-current desktop — may never produce a VisibilityNotify. Since
@@ -464,12 +491,13 @@ func (w *Window) nativeShow() {
 	}
 	x11Conn.MapWindow(w.wnd.id)
 	x11Conn.WaitForWindowVisibility(w.wnd.id, x11ShowTimeout)
+	x11FilteredWaitDone()
 	// Draw the window now that it is visible. The filtered wait above discards the nil wake-up events posted by
-	// MarkForRedraw, so a redraw queued while the window was being prepared would otherwise be lost. When a window is
-	// shown from within an event handler (such as a modal dialog raised while handling the window manager's close
-	// request), the event loop would then block in WaitEvents with nothing left to wake it, leaving the window blank
-	// and the application unresponsive. Drawing here guarantees the freshly shown window is painted regardless of
-	// event ordering, and also covers the case where the X server never sends an Expose.
+	// MarkForRedraw; x11FilteredWaitDone puts a token back, but the redraw it asks for does not happen until the event
+	// loop comes round again. When a window is shown from within an event handler (such as a modal dialog raised while
+	// handling the window manager's close request), the window would stand blank until then. Drawing here guarantees
+	// the freshly shown window is painted regardless of event ordering, and also covers the case where the X server
+	// never sends an Expose.
 	w.draw()
 }
 
@@ -695,7 +723,10 @@ func (w *Window) x11DragLoop(suggestedAction x11.Atom, imgWnd *x11DragImageWindo
 				x11ProcessEvent(e)
 			}
 		case *x11.SelectionRequestEvent:
+			// An INCR transfer answers the requestor from a filtered wait, which may swallow a pending redraw's
+			// wake-up. See x11FilteredWaitDone.
 			x11Conn.RespondToSelectionRequest(ev)
+			x11FilteredWaitDone()
 		case *x11.SelectionClearEvent:
 			if ev.Selection == x11Conn.Atoms.DnDSelection {
 				// Something else claimed the drag selection, so abort the drag
@@ -1010,7 +1041,11 @@ func (w *Window) x11Border() (top, left, bottom, right uint32) {
 		return 0, 0, 0, 0
 	}
 	if !w.wnd.borderValid {
-		if t, l, b, r, ok := x11Conn.GetWindowBorderWidths(w.wnd.id); ok {
+		// The widths come from a filtered wait on the window manager's reply, which may swallow a pending redraw's
+		// wake-up. See x11FilteredWaitDone.
+		t, l, b, r, ok := x11Conn.GetWindowBorderWidths(w.wnd.id)
+		x11FilteredWaitDone()
+		if ok {
 			w.wnd.borderTop, w.wnd.borderLeft, w.wnd.borderBottom, w.wnd.borderRight = t, l, b, r
 			w.wnd.borderValid = true
 		}
@@ -1278,7 +1313,10 @@ func x11ProcessEvent(e x11.Event) {
 			}
 		}
 	case *x11.SelectionRequestEvent:
+		// An INCR transfer answers the requestor from a filtered wait, which may swallow a pending redraw's wake-up.
+		// See x11FilteredWaitDone.
 		x11Conn.RespondToSelectionRequest(ev)
+		x11FilteredWaitDone()
 	case *x11.FocusInEvent:
 		if w := x11FindWindow(ev.Window); w != nil {
 			if ev.Mode == x11.NotifyGrab || ev.Mode == x11.NotifyUngrab {
@@ -1479,7 +1517,10 @@ func (d *x11DragInfo) fetch(target x11.Atom) []byte {
 	if data, ok := d.cache[target]; ok {
 		return data
 	}
+	// A transfer from another application runs as a filtered wait, which may swallow a pending redraw's wake-up. See
+	// x11FilteredWaitDone.
 	data, ok := x11Conn.DnDSelectionBytes(target, d.timestamp)
+	x11FilteredWaitDone()
 	if !ok {
 		data = nil
 	}

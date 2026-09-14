@@ -845,7 +845,10 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 	return nil
 }
 
-// DefaultUpdateTooltipCallback provides the default tooltip update handling.
+// DefaultUpdateTooltipCallback provides the default tooltip update handling. The tooltip of the cell the pointer is
+// over is handed to the window through Panel.borrowedTooltip rather than through the table's own Tooltip: the cell is
+// not a panel of the table's, so what it has to say is not the table's to keep, and a description of the table built
+// while the borrowed tooltip sat in Tooltip would be a description of one of its cells.
 func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rect) geom.Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
@@ -855,7 +858,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 				t.installCell(cell, rect)
 				where = where.Sub(rect.Point)
 				target := cell.PanelAt(where)
-				t.Tooltip = nil
+				t.borrowedTooltip = nil
 				t.TooltipImmediate = false
 				for target != t.AsPanel() {
 					avoid = target.RectToRoot(target.ContentRect(true)).Align()
@@ -863,7 +866,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 						SafeCall(func() { avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid) })
 					}
 					if target.Tooltip != nil {
-						t.Tooltip = target.Tooltip
+						t.borrowedTooltip = target.Tooltip
 						t.TooltipImmediate = target.TooltipImmediate
 						break
 					}
@@ -873,13 +876,13 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 				return avoid
 			}
 			if cell.Tooltip != nil {
-				t.Tooltip = cell.Tooltip
+				t.borrowedTooltip = cell.Tooltip
 				t.TooltipImmediate = cell.TooltipImmediate
 				return t.RectToRoot(t.CellFrame(row, col)).Align()
 			}
 		}
 	}
-	t.Tooltip = nil
+	t.borrowedTooltip = nil
 	return geom.Rect{}
 }
 
@@ -930,8 +933,12 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 	return true
 }
 
-// DefaultMouseExit provides the default mouse exit handling.
+// DefaultMouseExit provides the default mouse exit handling. The tooltip borrowed from the cell the pointer was over
+// is given up here as well: the window asks for a tooltip only while the pointer is within the table, so nothing would
+// otherwise take back what was borrowed once the pointer had left, and the table would go on holding the cell's
+// tooltip panel alive until the pointer next passed over a cell.
 func (t *Table[T]) DefaultMouseExit() bool {
+	t.borrowedTooltip = nil
 	if t.lastMouseEnterCellPanel != nil && t.lastMouseEnterCellPanel.MouseExitCallback != nil &&
 		t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) &&
 		t.lastMouseMotionColumn >= 0 && t.lastMouseMotionColumn < len(t.Columns) {
@@ -2707,8 +2714,11 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 // is made either way, since it also puts the anchor on the row.
 func (t *Table[T]) axSelectOnly(id tid.TID) {
 	changed := t.SelectionCount() != 1 || !t.selMap[id]
+	// Nothing needs pruning: the caller found the row in the row cache, so the one id the selection now holds is known
+	// to be in it, exactly as DefaultMouseDown's equivalent branch leaves the flag alone. Setting it would make the
+	// next HasSelection, SelectionCount or SelectedRows walk the whole row cache and rebuild the map — once for every
+	// row an assistive technology steps onto.
 	t.selMap = map[tid.TID]bool{id: true}
-	t.selNeedsPrune = true
 	t.selAnchor = id
 	t.MarkForRedraw()
 	if changed {

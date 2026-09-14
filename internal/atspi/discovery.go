@@ -31,20 +31,28 @@ const (
 	isEnabledProperty = "IsEnabled"
 	// nameOwnerChanged is the signal the session bus emits when a name gains or loses its owner.
 	nameOwnerChanged = "NameOwnerChanged"
+	// getNameOwner is the method of the session bus that answers which connection owns a well-known name.
+	getNameOwner = "GetNameOwner"
 	// propertiesChanged is the signal an object emits when one of its properties changes.
 	propertiesChanged = "PropertiesChanged"
 )
 
-// The match rules that [WatchEnabled] asks the session bus for. Signals from another connection are only delivered to
-// one that has asked for them.
+// The match rules that [WatchEnabled] asks the session bus for. A signal broadcast by another connection is only
+// delivered to one that has asked for it, and both rules name the sender they will accept, so nothing broadcast by any
+// other process on the user's session bus is delivered here at all.
 //
-// Both name the sender they will accept, which is what keeps any other process on the user's session bus from deciding
-// whether this one talks to an assistive technology. Without it, a forged PropertiesChanged from /org/a11y/bus saying
-// IsEnabled=false, or a forged NameOwnerChanged handing the launcher's name to nobody, would have the root package tear
-// the bridge down and leave a screen-reader user with no way into the application; the other direction would have it
-// connect to a bus nothing asked for. The bus resolves the launcher's well-known name to whichever connection owns it
-// and refuses to deliver anything sent by another, which is why the rule is where this is enforced: the signals the
-// launcher sends carry its unique name, which is not something the application can know in advance.
+// A match rule is not the whole of the defense, because it is not consulted for a signal addressed to this connection:
+// a peer that unicasts one has it delivered whatever the rules say. That matters, since a forged PropertiesChanged from
+// /org/a11y/bus saying IsEnabled=false would have the root package tear the bridge down and leave a screen-reader user
+// with no way into the application, while one saying true would have it connect to a bus nothing asked for. Each
+// subscription therefore checks the sender of what arrives as well:
+//
+//   - NameOwnerChanged is checked against the bus's own name by the subscription's filter. The bus fills the sender of
+//     every message it routes in with the unique name of the connection that sent it, so no other peer can send under
+//     that name.
+//   - PropertiesChanged is checked against the connection that owns the launcher's well-known name, which
+//     [WatchEnabled] resolves for itself and keeps current from NameOwnerChanged. That cannot be a filter: the sender
+//     the launcher's signals carry is its unique name, which is not something the application can know in advance.
 const (
 	statusMatchRule = "type='signal',sender='" + BusDestination + "',interface='" + dbusPropertiesInterface +
 		"',member='" + propertiesChanged + "',path='" + string(BusPath) + "'"
@@ -164,6 +172,31 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		latest++
 		return latest
 	}
+	// busOwner is the unique name of the connection that owns the launcher's well-known name, and is the only sender
+	// whose word about the status is taken; see the match rules above. It is empty until the answer to the GetNameOwner
+	// call below arrives and whenever nobody owns the name at all, and a signal claiming to be the launcher while there
+	// is no launcher is exactly what this is here to refuse. ownerReported says a NameOwnerChanged has reported an owner,
+	// which is the newer answer of the two: reading who owns the name is a round trip, and the name can move while one is
+	// in flight, so what a signal says is never overwritten by what a read that was already on its way back says.
+	var ownerLock sync.Mutex
+	var busOwner string
+	var ownerReported bool
+	noteOwner := func(owner string, fromSignal bool) {
+		ownerLock.Lock()
+		defer ownerLock.Unlock()
+		if fromSignal {
+			ownerReported = true
+		} else if ownerReported {
+			return
+		}
+		busOwner = owner
+	}
+	// fromLauncher reports whether a signal came from the connection that owns the launcher's name.
+	fromLauncher := func(sender string) bool {
+		ownerLock.Lock()
+		defer ownerLock.Unlock()
+		return sender != "" && sender == busOwner
+	}
 	recheck := func() {
 		// Enabled makes a call, and this runs on the dispatcher goroutine, which must not be held up, so the answer is
 		// fetched from a goroutine of its own. Cancellation is checked on both sides of the round trip, as it is for
@@ -181,6 +214,11 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		Interface: dbusPropertiesInterface,
 		Member:    propertiesChanged,
 	}, func(msg *dbus.Message) {
+		if !fromLauncher(msg.Sender) {
+			// Anyone can address a signal straight to this connection, so the launcher's own name is what says this one
+			// really came from it; see the match rules above.
+			return
+		}
 		switch state := enabledFromPropertiesChanged(msg); state {
 		case enabledTrue:
 			report(true)
@@ -202,6 +240,9 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		if !ok {
 			return
 		}
+		// The name moving takes the trust with it: from here on it is the connection that owns it now whose word about
+		// the status is taken, and the one that used to own it is just another peer on the session bus.
+		noteOwner(owner, true)
 		if owner == "" {
 			report(false)
 			return
@@ -220,6 +261,11 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 			}
 			rules = append(rules, rule)
 		}
+		// Who owns the launcher's name is asked for now rather than before the rules were in place, so that a name that
+		// moves while the question is in flight is reported by the signal instead of being missed between the two. Until
+		// the answer arrives nothing is taken for the launcher's, which costs nothing: the read below reports the state
+		// that was in effect all along, whatever a signal that was refused in the meantime had to say.
+		noteOwner(nameOwner(session, BusDestination), false)
 		// The bus is delivering now, so nothing that happens from here on can be missed, and the state that was in
 		// effect all along can safely be reported. A watch that has already been canceled reports nothing: the caller
 		// has stopped listening, and for the root package that means accessibility support has been refused outright.
@@ -313,6 +359,29 @@ func mentionsIsEnabled(msg *dbus.Message) bool {
 	return slices.Contains(invalidated, isEnabledProperty)
 }
 
+// nameOwner returns the unique name of the connection that owns a well-known name on the session bus, or an empty
+// string when nobody does — which is what the bus answers with a NameHasNoOwner error — or when the bus cannot say.
+//
+// The question is put to the bus itself rather than to the name's owner, so nothing is started to answer it: a name
+// with no owner is a launcher that is not running, and there is nothing for a signal claiming to be from it to be
+// checked against until it takes the name and NameOwnerChanged says so.
+func nameOwner(session *dbus.Conn, name string) string {
+	msg := dbus.NewMethodCall(dbusDestination, dbusObjectPath, dbusInterface, getNameOwner)
+	if err := msg.SetBody(name); err != nil {
+		return ""
+	}
+	reply, err := session.Call(msg)
+	if err != nil {
+		return ""
+	}
+	args, err := reply.Args()
+	if err != nil || len(args) == 0 {
+		return ""
+	}
+	owner, _ := args[0].(string) //nolint:errcheck // An owner that is not a string is no owner
+	return owner
+}
+
 // newOwnerOfBus returns the new owner of the accessibility bus launcher's name that a NameOwnerChanged signal reports.
 // ok is false for a signal about any other name.
 func newOwnerOfBus(msg *dbus.Message) (owner string, ok bool) {
@@ -353,8 +422,25 @@ func BusAddress(session *dbus.Conn, x11Address func() string) (string, error) {
 }
 
 // addressFromLauncher asks the accessibility bus launcher where its bus is, returning an empty string if it cannot say.
+//
+// The call is addressed to the connection that owns the launcher's well-known name, which is asked for first. The
+// reply to a call addressed to a well-known name carries the unique name of whichever connection owns it, which the
+// caller cannot know in advance, so a reply to such a call is accepted from any sender; see
+// dbus.pending.acceptsReplyFrom. A peer on the session bus that guesses the serial could therefore answer in the
+// launcher's place with the address of a bus of its own, and everything the application says to an assistive
+// technology, every keystroke one sends back, and the whole of the tree would go there instead. Addressing the call to
+// the unique name closes that, since the bus fills the sender in itself and a reply from anyone else is discarded.
+//
+// The well-known name is used only when nobody owns it, which is the one case the stronger form cannot serve: the
+// launcher is bus-activatable, and a call to its well-known name is what starts it on a desktop that only runs it on
+// demand. Such a reply can still be forged, exactly as every one of them could be before, but refusing to make the
+// call at all would mean no accessibility wherever the launcher is not already running.
 func addressFromLauncher(session *dbus.Conn) string {
-	reply, err := session.Call(dbus.NewMethodCall(BusDestination, BusPath, BusInterface, "GetAddress"))
+	destination := BusDestination
+	if owner := nameOwner(session, BusDestination); owner != "" {
+		destination = owner
+	}
+	reply, err := session.Call(dbus.NewMethodCall(destination, BusPath, BusInterface, "GetAddress"))
 	if err != nil {
 		return ""
 	}

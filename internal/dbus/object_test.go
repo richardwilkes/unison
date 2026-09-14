@@ -12,11 +12,13 @@ package dbus
 import (
 	"encoding/xml"
 	"errors"
+	"net"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/xio"
 )
 
 const (
@@ -357,6 +359,131 @@ func TestGetAllLeavesOutAPropertyThatWillNotMarshal(t *testing.T) {
 	}}, replyValues(t, b.call(path, propertiesInterface, getAllMember, "s", mistypedInterface)))
 	// Get on the same property still fails, since there is nothing else it could answer.
 	c.Equal(Failed, b.call(path, propertiesInterface, getMember, "ss", mistypedInterface, "Bad").ErrorName)
+}
+
+// TestGetAllRepliesWithTheWireFormOfItsDictionary verifies that the reply to GetAll is exactly what marshaling the
+// dictionary it carries produces, declared with the signature the method promises, on both the path where every
+// property encodes and the one where a property whose value does not match its declared type has to be dropped. It says
+// nothing about how many times the dictionary was encoded to get there, since re-encoding the same dictionary with the
+// same signature produces the same bytes; that is what [TestGetAllEncodesItsDictionaryOnlyOnce] is for.
+func TestGetAllRepliesWithTheWireFormOfItsDictionary(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	exportTestObject(t, b)
+	reply := b.call(testPath, propertiesInterface, getAllMember, "s", testInterface)
+	c.Equal(propertiesSignature, reply.Signature)
+	values := replyValues(t, reply)
+	c.Equal([]any{Dict{
+		{Key: nameProperty, Value: Variant{Sig: "s", Value: "original"}},
+		{Key: countProperty, Value: Variant{Sig: "i", Value: int32(7)}},
+	}}, values)
+	want, err := Marshal(propertiesSignature, values[0])
+	c.NoError(err)
+	c.Equal(want, reply.Body)
+	// The slow path, where a property whose value does not match its declared type has to be left out, ends up with the
+	// same wire form: the dictionary that is left is encoded by the reply instead.
+	const path = ObjectPath("/org/example/mistyped2")
+	c.NoError(b.client.Export(path, mistypedObject{}))
+	reply = b.call(path, propertiesInterface, getAllMember, "s", mistypedInterface)
+	c.Equal(propertiesSignature, reply.Signature)
+	values = replyValues(t, reply)
+	want, err = Marshal(propertiesSignature, values[0])
+	c.NoError(err)
+	c.Equal(want, reply.Body)
+}
+
+const (
+	// bigInterface and bigProperty name the one property whose encoding [TestGetAllEncodesItsDictionaryOnlyOnce]
+	// measures.
+	bigInterface = "org.example.Big"
+	bigProperty  = "Big"
+	// bigPropertySize is how large that property's value is. It has to dwarf everything else a GetAll allocates, since
+	// an encode of it is what the measurement is looking for, and a few megabytes is both far beyond that and nothing
+	// to a test process.
+	bigPropertySize = 4 << 20
+	// getAllOverhead is what the rest of a GetAll may allocate: the dictionary, the interfaces the object declares,
+	// the reply message and the queue it goes into. None of that grows with the size of a property and all of it
+	// together takes under a kilobyte, so this is orders of magnitude above what it costs and a sixteenth of what one
+	// more encode of the property above would.
+	getAllOverhead = 256 << 10
+)
+
+// bigPropertyObject exports one property whose value is large enough to measure. The value is built once, so a getter
+// that hands it out allocates nothing itself.
+type bigPropertyObject struct {
+	value string
+}
+
+func (o bigPropertyObject) Interfaces() []*Interface {
+	return []*Interface{
+		{
+			Name: bigInterface,
+			Properties: []*Property{
+				{Name: bigProperty, Sig: "s", Get: func() (any, error) { return o.value, nil }},
+			},
+		},
+	}
+}
+
+// TestGetAllEncodesItsDictionaryOnlyOnce is the regression guard for the double encode: GetAll marshals the property
+// dictionary to find out whether every property in it can be described, and the bytes that produced are what the reply
+// is then given, rather than the same dictionary being marshaled a second time to send it. GetAll is the call an
+// assistive technology makes to fill its property cache, so encoding it twice doubled the cost of every one of them.
+//
+// Comparing the reply against a re-encoding of its own dictionary cannot show this, since both encodes produce the same
+// bytes, so what is measured is the memory: one property large enough that an encode of it cannot hide, and a budget of
+// exactly the encodes the work requires, which are the one that checks the dictionary and the one that turns the reply
+// message into bytes. Both are measured here rather than assumed, so that the budget follows whatever the encoder does
+// rather than a number written down once. A second encode of the dictionary costs another [bigPropertySize] bytes,
+// which is sixteen times the slack the budget carries for everything else.
+//
+// The call is dispatched directly rather than through a [fakeBus]: a reply that went out over a pipe would be decoded
+// on the other end, on another goroutine, and allocations are counted process wide.
+func TestGetAllEncodesItsDictionaryOnlyOnce(t *testing.T) { // Not parallel: it measures allocation
+	c := check.New(t)
+	obj := bigPropertyObject{value: strings.Repeat("x", bigPropertySize)}
+	dict := Dict{{Key: bigProperty, Value: Variant{Sig: "s", Value: obj.value}}}
+
+	// Nothing reads the far end of this connection, so the writer goroutine blocks on its first write and stays there:
+	// the reply is encoded and queued, which is the cost being measured, and nothing else happens off this goroutine.
+	clientSide, peerSide := net.Pipe()
+	conn, err := Connect(clientSide)
+	c.NoError(err)
+	t.Cleanup(func() {
+		conn.Close()
+		xio.CloseIgnoringErrors(peerSide)
+	})
+
+	msg := NewMethodCall("", testPath, propertiesInterface, getAllMember)
+	msg.Sender = testDestination
+	msg.Serial = 1 // A reply is to a serial, so the call needs one, exactly as one that arrived off the wire has
+	c.NoError(msg.SetBodyWithSignature("s", bigInterface))
+	getAll := func() {
+		// A [Call] answers once, so each run needs its own; it is what a dispatched GetAll would be handed.
+		call := &Call{conn: conn, Message: msg, obj: obj, out: propertiesSignature}
+		call.getAllProperties()
+	}
+	getAll() // The first reply is what starts the writer goroutine, which no later one should be charged for
+	used := bytesAllocated(getAll)
+
+	// What the work itself costs, measured the same way and with the same values.
+	var body []byte
+	encodingTheDictionary := bytesAllocated(func() { body, err = Marshal(propertiesSignature, dict) })
+	c.NoError(err)
+	encodingTheReply := bytesAllocated(func() {
+		reply := NewReply(msg)
+		reply.Serial = msg.Serial // Whatever the connection would have given it; the field is a fixed four bytes
+		reply.Signature = propertiesSignature
+		reply.Body = body
+		_, err = reply.Encode()
+	})
+	c.NoError(err)
+
+	budget := encodingTheDictionary + encodingTheReply + getAllOverhead
+	c.True(used <= budget, "GetAll allocated %d bytes, where one encode of its dictionary (%d), one of the reply that "+
+		"carries it (%d) and everything else it does (%d) come to %d", used, encodingTheDictionary, encodingTheReply,
+		getAllOverhead, budget)
 }
 
 func TestPropertiesOnABuiltinInterface(t *testing.T) {

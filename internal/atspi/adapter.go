@@ -11,6 +11,7 @@ package atspi
 
 import (
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -72,20 +73,30 @@ type Adapter struct {
 	cfg        Config
 	desktop    dbus.ObjectRef
 	name       string
-	order      []*windowState
-	appID      atomic.Int32
-	stopping   atomic.Bool
+	// registryOwner is the unique name of the connection that owns the registry's well-known name, which is what the
+	// calls that join and leave the accessibility tree are addressed to; see [Adapter.registryDestination]. It is
+	// empty until one is known, and is held under lock, as the rest of this block is.
+	registryOwner string
+	order         []*windowState
+	appID         atomic.Int32
+	stopping      atomic.Bool
 	// returned reports that [Start] handed this adapter to its caller, which is what makes a lost connection worth
 	// reporting: nothing that happens before the caller holds the adapter is its business, and [Start] says so by
 	// returning an error instead. It is read and written under lock, so that it and err are decided together.
 	returned bool
-	lock     sync.RWMutex
+	// registryOwnerReported says a NameOwnerChanged has reported the registry's owner, which is the newer of the two
+	// answers registryOwner can hold: resolving the owner is a round trip, and the name can move while one is in
+	// flight, so what a signal says is never overwritten by what a read that was already on its way back says. It sits
+	// beside returned so the two share a word, and is held under lock, as registryOwner is.
+	registryOwnerReported bool
 	// rejoining reports that a goroutine is inside [Adapter.embed] on behalf of [Adapter.reembed], and rejoinWanted
 	// that another registry has appeared since it started. Both are held under rejoinLock, which is a lock of its own
-	// so that a rejoin that is waiting for the registry to answer holds nothing a query needs.
-	rejoinLock   sync.Mutex
+	// so that a rejoin that is waiting for the registry to answer holds nothing a query needs. They sit here, with the
+	// other flags, so that the four of them share one word.
 	rejoining    bool
 	rejoinWanted bool
+	lock         sync.RWMutex
+	rejoinLock   sync.Mutex
 }
 
 // Start connects to the accessibility bus, exports the AT-SPI objects and asks the registry to add the application to
@@ -215,7 +226,14 @@ func (a *Adapter) watchRegistry() {
 		Interface: dbusInterface,
 		Member:    nameOwnerChanged,
 	}, func(msg *dbus.Message) {
-		if !registryIsBack(msg) {
+		owner, ok := newOwnerOfRegistry(msg)
+		if !ok {
+			return
+		}
+		// The name moving takes the calls with it: from here on it is the connection that owns it now that is asked to
+		// let the application in and told when it leaves.
+		a.noteRegistryOwner(owner, true)
+		if owner == "" {
 			return
 		}
 		// This runs on the connection's dispatcher goroutine, which answers every query an assistive technology makes,
@@ -227,19 +245,71 @@ func (a *Adapter) watchRegistry() {
 	}
 }
 
-// registryIsBack reports whether a NameOwnerChanged signal says that the registry's name has gained an owner, which is
-// what a registry that has just started up does.
-func registryIsBack(msg *dbus.Message) bool {
+// newOwnerOfRegistry returns the new owner of the registry's name that a NameOwnerChanged signal reports, which is
+// empty when the registry has gone and a unique name when one has just started up. ok is false for a signal about any
+// other name.
+func newOwnerOfRegistry(msg *dbus.Message) (owner string, ok bool) {
 	args, err := msg.Args()
 	if err != nil || len(args) < 3 {
-		return false
+		return "", false
 	}
-	name, ok := args[0].(string)
-	if !ok || name != RegistryDestination {
-		return false
+	name, isString := args[0].(string)
+	if !isString || name != RegistryDestination {
+		return "", false
 	}
-	owner, ok := args[2].(string)
-	return ok && owner != ""
+	owner, isString = args[2].(string)
+	if !isString {
+		return "", false
+	}
+	return owner, true
+}
+
+// noteRegistryOwner records who owns the registry's well-known name. fromSignal says the answer came from
+// NameOwnerChanged rather than from a reply, which makes it the newer of the two; see [Adapter.registryOwner].
+func (a *Adapter) noteRegistryOwner(owner string, fromSignal bool) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if fromSignal {
+		a.registryOwnerReported = true
+	} else if a.registryOwnerReported {
+		return
+	}
+	a.registryOwner = owner
+}
+
+// knownRegistryOwner returns the unique name of the connection that owns the registry's well-known name, or an empty
+// string when nobody is known to.
+func (a *Adapter) knownRegistryOwner() string {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a.registryOwner
+}
+
+// registryDestination returns the name the registry's org.a11y.atspi.Socket calls are addressed to, resolving it over
+// the bus when it is not already known. It must not be called from the connection's dispatcher goroutine, since
+// resolving is a round trip.
+//
+// The reply to a call addressed to a well-known name carries the unique name of whichever connection owns it, which
+// the caller cannot know in advance, so a reply to such a call is accepted from any sender; see
+// dbus.pending.acceptsReplyFrom. A peer on the accessibility bus that guesses the serial can therefore answer in the
+// registry's place, and the answer to Embed is the object that becomes the application root's parent: an assistive
+// technology following the tree down from a forged desktop would be reading whatever that peer chose to say about the
+// application. Addressing the call to the unique name closes that, since the bus fills the sender in itself, no peer
+// can choose it, and a reply from anyone else is discarded.
+//
+// The well-known name is used only when nobody owns it, which is the one case the stronger form cannot serve: the
+// registry is bus-activatable, and a call to its well-known name is what starts it on a desktop that only runs it on
+// demand. Such a reply can still be forged, exactly as every one of them could be before, but refusing to make the
+// call at all would mean no accessibility wherever the registry is not already running.
+func (a *Adapter) registryDestination() string {
+	if owner := a.knownRegistryOwner(); owner != "" {
+		return owner
+	}
+	if owner := nameOwner(a.conn, RegistryDestination); owner != "" {
+		a.noteRegistryOwner(owner, false)
+		return owner
+	}
+	return RegistryDestination
 }
 
 // reembed joins the accessibility tree again, replacing the desktop reference that the registry which has just gone
@@ -281,13 +351,21 @@ func (a *Adapter) reembed() {
 // embed asks the registry to add the application to the accessibility tree. The reply is the desktop object, which
 // becomes the parent of the application root.
 func (a *Adapter) embed() error {
-	msg := dbus.NewMethodCall(RegistryDestination, RootPath, InterfaceSocket, "Embed")
+	msg := dbus.NewMethodCall(a.registryDestination(), RootPath, InterfaceSocket, "Embed")
 	if err := msg.SetBodyWithSignature(objectRefSignature, a.rootReference()); err != nil {
 		return err
 	}
 	reply, err := a.conn.Call(msg)
 	if err != nil {
 		return err
+	}
+	if strings.HasPrefix(reply.Sender, uniqueNamePrefix) {
+		// The bus fills the sender of a reply in itself, so this is the registry's own connection whatever the call
+		// was addressed to, and it is the answer the next call would otherwise have to ask the bus for again. A reply
+		// that carries no sender at all comes from a connection with no bus behind it, which has nobody to fill it in
+		// and no names for anyone to own, and one that carries the bus's own name is the bus answering for a name that
+		// has gone; neither is an owner.
+		a.noteRegistryOwner(reply.Sender, false)
 	}
 	args, err := reply.Args()
 	if err != nil {
@@ -342,8 +420,16 @@ func (a *Adapter) leave(tell bool) {
 
 // unembed tells the registry the application is leaving. No reply is asked for: the registry has nothing to say, and
 // waiting for one would hold up a shutdown that may be happening because the bus has already gone.
+//
+// It is addressed to the owner that joining the tree learned, and to the well-known name when there is none, without
+// ever resolving one for itself. There is nothing here for a forged reply to reach — the call asks for none — and the
+// only thing a lookup could add is a round trip on a bus that a shutdown must not wait for.
 func (a *Adapter) unembed() {
-	msg := dbus.NewMethodCall(RegistryDestination, RootPath, InterfaceSocket, "Unembed")
+	destination := a.knownRegistryOwner()
+	if destination == "" {
+		destination = RegistryDestination
+	}
+	msg := dbus.NewMethodCall(destination, RootPath, InterfaceSocket, "Unembed")
 	msg.Flags |= dbus.FlagNoReplyExpected
 	if err := msg.SetBodyWithSignature(objectRefSignature, a.rootReference()); err != nil {
 		errs.Log(err)

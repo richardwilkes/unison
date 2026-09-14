@@ -239,10 +239,10 @@ func (w *UIAWindow) retireRemovedProviders(tree *accessibility.Tree) {
 // nothing further: Root and Provider return nil from here on. A second call does nothing, so a window destroyed twice —
 // or one shut down and then destroyed — is not a problem.
 func (w *UIAWindow) Destroy() {
-	// The table-header memo holds a strong reference to whichever snapshot was asked about last, which may well be this
+	// The snapshot memo holds a strong reference to whichever snapshot was asked about last, which may well be this
 	// window's. Nothing will be answering from it once this returns, so it is dropped rather than left holding a whole
-	// tree, and every node in it, until some other window happens to be asked about a table.
-	defer uiaForgetHeaderMemo()
+	// tree, and every node in it, until some other window happens to be asked one of the questions it remembers.
+	defer uiaForgetSnapshotMemo()
 	root := w.Root()
 	if root != nil {
 		if uiaClientsAreListening() {

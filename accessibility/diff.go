@@ -35,11 +35,12 @@ import (
 //     per changed flag, then the text events — TextDeleted and TextInserted for the one run of runes that differs,
 //     followed by TextSelectionChanged. RoleChanged comes first because a node's role decides how an adapter interprets
 //     everything else about it, so the adapter must know the new role before it applies the rest. At most one
-//     AttributesChanged is produced per node, and it covers the secondary facts no kind of its own reports:
-//     Placeholder, Shortcut, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Step, Orientation and the LabeledBy,
-//     DescribedBy and Controls relations. Every platform carries those as attributes or relations of an element rather
-//     than as its value, and an assistive technology re-reads the ones it cares about when it is told the element's
-//     attributes changed, so naming which of them moved would buy nothing.
+//     AttributesChanged is produced per node, and it covers the secondary facts no kind of its own reports: Actions,
+//     Placeholder, Shortcut, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Step, Orientation, the Multiline flag
+//     of Text and the LabeledBy, DescribedBy and Controls relations. Every platform carries those as attributes,
+//     relations or the set of requests an element answers rather than as its value, and an assistive technology
+//     re-reads the ones it cares about when it is told the element's attributes changed, so naming which of them moved
+//     would buy nothing.
 //  6. WindowActivated or WindowDeactivated when the root's Focused flipped.
 //  7. FocusChanged last, whenever the focus moved, so an adapter has already applied every structural and value change
 //     before it tells its assistive technology where to look.
@@ -167,15 +168,41 @@ func appendChangesForNode(events []Event, prev, cur *Node) []Event {
 // says to — and an item that went on announcing the key it used to answer to would be telling the person to press
 // something that no longer does anything. Step is here for the same reason, being what an assistive technology tells
 // the person one press of an arrow key will move a slider or a spin button by.
+//
+// Actions is here because what a node can be asked to do is live state too, and it is the one thing about a node that
+// can move with nothing else about it moving at all: List.SetAllowMultipleSelection adds AddToSelection and
+// RemoveFromSelection to every row while leaving each row's name, value, bounds and every state flag exactly as they
+// were. Each platform derives what it offers from the set — AT-SPI answers NActions and GetActions from it, and a node
+// gaining its first action gains the org.a11y.atspi.Action interface along with it; macOS decides which accessibility
+// setters an element responds to from it — so a client that cached the old set would go on offering an action that is
+// now refused, or never offer one that has appeared. Which action moved is not named for the same reason none of the
+// others are: an assistive technology re-reads what it cares about once it has been told to look again.
+//
+// TextInfo.Multiline is here because how many lines a control lays its content out over is live state too, and it is
+// the one fact about a wrapping field that moves with nothing else about the field moving at all: a single-line field
+// reports it from the number of lines it actually drew, so it flips as the field is resized around text that already
+// fits — the text, the selection and the caret all staying exactly where they were. Every adapter turns it into
+// something a client caches until it is told otherwise, AT-SPI's SINGLE_LINE and MULTI_LINE states among them, so a
+// field that has grown from one drawn line to two would otherwise go on being read out as a single run, with no
+// line-by-line navigation through it, for the life of the window.
 func appendAttributeChanges(events []Event, prev, cur *Node) []Event {
-	if prev.Placeholder != cur.Placeholder || prev.Shortcut != cur.Shortcut || prev.Level != cur.Level ||
+	if prev.Actions != cur.Actions ||
+		prev.Placeholder != cur.Placeholder || prev.Shortcut != cur.Shortcut || prev.Level != cur.Level ||
 		prev.RowIndex != cur.RowIndex || prev.ColumnIndex != cur.ColumnIndex || prev.RowCount != cur.RowCount ||
 		prev.ColumnCount != cur.ColumnCount || numbersDiffer(prev.Step, cur.Step) ||
-		prev.Orientation != cur.Orientation || !slices.Equal(prev.LabeledBy, cur.LabeledBy) ||
+		prev.Orientation != cur.Orientation || multiline(prev) != multiline(cur) ||
+		!slices.Equal(prev.LabeledBy, cur.LabeledBy) ||
 		!slices.Equal(prev.DescribedBy, cur.DescribedBy) || !slices.Equal(prev.Controls, cur.Controls) {
 		events = append(events, Event{Kind: AttributesChanged, Node: cur.ID})
 	}
 	return events
+}
+
+// multiline reports whether a node lays its text out over more than one line, which a node carrying no text never does.
+// A node that gains or loses its text altogether is a bigger change than this, and the text events that go with it are
+// what report that.
+func multiline(n *Node) bool {
+	return n.Text != nil && n.Text.Multiline
 }
 
 // appendStateChanges appends one StateChanged per flag that differs between the two snapshots of a node. The order here

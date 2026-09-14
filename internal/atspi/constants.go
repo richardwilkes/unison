@@ -326,6 +326,9 @@ const (
 	dbusDestination = "org.freedesktop.DBus"
 	// dbusObjectPath is the path of the bus's own object, which those signals come from.
 	dbusObjectPath dbus.ObjectPath = "/org/freedesktop/DBus"
+	// uniqueNamePrefix begins every name the bus hands out to a connection of its own accord, which is how one is told
+	// apart from a well-known name a connection asked for and from the bus's own name.
+	uniqueNamePrefix = ":"
 )
 
 const (

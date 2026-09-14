@@ -32,6 +32,9 @@ const (
 	testBusName = ":1.42"
 	// testPeerName is the unique name of the fake peer itself.
 	testPeerName = ":1.7"
+	// testOtherName is the unique name of another connection on the same fake bus, which owns nothing. It is what a
+	// signal that has no business being listened to comes from.
+	testOtherName = ":1.99"
 	// testDesktopPath is the path of the desktop object the fake registry hands back from Embed.
 	testDesktopPath dbus.ObjectPath = "/org/a11y/atspi/accessible/desktop"
 	// getMember is org.freedesktop.DBus.Properties.Get, which is how every property the tests read is asked for.
@@ -53,8 +56,11 @@ type testPeer struct {
 	replies map[uint32]chan *dbus.Message
 	rules   []string
 	enabled atomic.Bool
-	serial  uint32
-	mu      sync.Mutex
+	// noOwners makes every GetNameOwner answer NameHasNoOwner, which is the desktop where neither the launcher nor the
+	// registry is running yet and a call to the well-known name is what starts one.
+	noOwners atomic.Bool
+	serial   uint32
+	mu       sync.Mutex
 }
 
 // newTestPeer creates a connection under test whose peer answers with the given function, which returns false for a
@@ -150,6 +156,23 @@ func (p *testPeer) answerBus(msg *dbus.Message) {
 		}
 		p.mu.Unlock()
 		p.replyTo(msg, "")
+	case getNameOwner:
+		// The peer stands in for whichever service it is answering for, which is the accessibility bus launcher on a
+		// session bus and the registry on an accessibility bus, so it owns those two names and nothing else. A name
+		// nobody owns is a NameHasNoOwner error rather than an empty answer, which is what a real bus says and what a
+		// caller that has to tell the two apart sees; a peer with noOwners set answers that way for every name, which
+		// is the desktop where the service is not running yet and has to be started by being called.
+		args, err := msg.Args()
+		if err != nil || len(args) != 1 {
+			p.errorTo(msg, dbus.InvalidArgs, "a name is required")
+			return
+		}
+		name, ok := args[0].(string)
+		if !ok || p.noOwners.Load() || (name != BusDestination && name != RegistryDestination) {
+			p.errorTo(msg, "org.freedesktop.DBus.Error.NameHasNoOwner", "the name has no owner")
+			return
+		}
+		p.replyTo(msg, "s", testPeerName)
 	default:
 		p.errorTo(msg, dbus.UnknownMethod, msg.Member)
 	}
@@ -181,6 +204,17 @@ func (p *testPeer) write(msg *dbus.Message) {
 // replyTo answers a method call the connection under test made.
 func (p *testPeer) replyTo(call *dbus.Message, sig dbus.Signature, args ...any) {
 	reply := dbus.NewReply(call)
+	if len(args) != 0 {
+		p.c.NoError(reply.SetBodyWithSignature(sig, args...))
+	}
+	p.write(reply)
+}
+
+// replyFrom answers a method call the connection under test made as though the reply came from a particular sender,
+// which is what a real bus fills in and what a call addressed to a unique name checks before it accepts one.
+func (p *testPeer) replyFrom(sender string, call *dbus.Message, sig dbus.Signature, args ...any) {
+	reply := dbus.NewReply(call)
+	reply.Sender = sender
 	if len(args) != 0 {
 		p.c.NoError(reply.SetBodyWithSignature(sig, args...))
 	}
