@@ -155,6 +155,10 @@ func uiaInvokeInvoke(this uintptr) uint64 {
 // pressed. Toggle is the sole way a client can operate such an element on Windows — the role carries no Invoke pattern
 // — so a node that does not offer Toggle but does offer Press is pressed instead. Dispatching an action the widget
 // ignores would answer S_OK while the button never changed.
+//
+// An element that offers neither is refused with UIA_E_INVALIDOPERATION, as every other write path refuses one; see the
+// list at the top of this file. There is no event to follow a toggle, so a client answered S_OK would be told the
+// toggle happened and left with nothing to notice otherwise.
 func uiaToggleToggle(this uintptr) uint64 {
 	p, _, node, hr := uiaPatternNode(this, uiaIfaceToggle)
 	if hr != COM_S_OK {
@@ -164,8 +168,12 @@ func uiaToggleToggle(this uintptr) uint64 {
 		return UIA_E_ELEMENTNOTENABLED
 	}
 	action := accessibility.Toggle
-	if !node.Actions.Has(accessibility.Toggle) && node.Actions.Has(accessibility.Press) {
+	switch {
+	case node.Actions.Has(accessibility.Toggle):
+	case node.Actions.Has(accessibility.Press):
 		action = accessibility.Press
+	default:
+		return UIA_E_INVALIDOPERATION
 	}
 	return uiaDispatch(p, accessibility.ActionRequest{Action: action})
 }

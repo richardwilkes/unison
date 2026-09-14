@@ -37,8 +37,8 @@ import (
 //
 // A provider outlives the node it describes. When a node leaves the tree its provider is marked stale and answers
 // UIA_E_ELEMENTNOTAVAILABLE, which is what a client holding an element for something that has been destroyed must be
-// told, and it stays alive — pinned, since UI Automation holds a raw pointer to it — until the last COM reference is
-// released.
+// told, and it stays alive — anchored against collection and pinned against movement, since UI Automation holds a raw
+// pointer to it — until the last COM reference is released. See uiaLiveProviders.
 
 // uiaIfaceIIDs holds the interface identifier a client asks for each interface by, indexed by uiaIface. IID_IUnknown is
 // deliberately absent: it is answered by handing out the IRawElementProviderSimple pointer, since that table's first
@@ -161,13 +161,53 @@ func uiaBuildVtbl(iface uiaIface, vtbl []uintptr, methods ...any) {
 	uiaVtblStarts[iface] = uintptr(unsafe.Pointer(&vtbl[0]))
 }
 
+// uiaLiveProviders holds every provider that still has a COM reference outstanding, which is what keeps one reachable
+// for the garbage collector.
+//
+// A provider cannot anchor itself. Its pinner keeps the collector from moving it and makes it legal to hand its address
+// out, but a runtime.Pinner is documented to need keeping alive independently of what it pins, and the provider map is
+// not that: retiring a provider drops it from the map while UI Automation may still hold references, leaving nothing
+// but the object's own field pointing at the object. That it survives today rests on the collector treating every
+// finalized object as a root, which is an implementation detail rather than part of the API. This set is the anchor the
+// documented lifetime needs — a provider is entered as it is created and dropped when release sees the last reference
+// go — so that what UIAProvider's doc comment promises is guaranteed rather than incidental.
+//
+// UI Automation releases references from whichever thread it likes, so both ends are under the lock.
+var uiaLiveProviders = struct {
+	set  map[*UIAProvider]struct{}
+	lock sync.Mutex
+}{set: make(map[*UIAProvider]struct{})}
+
+// uiaHoldProvider anchors a provider for as long as anything holds a COM reference to it. See uiaLiveProviders.
+func uiaHoldProvider(p *UIAProvider) {
+	uiaLiveProviders.lock.Lock()
+	defer uiaLiveProviders.lock.Unlock()
+	uiaLiveProviders.set[p] = struct{}{}
+}
+
+// uiaDropProvider gives up the anchor uiaHoldProvider took, which the release of the last reference does.
+func uiaDropProvider(p *UIAProvider) {
+	uiaLiveProviders.lock.Lock()
+	defer uiaLiveProviders.lock.Unlock()
+	delete(uiaLiveProviders.set, p)
+}
+
+// uiaLiveProviderCount returns how many providers are anchored. It is for tests, which is the only thing that can see
+// the set at a moment when it should be empty.
+func uiaLiveProviderCount() int {
+	uiaLiveProviders.lock.Lock()
+	defer uiaLiveProviders.lock.Unlock()
+	return len(uiaLiveProviders.set)
+}
+
 // UIAProvider is the UI Automation provider for one node of one window's accessibility snapshot. It is a COM object
 // implementing every interface in uiaIface, so it is never used through this Go type by anything but the package's own
 // bookkeeping: UI Automation holds one of the interface pointers within it instead.
 //
 // The lifetime is the COM reference count's to decide. The window's provider map holds one reference; UI Automation
-// takes its own through QueryInterface and the out-parameters of the navigation methods. The object stays pinned for
-// the garbage collector until the last of them is released, since UI Automation's pointers are invisible to Go.
+// takes its own through QueryInterface and the out-parameters of the navigation methods. The object stays reachable and
+// pinned for the garbage collector until the last of them is released, since UI Automation's pointers are invisible to
+// Go: reachable through uiaLiveProviders, and pinned through the pinner below.
 type UIAProvider struct {
 	// vtbls MUST BE FIRST, and must stay an array of exactly one pointer per interface: the pointer a client holds for
 	// interface i is &vtbls[i], and every method recovers the provider from that address by subtracting the interface's
@@ -180,7 +220,8 @@ type UIAProvider struct {
 	stale    atomic.Bool
 }
 
-// newUIAProvider creates the provider for one node, holding the one reference the window's provider map owns.
+// newUIAProvider creates the provider for one node, holding the one reference the window's provider map owns. The
+// provider is anchored and pinned here, together, and both are given up by the release of the last reference.
 func newUIAProvider(window *UIAWindow, node accessibility.NodeID) *UIAProvider {
 	uiaEnsureVtbls()
 	p := &UIAProvider{
@@ -190,6 +231,7 @@ func newUIAProvider(window *UIAWindow, node accessibility.NodeID) *UIAProvider {
 	}
 	p.vtbls = uiaVtblStarts
 	p.pinner.Pin(p)
+	uiaHoldProvider(p)
 	return p
 }
 
@@ -216,12 +258,14 @@ func (p *UIAProvider) addRef() uintptr {
 	return comAddRef(&p.refCount)
 }
 
-// release implements IUnknown::Release, unpinning the object once the last reference is gone and not before: UI
-// Automation may still hold pointers to it that Go cannot see.
+// release implements IUnknown::Release, unpinning the object and letting go of the anchor that keeps it reachable once
+// the last reference is gone and not before: UI Automation may still hold pointers to it that Go cannot see. Exactly
+// one caller observes the final release, so neither is given up twice.
 func (p *UIAProvider) release() uintptr {
 	remaining, final := comRelease(&p.refCount)
 	if final {
 		p.pinner.Unpin()
+		uiaDropProvider(p)
 	}
 	return remaining
 }

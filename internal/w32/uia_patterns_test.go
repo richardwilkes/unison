@@ -11,6 +11,7 @@ package w32
 
 import (
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -379,6 +380,74 @@ func TestUIASelectionNested(t *testing.T) {
 	c.Equal([]accessibility.NodeID{7, 13}, UIASelection(nested, 6))
 }
 
+// uiaMalformedTreeDeadline is how long a question asked of a malformed snapshot is given before the test calls it hung.
+// The answer takes microseconds, and the failure this guards against is an endless walk rather than a slow one, so the
+// deadline is far longer than it needs to be and nothing here is timing-sensitive.
+const uiaMalformedTreeDeadline = 10 * time.Second
+
+// TestUIASelectionMalformedTree verifies that the walk down a subtree both terminates and answers on a snapshot whose
+// Children links are malformed. A depth bound alone does not bound a downward walk: links that branch and revisit
+// double the work at every level, and a link that points back at an ancestor closes a loop that never ends. UI
+// Automation asks for a container's selection from whichever thread it likes, so either shape would hang a client
+// rather than merely answer it wrongly.
+func TestUIASelectionMalformedTree(t *testing.T) {
+	c := check.New(t)
+
+	// A chain of groups 22 deep, each listing its one child twice, with the only list item at the bottom. Reaching the
+	// item once per path through the chain reports it 2^22 times.
+	const bottom = accessibility.NodeID(24)
+	nodes := []*accessibility.Node{
+		{ID: 1, Role: role.List, Name: "Choices", Children: []accessibility.NodeID{2}},
+	}
+	for id := accessibility.NodeID(2); id < bottom; id++ {
+		nodes = append(nodes, &accessibility.Node{
+			ID: id, Role: role.Group, Children: []accessibility.NodeID{id + 1, id + 1},
+		})
+	}
+	nodes = append(nodes, &accessibility.Node{
+		ID: bottom, Role: role.ListItem, Name: "Only", Selectable: true, Selected: true,
+	})
+	c.Equal([]accessibility.NodeID{bottom}, UIASelection(newTestTree(1, 0, nodes...), 1))
+
+	// A four-node cycle: the list holds one group, that group holds two more nodes, and both of them name the group as
+	// a child of their own. There is no bottom to reach, so the answer is checked on a goroutine of its own rather than
+	// leaving the test to be killed by the package's own timeout.
+	cycle := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.List, Name: "Choices", Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.Group, Children: []accessibility.NodeID{3, 4}},
+		&accessibility.Node{ID: 3, Role: role.Group, Children: []accessibility.NodeID{2}},
+		&accessibility.Node{
+			ID: 4, Role: role.ListItem, Name: "Only", Selectable: true, Selected: true,
+			Children: []accessibility.NodeID{2},
+		},
+	)
+	done := make(chan []accessibility.NodeID, 1)
+	go func() { done <- UIASelection(cycle, 1) }()
+	select {
+	case ids := <-done:
+		c.Equal([]accessibility.NodeID{4}, ids)
+	case <-time.After(uiaMalformedTreeDeadline):
+		t.Fatal("UIASelection followed the cyclic child links rather than stopping at the nodes it had seen")
+	}
+}
+
+// TestUIATableColumnHeadersMalformedTree verifies that the search for a table's header survives a snapshot that lists
+// the same child twice. The search gives up on an ancestor holding more than one table, since widening it could only
+// make the ambiguity worse, so counting the one table twice would end the search and leave the header that is really
+// there unfound.
+func TestUIATableColumnHeadersMalformedTree(t *testing.T) {
+	c := check.New(t)
+	tree := newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
+		&accessibility.Node{ID: 2, Role: role.ScrollArea, Children: []accessibility.NodeID{3, 4, 4}},
+		&accessibility.Node{ID: 3, Role: role.TableHeader, Children: []accessibility.NodeID{5, 6}},
+		&accessibility.Node{ID: 4, Role: role.Table, ColumnCount: 2},
+		&accessibility.Node{ID: 5, Role: role.ColumnHeader, Name: "Name", ColumnIndex: 0},
+		&accessibility.Node{ID: 6, Role: role.ColumnHeader, Name: "Size", ColumnIndex: 1},
+	)
+	c.Equal([]accessibility.NodeID{5, 6}, UIATableColumnHeaders(tree, 4))
+}
+
 // TestUIASelectionContainer verifies which element a selection item says it belongs to, including that a radio button
 // says none: its group is a layout panel with no pattern of its own.
 func TestUIASelectionContainer(t *testing.T) {
@@ -616,9 +685,15 @@ func TestUIARangeValueReadOnly(t *testing.T) {
 	c.True(UIAIsRangeValueReadOnly(tree.Node(13)), "nor does a progress bar, ever")
 	c.True(UIAIsRangeValueReadOnly(nil))
 
+	// The rule is the action set's rather than the role's: a node that offers only the two steps says, by leaving
+	// SetValue out, that nothing will happen if a client sets the value outright. The scroll bar unison actually ships
+	// is not such a node — ScrollBar.ProvideAccessibility offers SetValue alongside Increment and Decrement, which is
+	// how VoiceOver scrolls something into view — so both sides are checked here.
 	scrollBar := &accessibility.Node{
 		ID: 1, Role: role.ScrollBar, HasNumber: true, Number: 5, Max: 10,
 		Actions: accessibility.ActionSet(0).With(accessibility.Increment, accessibility.Decrement),
 	}
-	c.True(UIAIsRangeValueReadOnly(scrollBar), "a scroll bar is moved a step at a time, not set")
+	c.True(UIAIsRangeValueReadOnly(scrollBar), "offering no SetValue action is what makes a value read-only")
+	scrollBar.Actions = scrollBar.Actions.With(accessibility.SetValue)
+	c.False(UIAIsRangeValueReadOnly(scrollBar), "a real scroll bar offers SetValue, so it is not read-only")
 }

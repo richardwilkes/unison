@@ -51,11 +51,11 @@ type uiaTestWindow struct {
 // provider is pinned for the garbage collector while the provider map holds its reference, and only retirement gives
 // that reference up.
 //
-// Silencing the client matters as much as recording the requests: creating an adapter is the window's first publish and
-// Destroy raises Window_WindowClosed, so without this the tests would make real UI Automation calls on any machine
-// where something is listening — with providers for a window handle of zero, a fragment UI Automation can neither host
-// nor resolve. A test that wants to see what would have been raised installs a recorder of its own with uiaRecord,
-// which replaces the same hook.
+// Cutting the window off from UI Automation matters as much as recording the requests: creating an adapter is the
+// window's first publish and Destroy raises Window_WindowClosed and disconnects every provider, so without this the
+// tests would make real UI Automation calls on any machine where something is listening — with providers for a window
+// handle of zero, a fragment UI Automation can neither host nor resolve. A test that wants to see what would have been
+// raised installs a recorder of its own with uiaRecord, which replaces the same variables.
 func newTestUIAWindow(t *testing.T, tree *accessibility.Tree) *uiaTestWindow {
 	t.Helper()
 	uiaSilenceClients(t)
@@ -83,13 +83,28 @@ func newActionlessUIAWindow(t *testing.T, tree *accessibility.Tree) *UIAWindow {
 	return w
 }
 
-// uiaSilenceClients makes UiaClientsAreListening report that nobody is listening for the duration of one test,
-// restoring it afterwards, so that nothing the test does reaches UI Automation itself.
+// uiaSilenceClients cuts a test off from UI Automation for the duration of one test, restoring every entry point it
+// replaced afterwards, so that nothing the test does reaches uiautomationcore.dll.
+//
+// Three of them have to be replaced rather than only the gate. UiaClientsAreListening is what every raise sits behind,
+// and reporting that nobody is listening silences all of them; the other two are made whatever it answers.
+// UIAProvider.retire calls UiaDisconnectProvider outside the gate, and the t.Cleanup(w.Destroy) of every test goes
+// through it for each provider the test created — handing UI Automation providers it has never seen and letting it call
+// back into GetRuntimeId from a thread of its own. UIAWindow.Destroy withdraws the window's provider with
+// UiaReturnRawElementProvider, which these windows escape only by using a window handle of zero.
 func uiaSilenceClients(t *testing.T) {
 	t.Helper()
-	saved := uiaClientsAreListening
-	t.Cleanup(func() { uiaClientsAreListening = saved })
+	savedListening := uiaClientsAreListening
+	savedDisconnect := uiaDisconnectProvider
+	savedReturn := uiaReturnRawElementProvider
+	t.Cleanup(func() {
+		uiaClientsAreListening = savedListening
+		uiaDisconnectProvider = savedDisconnect
+		uiaReturnRawElementProvider = savedReturn
+	})
 	uiaClientsAreListening = func() bool { return false }
+	uiaDisconnectProvider = func(_ unsafe.Pointer) uintptr { return uintptr(COM_S_OK) }
+	uiaReturnRawElementProvider = func(_ windows.HWND, _ WPARAM, _ LPARAM, _ unsafe.Pointer) LRESULT { return 0 }
 }
 
 // record notes one action request.
@@ -461,20 +476,52 @@ func TestUIAProviderReferenceCountLifetime(t *testing.T) {
 	c.Equal(p.ifacePtr(uiaIfaceFragment), *out)
 	c.Equal(int32(2), atomic.LoadInt32(&p.refCount))
 
-	// Retiring the provider gives up the provider map's reference alone, leaving the client's intact.
-	p.retire()
+	// Retiring the provider gives up the provider map's reference alone, leaving the client's intact. It is done the
+	// way a publish does it, through the window, so that the map lets go of the entry as well: retiring the provider
+	// directly would leave the test's own Destroy to retire an already-retired one.
+	pruned := sampleTree()
+	delete(pruned.Nodes, 4)
+	pruned.Nodes[3].Children = []accessibility.NodeID{5}
+	w.retireRemovedProviders(pruned)
 	c.True(p.Stale())
 	c.Equal(int32(1), atomic.LoadInt32(&p.refCount))
 
 	// The client's release, made through the interface it was handed, drops the last one.
 	c.Equal(uintptr(0), uiaProviderFromThis(*out, uiaIfaceFragment).release())
 
-	// AddRef and Release must report the counts IUnknown promises, whichever interface they arrive through.
-	p = w.providerFor(5)
+	// AddRef and Release must report the counts IUnknown promises, whichever interface they arrive through. The
+	// reference for that arithmetic is the caller's own, taken through Provider and given back at the end: releasing
+	// the provider map's instead would leave a zero-count, unpinned provider in the map for Destroy to retire, which is
+	// a state the production code has no way of reaching.
+	p = w.Provider(5)
 	c.NotNil(p)
-	c.Equal(uintptr(2), uiaProviderFromThis(p.ifacePtr(uiaIfaceFragment), uiaIfaceFragment).addRef())
-	c.Equal(uintptr(1), uiaProviderFromThis(p.ifacePtr(uiaIfaceSimple), uiaIfaceSimple).release())
+	c.Equal(int32(2), atomic.LoadInt32(&p.refCount))
+	c.Equal(uintptr(3), uiaProviderFromThis(p.ifacePtr(uiaIfaceFragment), uiaIfaceFragment).addRef())
+	c.Equal(uintptr(2), uiaProviderFromThis(p.ifacePtr(uiaIfaceSimple), uiaIfaceSimple).release())
+	c.Equal(uintptr(1), p.release())
+}
+
+// TestUIAProviderAnchor verifies that a provider is anchored for as long as a COM reference to it exists, and is let go
+// of by the release of the last one. The anchor is what keeps the object reachable for the collector: UI Automation's
+// pointers to it are invisible to Go, and a retired provider is no longer in the window's provider map either, so
+// without it the only thing left pointing at the object would be the object's own pinner. Counts are compared as
+// differences, since the set is the package's and other windows may be anchored in it.
+func TestUIAProviderAnchor(t *testing.T) {
+	c := check.New(t)
+	before := uiaLiveProviderCount()
+	w := newTestUIAWindow(t, sampleTree())
+	p := w.Provider(4)
+	c.NotNil(p)
+	c.Equal(before+2, uiaLiveProviderCount(), "the fragment root and the provider just created")
+
+	// Destroying the window gives up the provider map's reference to each of them. The fragment root has no other, so
+	// it goes; the one this test holds keeps its provider anchored, which is exactly the state a client holding an
+	// element for a window that has gone away puts the adapter in.
+	w.Destroy()
+	c.Equal(before+1, uiaLiveProviderCount())
+	c.True(p.Stale())
 	c.Equal(uintptr(0), p.release())
+	c.Equal(before, uiaLiveProviderCount())
 }
 
 // TestUIAProviderOptions verifies that providers report themselves as free-threaded server-side providers and nothing

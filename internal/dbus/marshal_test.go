@@ -252,6 +252,52 @@ func TestMarshalArraySizeLimit(t *testing.T) {
 	c.HasError(err)
 }
 
+// maxStringErrorLength is what an error about the content of a string may cost, in bytes. The string is abbreviated to
+// 64 bytes, and %q may expand each of those to four characters, so everything beyond a few hundred bytes is the error
+// message repeating a peer's own bytes back to it.
+const maxStringErrorLength = 512
+
+func TestInvalidStringErrorsAreAbbreviated(t *testing.T) {
+	t.Parallel()
+	const size = 1 << 20
+	for _, one := range []struct {
+		name string
+		text string
+	}{
+		{name: "invalid UTF-8", text: strings.Repeat("\xff", size)},
+		{name: "embedded NUL", text: strings.Repeat("a", size-1) + "\x00"},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+			c := check.New(t)
+			// A string that a message body or a header field declares may be as large as MaxArraySize, and %q expands
+			// each invalid byte to four characters, so naming the whole of one amplified a single message into
+			// hundreds of megabytes of error text that a connection then held for as long as it lasted.
+			_, err := Marshal("s", one.text)
+			c.HasError(err)
+			c.True(len(err.Error()) < maxStringErrorLength, "a %d byte string produced a %d byte error", len(one.text),
+				len(err.Error()))
+			_, err = Unmarshal("s", strAt(one.text))
+			c.HasError(err)
+			c.True(len(err.Error()) < maxStringErrorLength, "a %d byte string produced a %d byte error", len(one.text),
+				len(err.Error()))
+		})
+	}
+}
+
+func TestDecodingAnInvalidStringDoesNotCopyIt(t *testing.T) { // Not parallel: it measures allocation
+	c := check.New(t)
+	// The content of a string off the wire is checked before it is copied out of the buffer it arrived in, so a string
+	// that a peer had no business sending costs nothing but the check.
+	data := strAt(strings.Repeat("\xff", 1<<20))
+	var err error
+	allocated := bytesAllocated(func() { _, err = Unmarshal("s", data) })
+	c.HasError(err)
+	// The bound is a fraction of the string itself rather than nothing at all, since building the error message does
+	// allocate a few kilobytes; what it rules out is the megabyte copy that reaching the check required.
+	c.True(allocated < uint64(len(data))/16, "a %d byte invalid string allocated %d bytes", len(data), allocated)
+}
+
 // The named types below exercise the reflection-based fallbacks, which is how the AT-SPI layer's own enumerated types
 // will arrive here.
 type (

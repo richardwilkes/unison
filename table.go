@@ -13,6 +13,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -1208,10 +1209,14 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 	}
 	switch keyCode {
 	case KeyLeft:
-		// A hierarchical filter shows every container it kept as open, whatever the container's own open state, so
-		// the keys that open and close containers are left alone while one is applied rather than changing the open
-		// states beneath the filter without anything to show for it.
-		if !repeat && !t.hierarchicalFilter && t.HasSelection() {
+		// The keys that open and close containers are left alone while any filter is applied, rather than changing
+		// open states beneath the filter without anything to show for it. A hierarchical filter shows every container
+		// it kept as open, whatever the container's own open state, and a flat one shows nothing beneath any row at
+		// all; the disclosure triangle a person would click is drawn without a hit rect under the one and not drawn at
+		// all under the other. This is the same refusal axSetRowOpen makes for the equivalent request from an
+		// assistive technology, and it is what ApplyFilter's promise that no modifications to the row data are
+		// performed requires.
+		if !repeat && !t.IsFiltered() && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
 				if mods.OptionDown() {
@@ -1229,7 +1234,8 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			}
 		}
 	case KeyRight:
-		if !repeat && !t.hierarchicalFilter && t.HasSelection() {
+		// Refused while a filter is applied, for the reasons given for KeyLeft above.
+		if !repeat && !t.IsFiltered() && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
 				if mods.OptionDown() {
@@ -2766,17 +2772,29 @@ func (t *Table[T]) axActOnDisclosure(key axDisclosureKey, req accessibility.Acti
 // does with a request is only known from handing it over: a cell that holds a button and a check box advertises both a
 // press and a toggle, since between them they offer both, yet only the check box has a state to move on, so a toggle
 // handed to the button would be refused and the cell would have advertised something it then would not do.
+//
+// A candidate that was described as not offering the action is passed over rather than being handed it. The candidates
+// are picked by the shape of the panel — one with an action callback or actor of its own, or one that handles both
+// halves of a click — while what the cell advertises comes from what its content was actually described as offering,
+// and the two part company for a widget that withdrew the action: a Field takes Press out of its own description, yet
+// still looks pressable here because it handles both halves of a click. A press on a cell holding a field ahead of a
+// button — advertised only because of the button — would otherwise be handed to the field, which does not act on a
+// press but does not refuse one either, since the fallback synthesizes a click that merely drops the caret in it; the
+// button would never see the press, and the field would be left as the table's focused cell, quietly starting an
+// editing session nobody asked for.
 func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequest) bool {
 	if col >= len(t.Columns) {
 		return false
 	}
+	cellKey := accessibility.CellKey{Row: t.rowCache[row].row.ID(), Col: col}
+	action := req.Action
 	// The request named the cell, whose key is the table's own; the content it is being passed to is a real panel, for
 	// which ActionRequest.Key is nil. See axPerformInCell.
 	req.Key = nil
 	cell := t.cell(row, col)
 	t.installCell(cell, t.CellFrame(row, col))
 	handled := false
-	for _, target := range axPressableTargets(cell) {
+	for _, target := range t.axCellTargetsOffering(cell, cellKey, action) {
 		if target.axDispatchAction(req, false) {
 			handled = true
 			break
@@ -2787,6 +2805,73 @@ func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequ
 	return handled
 }
 
+// axCellTargetsOffering returns the panels within a cell that a press or a toggle may be handed to, in the order they
+// should be tried: the ones whose description advertises the action first, then the ones that were not described at
+// all. A panel that was described without the action is left out entirely, since the cell only advertises what its
+// content was described as offering, and handing the request to something that was described as not offering it is how
+// the cell comes to answer for a widget that never saw it.
+//
+// A panel with no description of its own is still tried, after the rest. The cell is built afresh for every request, so
+// a row that builds something different from what it built when the window was last described has nothing to match
+// against, and refusing everything then would be worse than the order the panels are in.
+func (t *Table[T]) axCellTargetsOffering(cell *Panel, key accessibility.CellKey,
+	action accessibility.Action,
+) []*Panel {
+	candidates := axPressableTargets(cell)
+	offering := make([]*Panel, 0, len(candidates))
+	undescribed := make([]*Panel, 0, len(candidates))
+	for _, candidate := range candidates {
+		path, ok := axPathFromRoot(cell, candidate)
+		if !ok {
+			undescribed = append(undescribed, candidate)
+			continue
+		}
+		node := t.axDescribedCellNode(axCellPanelKey{Cell: key, Path: path})
+		switch {
+		case node == nil:
+			undescribed = append(undescribed, candidate)
+		case node.Actions.Has(action):
+			offering = append(offering, candidate)
+		}
+	}
+	return append(offering, undescribed...)
+}
+
+// axDescribedCellNode returns the node the table last described for the panel at a position within one of its cells, or
+// nil if it did not describe one. The panels inside a cell exist only while the cell is built, so they are described
+// under ids the table allocates for their position within it rather than under ids of their own; see axCellPanelKey.
+func (t *Table[T]) axDescribedCellNode(key axCellPanelKey) *accessibility.Node {
+	id := t.Accessibility.virtual[key].id
+	if id == 0 {
+		return nil
+	}
+	wnd := t.Window()
+	if wnd == nil || wnd.ax == nil || wnd.ax.last == nil {
+		return nil
+	}
+	return wnd.ax.last.Node(id)
+}
+
+// axPathFromRoot returns the position of p beneath root in the form axCellPanelKey.Path holds it: the child indexes on
+// the way down from root, joined with dots. Reports false if p is not beneath root at all. This is the inverse of
+// axPanelAtPath.
+func axPathFromRoot(root, p *Panel) (string, bool) {
+	var parts []string
+	for one := p; one != root; one = one.parent {
+		parent := one.parent
+		if parent == nil {
+			return "", false
+		}
+		index := slices.Index(parent.Children(), one)
+		if index < 0 {
+			return "", false
+		}
+		parts = append(parts, strconv.Itoa(index))
+	}
+	slices.Reverse(parts)
+	return strings.Join(parts, "."), true
+}
+
 // axPressableTargets returns the panels at or beneath p, front to back, that might respond to a press or a toggle: ones
 // with an accessibility action callback or actor of their own, and ones that handle both halves of a click.
 //
@@ -2794,8 +2879,12 @@ func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequ
 // reached. A disabled panel is left out too, since every path refuses it — Window.mouseDown and Window.mouseUp pass
 // over a panel that is not enabled, and so does axDispatchAction — but what is beneath it is not: being enabled is a
 // panel's own property rather than something it passes down, and a click landing on an enabled widget nested inside a
-// disabled wrapper is handed to that widget, so a request from an assistive technology must reach it too. This is also
-// what the cell is described as holding, so that nothing is offered on a cell that would then be refused.
+// disabled wrapper is handed to that widget, so a request from an assistive technology must reach it too.
+//
+// What comes back is the panels that might respond, judged by their shape alone, which is not the same as the panels
+// the cell was described as offering the action: a widget that withdrew the action from its own description still
+// looks like one that would take it here. axCellTargetsOffering is what reconciles the two before anything is handed
+// over.
 func axPressableTargets(p *Panel) []*Panel {
 	var targets []*Panel
 	axAppendPressableTargets(&targets, p)

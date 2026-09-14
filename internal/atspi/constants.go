@@ -20,7 +20,7 @@ type Role uint32
 
 // The AT-SPI roles that Unison's own roles map onto. See [MapRole].
 const (
-	RoleInvalid       Role = 0  // Not a role; what a node with no mapping would report
+	RoleInvalid       Role = 0  // ATSPI_ROLE_INVALID, which this package never reports; see [MapRole]
 	RoleCheckBox      Role = 7  // ATSPI_ROLE_CHECK_BOX
 	RoleCheckMenuItem Role = 8  // ATSPI_ROLE_CHECK_MENU_ITEM
 	RoleColumnHeader  Role = 10 // ATSPI_ROLE_COLUMN_HEADER

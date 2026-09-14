@@ -21,7 +21,7 @@ import (
 )
 
 // The values a StateChanged event carries: "false" and "true" for an ordinary flag, and the check state's key for the
-// tri-state one. Named because the test that flips every state at once spells each of them out sixteen times.
+// tri-state one. Named because the test that covers every state in turn spells each of them out sixteen times.
 const (
 	flagOff   = "false"
 	flagOn    = "true"
@@ -222,11 +222,13 @@ func TestDiffAttributeEvents(t *testing.T) {
 		name string
 	}{
 		{name: "Placeholder", fill: func(n *axNode) { n.Placeholder = "Search" }},
+		{name: "Shortcut", fill: func(n *axNode) { n.Shortcut = "Ctrl+S" }},
 		{name: "Level", fill: func(n *axNode) { n.Level = 2 }},
 		{name: "RowIndex", fill: func(n *axNode) { n.RowIndex = 7 }},
 		{name: "ColumnIndex", fill: func(n *axNode) { n.ColumnIndex = 3 }},
 		{name: "RowCount", fill: func(n *axNode) { n.RowCount = 99 }},
 		{name: "ColumnCount", fill: func(n *axNode) { n.ColumnCount = 4 }},
+		{name: "Step", fill: func(n *axNode) { n.Step = 5 }},
 		{name: "Orientation", fill: func(n *axNode) { n.Orientation = accessibility.OrientationVertical }},
 		{name: "LabeledBy", fill: func(n *axNode) { n.LabeledBy = []axID{2} }},
 		{name: "DescribedBy", fill: func(n *axNode) { n.DescribedBy = []axID{2} }},
@@ -287,6 +289,44 @@ func TestDiffPlaceholderAloneIsReported(t *testing.T) {
 		accessibility.Diff(field("not set"), field("empty")))
 }
 
+// TestDiffShortcutAloneIsReported pins the case that reaches this from stock unison: MenuItem.SetKeyBinding rebinding
+// an item's accelerator while nothing else about it moves. Every adapter caches the accelerator as a property of the
+// element — UI Automation re-reads AcceleratorKey only when a property-changed event says to — so without an event the
+// item would go on announcing the key that used to work.
+func TestDiffShortcutAloneIsReported(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	item := func(shortcut string) *accessibility.Tree {
+		tree := diffTree()
+		tree.Node(3).Role = role.MenuItem
+		tree.Node(3).Shortcut = shortcut
+		return tree
+	}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
+		accessibility.Diff(item("Ctrl+S"), item("Ctrl+Shift+S")))
+	c.Nil(accessibility.Diff(item("Ctrl+S"), item("Ctrl+S")))
+}
+
+// TestDiffStepAloneIsReported covers the other fact an assistive technology reads out of the numeric group without any
+// event of its own naming it: how far one press of an arrow key moves the value. A spin button that changes its
+// increment while sitting on the same value tells the person a different thing about what a key press will do.
+func TestDiffStepAloneIsReported(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	spinner := func(step float64) *accessibility.Tree {
+		tree := diffTree()
+		n := tree.Node(3)
+		n.Role = role.SpinButton
+		n.HasNumber = true
+		n.Number = 5
+		n.Max = 100
+		n.Step = step
+		return tree
+	}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(spinner(1), spinner(10)))
+	c.Nil(accessibility.Diff(spinner(1), spinner(1)))
+}
+
 // TestDiffToleratesNaN covers the one value that is not equal to itself. A NaN reaching a node — from a widget whose
 // arithmetic divided by zero, or a bounds computation over an empty rectangle — would otherwise make a tree differ from
 // itself, which is both the documented promise broken and a permanent stream of events to the assistive technology, one
@@ -303,6 +343,7 @@ func TestDiffToleratesNaN(t *testing.T) {
 		{name: "Number", fill: func(n *axNode) { n.HasNumber = true; n.Number = nan }},
 		{name: "Min", fill: func(n *axNode) { n.HasNumber = true; n.Min = nan }},
 		{name: "Max", fill: func(n *axNode) { n.HasNumber = true; n.Max = nan }},
+		{name: "Step", fill: func(n *axNode) { n.HasNumber = true; n.Step = nan }},
 		{name: "Bounds.X", fill: func(n *axNode) { n.Bounds = geom.NewRect(fnan, 0, 10, 10) }},
 		{name: "Bounds.Y", fill: func(n *axNode) { n.Bounds = geom.NewRect(0, fnan, 10, 10) }},
 		{name: "Bounds.Width", fill: func(n *axNode) { n.Bounds = geom.NewRect(0, 0, fnan, 10) }},
@@ -378,56 +419,81 @@ func TestDiffStateEvents(t *testing.T) {
 	}, accessibility.Diff(old, cur))
 }
 
-// TestDiffStateEventsCoverEveryState flips all sixteen states at once and pins the whole list. Every one of them is
-// wired to its own pair of fields by hand, and each is something an adapter branches on, so a state compared against
-// the wrong field — or left out of the comparison altogether — would otherwise ship unnoticed.
+// TestDiffStateEventsCoverEveryState pins each of the sixteen states to the one pair of fields it is derived from, by
+// moving one field at a time and asserting the single event that must come of it. Every one of them is wired up by
+// hand, and each is something an adapter branches on, so a state compared against the wrong field — or left out of the
+// comparison altogether — would otherwise ship unnoticed. Flipping the whole set at once cannot catch that: a state
+// read from the wrong field would produce exactly the same list of events, since every field moved the same way.
+//
+// The table is in the order the events come out in, which the check at the end uses to pin that order as well.
 func TestDiffStateEventsCoverEveryState(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	old := newTree(0,
-		&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2}},
-		&axNode{ID: 2, Parent: 1, Role: role.CheckBox, Name: flagsName},
-	)
-	cur := newTree(0,
-		&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2}},
-		&axNode{
-			ID: 2, Parent: 1, Role: role.CheckBox, Name: flagsName, Disabled: true, Focusable: true, Selectable: true,
-			Selected: true, Multiselectable: true, Pressed: true, ReadOnly: true, Modal: true, Busy: true,
-			Invalid: true, Offscreen: true, Expandable: true, Expanded: true, Ignored: true, Protected: true,
-			HasCheck: true, Checked: checkenum.On,
-		},
-	)
-	events := accessibility.Diff(old, cur)
-	c.Equal([]axEvent{
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateDisabled, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateFocusable, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateSelectable, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateSelected, Old: flagOff, New: flagOn},
+	unflagged := func(_ *axNode) {}
+	flagged := func(fill func(n *axNode)) *accessibility.Tree {
+		tree := newTree(0,
+			&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2}},
+			&axNode{ID: 2, Parent: 1, Role: role.CheckBox, Name: flagsName},
+		)
+		fill(tree.Node(2))
+		return tree
+	}
+	cases := []struct {
+		fill     func(n *axNode)
+		oldValue string
+		newValue string
+		state    accessibility.State
+	}{
+		{state: accessibility.StateDisabled, fill: func(n *axNode) { n.Disabled = true }},
+		{state: accessibility.StateFocusable, fill: func(n *axNode) { n.Focusable = true }},
+		{state: accessibility.StateSelectable, fill: func(n *axNode) { n.Selectable = true }},
+		{state: accessibility.StateSelected, fill: func(n *axNode) { n.Selected = true }},
+		{state: accessibility.StateMultiselectable, fill: func(n *axNode) { n.Multiselectable = true }},
+		{state: accessibility.StatePressed, fill: func(n *axNode) { n.Pressed = true }},
+		{state: accessibility.StateReadOnly, fill: func(n *axNode) { n.ReadOnly = true }},
+		{state: accessibility.StateModal, fill: func(n *axNode) { n.Modal = true }},
+		{state: accessibility.StateBusy, fill: func(n *axNode) { n.Busy = true }},
+		{state: accessibility.StateInvalid, fill: func(n *axNode) { n.Invalid = true }},
+		{state: accessibility.StateOffscreen, fill: func(n *axNode) { n.Offscreen = true }},
+		{state: accessibility.StateExpandable, fill: func(n *axNode) { n.Expandable = true }},
+		{state: accessibility.StateExpanded, fill: func(n *axNode) { n.Expanded = true }},
+		{state: accessibility.StateIgnored, fill: func(n *axNode) { n.Ignored = true }},
+		{state: accessibility.StateProtected, fill: func(n *axNode) { n.Protected = true }},
 		{
-			Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateMultiselectable, Old: flagOff,
-			New: flagOn,
+			state: accessibility.StateChecked, oldValue: checkOff, newValue: checkOn,
+			fill: func(n *axNode) { n.HasCheck = true; n.Checked = checkenum.On },
 		},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StatePressed, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateReadOnly, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateModal, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateBusy, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateInvalid, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateOffscreen, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateExpandable, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateExpanded, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateIgnored, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateProtected, Old: flagOff, New: flagOn},
-		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateChecked, Old: checkOff, New: checkOn},
-	}, events)
+	}
+	seen := make(map[accessibility.State]bool, len(cases))
+	all := make([]axEvent, 0, len(cases))
+	fillAll := make([]func(n *axNode), 0, len(cases))
+	for _, one := range cases {
+		oldValue, newValue := one.oldValue, one.newValue
+		if oldValue == "" {
+			// The tri-state one reports the check state's key; every other state is an ordinary flag.
+			oldValue, newValue = flagOff, flagOn
+		}
+		want := axEvent{Kind: accessibility.StateChanged, Node: 2, State: one.state, Old: oldValue, New: newValue}
+		cur := flagged(one.fill)
+		c.Equal([]axEvent{want}, accessibility.Diff(flagged(unflagged), cur), one.state)
+		c.Nil(accessibility.Diff(cur, flagged(one.fill)), "%s must compare equal to itself", one.state)
+		seen[one.state] = true
+		all = append(all, want)
+		fillAll = append(fillAll, one.fill)
+	}
 
-	// Nothing but StateNone, which is what a non-StateChanged event carries, may be missing from that list.
-	seen := make(map[accessibility.State]bool, len(events))
-	for _, event := range events {
-		seen[event.State] = true
-	}
+	// Nothing but StateNone, which is what a non-StateChanged event carries, may be missing from that table.
 	for state := accessibility.StateDisabled; state <= accessibility.StateChecked; state++ {
-		c.True(seen[state], "no event was produced for %s", state)
+		c.True(seen[state], "no case covers %s", state)
 	}
+
+	// Moving every one of them at once produces the whole list in the order the table declares, which is the order an
+	// adapter replaying the events sees them in.
+	c.Equal(all, accessibility.Diff(flagged(unflagged), flagged(func(n *axNode) {
+		for _, fill := range fillAll {
+			fill(n)
+		}
+	})))
 }
 
 // TestDiffFocusedIsNotAState checks that moving the focus produces one FocusChanged rather than that plus a pair of

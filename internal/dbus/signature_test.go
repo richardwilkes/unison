@@ -305,6 +305,30 @@ func TestSignatureOfRejects(t *testing.T) {
 	}
 }
 
+func TestSignatureOfRejectsCyclicValues(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	// A value that contains itself has no signature, since the type it implies is infinitely deep. Deriving one was
+	// the only recursion in the package that nothing bounded, so it ran the goroutine's stack out and killed the
+	// process with a fatal error that no recovery can catch, rather than returning something a caller can act on.
+	slice := make([]any, 1)
+	slice[0] = slice
+	_, err := SignatureOf(slice)
+	c.HasError(err)
+	m := map[string]any{}
+	m["a"] = m
+	_, err = SignatureOf(m)
+	c.HasError(err)
+	// A cycle that runs through several kinds of container is bounded just as well, since each of them counts towards
+	// one of the limits that a signature of its own would have to stay within.
+	s := Struct{nil}
+	s[0] = Dict{{Key: "a", Value: s}}
+	_, err = SignatureOf(s)
+	c.HasError(err)
+	// The exported paths that derive a signature of their own report it rather than dying with it.
+	c.HasError(NewSignal(testPath, eventInterface, "Cyclic").SetBody(slice))
+}
+
 func TestSignatureDepthLimitsAreIndependent(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)

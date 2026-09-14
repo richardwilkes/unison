@@ -1030,6 +1030,7 @@ func TestUIADecideRaisesAttributes(t *testing.T) {
 	c.Equal([]UIARaise{
 		raiseProperty(2, UIA_HelpTextPropertyId),
 		raiseProperty(2, UIA_LevelPropertyId),
+		raiseProperty(2, UIA_HeadingLevelPropertyId),
 		raiseProperty(2, UIA_PositionInSetPropertyId),
 		raiseProperty(2, UIA_SizeOfSetPropertyId),
 		raiseProperty(2, UIA_OrientationPropertyId),
@@ -1051,6 +1052,7 @@ func TestUIADecideRaisesAttributes(t *testing.T) {
 		raiseProperty(2, UIA_HelpTextPropertyId),
 		raiseProperty(2, UIA_FullDescriptionPropertyId),
 		raiseProperty(2, UIA_LevelPropertyId),
+		raiseProperty(2, UIA_HeadingLevelPropertyId),
 		raiseProperty(2, UIA_PositionInSetPropertyId),
 		raiseProperty(2, UIA_SizeOfSetPropertyId),
 		raiseProperty(2, UIA_OrientationPropertyId),
@@ -1061,6 +1063,221 @@ func TestUIADecideRaisesAttributes(t *testing.T) {
 		{Kind: accessibility.DescriptionChanged, Node: 2},
 		{Kind: accessibility.AttributesChanged, Node: 2},
 	}))
+}
+
+// TestUIADecideRaisesHeadingLevel verifies that a heading whose depth changed reports HeadingLevel. Node.Level answers
+// two properties — Level and, through UIAHeadingLevel, HeadingLevel — and a client reads a heading's depth from the
+// second of them, so a change that reported only the first would leave it announcing the wrong depth.
+func TestUIADecideRaisesHeadingLevel(t *testing.T) {
+	c := check.New(t)
+	headings := func(level int) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
+			&accessibility.Node{ID: 2, Role: role.Heading, Name: "Section", Level: level},
+		)
+	}
+	old, cur := headings(2), headings(3)
+	c.NotEqual(UIAHeadingLevel(old.Node(2)), UIAHeadingLevel(cur.Node(2)), "the two snapshots must differ")
+	c.Equal([]UIARaise{
+		raiseProperty(2, UIA_HelpTextPropertyId),
+		raiseProperty(2, UIA_LevelPropertyId),
+		raiseProperty(2, UIA_HeadingLevelPropertyId),
+		raiseProperty(2, UIA_PositionInSetPropertyId),
+		raiseProperty(2, UIA_SizeOfSetPropertyId),
+		raiseProperty(2, UIA_OrientationPropertyId),
+		raiseProperty(2, UIA_LabeledByPropertyId),
+		raiseProperty(2, UIA_DescribedByPropertyId),
+		raiseProperty(2, UIA_ControllerForPropertyId),
+	}, UIADecideRaises(old, cur, []accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 2}}))
+}
+
+// TestUIADecideRaisesLabelContent verifies that a change to one node's LabeledBy relation reports the content-view
+// change it makes to the label at the other end of it. A label that names another element is left out of the content
+// view, so the label's own IsContentElement moves when something starts or stops naming it — and the event names the
+// node whose attributes changed rather than the label, so nothing else would report it.
+func TestUIADecideRaisesLabelContent(t *testing.T) {
+	c := check.New(t)
+
+	// Nodes 3 and 4 are labels; nodes 2 and 5 are fields that may name them.
+	labelled := func(first, second []accessibility.NodeID) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{
+				ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2, 3, 4, 5},
+			},
+			&accessibility.Node{ID: 2, Role: role.TextField, LabeledBy: first},
+			&accessibility.Node{ID: 3, Role: role.Label, Name: "Name"},
+			&accessibility.Node{ID: 4, Role: role.Label, Name: "Other"},
+			&accessibility.Node{ID: 5, Role: role.TextField, LabeledBy: second},
+		)
+	}
+	// The attribute properties themselves are pinned by TestUIADecideRaisesAttributes; what matters here is what
+	// follows them.
+	expected := func(extra ...UIARaise) []UIARaise {
+		raises := make([]UIARaise, 0, len(uiaAttributeProperties)+len(extra))
+		for _, propertyID := range uiaAttributeProperties {
+			raises = append(raises, raiseProperty(2, propertyID))
+		}
+		return append(raises, extra...)
+	}
+	for i, one := range []struct {
+		old      *accessibility.Tree
+		cur      *accessibility.Tree
+		expected []UIARaise
+		name     string
+	}{
+		{
+			name:     "a label that has just been given something to name leaves the content view",
+			old:      labelled(nil, nil),
+			cur:      labelled([]accessibility.NodeID{3}, nil),
+			expected: expected(raiseProperty(3, UIA_IsContentElementPropertyId)),
+		},
+		{
+			name:     "a label nothing names any more rejoins it",
+			old:      labelled([]accessibility.NodeID{3}, nil),
+			cur:      labelled(nil, nil),
+			expected: expected(raiseProperty(3, UIA_IsContentElementPropertyId)),
+		},
+		{
+			name: "a field that changed which label names it moves both of them",
+			old:  labelled([]accessibility.NodeID{3}, nil),
+			cur:  labelled([]accessibility.NodeID{4}, nil),
+			expected: expected(raiseProperty(3, UIA_IsContentElementPropertyId),
+				raiseProperty(4, UIA_IsContentElementPropertyId)),
+		},
+		{
+			name:     "a label another field still names has not moved, so nothing is said about it",
+			old:      labelled([]accessibility.NodeID{3}, []accessibility.NodeID{3}),
+			cur:      labelled(nil, []accessibility.NodeID{3}),
+			expected: expected(),
+		},
+		{
+			name:     "an attributes change that leaves the relation alone reports no label at all",
+			old:      labelled([]accessibility.NodeID{3}, nil),
+			cur:      labelled([]accessibility.NodeID{3}, nil),
+			expected: expected(),
+		},
+	} {
+		c.Equal(one.expected, UIADecideRaises(one.old, one.cur, []accessibility.Event{
+			{Kind: accessibility.AttributesChanged, Node: 2},
+		}), "case %d (%s)", i, one.name)
+	}
+}
+
+// TestUIADecideRaisesPatternRemoval verifies that a change which takes a state-gated pattern away is reported just as
+// the change that grants it is. UIAPatterns gates ExpandCollapse on Expandable, RangeValue on HasNumber, a menu item's
+// Toggle on HasCheck and a cell's Value on there being a value, so a snapshot that has just lost one of those states no
+// longer supports the pattern whose property carries the news — and a client that cached the old value would go on
+// announcing it. Both directions are checked, since the granting direction is the one that worked all along.
+func TestUIADecideRaisesPatternRemoval(t *testing.T) {
+	c := check.New(t)
+	rows := func(expandable bool) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
+			&accessibility.Node{ID: 2, Role: role.Tree, RowCount: 1, Children: []accessibility.NodeID{3}},
+			&accessibility.Node{ID: 3, Role: role.Row, RowIndex: 0, Expandable: expandable, Expanded: expandable},
+		)
+	}
+	cells := func(value string) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
+			&accessibility.Node{ID: 2, Role: role.Table, RowCount: 1, Children: []accessibility.NodeID{3}},
+			&accessibility.Node{ID: 3, Role: role.Row, RowIndex: 0, Children: []accessibility.NodeID{4}},
+			&accessibility.Node{ID: 4, Role: role.Cell, RowIndex: 0, ColumnIndex: 0, Value: value},
+		)
+	}
+	sliders := func(hasNumber bool) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
+			&accessibility.Node{ID: 2, Role: role.Slider, HasNumber: hasNumber, Number: 5, Max: 10, Step: 1},
+		)
+	}
+	menuItems := func(hasCheck bool) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
+			&accessibility.Node{ID: 2, Role: role.Menu, Children: []accessibility.NodeID{3}},
+			&accessibility.Node{ID: 3, Role: role.MenuItem, Name: "Wrap", HasCheck: hasCheck},
+		)
+	}
+	stateChanged := func(id accessibility.NodeID, state accessibility.State) accessibility.Event {
+		return accessibility.Event{Kind: accessibility.StateChanged, Node: id, State: state}
+	}
+	for i, one := range []struct {
+		old      *accessibility.Tree
+		cur      *accessibility.Tree
+		expected []UIARaise
+		event    accessibility.Event
+		name     string
+	}{
+		{
+			name:     "a row that stopped being expandable",
+			old:      rows(true),
+			cur:      rows(false),
+			event:    stateChanged(3, accessibility.StateExpandable),
+			expected: []UIARaise{raiseProperty(3, UIA_ExpandCollapseExpandCollapseStatePropertyId)},
+		},
+		{
+			name:     "a row that became expandable",
+			old:      rows(false),
+			cur:      rows(true),
+			event:    stateChanged(3, accessibility.StateExpandable),
+			expected: []UIARaise{raiseProperty(3, UIA_ExpandCollapseExpandCollapseStatePropertyId)},
+		},
+		{
+			name:     "a cell whose value became empty",
+			old:      cells("Checked"),
+			cur:      cells(""),
+			event:    accessibility.Event{Kind: accessibility.ValueChanged, Node: 4},
+			expected: []UIARaise{raiseProperty(4, UIA_ValueValuePropertyId)},
+		},
+		{
+			name:     "a cell that gained a value",
+			old:      cells(""),
+			cur:      cells("Checked"),
+			event:    accessibility.Event{Kind: accessibility.ValueChanged, Node: 4},
+			expected: []UIARaise{raiseProperty(4, UIA_ValueValuePropertyId)},
+		},
+		{
+			name:     "a slider that stopped reporting a number",
+			old:      sliders(true),
+			cur:      sliders(false),
+			event:    accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
+			expected: []UIARaise{raiseProperty(2, UIA_RangeValueValuePropertyId)},
+		},
+		{
+			name:     "a slider that started reporting one",
+			old:      sliders(false),
+			cur:      sliders(true),
+			event:    accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
+			expected: []UIARaise{raiseProperty(2, UIA_RangeValueValuePropertyId)},
+		},
+		{
+			name:     "a menu item that stopped being checkable",
+			old:      menuItems(true),
+			cur:      menuItems(false),
+			event:    stateChanged(3, accessibility.StateChecked),
+			expected: []UIARaise{raiseProperty(3, UIA_ToggleToggleStatePropertyId)},
+		},
+		{
+			name:     "a menu item that became checkable",
+			old:      menuItems(false),
+			cur:      menuItems(true),
+			event:    stateChanged(3, accessibility.StateChecked),
+			expected: []UIARaise{raiseProperty(3, UIA_ToggleToggleStatePropertyId)},
+		},
+		{
+			name:  "a node that has never had the pattern still reports nothing",
+			old:   sliders(false),
+			cur:   sliders(false),
+			event: accessibility.Event{Kind: accessibility.NumberChanged, Node: 2},
+		},
+	} {
+		raises := UIADecideRaises(one.old, one.cur, []accessibility.Event{one.event})
+		if one.expected == nil {
+			c.Nil(raises, "case %d (%s)", i, one.name)
+			continue
+		}
+		c.Equal(one.expected, raises, "case %d (%s)", i, one.name)
+	}
 }
 
 // TestUIADecideRaisesValue verifies that a value change becomes whichever value property the element actually has. A

@@ -71,27 +71,30 @@ const (
 // with words separated by hyphens. An assistive technology listens for "object:state-changed:focused" and compares the
 // detail against the part after the last colon, so these have to match exactly.
 const (
-	stateNameActive          = "active"
-	stateNameBusy            = "busy"
-	stateNameCheckable       = "checkable"
-	stateNameChecked         = "checked"
-	stateNameCollapsed       = "collapsed"
-	stateNameEditable        = "editable"
-	stateNameEnabled         = "enabled"
-	stateNameExpandable      = "expandable"
-	stateNameExpanded        = "expanded"
-	stateNameFocusable       = "focusable"
-	stateNameFocused         = "focused"
-	stateNameIndeterminate   = "indeterminate"
-	stateNameInvalidEntry    = "invalid-entry"
-	stateNameModal           = "modal"
-	stateNameMultiselectable = "multiselectable"
-	stateNamePressed         = "pressed"
-	stateNameReadOnly        = "read-only"
-	stateNameSelectable      = "selectable"
-	stateNameSelected        = "selected"
-	stateNameSensitive       = "sensitive"
-	stateNameShowing         = "showing"
+	stateNameActive             = "active"
+	stateNameBusy               = "busy"
+	stateNameCheckable          = "checkable"
+	stateNameChecked            = "checked"
+	stateNameCollapsed          = "collapsed"
+	stateNameEditable           = "editable"
+	stateNameEnabled            = "enabled"
+	stateNameExpandable         = "expandable"
+	stateNameExpanded           = "expanded"
+	stateNameFocusable          = "focusable"
+	stateNameFocused            = "focused"
+	stateNameHorizontal         = "horizontal"
+	stateNameIndeterminate      = "indeterminate"
+	stateNameInvalidEntry       = "invalid-entry"
+	stateNameManagesDescendants = "manages-descendants"
+	stateNameModal              = "modal"
+	stateNameMultiselectable    = "multiselectable"
+	stateNamePressed            = "pressed"
+	stateNameReadOnly           = "read-only"
+	stateNameSelectable         = "selectable"
+	stateNameSelected           = "selected"
+	stateNameSensitive          = "sensitive"
+	stateNameShowing            = "showing"
+	stateNameVertical           = "vertical"
 )
 
 // The detail strings of the property changes, which are the names of the ATK properties the values belong to. AT-SPI
@@ -142,6 +145,11 @@ type publication struct {
 	valueAnnounced map[accessibility.NodeID]bool
 	// roleAnnounced holds the nodes whose role has already been announced.
 	roleAnnounced map[accessibility.NodeID]bool
+	// attributesAnnounced holds the nodes whose attributes have already been announced.
+	attributesAnnounced map[accessibility.NodeID]bool
+	// held holds the signals about a node's own change that could not be sent when they arrived, because the client
+	// had not been told that the object exists yet. See [Adapter.emitHeld].
+	held []heldSignal
 	// waiting holds the nodes whose arrival cannot be announced yet, because the object that is to hold them has not
 	// been announced itself. See [Adapter.flushWaiting].
 	waiting []accessibility.NodeID
@@ -168,6 +176,19 @@ type stateAnnouncement struct {
 	state string
 	node  accessibility.NodeID
 	on    bool
+}
+
+// heldSignal is one signal about a node's own change that has been held back until the client has been told that the
+// object it is sent from exists. It carries everything [Adapter.emit] needs, since what it describes is what the
+// snapshots said when the event was dealt with rather than what they say by the time it goes out.
+type heldSignal struct {
+	iface   string
+	member  string
+	detail  string
+	value   dbus.Variant
+	node    accessibility.NodeID
+	detail1 int32
+	detail2 int32
 }
 
 // priorFocus returns the node that held the keyboard focus before this publish, or zero if none did or there is no
@@ -313,6 +334,7 @@ func (a *Adapter) emitEvents(ws *windowState, prior, data *windowData, events []
 		for i := range events {
 			a.emitEvent(pub, &events[i])
 		}
+		a.emitHeld(pub)
 	}
 	a.emitSelectionChanges(pub)
 	a.emitActiveDescendants(pub)
@@ -325,12 +347,12 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 	case accessibility.FocusChanged:
 		a.emitFocusChanged(pub, ev)
 	case accessibility.NameChanged:
-		a.emitPropertyChange(data, ev.Node, propertyAccessibleName, variantString(ev.New))
+		a.emitPropertyChange(pub, ev.Node, propertyAccessibleName, variantString(ev.New))
 		// What this package reports a node as depends on its name, so naming an anonymous group turns it from a panel
 		// into a grouping.
 		a.emitRoleIfChanged(pub, ev.Node)
 	case accessibility.DescriptionChanged:
-		a.emitPropertyChange(data, ev.Node, propertyAccessibleDescription, variantString(ev.New))
+		a.emitPropertyChange(pub, ev.Node, propertyAccessibleDescription, variantString(ev.New))
 	case accessibility.RoleChanged:
 		a.emitRoleIfChanged(pub, ev.Node)
 	case accessibility.ValueChanged, accessibility.NumberChanged:
@@ -338,9 +360,9 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 	case accessibility.StateChanged:
 		a.emitStateChanged(pub, ev)
 	case accessibility.TextInserted:
-		a.emitTextChanged(data, ev, detailInsert, ev.New)
+		a.emitTextChanged(pub, ev, detailInsert, ev.New)
 	case accessibility.TextDeleted:
-		a.emitTextChanged(data, ev, detailDelete, ev.Old)
+		a.emitTextChanged(pub, ev, detailDelete, ev.Old)
 	case accessibility.TextSelectionChanged:
 		a.emitTextSelectionChanged(pub, ev)
 	case accessibility.NodeAdded:
@@ -348,18 +370,9 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 	case accessibility.NodeRemoved:
 		a.emitNodeRemoved(pub, ev.Node)
 	case accessibility.BoundsChanged:
-		a.emitBoundsChanged(data, ev.Node)
+		a.emitBoundsChanged(pub, data, ev.Node)
 	case accessibility.SortChanged, accessibility.AttributesChanged:
-		// AT-SPI reports a node's sort direction as an object attribute, and so it does everything
-		// [accessibility.AttributesChanged] covers that has any AT-SPI spelling at all: the placeholder text, the
-		// level, the row and column indexes, the position in a set and the orientation. A change to one of them is
-		// therefore a change to the attributes rather than to anything with an interface of its own. The relations that
-		// event also covers — what labels a node, what describes it and what it controls — have no AT-SPI signal of
-		// their own to be reported through, so this stands in for them as well, and a client that re-reads the
-		// attributes will re-read the relation set with them.
-		if reportedNode(data, ev.Node) != nil {
-			a.emit(NodePath(ev.Node), InterfaceEventObject, signalAttributesChanged, "", 0, 0, variantInt32(0))
-		}
+		a.emitAttributesChanged(pub, ev.Node)
 	case accessibility.WindowActivated:
 		a.emitWindowActivated(pub)
 	case accessibility.WindowDeactivated:
@@ -368,6 +381,71 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 		a.emitChildrenChanged(pub, ev.Node)
 	default:
 	}
+}
+
+// emitAttributesChanged announces that the secondary facts about a node have moved. AT-SPI reports a node's sort
+// direction as an object attribute, and so it does most of what [accessibility.AttributesChanged] covers: the
+// placeholder text, the level, the row and column indexes and the position in a set. A change to one of them is
+// therefore a change to the attributes rather than to anything with an interface of its own. The relations that event
+// also covers — what labels a node, what describes it and what it controls — have no AT-SPI signal of their own to be
+// reported through, so this stands in for them as well, and a client that re-reads the attributes will re-read the
+// relation set with them.
+//
+// It is sent once per node however many events arrive for it. [accessibility.Diff] reports a sort change and an
+// attribute change as two separate events, so a column header whose sort direction and column index both moved in one
+// publish would otherwise be announced twice and have an assistive technology re-read the same attribute set twice.
+//
+// The two facts that event carries which AT-SPI does not hold as attributes at all are sent as the state changes they
+// really are; see [attributeStateChanges].
+func (a *Adapter) emitAttributesChanged(pub *publication, id accessibility.NodeID) {
+	n := reportedNode(pub.data, id)
+	if n == nil || pub.attributesAnnounced[id] {
+		return
+	}
+	if pub.attributesAnnounced == nil {
+		pub.attributesAnnounced = make(map[accessibility.NodeID]bool)
+	}
+	pub.attributesAnnounced[id] = true
+	a.emitOwnChange(pub, id, InterfaceEventObject, signalAttributesChanged, "", 0, 0, variantInt32(0))
+	if prior := reportedNode(pub.prior, id); prior != nil {
+		for _, one := range attributeStateChanges(prior, n) {
+			a.emitStateChange(pub, id, one)
+		}
+	}
+}
+
+// attributeStateChanges returns the AT-SPI states that a change to a node's attributes really is. Two of the things
+// [accessibility.AttributesChanged] covers are not attributes to AT-SPI at all: the orientation is the HORIZONTAL and
+// VERTICAL states that [roleStates] puts in every state set, and the number of rows is what [ManagesDescendants]
+// derives MANAGES_DESCENDANTS from. A client caches a state set until something retracts it, so leaving them out leaves
+// a scroll bar that has been turned on its side reported the old way for the life of the window, and a table filtered
+// down to a handful of rows still claiming to manage descendants — while [Adapter.emitActiveDescendants], which reads
+// the new snapshot, stops sending anything about it, leaving the client with neither route to the current row.
+func attributeStateChanges(prior, n *accessibility.Node) []stateChange {
+	var changes []stateChange
+	if prior.Orientation != n.Orientation {
+		// [States] gives a node at most one of the two states and a node with no orientation neither of them, so only
+		// the side a snapshot actually reported is moved; the other was never sent and must not be retracted.
+		changes = appendOrientationChange(changes, prior.Orientation, false)
+		changes = appendOrientationChange(changes, n.Orientation, true)
+	}
+	if was, now := ManagesDescendants(prior), ManagesDescendants(n); was != now {
+		changes = append(changes, stateChange{name: stateNameManagesDescendants, on: now})
+	}
+	return changes
+}
+
+// appendOrientationChange appends the state change for one side of the orientation pair, if there is one to append: a
+// node with no orientation has neither state and so has nothing to gain or lose.
+func appendOrientationChange(changes []stateChange, orientation accessibility.Orientation, on bool) []stateChange {
+	switch orientation {
+	case accessibility.OrientationHorizontal:
+		return append(changes, stateChange{name: stateNameHorizontal, on: on})
+	case accessibility.OrientationVertical:
+		return append(changes, stateChange{name: stateNameVertical, on: on})
+	case accessibility.OrientationNone:
+	}
+	return changes
 }
 
 // emitChildrenChanged reports the children a node has gained from, or lost to, another parent of the same window.
@@ -379,7 +457,7 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 // libatspi does, would otherwise hold it under its old parent and never under its new one for as long as the window
 // lives. Both ends of the move are therefore announced, along with the node's new parent.
 //
-// A list whose membership is the same but whose order is not goes unreported in V1.
+// A list whose membership is the same but whose order is not is reported as well; see [Adapter.emitChildrenReordered].
 func (a *Adapter) emitChildrenChanged(pub *publication, id accessibility.NodeID) {
 	if reportedNode(pub.prior, id) == nil || reportedNode(pub.data, id) == nil {
 		// A node without an object in both snapshots has no child list of its own for anything to have moved within,
@@ -404,6 +482,37 @@ func (a *Adapter) emitChildrenChanged(pub *publication, id accessibility.NodeID)
 			a.emitNodeAdded(pub, child)
 		}
 	}
+	a.emitChildrenReordered(pub, id)
+}
+
+// emitChildrenReordered announces the children that are where they were but are no longer in the order they were in.
+// AT-SPI has no signal for a reordering, so each child that has moved is taken out of the client's list and put back
+// where the new snapshot has it, which is the pair of signals ATK's own bridge sends for the same thing.
+//
+// Saying nothing would be wrong rather than merely incomplete: libatspi keeps an array of children per object and
+// answers GetChildren and GetChildAtIndex from it, so sorting a table small enough for every row to be described —
+// which keeps the same node ids in a new order — would leave an assistive technology reading the rows in the order they
+// had before the sort for the life of the window.
+//
+// Only the children the client is already holding can have moved within its list. One that is still on its way in is
+// left to the signal that announces it, which puts it where the new snapshot has it.
+func (a *Adapter) emitChildrenReordered(pub *publication, id accessibility.NodeID) {
+	order := pub.data.unignoredChildren(id)
+	held := make([]accessibility.NodeID, 0, len(order))
+	for _, child := range order {
+		if pub.holds(id, child) {
+			held = append(held, child)
+		}
+	}
+	for i, child := range held {
+		// The list is re-read on every pass, since the signals sent so far have moved the children before this one
+		// into place and each index has to be an index into the list the client is holding at that moment.
+		if list := pub.children(id); i < len(list) && list[i] == child {
+			continue
+		}
+		a.emitChildRemoved(pub, id, child)
+		a.emitChildAdded(pub, id, child)
+	}
 }
 
 // emitValueChanged announces that a node's value has changed. Unison reports one such change twice — as the textual
@@ -424,7 +533,7 @@ func (a *Adapter) emitValueChanged(pub *publication, id accessibility.NodeID) {
 	}
 	pub.valueAnnounced[id] = true
 	if n.HasNumber {
-		a.emitPropertyChange(pub.data, id, propertyAccessibleValue, variantDouble(n.Number))
+		a.emitPropertyChange(pub, id, propertyAccessibleValue, variantDouble(n.Number))
 		return
 	}
 	a.emitTextValueChanged(pub, id, n)
@@ -446,11 +555,11 @@ func (a *Adapter) emitTextValueChanged(pub *publication, id accessibility.NodeID
 		return
 	}
 	if old != "" {
-		a.emit(NodePath(id), InterfaceEventObject, signalTextChanged, detailDelete, 0, int32(len([]rune(old))),
+		a.emitOwnChange(pub, id, InterfaceEventObject, signalTextChanged, detailDelete, 0, int32(len([]rune(old))),
 			variantString(old))
 	}
 	if now != "" {
-		a.emit(NodePath(id), InterfaceEventObject, signalTextChanged, detailInsert, 0, int32(len([]rune(now))),
+		a.emitOwnChange(pub, id, InterfaceEventObject, signalTextChanged, detailInsert, 0, int32(len([]rune(now))),
 			variantString(now))
 	}
 }
@@ -476,7 +585,7 @@ func (a *Adapter) emitRoleIfChanged(pub *publication, id accessibility.NodeID) {
 		pub.roleAnnounced = make(map[accessibility.NodeID]bool)
 	}
 	pub.roleAnnounced[id] = true
-	a.emitPropertyChange(pub.data, id, propertyAccessibleRole, variantUint32(uint32(MapRole(n))))
+	a.emitPropertyChange(pub, id, propertyAccessibleRole, variantUint32(uint32(MapRole(n))))
 }
 
 // emitWindowAdded announces a window that has just joined the accessibility tree: one cache item per reported node, the
@@ -637,11 +746,55 @@ func (a *Adapter) emitFocusLost(data *windowData, id accessibility.NodeID) {
 }
 
 // emitPropertyChange announces that one of the pieces of information an object reports through a property has changed.
-func (a *Adapter) emitPropertyChange(data *windowData, id accessibility.NodeID, property string, value dbus.Variant) {
-	if reportedNode(data, id) == nil {
+func (a *Adapter) emitPropertyChange(pub *publication, id accessibility.NodeID, property string, value dbus.Variant) {
+	if reportedNode(pub.data, id) == nil {
 		return
 	}
-	a.emit(NodePath(id), InterfaceEventObject, signalPropertyChange, property, 0, 0, value)
+	a.emitOwnChange(pub, id, InterfaceEventObject, signalPropertyChange, property, 0, 0, value)
+}
+
+// emitOwnChange queues one signal that reports a change to a node itself, holding it back while the client has not been
+// told that the object exists.
+//
+// [accessibility.Diff] orders a node's own changes ahead of the StateChanged that says it has stopped being ignored,
+// which is the event this package turns into the node's arrival, so a node that gains a name in the same publish in
+// which it joins the reported hierarchy has its name change reported first. Sending it then contradicts the rule the
+// additions follow — an assistive technology should already know what an object is by the time it is pointed at it —
+// and has libatspi resolve the path with ref_accessible into a parentless placeholder plus a round trip to fill it in.
+// Holding it until the object has been announced is what keeps the order right however the events happen to arrive; see
+// [Adapter.emitHeld].
+//
+// pub is nil for a change that belongs to no publish at all, which is the bounds change a geometry update sends: the
+// window's object was announced when the window was first published, long before it was moved.
+func (a *Adapter) emitOwnChange(pub *publication, id accessibility.NodeID, iface, member, detail string,
+	detail1, detail2 int32, value dbus.Variant,
+) {
+	if pub == nil || pub.knows(id) {
+		a.emit(NodePath(id), iface, member, detail, detail1, detail2, value)
+		return
+	}
+	pub.held = append(pub.held, heldSignal{
+		node:    id,
+		iface:   iface,
+		member:  member,
+		detail:  detail,
+		detail1: detail1,
+		detail2: detail2,
+		value:   value,
+	})
+}
+
+// emitHeld sends the signals that were held back for objects the client has been told about since, in the order they
+// were held in, once everything the publish has to say about the shape of the hierarchy has been said. Whatever is
+// still held for an object the client never gained is dropped rather than sent into nowhere, exactly as an addition
+// that never became announceable is.
+func (a *Adapter) emitHeld(pub *publication) {
+	for _, one := range pub.held {
+		if pub.knows(one.node) {
+			a.emit(NodePath(one.node), one.iface, one.member, one.detail, one.detail1, one.detail2, one.value)
+		}
+	}
+	pub.held = nil
 }
 
 // emitStateChanged announces that one of a node's states has changed. A single change in the schema can be more than
@@ -669,18 +822,25 @@ func (a *Adapter) emitStateChanged(pub *publication, ev *accessibility.Event) {
 		}
 	}
 	for _, one := range stateChanges(reportedNode(pub.prior, ev.Node), n, ev) {
-		if pub.noteStateAnnounced(ev.Node, one.name, one.on) {
-			continue
-		}
-		var detail1 int32
-		if one.on {
-			detail1 = 1
-		}
-		a.emit(NodePath(ev.Node), InterfaceEventObject, signalStateChanged, one.name, detail1, 0, variantInt32(0))
+		a.emitStateChange(pub, ev.Node, one)
 	}
 	// Several of the things this package reports a node as are decided by more than the schema's role, and two of them
 	// — whether a text field is protected, and whether a menu item carries a check — arrive as state changes.
 	a.emitRoleIfChanged(pub, ev.Node)
+}
+
+// emitStateChange announces that one AT-SPI state of a node has moved, unless this publish has already said the same
+// thing. One change in the schema can imply another that a second event of the same publish reports too, and saying it
+// twice has an assistive technology announce something that happened once as though it happened twice.
+func (a *Adapter) emitStateChange(pub *publication, id accessibility.NodeID, one stateChange) {
+	if pub.noteStateAnnounced(id, one.name, one.on) {
+		return
+	}
+	var detail1 int32
+	if one.on {
+		detail1 = 1
+	}
+	a.emitOwnChange(pub, id, InterfaceEventObject, signalStateChanged, one.name, detail1, 0, variantInt32(0))
 }
 
 // selectionAncestor returns the nearest reported ancestor of a node that implements org.a11y.atspi.Selection, or zero
@@ -902,21 +1062,25 @@ func stateChanges(prior, n *accessibility.Node, ev *accessibility.Event) []state
 //
 // Whether the node is checkable is read from the two snapshots rather than from the event, since the event's values are
 // the check state alone and a node that cannot be checked reports neither CHECKED nor INDETERMINATE however its Checked
-// field is left. That is also why gaining or losing the check carries whichever of the two the node holds with it.
+// field is left. That is also why gaining or losing the check carries whichever of the two the node holds with it, and
+// why each side is clamped whether or not the checkability moved: a ProvideAccessibility that fills in Checked without
+// setting HasCheck has [accessibility.Diff] report a check change on a node whose state set never held CHECKED at all,
+// and nothing would ever retract the state this function would otherwise invent for it.
 func checkedStateChanges(prior, n *accessibility.Node, ev *accessibility.Event) []stateChange {
 	var changes []stateChange
 	was := check.Extract(ev.Old)
 	now := check.Extract(ev.New)
-	if wasCheckable, isCheckable := checkable(prior), checkable(n); wasCheckable != isCheckable {
+	wasCheckable, isCheckable := checkable(prior), checkable(n)
+	if wasCheckable != isCheckable {
 		changes = append(changes, stateChange{name: stateNameCheckable, on: isCheckable})
-		// A node that cannot be checked reports neither of the other two, so gaining or losing the check takes
-		// whichever of them the node holds with it.
-		if !wasCheckable {
-			was = check.Off
-		}
-		if !isCheckable {
-			now = check.Off
-		}
+	}
+	// A node that cannot be checked reports neither of the other two, so each side of the change is read as the check
+	// the object's own state set would have shown at that moment.
+	if !wasCheckable {
+		was = check.Off
+	}
+	if !isCheckable {
+		now = check.Off
 	}
 	if was == now {
 		// Nothing a client was ever told about moved: a node as checkable as it was and set the way it was has no
@@ -932,11 +1096,11 @@ func checkedStateChanges(prior, n *accessibility.Node, ev *accessibility.Event) 
 
 // emitTextChanged announces that runes have been inserted into or deleted from a node's text. The offsets are rune
 // indexes, which is what AT-SPI means by characters.
-func (a *Adapter) emitTextChanged(data *windowData, ev *accessibility.Event, detail, text string) {
-	if reportedNode(data, ev.Node) == nil {
+func (a *Adapter) emitTextChanged(pub *publication, ev *accessibility.Event, detail, text string) {
+	if reportedNode(pub.data, ev.Node) == nil {
 		return
 	}
-	a.emit(NodePath(ev.Node), InterfaceEventObject, signalTextChanged, detail, int32(ev.Start), int32(ev.Length),
+	a.emitOwnChange(pub, ev.Node, InterfaceEventObject, signalTextChanged, detail, int32(ev.Start), int32(ev.Length),
 		variantString(text))
 }
 
@@ -1043,15 +1207,13 @@ func (a *Adapter) announceAdd(pub *publication, id accessibility.NodeID) (announ
 		pub.added = make(map[accessibility.NodeID]bool)
 	}
 	pub.added[id] = true
-	index := pub.noteAdd(parent, id)
 	// The cache item carries where the node sits in the snapshot, which is where it will be once everything this
 	// publish has to say has been said, while the signal carries where it goes in the list the client is holding now.
 	a.emitCacheAdd((&nodeObject{a: a, data: data, node: n}).cacheItem(data.indexInParent(id)))
-	a.emit(NodePath(parent), InterfaceEventObject, signalChildrenChanged, detailAdd, int32(index), 0,
-		variantRef(a.reference(id)))
+	a.emitChildAdded(pub, parent, id)
 	pub.notePresent(id, true)
 	if prior := reportedNode(pub.prior, id); prior != nil && pub.prior.parent(id) != parent {
-		a.emitPropertyChange(data, id, propertyAccessibleParent, variantRef(a.reference(parent)))
+		a.emitPropertyChange(pub, id, propertyAccessibleParent, variantRef(a.reference(parent)))
 	}
 	// A node that was reported somewhere else keeps the children it already had, and they have to be moved onto it as
 	// well, since nothing else in the publish says where they went.
@@ -1104,16 +1266,28 @@ func (a *Adapter) emitChildRemoved(pub *publication, parent, id accessibility.No
 		variantRef(a.reference(id)))
 }
 
+// emitChildAdded announces that a node is among a parent's children, without saying anything about the node itself,
+// which may well have come from somewhere else rather than have just arrived. The index is where the child goes in the
+// list the client is holding now rather than where it sits in either snapshot; see [publication.children].
+func (a *Adapter) emitChildAdded(pub *publication, parent, id accessibility.NodeID) {
+	index := pub.noteAdd(parent, id)
+	a.emit(NodePath(parent), InterfaceEventObject, signalChildrenChanged, detailAdd, int32(index), 0,
+		variantRef(a.reference(id)))
+}
+
 // emitBoundsChanged announces that a window has moved or been resized. Only window roots report it: the nodes inside a
 // window move whenever anything is scrolled or relaid out, and an assistive technology asks for the extents it needs
 // rather than remembering them.
-func (a *Adapter) emitBoundsChanged(data *windowData, id accessibility.NodeID) {
+//
+// pub is nil when the change comes from a geometry update rather than from a publish, which is a window that has been
+// moved, has changed screens or has changed backing scale without its snapshot changing at all.
+func (a *Adapter) emitBoundsChanged(pub *publication, data *windowData, id accessibility.NodeID) {
 	n := reportedNode(data, id)
 	if n == nil || id != data.tree.Root {
 		return
 	}
 	x, y, w, h := data.extents(n, CoordScreen)
-	a.emit(NodePath(id), InterfaceEventObject, signalBoundsChanged, "", 0, 0, variantRect(x, y, w, h))
+	a.emitOwnChange(pub, id, InterfaceEventObject, signalBoundsChanged, "", 0, 0, variantRect(x, y, w, h))
 }
 
 // emit queues one AT-SPI event signal. Every event has the same shape — the detail string, two integers whose meaning

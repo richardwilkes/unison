@@ -279,8 +279,15 @@ func (p *PopupMenu[T]) AddSeparator() {
 // what an assistive technology is told — a window is only described again once it has been drawn, so the first item
 // added to an empty popup would otherwise leave it described as something that opens nothing until something unrelated
 // happened to redraw it.
+//
+// The layout has to be redone above the popup rather than on it. A PopupMenu has no Layout of its own — NewPopupMenu
+// only gives it a sizer — so Panel.ValidateLayout would clear a flag set on the popup alone without anything having
+// re-measured it, and the popup would keep its old frame until something unrelated invalidated whatever holds it. It is
+// the panel above that asks the popup for its preferred size, which is the same reason printing's string popup and a
+// dock tab flag their parents when what they show changes width.
 func (p *PopupMenu[T]) itemsChanged() {
-	p.MarkForLayoutAndRedraw()
+	p.MarkForLayoutRecursivelyUpward()
+	p.MarkForRedraw()
 }
 
 // IndexOfItem returns the index of the specified menu item. -1 will be returned if the menu item isn't present.
@@ -482,7 +489,8 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repe
 // What WillShowMenuCallback would put in it is not counted here: describing a window must not run the application code
 // that fills a popup in, which is written to run as the popup is being opened rather than several times a second. A
 // popup that holds nothing until then is therefore described as one that opens nothing, but it still offers the press
-// that opens it, and an Expand asked for regardless is carried out and reports what actually came of it. See
+// that opens it, and an Expand asked for regardless is carried out; what came of it shows in the next description of
+// the popup, since the click it queues has not been performed by the time the request is answered. See
 // PerformAccessibilityAction.
 func (p *PopupMenu[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node := b.Node()
@@ -552,18 +560,37 @@ func (p *PopupMenu[T]) PerformAccessibilityAction(req accessibility.ActionReques
 		// anything to show, since Click runs WillShowMenuCallback before it counts the items: a popup that is filled in
 		// on demand has nothing in it until that callback has run, and refusing here would leave such a popup unable to
 		// be opened by an assistive technology while a click on it opened it normally.
-		p.Click()
-		// What came of it is only known afterwards. A popup that still holds nothing to choose from opened nothing, and
-		// reporting that the choices had been shown would leave an assistive technology waiting for choices that are
-		// never going to appear. Pressing such a popup is still a click, which is a thing that can be done to it
-		// whether or not anything comes of it; expanding it is not.
-		return p.hasItem()
+		//
+		// That click is queued rather than performed here, which is why the answer is simply that the request was
+		// accepted. Expand is a navigation action, carried out inline on macOS from within the callback the assistive
+		// technology is waiting on, and Click runs application code and then pops a menu up — a native menu runs a
+		// modal tracking session that does not return until the person has dismissed it, so answering only once Click
+		// returned would hold the assistive technology for as long as the choices were showing. What actually came of
+		// it is reported by the next description of the popup instead: one that opened nothing still says it is not
+		// expanded, and one that holds nothing to choose from goes on saying it cannot be expanded at all.
+		p.axExpandLater()
+		return true
 	case accessibility.Collapse:
 		axCollapseMenu(p.AsPanel(), p.openMenu)
 		return true
 	default:
 		return false
 	}
+}
+
+// axExpandLater queues the click that shows the popup's choices, to be performed once the assistive technology's
+// request has been answered. See PerformAccessibilityAction for why it cannot be performed within it.
+//
+// What is queued may no longer be worth doing by the time it runs: the popup may have been taken out of its window, or
+// opened by other means in the meantime, and clicking it again would tear the open menu down and build it back up,
+// which an assistive technology that was told the popup is expanded would not expect.
+func (p *PopupMenu[T]) axExpandLater() {
+	InvokeTask(func() {
+		if p.Window() == nil || axMenuIsOpen(p.openMenu) {
+			return
+		}
+		p.Click()
+	})
 }
 
 // axMenuIsOpen reports whether the menu a widget popped up is still showing. Only the in-window menus can be asked: a

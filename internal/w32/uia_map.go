@@ -10,6 +10,7 @@
 package w32
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -113,10 +114,12 @@ func PatternSetForID(id PatternID) PatternSet {
 //
 // The tree is needed for one distinction. The Window control type lists IWindowProvider as a required pattern, and the
 // provider hands that interface out for the fragment root alone: a nested node with a window-like role is a
-// dialog-shaped panel rather than a window of its own, as UIAProvider.supports explains, and role.Enum.IsWindow's own
-// doc says such a panel is entitled to report role.Dialog. It therefore reports Pane, which requires no pattern, so
-// that no element advertises a control type whose required pattern it refuses. A nil tree, or one that does not hold
-// the node, cannot say the node is the root, so it is treated as a nested one.
+// dialog-shaped panel rather than a window of its own, as UIAProvider.supports explains. Such a panel is entitled to
+// report role.Dialog — the role is documented as "a window that asks for a response before work can continue", which
+// says nothing about being top-level, while role.Window alone is "a top-level window"; both comments live with the
+// values in cmd/enumgen/main.go, which generates enums/role. A nested one therefore reports Pane, which requires no
+// pattern, so that no element advertises a control type whose required pattern it refuses. A nil tree, or one that does
+// not hold the node, cannot say the node is the root, so it is treated as a nested one.
 func UIAControlType(t *accessibility.Tree, n *accessibility.Node) ControlTypeID {
 	if n == nil {
 		return UIA_CustomControlTypeId
@@ -981,9 +984,21 @@ func (d *uiaDecider) survivor(id accessibility.NodeID) accessibility.NodeID {
 	return d.cur.Root
 }
 
-// patterns returns the patterns the node with the given id supports in the current tree.
+// patterns returns the patterns the node with the given id supported in either snapshot.
+//
+// Both snapshots have to be consulted, because several patterns are gated on a state rather than on the role alone:
+// ExpandCollapse on Expandable, RangeValue on HasNumber, a menu item's Toggle on HasCheck, and a cell's Value on there
+// being a value. A pattern's property is worth raising exactly when what a client would read through it has changed,
+// and the change that takes the ability away is as much of a change as the one that grants it — a table row that stops
+// being expandable moves from Expanded to LeafNode, and Table.ApplyFilter with a flat filter does that to every
+// container row at once. Asking only the current snapshot would report the granting and say nothing about the removal,
+// leaving a client announcing rows as expanded forever after they have become leaves. The Linux adapter takes the same
+// approach for the same reason; see the StateExpandable branch of internal/atspi/events.go.
+//
+// Over-reporting is the price, and it is the cheap side of the trade: an element that no longer supports a pattern
+// answers that pattern's property with an empty VARIANT, which a client reads as nothing rather than as a wrong value.
 func (d *uiaDecider) patterns(id accessibility.NodeID) PatternSet {
-	return UIAPatterns(d.cur.Node(id))
+	return UIAPatterns(d.cur.Node(id)) | UIAPatterns(d.old.Node(id))
 }
 
 // event records an automation event.
@@ -1001,7 +1016,9 @@ func (d *uiaDecider) property(id accessibility.NodeID, propertyID PropertyID) {
 //
 //   - HelpText, from Placeholder — the watermark of an unnamed field is announced through it, and Description, which
 //     the same property also answers from, has its own event.
-//   - Level, straight from Level.
+//   - Level, straight from Level, and HeadingLevel, which UIAHeadingLevel derives from the same field. A client reads
+//     a heading's depth from the second of those rather than from the first, so leaving it out would have one that
+//     cached it announce the wrong depth for as long as the heading lives.
 //   - PositionInSet and SizeOfSet, from RowIndex and the container's RowCount by way of UIAPositionInSet.
 //   - Orientation, from Orientation.
 //   - LabeledBy, DescribedBy and ControllerFor, from the three relations.
@@ -1014,6 +1031,7 @@ func (d *uiaDecider) property(id accessibility.NodeID, propertyID PropertyID) {
 var uiaAttributeProperties = []PropertyID{
 	UIA_HelpTextPropertyId,
 	UIA_LevelPropertyId,
+	UIA_HeadingLevelPropertyId,
 	UIA_PositionInSetPropertyId,
 	UIA_SizeOfSetPropertyId,
 	UIA_OrientationPropertyId,
@@ -1023,11 +1041,58 @@ var uiaAttributeProperties = []PropertyID{
 }
 
 // attributes records the property changes an attributes change asks for. See uiaAttributeProperties for which they are
-// and why they are all reported at once.
+// and why they are all reported at once, and labelContent for the one property the event changes on a node other than
+// the one it names.
 func (d *uiaDecider) attributes(id accessibility.NodeID) {
 	for _, propertyID := range uiaAttributeProperties {
 		d.property(id, propertyID)
 	}
+	d.labelContent(id)
+}
+
+// labelContent records the content-view change that a change to one node's LabeledBy relation makes to the labels at
+// the other end of it.
+//
+// A label that names another element is left out of the content view, since that element reports the label's text as
+// its own name and a client walking the content view would otherwise read it out twice; see UIAIsContentElement.
+// Whether a label is in that view therefore depends on what every other node's LabeledBy says, so the label's own
+// IsContentElement flips when some other node starts or stops naming it — and the event says only that the other node's
+// attributes changed. The labels on either side of the relation are looked at here because nothing else would report
+// them.
+//
+// Only the labels whose membership of the relation actually changed are asked about, and only a real move is reported:
+// a label two elements name that loses one of them is still out of the content view, and saying otherwise would have a
+// client add it to what it reads. Asking costs a scan of the snapshot's nodes per label, which is why an attributes
+// change that leaves the relation alone asks about none.
+func (d *uiaDecider) labelContent(id accessibility.NodeID) {
+	old := d.old.Node(id)
+	cur := d.cur.Node(id)
+	if old == nil || cur == nil {
+		return
+	}
+	for _, labelID := range uiaSymmetricDifference(old.LabeledBy, cur.LabeledBy) {
+		if UIAIsContentElement(d.old, d.old.Node(labelID)) != UIAIsContentElement(d.cur, d.cur.Node(labelID)) {
+			d.property(labelID, UIA_IsContentElementPropertyId)
+		}
+	}
+}
+
+// uiaSymmetricDifference returns the ids that appear in one of the two lists but not in the other, those from a ahead
+// of those from b. Each is one node's LabeledBy list, which holds a handful of entries at most, so scanning one for
+// each entry of the other costs less than building a set of either.
+func uiaSymmetricDifference(a, b []accessibility.NodeID) []accessibility.NodeID {
+	var ids []accessibility.NodeID
+	for _, id := range a {
+		if !slices.Contains(b, id) {
+			ids = append(ids, id)
+		}
+	}
+	for _, id := range b {
+		if !slices.Contains(a, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // focus records a focus change, which is worth reporting only while the window itself is active.
@@ -1049,6 +1114,8 @@ func (d *uiaDecider) focus(id accessibility.NodeID) {
 }
 
 // valueProperty records the change of whichever value property the node actually has, and nothing when it has neither.
+// Which one that is comes from the decider's patterns, so that a node which has just lost the pattern — a cell whose
+// value became empty — still reports the loss to a client holding the old one.
 func (d *uiaDecider) valueProperty(id accessibility.NodeID) {
 	patterns := d.patterns(id)
 	switch {
@@ -1060,14 +1127,16 @@ func (d *uiaDecider) valueProperty(id accessibility.NodeID) {
 	}
 }
 
-// state records the calls a state change asks for. A flag with no UI Automation property behind it, or one belonging to
-// a pattern this node does not support, records nothing.
+// state records the calls a state change asks for. A flag with no UI Automation property behind it, or one belonging
+// to a pattern neither snapshot says this node supports, records nothing. Which patterns those are comes from the
+// decider's patterns, which answers from both snapshots so that a state change that takes a pattern away is reported
+// too.
 func (d *uiaDecider) state(event accessibility.Event) {
 	n := d.cur.Node(event.Node)
 	if n == nil {
 		return
 	}
-	patterns := UIAPatterns(n)
+	patterns := d.patterns(event.Node)
 	switch event.State {
 	case accessibility.StateDisabled:
 		d.property(n.ID, UIA_IsEnabledPropertyId)

@@ -11,7 +11,9 @@ package atspi
 
 import (
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -225,6 +227,15 @@ func desktopRef() dbus.ObjectRef {
 	return dbus.ObjectRef{Name: testPeerName, Path: testDesktopPath}
 }
 
+// desktopRefFor is the reference a fake registry that answers each Embed differently hands back from the nth of them,
+// so that a test can tell which incarnation's answer the adapter ended up holding.
+func desktopRefFor(which int) dbus.ObjectRef {
+	return dbus.ObjectRef{
+		Name: testPeerName,
+		Path: dbus.ObjectPath(string(testDesktopPath) + "/" + strconv.Itoa(which)),
+	}
+}
+
 func TestStartExportsTheApplication(t *testing.T) {
 	t.Parallel()
 	ta := newTestAdapter(t)
@@ -347,8 +358,22 @@ func TestNodeState(t *testing.T) {
 	c.Equal(false, ta.one(NodePath(4), InterfaceEditableText, "DeleteText", "ii", int32(0), int32(1)))
 	ta.noRequest(t)
 
-	// The same field in a window that is not the active one is focusable but not focused.
-	ta.Publish(otherWindow, otherTree(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	// The same field in a window that is not the active one is focusable but not focused. AT-SPI's FOCUSED belongs to
+	// the active window's focus alone, and a client told that a node in a window the user is not looking at holds the
+	// focus follows it there, which is what the windowActive parameter of [States] exists to prevent.
+	dialog := otherTree()
+	dialog.Node(20).Children = append(dialog.Node(20).Children, 23)
+	dialog.Nodes[23] = &accessibility.Node{
+		ID: 23, Parent: 20, Role: role.TextField, Value: "Barney", Focusable: true, Focused: true,
+		Bounds: geom.NewRect(0, 40, 100, 20), Actions: accessibility.ActionSet(0).With(accessibility.Focus),
+	}
+	dialog.Focus = 23
+	ta.Publish(otherWindow, dialog, nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	fieldStates, ok := ta.one(NodePath(23), InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	set[0], set[1] = fieldStates[0], fieldStates[1]
+	c.True(set.Has(StateFocusable), "the field can take the focus wherever its window is")
+	c.False(set.Has(StateFocused), "but only the active window's focus is the focus")
 	dialogStates, ok := ta.one(NodePath(20), InterfaceAccessible, "GetState", "").([]uint32)
 	c.True(ok)
 	set[0], set[1] = dialogStates[0], dialogStates[1]
@@ -466,6 +491,16 @@ func TestComponentGrabFocusAndScrollTo(t *testing.T) {
 	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.Focus}, ta.nextRequest(t))
 	c.Equal(false, ta.one(NodePath(3), InterfaceComponent, "GrabFocus", ""), "a label cannot take the focus")
 	ta.noRequest(t)
+
+	// Being focusable and offering the focus action come apart: a snapshot marks the highlighted item of an open menu
+	// focusable after its action set has been derived, and a callback can do the same later still. The user interface
+	// thread refuses a request for an action the node does not offer, so answering "yes" here would leave an assistive
+	// technology waiting for a focused state change that never arrives.
+	highlighted := activeMainTree(func(tree *accessibility.Tree) { tree.Node(6).Focusable = true })
+	ta.Publish(mainWindow, highlighted, nil, sampleGeometry())
+	c.Equal(false, ta.one(NodePath(6), InterfaceComponent, "GrabFocus", ""),
+		"a focusable node that does not offer the focus action refuses, as the user interface thread would")
+	ta.noRequest(t)
 	c.Equal(true, ta.one(NodePath(8), InterfaceComponent, "ScrollTo", "u", uint32(0)))
 	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.ScrollIntoView}, ta.nextRequest(t))
 	c.Equal(false, ta.one(NodePath(4), InterfaceComponent, "ScrollTo", "u", uint32(0)),
@@ -531,7 +566,7 @@ func TestValueInterface(t *testing.T) {
 	c.Equal(dbus.TypeError, reply.Type, "unexpected reply: %s", reply)
 	c.Equal(dbus.PropertyReadOnly, reply.ErrorName)
 	ta.noRequest(t)
-	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(3), dbusPropertiesInterface, "Get", "ss", InterfaceValue,
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(3), dbusPropertiesInterface, getMember, "ss", InterfaceValue,
 		"CurrentValue"), "a label has no value at all")
 }
 
@@ -816,6 +851,89 @@ func TestTheRegistryComingBackRejoinsTheAccessibilityTree(t *testing.T) {
 	c.Equal([]any{rootRef()}, args, "the application root is what joins the tree again")
 	c.Equal(desktopRef(), ta.peer.getProperty(RootPath, InterfaceAccessible, "Parent"),
 		"and the desktop the new registry handed back is the application's parent")
+}
+
+// TestConcurrentRegistryRestartsRejoinOneAtATime covers a registry that crash-loops, which takes its name several times
+// in quick succession. Each of those signals asks the application to join the tree again, and an Embed holds a pending
+// call for as long as the connection's call timeout allows, so a rejoin per signal would leave several in flight at
+// once with nothing to order their replies: whichever landed last would decide the desktop the application root reports
+// as its parent, and that may well be the one an older incarnation handed back.
+func TestConcurrentRegistryRestartsRejoinOneAtATime(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	var mu sync.Mutex
+	var embeds, inFlight int
+	release := make(chan struct{})
+	held := make(chan struct{}, 1)
+	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+		if msg.Interface != InterfaceSocket || msg.Member != embedMember {
+			return registryAnswers(peer, msg)
+		}
+		mu.Lock()
+		embeds++
+		which := embeds
+		inFlight++
+		overlapping := inFlight > 1
+		mu.Unlock()
+		if overlapping {
+			t.Error("a rejoin was started while another Embed was still in flight")
+		}
+		// The count is dropped before the reply is written rather than after, since the adapter is free to send the
+		// next Embed the moment it has the answer.
+		answer := func() {
+			mu.Lock()
+			inFlight--
+			mu.Unlock()
+			peer.replyTo(msg, objectRefSignature, desktopRefFor(which))
+		}
+		if which == 2 {
+			// The registry that is on its way out takes its time answering, which is what leaves room for a second
+			// rejoin to be started alongside this one.
+			go func() {
+				<-release
+				answer()
+			}()
+			held <- struct{}{}
+			return true
+		}
+		answer()
+		return true
+	})
+	a, err := Start(Config{ToolkitVersion: testToolkitVersion, conn: p.client})
+	c.NoError(err)
+	c.Equal(desktopRefFor(1), p.getProperty(RootPath, InterfaceAccessible, "Parent"))
+
+	for range 3 {
+		p.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", RegistryDestination, "",
+			":1.99")
+	}
+	select {
+	case <-held:
+	case <-time.After(testTimeout):
+		t.Fatal("timed out waiting for the application to rejoin the accessibility tree")
+	}
+	// A call of the test's own is answered on the same goroutine the signals are handled on, so by the time it comes
+	// back every one of them has been dealt with.
+	p.getProperty(RootPath, InterfaceAccessible, "Parent")
+	close(release)
+
+	// The desktop the application root reports has to be the one the registry that answered last handed back, which is
+	// the newest incarnation rather than whichever reply happened to land last.
+	deadline := time.Now().Add(testTimeout)
+	for {
+		parent := p.getProperty(RootPath, InterfaceAccessible, "Parent")
+		mu.Lock()
+		wanted, idle := desktopRefFor(embeds), inFlight == 0
+		mu.Unlock()
+		if idle && parent == wanted {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the application root's parent is %v rather than %v, the desktop of the registry that answered "+
+				"last", parent, wanted)
+		}
+	}
+	a.Stop()
 }
 
 func TestAnnounceAndStop(t *testing.T) {

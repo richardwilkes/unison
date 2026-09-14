@@ -232,13 +232,13 @@ func (e Enum) String() string {
 	case Button:
 		return i18n.Text("Button")
 	case ToggleButton:
-		return i18n.Text("Toggle-Button")
+		return i18n.Text("Toggle Button")
 	case DisclosureTriangle:
-		return i18n.Text("Disclosure-Triangle")
+		return i18n.Text("Disclosure Triangle")
 	case CheckBox:
-		return i18n.Text("Check-Box")
+		return i18n.Text("Check Box")
 	case RadioButton:
-		return i18n.Text("Radio-Button")
+		return i18n.Text("Radio Button")
 	case Link:
 		return i18n.Text("Link")
 	case Label:
@@ -246,29 +246,29 @@ func (e Enum) String() string {
 	case Heading:
 		return i18n.Text("Heading")
 	case TextField:
-		return i18n.Text("Text-Field")
+		return i18n.Text("Text Field")
 	case TextArea:
-		return i18n.Text("Text-Area")
+		return i18n.Text("Text Area")
 	case SpinButton:
-		return i18n.Text("Spin-Button")
+		return i18n.Text("Spin Button")
 	case ComboBox:
-		return i18n.Text("Combo-Box")
+		return i18n.Text("Combo Box")
 	case PopupButton:
-		return i18n.Text("Popup-Button")
+		return i18n.Text("Popup Button")
 	case Slider:
 		return i18n.Text("Slider")
 	case ProgressBar:
-		return i18n.Text("Progress-Bar")
+		return i18n.Text("Progress Bar")
 	case ScrollBar:
-		return i18n.Text("Scroll-Bar")
+		return i18n.Text("Scroll Bar")
 	case ScrollArea:
-		return i18n.Text("Scroll-Area")
+		return i18n.Text("Scroll Area")
 	case Separator:
 		return i18n.Text("Separator")
 	case List:
 		return i18n.Text("List")
 	case ListItem:
-		return i18n.Text("List-Item")
+		return i18n.Text("List Item")
 	case Table:
 		return i18n.Text("Table")
 	case Tree:
@@ -278,25 +278,25 @@ func (e Enum) String() string {
 	case Cell:
 		return i18n.Text("Cell")
 	case ColumnHeader:
-		return i18n.Text("Column-Header")
+		return i18n.Text("Column Header")
 	case TableHeader:
-		return i18n.Text("Table-Header")
+		return i18n.Text("Table Header")
 	case TabList:
-		return i18n.Text("Tab-List")
+		return i18n.Text("Tab List")
 	case Tab:
 		return i18n.Text("Tab")
 	case TabPanel:
-		return i18n.Text("Tab-Panel")
+		return i18n.Text("Tab Panel")
 	case MenuBar:
-		return i18n.Text("Menu-Bar")
+		return i18n.Text("Menu Bar")
 	case Menu:
 		return i18n.Text("Menu")
 	case MenuItem:
-		return i18n.Text("Menu-Item")
+		return i18n.Text("Menu Item")
 	case Image:
 		return i18n.Text("Image")
 	case ColorWell:
-		return i18n.Text("Color-Well")
+		return i18n.Text("Color Well")
 	case Tooltip:
 		return i18n.Text("Tooltip")
 	case Document:

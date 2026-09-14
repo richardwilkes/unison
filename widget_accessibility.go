@@ -49,10 +49,16 @@ func axReach(visible geom.Rect) geom.Rect {
 //
 // Nothing happens for any other role: the builder describes those children itself once ProvideAccessibility returns,
 // and describing them here as well would list every one of them beneath its parent twice.
+//
+// Having described them is recorded on the snapshot rather than being left to be inferred from the role afterwards. A
+// node's role can still move between here and the point the builder decides whether to describe the children — an
+// Accessibility.Callback runs after ProvideAccessibility and is entitled to write any role it likes — so a node that
+// asked here and is no longer static text by then would otherwise have its children described a second time.
 func (b *AccessibilityBuilder) DescribeChildren() {
 	if b.node.Role != role.Heading && b.node.Role != role.Label {
 		return
 	}
+	b.snapshot.markChildrenDescribed(b.node.ID)
 	b.snapshot.visitChildren(b.panel, b.node.ID, b.clip)
 }
 

@@ -563,7 +563,7 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 				n.Actions = n.Actions.With(accessibility.Press)
 			}
 		})
-		if colID == 0 || (label != nil && len(panel.Children()) == 0) {
+		if colID == 0 || !axColumnHeaderContentIsReachable(panel, label) {
 			continue
 		}
 		h.installCell(panel, frame)
@@ -582,6 +582,39 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			}
 		}
 	}
+}
+
+// axColumnHeaderContentIsReachable reports whether describing a column header's own panel beneath the node for the
+// column would reach anything. Only content that will actually be visited is worth describing: the panel is added to
+// the snapshot solely so that what is inside a header holding more than a title — a filter control beside it, say — can
+// be got at, and a panel that adds nothing beyond that leaves a second node carrying the column's own name under the
+// column header, which is the title announced twice.
+//
+// A header that is not built around a label is described, whatever it holds, since what it is described as and what it
+// hands on to its children are its own business. One that is built around a label — the library's own is, and so is a
+// custom one written the documented way, by embedding a *Label and pointing Self at itself — is described only when it
+// has children that will be visited. A label with nothing beneath it has nothing to reach; a label described as static
+// text has nothing reachable either, however much it holds, since static text is one element however many panels it is
+// built from and the snapshot returns without visiting what is beneath it.
+func axColumnHeaderContentIsReachable(panel *Panel, label *Label) bool {
+	if label == nil {
+		return true
+	}
+	if len(panel.Children()) == 0 {
+		return false
+	}
+	// What the label resolves to, as axDescribeStaticContent resolves it: an explicitly set role is left alone — which
+	// is how a header could be made a group whose content is visited — and one that has not been set becomes an image
+	// when a drawable is all the label holds and static text otherwise.
+	resolved := panel.Accessibility.Role
+	if resolved == role.Auto {
+		if label.String() == "" && label.Drawable != nil {
+			resolved = role.Image
+		} else {
+			resolved = role.Label
+		}
+	}
+	return resolved != role.Label && resolved != role.Heading
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Pressing a column header sorts the

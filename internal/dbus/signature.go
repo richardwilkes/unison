@@ -174,14 +174,25 @@ func (p ObjectPath) Validate() error {
 	return nil
 }
 
+// maxAbbreviatedLength is how many bytes of a value that came off the wire are worth repeating in an error message.
+const maxAbbreviatedLength = 64
+
 // abbreviate shortens a string that came off the wire for an error message. A peer chooses how long an object path is,
 // and repeating a 64 MiB one back word for word costs far more than knowing the whole of it is worth.
 func abbreviate(s string) string {
-	const maxLength = 64
-	if len(s) > maxLength {
-		return s[:maxLength] + "..."
+	if len(s) > maxAbbreviatedLength {
+		return s[:maxAbbreviatedLength] + "..."
 	}
 	return s
+}
+
+// abbreviateBytes is [abbreviate] for bytes that have not been copied into a string yet, so that naming them in an
+// error message never copies more of them than the message will hold.
+func abbreviateBytes(b []byte) string {
+	if len(b) > maxAbbreviatedLength {
+		return string(b[:maxAbbreviatedLength]) + "..."
+	}
+	return string(b)
 }
 
 // isNameChar returns true if c is one of the characters permitted in an object path element or a name element.
@@ -323,11 +334,12 @@ func alignmentOf(c byte) int {
 
 // SignatureOf derives the signature of the given values. Integer types other than the sized ones, and empty arrays and
 // dictionaries whose element types cannot be determined from their Go type, are rejected, since their D-Bus type would
-// be a guess; use an explicitly typed value or [Array] for those.
+// be a guess; use an explicitly typed value or [Array] for those. A value that contains itself, directly or through
+// another container, is rejected as well, since the signature it implies is infinitely deep; see [depths].
 func SignatureOf(values ...any) (Signature, error) {
 	var sb strings.Builder
 	for _, v := range values {
-		sig, err := signatureOfValue(v)
+		sig, err := signatureOfValue(v, depths{})
 		if err != nil {
 			return "", err
 		}
@@ -340,7 +352,12 @@ func SignatureOf(values ...any) (Signature, error) {
 	return sig, nil
 }
 
-func signatureOfValue(v any) (Signature, error) {
+// signatureOfValue derives the signature of one value. d is passed by value, exactly as it is while scanning a
+// signature, so each branch of the value tree is measured on its own and the depths unwind without having to be given
+// back. Bounding it is what turns a value that contains itself, which only a caller can build, into an ordinary error:
+// without it the recursion has nothing to stop it and the process dies with a stack overflow that nothing can recover
+// from. See [scanType], which bounds the same nesting from the other direction.
+func signatureOfValue(v any, d depths) (Signature, error) {
 	switch tv := v.(type) {
 	case byte:
 		return "y", nil
@@ -392,47 +409,55 @@ func signatureOfValue(v any) (Signature, error) {
 		}
 		return sig, nil
 	case Dict:
-		return signatureOfDict(tv)
+		return signatureOfDict(tv, d)
 	case []DictEntry:
-		return signatureOfDict(tv)
+		return signatureOfDict(tv, d)
 	case DictEntry:
 		return "", errDictEntryPlacement
 	case Struct:
-		return signatureOfStruct(tv)
+		return signatureOfStruct(tv, d)
 	case []any:
-		return signatureOfSlice(tv)
+		return signatureOfSlice(tv, d)
 	default:
-		return signatureOfOther(v)
+		return signatureOfOther(v, d)
 	}
 }
 
-func signatureOfDict(d Dict) (Signature, error) {
-	if len(d) == 0 {
+// signatureOfDict derives the signature of a dictionary. The array it is and the dict entries it holds are entered
+// separately, exactly as [scanType] enters them for the "a{…}" such a dictionary produces.
+func signatureOfDict(entries Dict, d depths) (Signature, error) {
+	if len(entries) == 0 {
 		return "", errEmptyDictNoType
 	}
-	keySig, err := signatureOfValue(d[0].Key)
+	if err := d.enter('a'); err != nil {
+		return "", err
+	}
+	if err := d.enter('{'); err != nil {
+		return "", err
+	}
+	keySig, err := signatureOfValue(entries[0].Key, d)
 	if err != nil {
 		return "", err
 	}
 	if len(keySig) != 1 || !strings.ContainsRune(basicTypes, rune(keySig[0])) {
 		return "", fmt.Errorf("dbus: dict entry key type %q is not a basic type", keySig)
 	}
-	valSig, err := signatureOfValue(d[0].Value)
+	valSig, err := signatureOfValue(entries[0].Value, d)
 	if err != nil {
 		return "", err
 	}
 	// Every remaining entry has to agree with the first, exactly as the elements of an array do: a dictionary has one
 	// key type and one value type, and deriving them from the first entry alone would turn a mixture into a signature
 	// that is silently wrong and a confusing "cannot marshal" failure much later on.
-	for _, entry := range d[1:] {
+	for _, entry := range entries[1:] {
 		var otherSig Signature
-		if otherSig, err = signatureOfValue(entry.Key); err != nil {
+		if otherSig, err = signatureOfValue(entry.Key, d); err != nil {
 			return "", err
 		}
 		if otherSig != keySig {
 			return "", fmt.Errorf("dbus: dict entry keys have differing types %q and %q", keySig, otherSig)
 		}
-		if otherSig, err = signatureOfValue(entry.Value); err != nil {
+		if otherSig, err = signatureOfValue(entry.Value, d); err != nil {
 			return "", err
 		}
 		if otherSig != valSig {
@@ -442,14 +467,17 @@ func signatureOfDict(d Dict) (Signature, error) {
 	return "a{" + keySig + valSig + "}", nil
 }
 
-func signatureOfStruct(s Struct) (Signature, error) {
+func signatureOfStruct(s Struct, d depths) (Signature, error) {
 	if len(s) == 0 {
 		return "", errors.New("dbus: a structure must have at least one field")
+	}
+	if err := d.enter('('); err != nil {
+		return "", err
 	}
 	var sb strings.Builder
 	sb.WriteByte('(')
 	for _, field := range s {
-		sig, err := signatureOfValue(field)
+		sig, err := signatureOfValue(field, d)
 		if err != nil {
 			return "", err
 		}
@@ -459,17 +487,20 @@ func signatureOfStruct(s Struct) (Signature, error) {
 	return Signature(sb.String()), nil
 }
 
-func signatureOfSlice(s []any) (Signature, error) {
+func signatureOfSlice(s []any, d depths) (Signature, error) {
 	if len(s) == 0 {
 		return "", errEmptyArrayNoType
 	}
-	elemSig, err := signatureOfValue(s[0])
+	if err := d.enter('a'); err != nil {
+		return "", err
+	}
+	elemSig, err := signatureOfValue(s[0], d)
 	if err != nil {
 		return "", err
 	}
 	for _, one := range s[1:] {
 		var otherSig Signature
-		if otherSig, err = signatureOfValue(one); err != nil {
+		if otherSig, err = signatureOfValue(one, d); err != nil {
 			return "", err
 		}
 		if otherSig != elemSig {
@@ -481,14 +512,14 @@ func signatureOfSlice(s []any) (Signature, error) {
 
 // signatureOfOther derives the signature of values whose Go type is not one of those handled directly, which in
 // practice means Go maps and named or unusual slice types.
-func signatureOfOther(v any) (Signature, error) {
+func signatureOfOther(v any, d depths) (Signature, error) {
 	if v == nil {
 		return "", errors.New("dbus: cannot derive the signature of a nil value")
 	}
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Map:
-		return signatureOfMap(rv)
+		return signatureOfMap(rv, d)
 	case reflect.Slice, reflect.Array:
 		if sig, ok := signatureOfType(rv.Type()); ok {
 			return sig, nil
@@ -501,13 +532,13 @@ func signatureOfOther(v any) (Signature, error) {
 		if rv.Type().Elem() == dictEntryType {
 			entries := make(Dict, rv.Len())
 			reflect.Copy(reflect.ValueOf(entries), rv)
-			return signatureOfDict(entries)
+			return signatureOfDict(entries, d)
 		}
 		values := make([]any, rv.Len())
 		for i := range values {
 			values[i] = rv.Index(i).Interface()
 		}
-		return signatureOfSlice(values)
+		return signatureOfSlice(values, d)
 	default:
 		if sig, ok := signatureOfType(rv.Type()); ok {
 			return sig, nil
@@ -521,16 +552,24 @@ func signatureOfOther(v any) (Signature, error) {
 // type and one value type. Such a type is not only an interface: [signatureOfType] also declines an unsized integer, a
 // float32, a Go structure and a named dictionary type, so map[string]int reaches the fallback as surely as
 // map[any]string does, and the latter marshals perfectly well once its keys have been looked at.
-func signatureOfMap(rv reflect.Value) (Signature, error) {
+func signatureOfMap(rv reflect.Value, d depths) (Signature, error) {
 	keySig, keyKnown := signatureOfType(rv.Type().Key())
 	valSig, valKnown := signatureOfType(rv.Type().Elem())
 	if !keyKnown || !valKnown {
 		if rv.Len() == 0 {
 			return "", errEmptyDictNoType
 		}
+		// As in signatureOfDict, the array and the dict entries it holds are entered separately, and only when the
+		// entries themselves have to be looked at: a map whose types alone say what it is never recurses at all.
+		if err := d.enter('a'); err != nil {
+			return "", err
+		}
+		if err := d.enter('{'); err != nil {
+			return "", err
+		}
 		for iter := rv.MapRange(); iter.Next(); {
 			if !keyKnown {
-				sig, err := signatureOfValue(iter.Key().Interface())
+				sig, err := signatureOfValue(iter.Key().Interface(), d)
 				if err != nil {
 					return "", err
 				}
@@ -541,7 +580,7 @@ func signatureOfMap(rv reflect.Value) (Signature, error) {
 				}
 			}
 			if !valKnown {
-				sig, err := signatureOfValue(iter.Value().Interface())
+				sig, err := signatureOfValue(iter.Value().Interface(), d)
 				if err != nil {
 					return "", err
 				}

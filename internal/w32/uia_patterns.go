@@ -72,30 +72,48 @@ func UIASelection(t *accessibility.Tree, id accessibility.NodeID) []accessibilit
 	if itemRole == role.None {
 		return nil
 	}
-	return uiaAppendItems(t, nil, id, itemRole, UIAIsSelected, 0)
+	return uiaItemsWithin(t, id, itemRole, UIAIsSelected)
+}
+
+// uiaItemsWithin returns the unignored descendants of the node with the given id whose role is itemRole and which
+// accept — nil for all of them — approves, in reading order. It does not look inside a nested container that holds the
+// same kind of item. See uiaAppendItems, which it starts.
+func uiaItemsWithin(t *accessibility.Tree, id accessibility.NodeID, itemRole role.Enum,
+	accept func(n *accessibility.Node) bool,
+) []accessibility.NodeID {
+	return uiaAppendItems(t, nil, id, itemRole, accept, make(map[accessibility.NodeID]bool), 0)
 }
 
 // uiaAppendItems appends the unignored descendants of the node with the given id whose role is itemRole and which
 // accept — nil for all of them — approves, in reading order. It does not look inside a nested container that holds the
-// same kind of item, and is bounded in depth so that a malformed tree cannot spin here forever.
+// same kind of item.
+//
+// visited holds the ids already reached, which is what keeps a malformed tree from being descended forever, and it is
+// what bounds this rather than depth: a walk downwards follows Children links that may branch and revisit, so a depth
+// bound alone would let a chain of nodes that each list the same child twice take 2^depth visits, and a Children link
+// that points back at an ancestor would never end at all. Each node is therefore both reported and descended into at
+// most once, exactly as accessibility.Tree's own walk does it. The depth bound stays as a second line of defence, since
+// the recursion is on the stack. UI Automation asks these questions from arbitrary threads — GetSelection, GetItem,
+// GetColumnHeaders — so a snapshot with a duplicated or cyclic child id must answer rather than hang the client.
 func uiaAppendItems(t *accessibility.Tree, ids []accessibility.NodeID, id accessibility.NodeID, itemRole role.Enum,
-	accept func(n *accessibility.Node) bool, depth int,
+	accept func(n *accessibility.Node) bool, visited map[accessibility.NodeID]bool, depth int,
 ) []accessibility.NodeID {
 	if depth >= uiaMaxTreeDepth {
 		return ids
 	}
 	for _, childID := range t.UnignoredChildren(id) {
 		child := t.Node(childID)
-		if child == nil {
+		if child == nil || visited[childID] {
 			continue
 		}
+		visited[childID] = true
 		if child.Role == itemRole && (accept == nil || accept(child)) {
 			ids = append(ids, childID)
 		}
 		if UIASelectionItemRole(child.Role) == itemRole {
 			continue
 		}
-		ids = uiaAppendItems(t, ids, childID, itemRole, accept, depth+1)
+		ids = uiaAppendItems(t, ids, childID, itemRole, accept, visited, depth+1)
 	}
 	return ids
 }
@@ -155,7 +173,7 @@ func UIAGridItem(t *accessibility.Tree, id accessibility.NodeID, row, column int
 	}
 	// Only a table and a tree support the Grid pattern, and the rows of both are Row nodes.
 	rowID := accessibility.NodeID(0)
-	for _, candidate := range uiaAppendItems(t, nil, id, role.Row, nil, 0) {
+	for _, candidate := range uiaItemsWithin(t, id, role.Row, nil) {
 		if n := t.Node(candidate); n != nil && n.RowIndex == row {
 			rowID = candidate
 			break
@@ -197,7 +215,7 @@ func UIATableColumnHeaders(t *accessibility.Tree, id accessibility.NodeID) []acc
 	if header == 0 {
 		return nil
 	}
-	return uiaAppendItems(t, nil, header, role.ColumnHeader, nil, 0)
+	return uiaItemsWithin(t, header, role.ColumnHeader, nil)
 }
 
 // uiaHeaderMemo remembers which TableHeader describes which table, for one snapshot at a time. Working the answer out
@@ -283,7 +301,7 @@ func uiaTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibi
 			// rather than climbing out of the container and claiming the outer table's column names.
 			return 0
 		}
-		headers, tables := uiaHeadersAndTablesWithin(t, ancestor, 0)
+		headers, tables := uiaHeadersAndTablesWithin(t, ancestor, make(map[accessibility.NodeID]bool), 0)
 		if tables > 1 {
 			return 0
 		}
@@ -298,12 +316,19 @@ func uiaTableHeaderFor(t *accessibility.Tree, id accessibility.NodeID) accessibi
 // uiaHeadersAndTablesWithin returns the ids of the table headers within the subtree rooted at the node with the given
 // id, along with how many tables it holds. Ignored nodes are walked through — a header could sit inside a layout panel
 // — but an ignored node is never reported as a header, since it has no provider to hand a client.
-func uiaHeadersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, depth int,
+//
+// visited holds the ids already reached, and bounds this the way it bounds uiaAppendItems: each node is looked at once,
+// so a duplicated child cannot count the same table twice — which would end the search for a header that is really
+// there — and a cyclic Children link cannot spin here forever. The depth bound stays as a second line of defence, since
+// the recursion is on the stack.
+func uiaHeadersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, visited map[accessibility.NodeID]bool,
+	depth int,
 ) (headers []accessibility.NodeID, tables int) {
 	n := t.Node(id)
-	if n == nil || depth >= uiaMaxTreeDepth {
+	if n == nil || depth >= uiaMaxTreeDepth || visited[id] {
 		return nil, 0
 	}
+	visited[id] = true
 	switch {
 	case n.Role == role.TableHeader:
 		if !n.Ignored {
@@ -318,7 +343,7 @@ func uiaHeadersAndTablesWithin(t *accessibility.Tree, id accessibility.NodeID, d
 	default:
 	}
 	for _, childID := range n.Children {
-		childHeaders, childTables := uiaHeadersAndTablesWithin(t, childID, depth+1)
+		childHeaders, childTables := uiaHeadersAndTablesWithin(t, childID, visited, depth+1)
 		headers = append(headers, childHeaders...)
 		tables += childTables
 	}

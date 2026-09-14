@@ -37,6 +37,23 @@ func axTestDrawable() unison.Drawable {
 	}
 }
 
+// axMustNode returns node, ending the test at once when it is nil.
+//
+// Every lookup of a node is followed by assertions that read it, so a lookup that comes back nil — which is exactly the
+// regression those assertions exist to catch — would dereference a nil pointer instead of failing. A panic on the test
+// goroutine takes the whole test binary down with it, so every test that had not yet run reports nothing at all and the
+// failures that were found are buried under a stack trace. Failing here reports the one thing that went wrong and lets
+// the rest of the run finish. Helper() puts the calling line in the report, so a message is only worth passing when the
+// line alone would not say which of several lookups came up empty.
+func axMustNode(c check.Checker, node *accessibility.Node, msgAndArgs ...any) *accessibility.Node {
+	c.Helper()
+	if node == nil {
+		c.Fatal(append([]any{"nothing describes this, so the assertions that follow it cannot be made:"},
+			msgAndArgs...)...)
+	}
+	return node
+}
+
 // axRootChildCount returns how many children the root of the window's description has, which grows when an in-window
 // menu opens.
 func axRootChildCount(tree *accessibility.Tree) int {
@@ -56,7 +73,7 @@ func axRootChildCount(tree *accessibility.Tree) int {
 func TestButtonAccessibility(t *testing.T) {
 	c := check.New(t)
 	var plain, named, icon, first, second, loose, lone *unison.Button
-	var clicks int
+	var clicks, selections int
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 500},
 		unison.StartupFinishedCallback(func() {
@@ -78,6 +95,7 @@ func TestButtonAccessibility(t *testing.T) {
 			second = unison.NewButton()
 			second.SetTitle("Two")
 			second.Sticky = true
+			second.ClickCallback = func() { selections++ }
 			unison.NewGroup(first, second).Select(first)
 
 			// Grouped but not sticky: DefaultDraw draws it exactly like any other unpressed button, whether or not the
@@ -98,26 +116,21 @@ func TestButtonAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	plainNode := screen.AccessibilityNodeFor(plain)
-	c.True(plainNode != nil)
+	plainNode := axMustNode(c, screen.AccessibilityNodeFor(plain))
 	c.Equal(role.Button, plainNode.Role)
 	c.Equal("Press Me", plainNode.Name, "a button's title is its name")
 	c.False(plainNode.Pressed)
 	c.True(plainNode.Actions.Has(accessibility.Press))
 
-	namedNode := screen.AccessibilityNodeFor(named)
-	c.True(namedNode != nil)
+	namedNode := axMustNode(c, screen.AccessibilityNodeFor(named))
 	c.Equal("Better Name", namedNode.Name, "an explicitly set name overrides the title")
 
-	iconNode := screen.AccessibilityNodeFor(icon)
-	c.True(iconNode != nil)
+	iconNode := axMustNode(c, screen.AccessibilityNodeFor(icon))
 	c.Equal("Delete", iconNode.Name, "an icon button has only its tooltip to name it")
 	c.Equal("", iconNode.Description, "the tooltip became the name, so it must not also be the description")
 
-	firstNode := screen.AccessibilityNodeFor(first)
-	secondNode := screen.AccessibilityNodeFor(second)
-	c.True(firstNode != nil)
-	c.True(secondNode != nil)
+	firstNode := axMustNode(c, screen.AccessibilityNodeFor(first))
+	secondNode := axMustNode(c, screen.AccessibilityNodeFor(second))
 	c.Equal(role.RadioButton, firstNode.Role,
 		"a sticky button that latches within a group is a radio button in everything but appearance")
 	c.True(firstNode.HasCheck)
@@ -125,14 +138,12 @@ func TestButtonAccessibility(t *testing.T) {
 	c.Equal(checkenum.Off, secondNode.Checked)
 	c.True(secondNode.Actions.Has(accessibility.Select), "the selection can be moved to it")
 
-	looseNode := screen.AccessibilityNodeFor(loose)
-	c.True(looseNode != nil)
+	looseNode := axMustNode(c, screen.AccessibilityNodeFor(loose))
 	c.Equal(role.Button, looseNode.Role, "a grouped button that is not sticky springs back, so it is a plain button")
 	c.False(looseNode.HasCheck, "a button drawn unpressed must not be announced as something with a state")
 	c.False(looseNode.Actions.Has(accessibility.Select))
 
-	loneNode := screen.AccessibilityNodeFor(lone)
-	c.True(loneNode != nil)
+	loneNode := axMustNode(c, screen.AccessibilityNodeFor(lone))
 	c.Equal(role.Button, loneNode.Role, "a sticky button with no group latches nothing, so it is a plain button")
 	c.False(loneNode.HasCheck)
 	c.False(loneNode.Actions.Has(accessibility.Select), "there is no group for it to be the selection of")
@@ -148,13 +159,14 @@ func TestButtonAccessibility(t *testing.T) {
 		Action: accessibility.Select,
 	}))
 	screen.AccessibilityTree(wnd)
-	firstNode = screen.AccessibilityNodeFor(first)
-	secondNode = screen.AccessibilityNodeFor(second)
-	c.True(firstNode != nil && secondNode != nil)
-	if firstNode != nil && secondNode != nil {
-		c.Equal(checkenum.Off, firstNode.Checked, "the button that was the selection gave it up")
-		c.Equal(checkenum.On, secondNode.Checked)
-	}
+	firstNode = axMustNode(c, screen.AccessibilityNodeFor(first))
+	secondNode = axMustNode(c, screen.AccessibilityNodeFor(second))
+	c.Equal(checkenum.Off, firstNode.Checked, "the button that was the selection gave it up")
+	c.Equal(checkenum.On, secondNode.Checked)
+	var selected int
+	screen.Do(func() { selected = selections })
+	c.Equal(1, selected,
+		"a click on the same button tells the application, so a selection made by an assistive technology has to too")
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   plainNode.ID,
@@ -188,8 +200,7 @@ func TestCheckBoxAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(box)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(box))
 	c.Equal(role.CheckBox, node.Role)
 	c.Equal("Enabled", node.Name)
 	c.True(node.HasCheck)
@@ -198,8 +209,7 @@ func TestCheckBoxAccessibility(t *testing.T) {
 
 	screen.Do(func() { box.State = checkenum.Mixed })
 	screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(box)
-	c.True(node != nil)
+	node = axMustNode(c, screen.AccessibilityNodeFor(box))
 	c.Equal(checkenum.Mixed, node.Checked, "a tri-state box reports its mixed state")
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -215,8 +225,7 @@ func TestCheckBoxAccessibility(t *testing.T) {
 	c.Equal(checkenum.On, state, "toggling from mixed should have turned the box on")
 	c.Equal(1, count)
 	screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(box)
-	c.True(node != nil)
+	node = axMustNode(c, screen.AccessibilityNodeFor(box))
 	c.Equal(checkenum.On, node.Checked)
 
 	iconNode := screen.AccessibilityNodeFor(icon)
@@ -234,24 +243,25 @@ func TestRadioButtonAccessibility(t *testing.T) {
 	c := check.New(t)
 	var first, second *unison.RadioButton
 	var wnd *unison.Window
+	var clicks, selections int
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
 		unison.StartupFinishedCallback(func() {
 			first = unison.NewRadioButton()
 			first.ClickAnimationTime = 0
 			first.SetTitle("First")
+			first.ClickCallback = func() { selections++ }
 			second = unison.NewRadioButton()
 			second.ClickAnimationTime = 0
 			second.SetTitle("Second")
+			second.ClickCallback = func() { clicks++ }
 			unison.NewGroup(first, second).Select(first)
 			wnd = newHeadlessWindow(t, "radio", geom.NewRect(10, 10, 240, 120), axColumn(first, second))
 		}))
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	firstNode := screen.AccessibilityNodeFor(first)
-	secondNode := screen.AccessibilityNodeFor(second)
-	c.True(firstNode != nil)
-	c.True(secondNode != nil)
+	firstNode := axMustNode(c, screen.AccessibilityNodeFor(first))
+	secondNode := axMustNode(c, screen.AccessibilityNodeFor(second))
 	c.Equal(role.RadioButton, firstNode.Role)
 	c.Equal("First", firstNode.Name)
 	c.True(firstNode.HasCheck)
@@ -263,12 +273,28 @@ func TestRadioButtonAccessibility(t *testing.T) {
 		Action: accessibility.Press,
 	}))
 	screen.AccessibilityTree(wnd)
-	firstNode = screen.AccessibilityNodeFor(first)
-	secondNode = screen.AccessibilityNodeFor(second)
-	c.True(firstNode != nil)
-	c.True(secondNode != nil)
+	firstNode = axMustNode(c, screen.AccessibilityNodeFor(first))
+	secondNode = axMustNode(c, screen.AccessibilityNodeFor(second))
 	c.Equal(checkenum.Off, firstNode.Checked, "the selection should have moved")
 	c.Equal(checkenum.On, secondNode.Checked)
+	var count int
+	screen.Do(func() { count = clicks })
+	c.Equal(1, count, "pressing the button runs its callback, exactly as a click on it does")
+
+	// Selecting is the other way an assistive technology moves the dot, and it has to tell the application as much as
+	// pressing does: a person has made the same change either way, and an application that is never told goes on acting
+	// on a value that no longer matches what is on the screen.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   firstNode.ID,
+		Action: accessibility.Select,
+	}))
+	screen.AccessibilityTree(wnd)
+	firstNode = axMustNode(c, screen.AccessibilityNodeFor(first))
+	secondNode = axMustNode(c, screen.AccessibilityNodeFor(second))
+	c.Equal(checkenum.On, firstNode.Checked, "the selection should have moved back")
+	c.Equal(checkenum.Off, secondNode.Checked)
+	screen.Do(func() { count = selections })
+	c.Equal(1, count, "selecting the button should have run its callback")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -315,47 +341,39 @@ func TestLabelAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	textNode := screen.AccessibilityNodeFor(text)
-	c.True(textNode != nil)
+	textNode := axMustNode(c, screen.AccessibilityNodeFor(text))
 	c.Equal(role.Label, textNode.Role)
 	c.Equal("Some text", textNode.Name)
 	c.False(textNode.Ignored)
 
-	imageNode := screen.AccessibilityNodeFor(image)
-	c.True(imageNode != nil)
+	imageNode := axMustNode(c, screen.AccessibilityNodeFor(image))
 	c.Equal(role.Image, imageNode.Role, "a label holding only a drawable is an image")
 	c.Equal("A trash can", imageNode.Name)
 	c.False(imageNode.Ignored)
 
-	unnamedNode := screen.AccessibilityNodeFor(unnamedImage)
-	c.True(unnamedNode != nil)
+	unnamedNode := axMustNode(c, screen.AccessibilityNodeFor(unnamedImage))
 	c.Equal(role.Image, unnamedNode.Role)
 	c.Equal("", unnamedNode.Name, "there is nothing in a drawable that says what it shows")
 	c.True(unnamedNode.Ignored, "an image nothing has described is skipped, exactly as a drawable panel's is")
 
-	tippedNode := screen.AccessibilityNodeFor(tippedImage)
-	c.True(tippedNode != nil)
+	tippedNode := axMustNode(c, screen.AccessibilityNodeFor(tippedImage))
 	c.Equal(role.Image, tippedNode.Role)
 	c.Equal("Discard", tippedNode.Name, "a tooltip is the only thing describing an otherwise nameless image")
 	c.False(tippedNode.Ignored, "an image its tooltip describes is worth announcing")
 	c.Equal("", tippedNode.Description, "the tooltip became the name, so it must not also be the description")
 
-	emptyNode := screen.AccessibilityNodeFor(empty)
-	c.True(emptyNode != nil)
+	emptyNode := axMustNode(c, screen.AccessibilityNodeFor(empty))
 	c.True(emptyNode.Ignored, "a label with nothing in it is not worth announcing")
 
-	tagNode := screen.AccessibilityNodeFor(tag)
-	c.True(tagNode != nil)
+	tagNode := axMustNode(c, screen.AccessibilityNodeFor(tag))
 	c.Equal(role.Label, tagNode.Role, "a tag is the text inside its bubble")
 	c.Equal("New", tagNode.Name)
 
-	drawableTagNode := screen.AccessibilityNodeFor(drawableTag)
-	c.True(drawableTagNode != nil)
+	drawableTagNode := axMustNode(c, screen.AccessibilityNodeFor(drawableTag))
 	c.Equal(role.Image, drawableTagNode.Role, "a tag holding only a drawable is an image, not empty static text")
 	c.True(drawableTagNode.Ignored, "an image nothing has described is skipped")
 
-	tippedTagNode := screen.AccessibilityNodeFor(tippedTag)
-	c.True(tippedTagNode != nil)
+	tippedTagNode := axMustNode(c, screen.AccessibilityNodeFor(tippedTag))
 	c.Equal(role.Image, tippedTagNode.Role)
 	c.Equal("Deprecated", tippedTagNode.Name, "a tag's tooltip names the drawable it holds")
 	c.False(tippedTagNode.Ignored)
@@ -379,15 +397,13 @@ func TestLinkAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(link)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(link))
 	c.Equal(role.Link, node.Role)
 	c.Equal("Documentation", node.Name)
 	c.Equal(target, node.Description, "where the link leads is worth hearing")
 	c.True(node.Actions.Has(accessibility.Press))
 	// A tooltip is words someone chose for this link, so it must win over the URL rather than be hidden by it.
-	tippedNode := screen.AccessibilityNodeFor(tipped)
-	c.True(tippedNode != nil)
+	tippedNode := axMustNode(c, screen.AccessibilityNodeFor(tipped))
 	c.Equal("Opens the guide", tippedNode.Description, "a tooltip should not be displaced by the target")
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -445,21 +461,18 @@ func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	namedNode := screen.AccessibilityNodeFor(named)
-	c.True(namedNode != nil)
+	namedNode := axMustNode(c, screen.AccessibilityNodeFor(named))
 	c.Equal(role.Image, namedNode.Role)
 	c.Equal("Diagram", namedNode.Name)
 	c.False(namedNode.Ignored)
 
-	unnamedNode := screen.AccessibilityNodeFor(unnamed)
-	c.True(unnamedNode != nil)
+	unnamedNode := axMustNode(c, screen.AccessibilityNodeFor(unnamed))
 	c.Equal(role.Image, unnamedNode.Role)
 	c.True(unnamedNode.Ignored, "an image nothing has described is skipped")
 
 	// The description a node takes from its tooltip is filled in after the widget has spoken, so an image left ignored
 	// here would never be reached to hear it. The tooltip has to become the name instead.
-	tippedNode := screen.AccessibilityNodeFor(tipped)
-	c.True(tippedNode != nil)
+	tippedNode := axMustNode(c, screen.AccessibilityNodeFor(tipped))
 	c.Equal(role.Image, tippedNode.Role)
 	c.Equal("A photograph of a cat", tippedNode.Name, "a tooltip is what describes an otherwise nameless image")
 	c.False(tippedNode.Ignored, "an image its tooltip describes must not be hidden")
@@ -521,8 +534,7 @@ func TestProgressBarAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(determinate)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(determinate))
 	c.Equal(role.ProgressBar, node.Role)
 	c.Equal("Copying", node.Name, "the label before it names it, minus the colon")
 	c.True(node.HasNumber)
@@ -532,8 +544,7 @@ func TestProgressBarAccessibility(t *testing.T) {
 	c.True(node.ReadOnly)
 	c.False(node.Busy)
 
-	busyNode := screen.AccessibilityNodeFor(indeterminate)
-	c.True(busyNode != nil)
+	busyNode := axMustNode(c, screen.AccessibilityNodeFor(indeterminate))
 	c.True(busyNode.Busy, "a bar with no maximum knows only that something is happening")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
@@ -556,8 +567,7 @@ func TestSliderAccessibility(t *testing.T) {
 	c.True(screen.Do(func() { wnd.ToFront() }))
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(slider)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(slider))
 	c.Equal(role.Slider, node.Role)
 	c.Equal("Red", node.Name, "the label before it names it")
 	c.True(node.HasNumber)
@@ -572,8 +582,7 @@ func TestSliderAccessibility(t *testing.T) {
 	c.True(node.Actions.Has(accessibility.SetValue))
 	c.False(node.Actions.Has(accessibility.Press), "pressing a slider would throw its value to the middle")
 
-	fineNode := screen.AccessibilityNodeFor(fine)
-	c.True(fineNode != nil)
+	fineNode := axMustNode(c, screen.AccessibilityNodeFor(fine))
 	c.Equal(float64(float32(0.05)), fineNode.Step, "a range smaller than twenty units steps by a twentieth of it")
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -670,8 +679,7 @@ func TestScrollPanelAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(scroller)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(scroller))
 	c.Equal(role.ScrollArea, node.Role)
 
 	var bar, quietBar *unison.ScrollBar
@@ -679,8 +687,7 @@ func TestScrollPanelAccessibility(t *testing.T) {
 		bar = scroller.Bar(false)
 		quietBar = quiet.Bar(false)
 	})
-	barNode := screen.AccessibilityNodeFor(bar)
-	c.True(barNode != nil)
+	barNode := axMustNode(c, screen.AccessibilityNodeFor(bar))
 	c.Equal(role.ScrollBar, barNode.Role)
 	c.Equal(accessibility.OrientationVertical, barNode.Orientation)
 	c.True(barNode.HasNumber)
@@ -690,15 +697,12 @@ func TestScrollPanelAccessibility(t *testing.T) {
 	c.True(barNode.Actions.Has(accessibility.Increment))
 	c.False(barNode.Actions.Has(accessibility.Press), "pressing a scroll bar would jump to the middle")
 
-	quietBarNode := screen.AccessibilityNodeFor(quietBar)
-	c.True(quietBarNode != nil)
+	quietBarNode := axMustNode(c, screen.AccessibilityNodeFor(quietBar))
 	c.True(quietBarNode.Ignored, "a scroll bar with nothing to scroll has nothing to say")
 
-	lastNode := screen.AccessibilityNodeFor(lastRow)
-	c.True(lastNode != nil)
+	lastNode := axMustNode(c, screen.AccessibilityNodeFor(lastRow))
 	c.True(lastNode.Offscreen, "a row below the view port has been scrolled out of sight")
-	firstNode := screen.AccessibilityNodeFor(firstRow)
-	c.True(firstNode != nil)
+	firstNode := axMustNode(c, screen.AccessibilityNodeFor(firstRow))
 	c.False(firstNode.Offscreen)
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -739,8 +743,7 @@ func TestPopupMenuAccessibility(t *testing.T) {
 	c.True(screen.Do(func() { wnd.ToFront() }))
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(popup)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(popup))
 	c.Equal(role.PopupButton, node.Role)
 	c.Equal("Weight", node.Name, "the label before it names it")
 	c.Equal("Regular", node.Value, "its value is the choice it is showing")
@@ -775,8 +778,7 @@ func TestComboFieldAccessibility(t *testing.T) {
 	c.True(screen.Do(func() { wnd.ToFront() }))
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(combo)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(combo))
 	c.Equal(role.ComboBox, node.Role)
 	c.True(node.Expandable)
 	c.True(node.Actions.Has(accessibility.Expand))
@@ -791,6 +793,63 @@ func TestComboFieldAccessibility(t *testing.T) {
 	}))
 	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(wnd)),
 		"expanding the combo field should have opened its menu within the window")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldAccessibilityWrappedSingleLineReportsMultiline verifies that a single-line field that wraps says its content
+// is laid out over more than one line. TextInfo.Multiline is what an adapter reads to decide whether to offer line
+// navigation, and such a field really does lay its content out over several — buildLines breaks the one line it holds
+// to the field's width — so one that said otherwise while handing back a line for each of them was the pair an adapter
+// could make no sense of.
+func TestFieldAccessibilityWrappedSingleLineReportsMultiline(t *testing.T) {
+	c := check.New(t)
+	const sentence = "a sentence with quite enough words in it to need more than one line here"
+	var wrapped, plain *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			// The size hint pins the width whatever the text would rather have, so the wrap is the layout's doing
+			// rather than the window's size.
+			wrapped = unison.NewField()
+			wrapped.SetWrap(true)
+			wrapped.SetText(sentence)
+			wrapped.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(120, 80),
+				HAlign:   align.Fill,
+				VAlign:   align.Fill,
+			})
+			plain = unison.NewField()
+			plain.SetText(sentence)
+			plain.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(120, 80),
+				HAlign:   align.Fill,
+				VAlign:   align.Fill,
+			})
+			wnd = newHeadlessWindow(t, "wrapped field", geom.NewRect(10, 10, 300, 300), axColumn(wrapped, plain))
+			if wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	c.NotNil(wnd)
+	// Where the lines fall is measured only for the field the person is working in, so the focus goes there.
+	c.True(screen.Do(func() { wrapped.RequestFocus() }))
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(wrapped))
+	c.Equal(role.TextField, node.Role, "a field that accepts no line feeds is a text field however it is drawn")
+	c.NotNil(node.Text)
+	if node.Text == nil {
+		return
+	}
+	c.True(len(node.Text.Lines) > 1, "the text should have wrapped, got %d line(s)", len(node.Text.Lines))
+	c.True(node.Text.Multiline, "a field whose content is laid out over more than one line says so")
+
+	plainNode := axMustNode(c, screen.AccessibilityNodeFor(plain))
+	c.NotNil(plainNode.Text)
+	if plainNode.Text != nil {
+		c.False(plainNode.Text.Multiline,
+			"a single-line field that does not wrap holds the one line, however wide it is")
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -814,8 +873,7 @@ func TestWellAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(well)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(well))
 	c.Equal(role.ColorWell, node.Role)
 	c.Equal("Fill", node.Name, "the label before it names it")
 	c.Equal(red.String(), node.Value, "its value is the color it is holding")
@@ -850,26 +908,28 @@ func TestCompositeEditorAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	c.True(tree != nil)
-	colorNode := screen.AccessibilityNodeFor(colorEditor)
-	c.True(colorNode != nil)
+	c.NotNil(tree)
+	colorNode := axMustNode(c, screen.AccessibilityNodeFor(colorEditor))
 	c.Equal(role.Group, colorNode.Role)
-	gradientNode := screen.AccessibilityNodeFor(gradientEditor)
-	c.True(gradientNode != nil)
+	gradientNode := axMustNode(c, screen.AccessibilityNodeFor(gradientEditor))
 	c.Equal(role.Group, gradientNode.Role)
-	fontNode := screen.AccessibilityNodeFor(fontPanel)
-	c.True(fontNode != nil)
+	fontNode := axMustNode(c, screen.AccessibilityNodeFor(fontPanel))
 	c.Equal(role.Group, fontNode.Role)
 
 	// The color editor pairs a label with both a slider and a field, and the field's neighbor is the slider rather than
 	// the label, so only an explicit association can name it.
-	redSlider := axNamedWithRole(tree, "Red", role.Slider)
-	c.True(redSlider != nil, "the red slider should have been named by the label beside it")
-	if redSlider != nil {
-		c.Equal(1, len(redSlider.LabeledBy))
-	}
-	c.True(axNamed(tree, "Alpha") != nil)
-	c.True(axNamed(tree, "Saturation") != nil)
+	redSlider := axMustNode(c, axNamedWithRole(tree, "Red", role.Slider),
+		"the red slider should have been named by the label beside it")
+	c.Equal(1, len(redSlider.LabeledBy))
+	// The role has to be named along with the name. The label the color editor puts beside each pair carries that very
+	// text, and a search by name alone stops at the label, which says nothing at all about whether the two controls
+	// beside it were named.
+	c.True(axNamedWithRole(tree, "Alpha", role.Slider) != nil, "the alpha slider should have been named")
+	c.True(axNamedWithRole(tree, "Alpha", role.TextField) != nil,
+		"the alpha field can only be named by the association the color editor sets up for it")
+	c.True(axNamedWithRole(tree, "Saturation", role.Slider) != nil, "the saturation slider should have been named")
+	c.True(axNamedWithRole(tree, "Saturation", role.TextField) != nil,
+		"the saturation field can only be named by the association the color editor sets up for it")
 
 	// The gradient editor's icon buttons have no text at all, so they name themselves.
 	c.True(axNamed(tree, "Add Stop") != nil)

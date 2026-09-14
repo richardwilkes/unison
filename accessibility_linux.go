@@ -12,6 +12,7 @@ package unison
 import (
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -36,8 +37,12 @@ import (
 // already exists, and nothing whatsoever when there is no session bus. The accessibility bus socket, the goroutines
 // that serve it and every object on it exist only while support is enabled.
 //
-// Everything here runs on the UI thread except the action callback and the report that the accessibility bus connection
-// has died, both of which arrive on that connection's own goroutines and hand their work straight to the UI thread.
+// Everything here runs on the UI thread except four things, each of which hands whatever it has to do straight to the
+// UI thread with InvokeTask and touches none of the linuxA11y* globals itself: the action callback and the report that
+// the accessibility bus connection has died, which arrive on that connection's own goroutines; the atspi.WatchEnabled
+// callback, which arrives on one of the session connection's goroutines; the goroutine linuxStartA11y makes to join the
+// accessibility bus, since the join is three blocking round trips; and the goroutine linuxA11yRejoin makes to ask the
+// desktop, over the session bus, whether it still wants to be served.
 
 // unisonModulePath is this module's import path, which is how the version to report to an assistive technology is found
 // among the modules the running binary was built from.
@@ -50,6 +55,13 @@ const unknownToolkitVersion = "unknown"
 // atspiBusAddressLimit bounds how much of the X11 root window's AT_SPI_BUS property is read, in 4-byte units. A bus
 // address is a socket path and a guid, so four kilobytes is far more than one can be.
 const atspiBusAddressLimit = 1024
+
+// linuxA11yRejoinGrace is how long the connection to the accessibility bus has to have been up for its loss to count as
+// a fresh one, which may be recovered from however often it happens. A bus that accepts a connection and immediately
+// drops it does so at once, so anything that dies this soon after being installed is that bus rather than one which
+// really went away, and gets the single rebuild linuxA11yRejoinAttempted allows and no more. It is a variable only so
+// that the tests can lengthen it; nothing changes it at runtime.
+var linuxA11yRejoinGrace = 5 * time.Second
 
 var (
 	// linuxA11y is the AT-SPI2 server, which exists only while an assistive technology is being served. UI thread only.
@@ -70,9 +82,15 @@ var (
 	linuxA11yJoining bool
 	// linuxA11yRejoinAttempted records that the accessibility bus connection has already been lost once and rebuilt
 	// without the desktop having said anything in between, so that a bus which accepts a connection and immediately
-	// drops it is dialed once rather than forever. It is cleared whenever the desktop reports the status itself, since
-	// that is the only evidence that the situation has actually changed. UI thread only.
+	// drops it is dialed once rather than forever. It is cleared whenever the desktop reports the status itself, and
+	// whenever the connection that died had been up for longer than linuxA11yRejoinGrace, since neither of those is the
+	// bus the guard is aimed at. UI thread only.
 	linuxA11yRejoinAttempted bool
+	// linuxA11yInstalledAt is when the adapter in linuxA11y was installed, which is what says how long a connection had
+	// been up for when it dies. It deliberately outlives the adapter it describes: linuxA11yRejoin is reached only
+	// after linuxStopA11y has thrown that adapter away, and what it has to know is how the connection that just ended
+	// behaved. UI thread only.
+	linuxA11yInstalledAt time.Time
 )
 
 // linuxA11yStartMode is what the environment and the startup options have decided about accessibility support before
@@ -205,6 +223,17 @@ func linuxFinishStartA11y(attempt uint64, adapter *atspi.Adapter, err error) {
 	if current {
 		linuxA11yJoining = false
 	}
+	if current && err == nil && adapter != nil {
+		// The connection may have died while the join was still in flight, which atspi.Start reports through
+		// Config.Lost rather than by returning an error, from the moment it decides to hand the adapter back — before
+		// this has been queued, let alone run. linuxA11yConnectionLost then rejects that report as belonging to no
+		// current attempt, since there is nothing for it to name until the install below, and Lost is called at most
+		// once, so an adapter that is not asked here would sit in linuxA11y for the rest of the process: everything
+		// published on it would be silently dropped, linuxStartA11y would refuse to build a replacement, and nothing
+		// would ever report the loss again. Asking it makes such a join a failed one, which the watch and
+		// linuxA11yRejoin can try again after.
+		err = adapter.Err()
+	}
 	if adapter == nil || err != nil || !current || linuxA11y != nil || linuxA11yMode() == linuxA11yRefused {
 		if adapter != nil {
 			adapter.Stop()
@@ -223,10 +252,12 @@ func linuxFinishStartA11y(attempt uint64, adapter *atspi.Adapter, err error) {
 	}
 	linuxA11y = adapter
 	linuxA11yCurrentAttempt = attempt
+	linuxA11yInstalledAt = time.Now()
 	if !activateAccessibility() {
 		// Refused after all, which linuxA11yMode above should have caught; leave nothing behind.
 		linuxA11y = nil
 		linuxA11yCurrentAttempt = 0
+		linuxA11yInstalledAt = time.Time{}
 		adapter.Stop()
 		return
 	}
@@ -294,17 +325,26 @@ func linuxA11yConnectionLost(attempt uint64, err error) {
 // Snapshot building went with the adapter, since linuxStopA11y turns it off. That is the right answer when the desktop
 // decides, but not when the environment asked for support whatever the desktop reports: such an application builds
 // snapshots whether or not there is a bus to publish them on, so they are turned straight back on here. It has to
-// happen before the one-rebuild guard rather than only in linuxFinishStartA11y, because nothing clears
-// linuxA11yRejoinAttempted on that path — the forced mode never creates the watch that reports the desktop's own
-// answer, and clearing it is what an answer from the desktop is for — so a second loss would otherwise leave the
-// application with snapshots off for the rest of its life.
+// happen before the rebuild guard rather than only in linuxFinishStartA11y, since a loss the guard stops short of
+// rebuilding from never reaches that function at all, and would otherwise leave such an application with snapshots off
+// for the rest of its life.
 //
-// Only one rebuild is attempted for each thing the desktop says, so a bus that accepts a connection and immediately
-// drops it costs one dial rather than an endless succession of them.
+// One rebuild is attempted for each thing the desktop says and for each connection that lasted longer than
+// linuxA11yRejoinGrace, so a bus that accepts a connection and immediately drops it costs one dial rather than an
+// endless succession of them, while an accessibility bus restarted under an application it had been serving is
+// recovered from every time it happens. Telling the two apart by how long the connection lasted is what there is to go
+// on: nothing reports either, and a restart behind a launcher that keeps org.a11y.Bus is exactly the case this
+// machinery exists for.
 func linuxA11yRejoin() {
 	mode := linuxA11yMode()
 	if mode == linuxA11yForced {
 		activateAccessibility()
+	}
+	if !linuxA11yInstalledAt.IsZero() && time.Since(linuxA11yInstalledAt) >= linuxA11yRejoinGrace {
+		// The connection that has just died was a working one, served over for longer than a bus that drops what it
+		// accepts would ever have allowed, so its loss is a fresh one rather than the second half of the case the guard
+		// below is aimed at, and whatever an earlier loss left set is history.
+		linuxA11yRejoinAttempted = false
 	}
 	if linuxA11yRejoinAttempted {
 		return
@@ -340,6 +380,7 @@ func linuxA11yRejoin() {
 // connection.
 func linuxA11yTerminate() {
 	linuxA11yRejoinAttempted = false
+	linuxA11yInstalledAt = time.Time{}
 	if linuxA11yCancelWatch != nil {
 		linuxA11yCancelWatch()
 		linuxA11yCancelWatch = nil
@@ -370,13 +411,12 @@ func (w *Window) nativeAccessibilityPublish(tree *accessibility.Tree, events []a
 	linuxA11y.Publish(atspi.WindowKey(w.wnd.id), tree, events, w.linuxA11yGeometry())
 }
 
-// nativeAccessibilityGeometryChanged tells the adapter that the window has moved, resized or changed backing scale, so
-// that the screen coordinates it reports are recomputed.
-func (w *Window) nativeAccessibilityGeometryChanged() {
-	if linuxA11y == nil || w.wnd.id == 0 {
-		return
-	}
-	linuxA11y.SetGeometry(atspi.WindowKey(w.wnd.id), w.linuxA11yGeometry())
+// nativeAccessibilityGeometryChanged is a no-op on Linux: nothing on this platform calls the wrapper it sits behind. A
+// window that has moved, been resized or changed backing scale is described to the adapter by
+// x11RefreshAccessibilityGeometry instead, which the X11 event loop calls from the ConfigureNotify it is already
+// handling and hands the new origin it already has, precisely so that an interactive move or resize does not cost an
+// assistive technology the two X round trips Window.ContentRect would pay on every one of the events it produces.
+func (*Window) nativeAccessibilityGeometryChanged() {
 }
 
 // nativeAccessibilityShutdown releases everything the adapter holds for this window. It is reached from Window.destroy

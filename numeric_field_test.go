@@ -65,14 +65,20 @@ func TestNumericFieldAccessibilitySetValueTakesANumber(t *testing.T) {
 	c.Equal("42", f.Text(), "a request carrying only a number must set the field, not blank it")
 	c.Equal(42, f.Value())
 
-	// Text is still what is used whenever it was supplied, since it carries whatever formatting the field presents its
-	// values in. macOS sends both, with the text simply the number written out.
+	// A text that says something the number does not is the formatting the field presents its values in, so the text is
+	// what is taken. The two are deliberately at odds here, since this field formats its values as bare digits and the
+	// pair macOS and Windows actually send — a number and that same number written out — leaves the two rules
+	// indistinguishable: either one would put "17" in the field. Were the number preferred here, the field would end up
+	// holding 42. The other half of the rule, that a text which is only the number written out is passed over in favor
+	// of the number, needs a field that formats its values as something other than bare digits to be visible at all;
+	// TestNumericFieldAccessibilitySetValuePrefersTheNumber uses a percentage for exactly that.
 	c.True(f.PerformAccessibilityAction(accessibility.ActionRequest{
 		Action: accessibility.SetValue,
 		Value:  "17",
-		Number: 17,
+		Number: 42,
 	}))
-	c.Equal("17", f.Text())
+	c.Equal("17", f.Text(), "the text said something the number did not, so the text is what was meant")
+	c.Equal(17, f.Value())
 
 	// A number outside the range is brought into it, exactly as typing one out of range would be.
 	c.True(f.PerformAccessibilityAction(accessibility.ActionRequest{Action: accessibility.SetValue, Number: 1000}))

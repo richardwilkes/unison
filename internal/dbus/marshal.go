@@ -10,6 +10,7 @@
 package dbus
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/binary"
 	"fmt"
@@ -680,12 +681,30 @@ func asSignature(v any) (Signature, error) {
 	return s, nil
 }
 
+// validateStringContent returns an error if s is not something a D-Bus string may hold. The string is abbreviated in
+// the error message, exactly as [ObjectPath.Validate] abbreviates a path and for the same reason: this is called on
+// wire data of up to [MaxArraySize] bytes, both for the values in a body and for the string-valued header fields, and
+// %q expands every invalid byte to four characters, so naming the whole of a 64 MiB string amplified one message into
+// a quarter of a gigabyte of error text that a connection then holds for as long as it lasts.
 func validateStringContent(s string) error {
 	if !utf8.ValidString(s) {
-		return fmt.Errorf("dbus: string %q is not valid UTF-8", s)
+		return fmt.Errorf("dbus: string %q is not valid UTF-8", abbreviate(s))
 	}
 	if strings.IndexByte(s, 0) >= 0 {
-		return fmt.Errorf("dbus: string %q contains a NUL", s)
+		return fmt.Errorf("dbus: string %q contains a NUL", abbreviate(s))
+	}
+	return nil
+}
+
+// validateStringBytes is [validateStringContent] for bytes that have not been copied into a string yet, which is what
+// the decoder has: a string it read off the wire is checked before it is copied, so one that a peer has no business
+// sending costs nothing but the check.
+func validateStringBytes(b []byte) error {
+	if !utf8.Valid(b) {
+		return fmt.Errorf("dbus: string %q is not valid UTF-8", abbreviateBytes(b))
+	}
+	if bytes.IndexByte(b, 0) >= 0 {
+		return fmt.Errorf("dbus: string %q contains a NUL", abbreviateBytes(b))
 	}
 	return nil
 }

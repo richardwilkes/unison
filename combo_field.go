@@ -28,6 +28,14 @@ import (
 // value (`nil` for "not set"). Clearing the text yields `nil` when a `nil` option was provided, an empty string when an
 // empty option was provided, and is otherwise treated as invalid and does not invoke the callback. The field's minimum
 // width is sized to fit the widest option.
+//
+// The returned field is described to assistive technologies as the whole combo box, which the field and its dropdown
+// button amount to, and both Accessibility.Callback and Accessibility.ActionCallback of the returned field belong to
+// that: the first reports whether the choices are showing and offers the Expand and Collapse that show and hide them,
+// and the second carries them out. An application that assigns either of them replaces that reporting outright, leaving
+// the field described as something that does not expand — or as something that does, while refusing to. There is no
+// other hook, since what comes back is a bare *Field, so an application that needs one of those callbacks has to call
+// on to the one it is replacing.
 func NewComboField(options []*string, initial *string, changedCallback func(value *string)) *Field {
 	notSetDisplay := i18n.Text("«not set»")
 	emptyDisplay := i18n.Text("«empty»")
@@ -206,10 +214,24 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 		}
 		switch req.Action {
 		case accessibility.Expand:
-			// Asking for what is already there changes nothing: clicking again would tear the open menu down and build
-			// it back up, which an assistive technology that was told the field is expanded would not expect.
+			// The click is queued rather than performed here. Expand is a navigation action, carried out inline on
+			// macOS from within the callback the assistive technology is waiting on, and clicking the dropdown pops a
+			// menu up — a native menu runs a modal tracking session that does not return until the person has
+			// dismissed it, so answering only once the click returned would hold the assistive technology for as long
+			// as the choices were showing. That the choices are showing is reported by the next description of the
+			// field instead.
+			//
+			// Asking for what is already there changes nothing, both now and when the queued click comes to run:
+			// clicking again would tear the open menu down and build it back up, which an assistive technology that
+			// was told the field is expanded would not expect. A field that has been taken out of its window in the
+			// meantime has nowhere to show a menu, so nothing is done for it either.
 			if !axMenuIsOpen(openMenu) {
-				b.ClickCallback()
+				InvokeTask(func() {
+					if field.Window() == nil || axMenuIsOpen(openMenu) {
+						return
+					}
+					b.ClickCallback()
+				})
 			}
 			return true
 		case accessibility.Collapse:

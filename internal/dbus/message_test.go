@@ -16,6 +16,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 )
@@ -471,6 +472,77 @@ func malformedBodySignal(t *testing.T, serial uint32, bigEndian bool) []byte {
 // malformedMember is the member name of the signals that [malformedBodySignal] builds.
 const malformedMember = "Malformed"
 
+// interfacelessSignal encodes a signal that carries PATH and MEMBER but no INTERFACE, bypassing the checks that
+// [Message.Encode] applies. Every byte of it is correctly framed, yet no signal may be missing its interface, so it is
+// the cheapest thing a peer can send that is wrong about itself and nothing else; see [ErrMessageContent].
+func interfacelessSignal(t *testing.T, serial uint32) []byte {
+	t.Helper()
+	c := check.New(t)
+	var e encoder
+	e.putByte('l')
+	e.putByte(byte(TypeSignal))
+	e.putByte(0)
+	e.putByte(protocolVersion)
+	e.putUint32(0)
+	e.putUint32(serial)
+	c.NoError(e.value(headerFieldsSignature, []any{
+		Struct{byte(fieldPath), Variant{Sig: "o", Value: testPath}},
+		Struct{byte(fieldMember), Variant{Sig: "s", Value: paddedMember}},
+		Struct{byte(fieldSender), Variant{Sig: "s", Value: testDestination}},
+	}))
+	e.align(8)
+	return e.buf
+}
+
+func TestDecodeSeparatesAMessageFaultFromAStreamFault(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	_, hello := helloMessage()
+	// A message that arrived whole but is not one the specification permits leaves the reader exactly where the next
+	// message starts, so reading can carry on. Treating it as a fault in the stream, which is what any error from
+	// Decode used to amount to, cost every pending call and every subscription over a single message.
+	for _, one := range []struct {
+		name string
+		text string
+		data []byte
+	}{
+		{
+			name: "signal with no interface",
+			text: "a signal requires a path, an interface and a member",
+			data: interfacelessSignal(t, 1),
+		},
+		{
+			name: "repeated header field",
+			text: "appears more than once",
+			data: signalWithFields(t, 1, false, Struct{byte(fieldMember), Variant{Sig: "s", Value: paddedMember}}),
+		},
+	} {
+		stream := bytes.NewReader(concat(one.data, hello))
+		_, err := Decode(stream)
+		c.HasError(err, one.name)
+		c.True(errors.Is(err, ErrMessageContent), "%s: %v", one.name, err)
+		c.Contains(err.Error(), one.text, one.name)
+		m, err := Decode(stream)
+		c.NoError(err, one.name)
+		c.Equal("Hello", m.Member, one.name) // The next message was found exactly where it should have been
+	}
+	// A fault in the framing is not confined to one message: the length that says where the next message starts is
+	// part of what could not be believed, so there is nothing left to resynchronize to.
+	for _, one := range []struct {
+		name string
+		data []byte
+	}{
+		{name: "end of stream", data: nil},
+		{name: "endianness flag", data: []byte("Xnot a message at all, whatever else it may be")},
+		{name: "truncated", data: hello[:100]},
+		{name: "protocol version", data: append([]byte{'l', byte(TypeSignal), 0, 2}, hello[4:]...)},
+	} {
+		_, err := Decode(bytes.NewReader(one.data))
+		c.HasError(err, one.name)
+		c.False(errors.Is(err, ErrMessageContent), "%s: %v", one.name, err)
+	}
+}
+
 func TestDecodeMalformedBodyIsAPerMessageError(t *testing.T) {
 	t.Parallel()
 	// A body that does not match the signature its message declares is a fault in that one message. Converting a
@@ -684,6 +756,40 @@ func TestNewErrorFallsBackToFailed(t *testing.T) {
 		c.Equal("explanation", m.AsError().Message, name)
 	}
 	c.Equal(NotSupported, NewError(call, NotSupported, "").ErrorName)
+}
+
+func TestNewErrorSanitizesItsMessage(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	call := NewMethodCall(busName, "/a", busName, "M")
+	call.Serial = 41
+	call.Sender = testSender
+	// The text comes straight from whoever answered the call, and a D-Bus string holds neither invalid UTF-8 nor a
+	// NUL. Dropping the body when it would not marshal left the peer with an error name and nothing else, which is
+	// precisely when the human-readable part is worth the most.
+	m := NewError(call, Failed, "bad \xff text\x00 here")
+	c.Equal(Signature("s"), m.Signature)
+	m.Serial = 42
+	_, err := m.Encode()
+	c.NoError(err)
+	message := m.AsError().Message
+	c.True(utf8.ValidString(message), "%q is not valid UTF-8", message)
+	c.False(strings.Contains(message, "\x00"), "%q still holds a NUL", message)
+	c.Contains(message, "bad ")
+	c.Contains(message, " text here")
+	// Nothing else bounds what a handler passes, since publicErrorMessage only cuts at the first newline, so the text
+	// is truncated as well. A three byte rune straddles the cut here, and half of one would be exactly the invalid
+	// UTF-8 that was just repaired, so what is left of it is dropped.
+	long := NewError(call, Failed, strings.Repeat("€", maxErrorMessageLength))
+	message = long.AsError().Message
+	c.True(len(message) <= maxErrorMessageLength, "%d bytes survived a limit of %d", len(message),
+		maxErrorMessageLength)
+	c.True(len(message) > maxErrorMessageLength-3, "%d bytes is less than the limit of %d is worth", len(message),
+		maxErrorMessageLength)
+	c.True(utf8.ValidString(message), "the truncated message is not valid UTF-8")
+	// Text that is nothing but what a D-Bus string cannot hold still produces a body, since a reply that says nothing
+	// at all is what this exists to avoid.
+	c.Equal(Signature("s"), NewError(call, Failed, "\x00\x00").Signature)
 }
 
 func TestNewReply(t *testing.T) {

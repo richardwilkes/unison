@@ -11,7 +11,6 @@ package unison_test
 
 import (
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -108,8 +107,7 @@ func TestListAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(list)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(list))
 	c.Equal(role.List, node.Role)
 	c.True(node.Multiselectable)
 	c.Equal(rowCount, node.RowCount)
@@ -117,8 +115,7 @@ func TestListAccessibility(t *testing.T) {
 	rows := axChildNodes(tree, node)
 	c.True(len(rows) < rowCount/2,
 		"only the visible rows and the selection should have been described, got %d", len(rows))
-	first := axNodeWithRowIndex(tree, node, 0)
-	c.True(first != nil)
+	first := axMustNode(c, axNodeWithRowIndex(tree, node, 0))
 	c.Equal(role.ListItem, first.Role)
 	c.Equal("Row 0", first.Name, "a row is named by the text of the cell that draws it")
 	c.True(first.Selectable)
@@ -130,8 +127,8 @@ func TestListAccessibility(t *testing.T) {
 	c.True(first.Actions.Has(accessibility.ScrollIntoView))
 	c.True(first.Bounds.Height > 0)
 
-	last := axNodeWithRowIndex(tree, node, rowCount-1)
-	c.True(last != nil, "a selected row is described however far out of sight it is")
+	last := axMustNode(c, axNodeWithRowIndex(tree, node, rowCount-1),
+		"a selected row is described however far out of sight it is")
 	c.Equal("Row 39", last.Name)
 	c.True(last.Selected)
 	c.True(last.Offscreen, "the last row is far below the view port")
@@ -146,12 +143,11 @@ func TestListAccessibility(t *testing.T) {
 	}))
 	tree = screen.AccessibilityTree(wnd)
 	node = screen.AccessibilityNodeFor(list)
-	last = axNodeWithRowIndex(tree, node, rowCount-1)
-	c.True(last != nil)
+	last = axMustNode(c, axNodeWithRowIndex(tree, node, rowCount-1))
 	c.Equal(rowCount-1, last.RowIndex)
 	c.False(last.Offscreen, "the last row should have been scrolled into view")
-	first = axNodeWithRowIndex(tree, node, 0)
-	c.True(first != nil, "the first row is still selected, so it is still described")
+	first = axMustNode(c, axNodeWithRowIndex(tree, node, 0),
+		"the first row is still selected, so it is still described")
 	c.True(first.Offscreen, "the first row has been scrolled out of view")
 
 	// Back to the top, where the selection can be moved between two rows that both stay on the screen — and therefore
@@ -162,10 +158,8 @@ func TestListAccessibility(t *testing.T) {
 	}))
 	tree = screen.AccessibilityTree(wnd)
 	node = screen.AccessibilityNodeFor(list)
-	firstRow := axNodeWithRowIndex(tree, node, 0)
-	secondRow := axNodeWithRowIndex(tree, node, 1)
-	c.True(firstRow != nil)
-	c.True(secondRow != nil)
+	firstRow := axMustNode(c, axNodeWithRowIndex(tree, node, 0))
+	secondRow := axMustNode(c, axNodeWithRowIndex(tree, node, 1))
 
 	// Selecting one row replaces the selection; adding and removing adjust it.
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -195,8 +189,8 @@ func TestListAccessibility(t *testing.T) {
 		}
 	}
 	c.True(visibleRows > 0 && visibleRows < rowCount/4, "a handful of rows fit in the view port, got %d", visibleRows)
-	beyond := axNodeWithRowIndex(tree, node, visibleRows)
-	c.True(beyond != nil, "the row just past the view port must be described for an assistive technology to reach")
+	beyond := axMustNode(c, axNodeWithRowIndex(tree, node, visibleRows),
+		"the row just past the view port must be described for an assistive technology to reach")
 	c.True(beyond.Offscreen, "the row just past the view port cannot be seen yet")
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   beyond.ID,
@@ -204,8 +198,7 @@ func TestListAccessibility(t *testing.T) {
 	}))
 	tree = screen.AccessibilityTree(wnd)
 	node = screen.AccessibilityNodeFor(list)
-	beyond = axNodeWithRowIndex(tree, node, visibleRows)
-	c.True(beyond != nil)
+	beyond = axMustNode(c, axNodeWithRowIndex(tree, node, visibleRows))
 	c.True(beyond.Selected, "the row should have been selected")
 	c.False(beyond.Offscreen, "selecting the row should have scrolled it into view")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
@@ -235,8 +228,7 @@ func TestListAccessibilityWithVaryingRowHeights(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(list)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(list))
 	c.Equal("Choices", node.Name, "the label before it names it, minus the colon")
 	c.Equal(3, node.RowCount)
 	rows := axChildNodes(tree, node)
@@ -294,8 +286,7 @@ func TestTableAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(table)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(role.Table, node.Role, "a table whose rows cannot have children is a table rather than a tree")
 	c.True(node.Multiselectable)
 	c.Equal(3, node.RowCount)
@@ -403,11 +394,13 @@ func TestTableAccessibilityRowsSurviveReorder(t *testing.T) {
 	node := screen.AccessibilityNodeFor(table)
 	before := axTableRows(tree, node)
 	c.Equal(3, len(before))
-	firstID := before["r0"].ID
-	lastID := before["r2"].ID
+	firstBefore := axMustNode(c, before["r0"])
+	lastBefore := axMustNode(c, before["r2"])
+	firstID := firstBefore.ID
+	lastID := lastBefore.ID
 	c.True(firstID != 0)
-	c.Equal(0, before["r0"].RowIndex)
-	c.Equal(2, before["r2"].RowIndex)
+	c.Equal(0, firstBefore.RowIndex)
+	c.Equal(2, lastBefore.RowIndex)
 
 	// Handing the model its rows in the opposite order and syncing is what sorting or filtering a table amounts to.
 	screen.Do(func() { table.SetRootRows([]*tableTestRow{rows[2], rows[1], rows[0]}) })
@@ -415,10 +408,12 @@ func TestTableAccessibilityRowsSurviveReorder(t *testing.T) {
 	node = screen.AccessibilityNodeFor(table)
 	after := axTableRows(tree, node)
 	c.Equal(3, len(after))
-	c.Equal(firstID, after["r0"].ID, "a row keeps its node when the rows around it move")
-	c.Equal(lastID, after["r2"].ID)
-	c.Equal(2, after["r0"].RowIndex, "the row that was first is now last")
-	c.Equal(0, after["r2"].RowIndex)
+	firstAfter := axMustNode(c, after["r0"])
+	lastAfter := axMustNode(c, after["r2"])
+	c.Equal(firstID, firstAfter.ID, "a row keeps its node when the rows around it move")
+	c.Equal(lastID, lastAfter.ID)
+	c.Equal(2, firstAfter.RowIndex, "the row that was first is now last")
+	c.Equal(0, lastAfter.RowIndex)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -439,12 +434,10 @@ func TestTableAccessibilityHierarchy(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(table)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(role.Tree, node.Role, "a table whose rows can have children is a tree")
 	c.Equal(1, node.RowCount, "a closed row shows none of its children")
-	parentNode := axTableRows(tree, node)["parent"]
-	c.True(parentNode != nil)
+	parentNode := axMustNode(c, axTableRows(tree, node)["parent"])
 	c.True(parentNode.Expandable)
 	c.False(parentNode.Expanded)
 	c.True(parentNode.Actions.Has(accessibility.Expand))
@@ -466,7 +459,7 @@ func TestTableAccessibilityHierarchy(t *testing.T) {
 			Action: accessibility.Press,
 		}))
 		tree = screen.AccessibilityTree(wnd)
-		node = screen.AccessibilityNodeFor(table)
+		node = axMustNode(c, screen.AccessibilityNodeFor(table))
 		c.Equal(3, node.RowCount, "pressing the disclosure triangle should have opened the row")
 		disclosure = tree.Node(disclosure.ID)
 		c.True(disclosure != nil, "the disclosure triangle keeps its id")
@@ -478,9 +471,9 @@ func TestTableAccessibilityHierarchy(t *testing.T) {
 			}))
 		}
 		tree = screen.AccessibilityTree(wnd)
-		node = screen.AccessibilityNodeFor(table)
+		node = axMustNode(c, screen.AccessibilityNodeFor(table))
 		c.Equal(1, node.RowCount, "pressing it again should have closed the row")
-		parentNode = axTableRows(tree, node)["parent"]
+		parentNode = axMustNode(c, axTableRows(tree, node)["parent"])
 	}
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -488,24 +481,25 @@ func TestTableAccessibilityHierarchy(t *testing.T) {
 		Action: accessibility.Expand,
 	}))
 	tree = screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(table)
+	node = axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(3, node.RowCount, "expanding the row should have brought its children into the table")
 	rowNodes := axTableRows(tree, node)
 	c.Equal(3, len(rowNodes))
-	c.True(rowNodes["parent"].Expanded)
-	c.Equal(1, rowNodes["parent"].Level)
-	c.True(rowNodes["child0"] != nil)
-	c.Equal(2, rowNodes["child0"].Level, "a child row is one level deeper than its parent")
-	c.Equal(1, rowNodes["child0"].RowIndex)
+	parentRow := axMustNode(c, rowNodes["parent"])
+	c.True(parentRow.Expanded)
+	c.Equal(1, parentRow.Level)
+	childRow := axMustNode(c, rowNodes["child0"])
+	c.Equal(2, childRow.Level, "a child row is one level deeper than its parent")
+	c.Equal(1, childRow.RowIndex)
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   parentNode.ID,
 		Action: accessibility.Collapse,
 	}))
 	tree = screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(table)
+	node = axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(1, node.RowCount, "collapsing the row should have taken its children away again")
-	c.False(axTableRows(tree, node)["parent"].Expanded)
+	c.False(axMustNode(c, axTableRows(tree, node)["parent"]).Expanded)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -532,11 +526,9 @@ func TestTableAccessibilityHierarchicalFilterRefusesOpenStateChanges(t *testing.
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(table)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(2, node.RowCount, "the filter shows the row that passed and the container holding it")
-	parentNode := axTableRows(tree, node)["parent"]
-	c.True(parentNode != nil)
+	parentNode := axMustNode(c, axTableRows(tree, node)["parent"])
 	c.True(parentNode.Expandable)
 	c.True(parentNode.Expanded, "a hierarchical filter shows every container it kept as open")
 	c.False(parentNode.Actions.Has(accessibility.Expand), "the open state cannot be changed behind the filter")
@@ -558,7 +550,7 @@ func TestTableAccessibilityHierarchicalFilterRefusesOpenStateChanges(t *testing.
 	var open bool
 	screen.Do(func() { open = parent.IsOpen() })
 	c.False(open, "the row's own open state must have been left alone")
-	node = screen.AccessibilityNodeFor(table)
+	node = axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(2, node.RowCount, "the rows the filter shows must not have changed")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
@@ -588,8 +580,7 @@ func TestTableAccessibilityWithNoColumns(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(table)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(1, node.RowCount)
 	c.Equal(0, node.ColumnCount)
 	rows := axChildNodes(tree, node)
@@ -626,8 +617,7 @@ func TestTableAccessibilityBoundsSelectionAndFocus(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(table)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
 	c.Equal(rowCount, node.RowCount)
 	described := len(axChildNodes(tree, node))
 	c.True(described > 0 && described < 40,
@@ -642,8 +632,8 @@ func TestTableAccessibilityBoundsSelectionAndFocus(t *testing.T) {
 
 	// Selecting the first row past the view port, as an assistive technology stepping down through the rows does,
 	// scrolls it into view so that the rows after it come within reach.
-	beyond := axNodeWithRowIndex(tree, node, visible)
-	c.True(beyond != nil, "the row just past the view port must be described")
+	beyond := axMustNode(c, axNodeWithRowIndex(tree, node, visible),
+		"the row just past the view port must be described")
 	c.True(beyond.Offscreen)
 	screen.AccessibilityEvents(wnd) // drain, so that only what the request produces is seen below
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -661,8 +651,7 @@ func TestTableAccessibilityBoundsSelectionAndFocus(t *testing.T) {
 	c.True(selectedNow, "the selection change should have been published as soon as the request was carried out")
 	tree = screen.AccessibilityTree(wnd)
 	node = screen.AccessibilityNodeFor(table)
-	beyond = axNodeWithRowIndex(tree, node, visible)
-	c.True(beyond != nil)
+	beyond = axMustNode(c, axNodeWithRowIndex(tree, node, visible))
 	c.True(beyond.Selected)
 	c.False(beyond.Offscreen, "selecting the row should have scrolled it into view")
 	visible = len(axChildNodes(tree, node))
@@ -700,11 +689,10 @@ func TestTableAccessibilityFocusedCell(t *testing.T) {
 	screen.Do(func() { scroll.SetPosition(0, 0) })
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(e.table)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(e.table))
 	rows := axTableRows(tree, node)
-	last := rows["r"+strconv.Itoa(rowCount-1)]
-	c.True(last != nil, "the row holding the focused cell must be described")
+	last := axMustNode(c, rows["r"+strconv.Itoa(rowCount-1)],
+		"the row holding the focused cell must be described")
 	c.True(last.Offscreen, "that row has been scrolled out of view")
 	c.True(rows["r0"] != nil, "the rows that can be seen are described too")
 
@@ -751,8 +739,7 @@ func TestTableHeaderAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(header)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(header))
 	c.Equal(role.TableHeader, node.Role)
 	c.Equal(2, node.ColumnCount)
 
@@ -780,6 +767,9 @@ func TestTableHeaderAccessibility(t *testing.T) {
 	node = screen.AccessibilityNodeFor(header)
 	columns = axChildNodes(tree, node)
 	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
 	c.Equal(accessibility.SortAscending, columns[0].Sort, "pressing the header sorted the table on that column")
 	c.Equal(accessibility.SortNone, columns[1].Sort, "only the primary sort column is reported as sorted")
 
@@ -791,6 +781,9 @@ func TestTableHeaderAccessibility(t *testing.T) {
 	node = screen.AccessibilityNodeFor(header)
 	columns = axChildNodes(tree, node)
 	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
 	c.Equal(accessibility.SortDescending, columns[0].Sort, "pressing it again turned the sort around")
 
 	// A column that is sorted on after the primary one is not reported as sorted: the order the rows visibly follow is
@@ -873,8 +866,7 @@ func TestTableHeaderAccessibilityCustomColumnHeader(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(header)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(header))
 	columns := axChildNodes(tree, node)
 	c.Equal(2, len(columns))
 	if len(columns) != 2 {
@@ -913,6 +905,83 @@ func TestTableHeaderAccessibilityCustomColumnHeader(t *testing.T) {
 	if len(columns) == 2 {
 		c.Equal(accessibility.SortAscending, columns[0].Sort, "pressing the header sorted the table on that column")
 	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axLabelHeaderWithChild is a table column header written the documented way — by embedding a *Label and pointing Self
+// at itself — that also holds a child panel. It is the shape a header that pairs a title with a control of its own
+// takes, and the one that used to have the column's title described twice.
+type axLabelHeaderWithChild struct {
+	*unison.Label
+	sortState unison.SortState
+}
+
+// newAxLabelHeaderWithChild returns a column header built around a label, holding a button beneath it.
+func newAxLabelHeaderWithChild(title string) *axLabelHeaderWithChild {
+	h := &axLabelHeaderWithChild{
+		Label:     unison.NewLabel(),
+		sortState: unison.SortState{Order: -1, Ascending: true, Sortable: true},
+	}
+	h.Self = h
+	h.SetTitle(title)
+	button := unison.NewButton()
+	button.ClickAnimationTime = 0
+	button.SetTitle("Filter")
+	h.AddChild(button)
+	return h
+}
+
+// SortState implements unison.TableColumnHeader.
+func (h *axLabelHeaderWithChild) SortState() unison.SortState { return h.sortState }
+
+// SetSortState implements unison.TableColumnHeader.
+func (h *axLabelHeaderWithChild) SetSortState(state unison.SortState) { h.sortState = state }
+
+// Less implements unison.TableColumnHeader.
+func (h *axLabelHeaderWithChild) Less() func(a, b string) bool { return nil }
+
+// TestTableHeaderAccessibilityLabelHeaderWithChildrenIsOneElement verifies that a column header built around a label is
+// described as the single element the column header node already is, even when it has children. Such a header resolves
+// to static text, which is one element however many panels it is built from, so the snapshot never visits what is
+// beneath it; describing the header's own panel under the column would add a node carrying the column's title a second
+// time — the title heard twice — while reaching none of the content that node was added for.
+func TestTableHeaderAccessibilityLabelHeaderWithChildrenIsOneElement(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var header *unison.TableHeader[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table = axNewTable(flatRows(3)...)
+			header = unison.NewTableHeader[*tableTestRow](table,
+				newAxLabelHeaderWithChild("Named"),
+				unison.NewTableColumnHeader[*tableTestRow]("Value", "", nil))
+			scroller := axScroller(table, geom.NewSize(300, 200))
+			scroller.SetColumnHeader(header)
+			wnd = newHeadlessWindow(t, "label header", geom.NewRect(10, 10, 400, 400), axColumn(scroller))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(header))
+	columns := axChildNodes(tree, node)
+	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
+	c.Equal(role.ColumnHeader, columns[0].Role)
+	c.Equal("Named", columns[0].Name, "the embedded label's text names the column")
+	c.Equal(0, len(axChildNodes(tree, columns[0])),
+		"a header that is described as static text has nothing beneath it worth describing: %v",
+		axNodeNames(axChildNodes(tree, columns[0])))
+	names := 0
+	tree.Walk(func(n *accessibility.Node) bool {
+		if n.Name == "Named" {
+			names++
+		}
+		return true
+	})
+	c.Equal(1, names, "the column's title must be described once rather than on a node of its own as well")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -980,8 +1049,7 @@ func TestDockAccessibility(t *testing.T) {
 	c.True(container != nil)
 
 	tree := screen.AccessibilityTree(wnd)
-	containerNode := screen.AccessibilityNodeFor(container)
-	c.True(containerNode != nil)
+	containerNode := axMustNode(c, screen.AccessibilityNodeFor(container))
 	c.Equal(role.Group, containerNode.Role)
 	c.Equal("First", containerNode.Name, "the group is named after the dockable it is showing")
 	c.False(containerNode.Ignored, "a named group is worth reporting")
@@ -1025,9 +1093,26 @@ func TestDockAccessibility(t *testing.T) {
 	tree = screen.AccessibilityTree(wnd)
 	tabs = axNodesWithRole(tree, role.Tab)
 	c.Equal(2, len(tabs))
-	if len(tabs) == 2 {
-		c.False(tabs[0].Selected)
-		c.True(tabs[1].Selected, "the selection should have moved with the current dockable")
+	if len(tabs) != 2 {
+		return
+	}
+	c.False(tabs[0].Selected)
+	c.True(tabs[1].Selected, "the selection should have moved with the current dockable")
+
+	// Closing is the one thing the button on a tab does, and an assistive technology has nothing else to reach it by,
+	// so pressing that node has to run it.
+	closers := axChildNodes(tree, tabs[0])
+	c.Equal(1, len(closers), "the tab still holds its close button")
+	if len(closers) == 1 {
+		c.Equal("Close", closers[0].Name)
+		c.True(closers[0].Actions.Has(accessibility.Press))
+		c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+			Node:   closers[0].ID,
+			Action: accessibility.Press,
+		}))
+		var closed bool
+		screen.Do(func() { closed = first.closed })
+		c.True(closed, "pressing a tab's close button should have asked its dockable to close")
 	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
@@ -1049,8 +1134,7 @@ func TestMarkdownAccessibility(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(markdown)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(markdown))
 	c.Equal(role.Document, node.Role, "rendered markdown is readable content rather than a set of controls")
 
 	headings := axNodesWithRole(tree, role.Heading)
@@ -1108,8 +1192,9 @@ func TestMarkdownHeadingWithLinkAccessibility(t *testing.T) {
 		return
 	}
 	c.Equal(2, headings[0].Level)
-	c.True(strings.Contains(headings[0].Name, "linked"),
-		"the heading reads as the whole of its text, got %q", headings[0].Name)
+	c.Equal("A linked heading", headings[0].Name,
+		"the heading reads as the whole of its text, with the link's words in their place and no seam where the "+
+			"labels it is built from meet")
 	c.Equal(0, len(headings[1].Children), "a heading of nothing but text is still one element")
 
 	link := axNamed(tree, "linked")
@@ -1382,7 +1467,10 @@ func TestMenuAccessibilityChildrenAreTheItems(t *testing.T) {
 	c.Equal(checkenum.Off, items[2].Checked)
 	c.Equal("More", items[3].Name)
 	c.True(items[3].Expandable)
-	c.True(items[3].Actions.Has(accessibility.Collapse), "an open sub-menu has to be closable again")
+	c.False(items[3].Expanded, "nothing has opened the sub-menu yet")
+	c.True(items[3].Actions.Has(accessibility.Expand))
+	c.True(items[3].Actions.Has(accessibility.Collapse),
+		"an item with a sub-menu offers both, whatever state that sub-menu is in")
 
 	// The sub-menu is a menu like any other, and what is in it is its own items.
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -1408,6 +1496,12 @@ func TestMenuAccessibilityChildrenAreTheItems(t *testing.T) {
 	if len(deeper) == 1 {
 		c.Equal("Deeper", deeper[0].Name)
 	}
+
+	// The item that opened it now says its sub-menu is showing, and still offers the collapse that closes it again,
+	// which is the state the offer actually matters in.
+	openItem := axMustNode(c, tree.Node(items[3].ID), "the item that opened the sub-menu keeps its id")
+	c.True(openItem.Expanded, "an item whose sub-menu is showing says so")
+	c.True(openItem.Actions.Has(accessibility.Collapse), "an open sub-menu has to be closable again")
 
 	// Collapsing the item that opened it takes the sub-menu away again, leaving the menu it belongs to open.
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -1686,14 +1780,11 @@ func TestTooltipAccessibility(t *testing.T) {
 		c.Equal(0, len(tips[0].Children),
 			"the labels the text is drawn with are hidden, so it is not announced a second time")
 	}
-	c.Equal("Write the file out", screen.AccessibilityNodeFor(button).Description,
+	c.Equal("Write the file out", axMustNode(c, screen.AccessibilityNodeFor(button)).Description,
 		"the tooltip is the button's description as well")
-	labelNode := screen.AccessibilityNodeFor(label)
-	c.True(labelNode != nil)
-	if labelNode != nil {
-		c.Equal("Primary tip\nSecondary tip", labelNode.Description,
-			"the secondary text is part of what the tooltip says, so it is part of the description")
-	}
+	labelNode := axMustNode(c, screen.AccessibilityNodeFor(label))
+	c.Equal("Primary tip\nSecondary tip", labelNode.Description,
+		"the secondary text is part of what the tooltip says, so it is part of the description")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -1727,8 +1818,7 @@ func TestTableAccessibilityCellContent(t *testing.T) {
 	c.NotNil(wnd)
 
 	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(table)
-	c.True(node != nil)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
 	rows := axChildNodes(tree, node)
 	c.Equal(1, len(rows))
 	if len(rows) != 1 {
@@ -1807,6 +1897,128 @@ func TestTableAccessibilityCellContent(t *testing.T) {
 	c.Equal(1, clicks, "the press should have reached the button")
 	tree = screen.AccessibilityTree(wnd)
 	c.True(tree.Node(buttonNode.ID) != nil, "the button keeps its node id from one description to the next")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableFlatFilterIgnoresTheOpenAndCloseKeys verifies that the left and right arrow keys leave the rows' open states
+// alone while a flat filter is applied. Such a filter shows nothing beneath any row, so no disclosure triangle is drawn
+// and there is nothing for opening or closing a row to show; the keys used to change those states regardless, which
+// only became visible once the filter was lifted, while the same request from an assistive technology was refused and
+// ApplyFilter's own promise is that no modifications to the row data are performed while one is in force.
+func TestTableFlatFilterIgnoresTheOpenAndCloseKeys(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var closedRow, openRow *tableTestRow
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			closedRow = newTableTestRow("closed")
+			closedRow.SetChildren([]*tableTestRow{newTableTestRow("closedChild")})
+			openRow = newTableTestRow("open")
+			openRow.SetChildren([]*tableTestRow{newTableTestRow("openChild")})
+			openRow.SetOpen(true)
+			table = axNewTable(closedRow, openRow)
+			// The filter keeps the rows it returns false for, so both containers are shown, side by side in a flat
+			// list with neither one's children beneath it.
+			table.ApplyFilter(func(row *tableTestRow) bool {
+				return row.ID() != "closed" && row.ID() != "open"
+			})
+			wnd = newHeadlessWindow(t, "flat filter keys", geom.NewRect(10, 10, 400, 300), axColumn(table))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() {
+		wnd.ToFront()
+		table.RequestFocus()
+		table.SelectByIndex(0, 1)
+	}))
+	var rowCount int
+	screen.Do(func() { rowCount = table.LastRowIndex() + 1 })
+	c.Equal(2, rowCount, "a flat filter shows the rows that passed and nothing beneath any of them")
+
+	screen.KeyPress(unison.KeyRight, mod.None)
+	var isOpen bool
+	screen.Do(func() { isOpen = closedRow.IsOpen() })
+	c.False(isOpen, "the right arrow must not open a row whose children the filter is hiding anyway")
+
+	screen.KeyPress(unison.KeyLeft, mod.None)
+	screen.Do(func() { isOpen = openRow.IsOpen() })
+	c.True(isOpen, "nor may the left arrow close one")
+
+	// Lifting the filter shows that nothing was changed behind it.
+	screen.Do(func() { table.ApplyFilter(nil) })
+	screen.Do(func() { rowCount = table.LastRowIndex() + 1 })
+	c.Equal(3, rowCount, "the open row still shows its child and the closed one still shows none")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityCellPressReachesTheWidgetOfferingIt verifies that a press aimed at a cell holding a field and a
+// button reaches the button. Which panels within a cell may be handed the request is decided by their shape — a *Field
+// sets both halves of a click, so it looks pressable — while the press the cell advertises comes from what its content
+// was described as offering, and a field takes Press out of its own description. The field comes first within the cell,
+// so a press handed out by position alone landed on it: nothing would have been pressed, the request would still have
+// been reported as carried out, and the field would have been left installed as the table's focused cell, quietly
+// starting an editing session nobody asked for.
+func TestTableAccessibilityCellPressReachesTheWidgetOfferingIt(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	clicks := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			row := newTableTestRow("r0")
+			row.cellFactory = func(_, _ int) unison.Paneler {
+				cell := unison.NewPanel()
+				cell.SetLayout(&unison.FlexLayout{Columns: 2, HSpacing: unison.StdHSpacing})
+				field := unison.NewField()
+				field.SetText("editable")
+				cell.AddChild(field)
+				button := unison.NewButton()
+				button.ClickAnimationTime = 0
+				button.SetTitle("Go")
+				button.ClickCallback = func() { clicks++ }
+				cell.AddChild(button)
+				return cell
+			}
+			table = axNewTable(row)
+			wnd = newHeadlessWindow(t, "cell press", geom.NewRect(10, 10, 500, 200), table)
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
+	rows := axChildNodes(tree, node)
+	c.Equal(1, len(rows))
+	if len(rows) != 1 {
+		return
+	}
+	cells := axChildNodes(tree, rows[0])
+	c.Equal(2, len(cells))
+	if len(cells) != 2 {
+		return
+	}
+	content := axUnignoredNodes(tree, cells[0])
+	c.Equal(2, len(content), "the field and the button are both described within the cell: %v", axNodeNames(content))
+	if len(content) != 2 {
+		return
+	}
+	c.Equal(role.TextField, content[0].Role, "the field is the first thing in the cell")
+	c.False(content[0].Actions.Has(accessibility.Press), "a field withdraws the press, since it has nothing to press")
+	c.Equal(role.Button, content[1].Role)
+	c.True(content[1].Actions.Has(accessibility.Press))
+	c.True(cells[0].Actions.Has(accessibility.Press), "the button is why the cell offers a press at all")
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   cells[0].ID,
+		Action: accessibility.Press,
+	}))
+	var count, focusedRow, focusedCol int
+	screen.Do(func() {
+		count = clicks
+		focusedRow, focusedCol = table.FocusedCell()
+	})
+	c.Equal(1, count, "the press should have gone to the button rather than the field ahead of it")
+	c.Equal(-1, focusedRow, "nothing should have been left installed as the focused cell")
+	c.Equal(-1, focusedCol)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -1893,8 +2105,8 @@ func TestListAccessibilitySelectionCallbacksAndRangePublish(t *testing.T) {
 }
 
 // TestPopupMenuAccessibilityWithNothingToChooseFrom verifies that a popup menu holding nothing that could be chosen
-// says so: Click refuses to open one, so advertising that it expands, and reporting that it had expanded, would leave
-// an assistive technology waiting for choices that are never going to appear.
+// says so: Click refuses to open one, so advertising that it expands, and describing it afterwards as expanded, would
+// leave an assistive technology waiting for choices that are never going to appear.
 func TestPopupMenuAccessibilityWithNothingToChooseFrom(t *testing.T) {
 	c := check.New(t)
 	var empty, separatorsOnly, filled *unison.PopupMenu[string]
@@ -1926,11 +2138,16 @@ func TestPopupMenuAccessibilityWithNothingToChooseFrom(t *testing.T) {
 		c.False(node.Expandable, "a popup with nothing to choose from opens nothing")
 		c.False(node.Actions.Has(accessibility.Expand))
 		c.False(node.Actions.Has(accessibility.Collapse))
-		c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		// The click that would open it is queued rather than performed while the answer is awaited, so the request is
+		// taken whatever will come of it. What did come of it is what the next description of the popup says, and for
+		// one with nothing in it that is the same thing it said before.
+		c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 			Node:   node.ID,
 			Action: accessibility.Expand,
-		}), "expanding it cannot be carried out, since nothing would be shown")
+		}))
 		c.Equal(0, len(axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)), "nothing should have opened")
+		c.False(axMustNode(c, screen.AccessibilityNodeFor(one)).Expanded,
+			"a popup that opened nothing goes on saying its choices are not showing")
 	}
 
 	filledNode := screen.AccessibilityNodeFor(filled)

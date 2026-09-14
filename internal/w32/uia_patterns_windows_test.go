@@ -338,9 +338,10 @@ func TestUIATogglePattern(t *testing.T) {
 }
 
 // TestUIATogglePressFallback verifies that Toggle presses an element that reports the Toggle pattern but offers only
-// the Press action. A sticky or grouped button is reported as a toggle button, because the state a click leaves it in
-// is what a client has to hear, and Toggle is then the only way a client can operate it: the role carries no Invoke
-// pattern, so dispatching an action the button ignores would answer S_OK while nothing happened.
+// the Press action, and refuses one that offers neither. A sticky or grouped button is reported as a toggle button,
+// because the state a click leaves it in is what a client has to hear, and Toggle is then the only way a client can
+// operate it: the role carries no Invoke pattern, so dispatching an action the button ignores would answer S_OK while
+// nothing happened.
 func TestUIATogglePressFallback(t *testing.T) {
 	c := check.New(t)
 	tree := patternTree()
@@ -352,24 +353,25 @@ func TestUIATogglePressFallback(t *testing.T) {
 	c.Equal(accessibility.NodeID(5), uiaRequestAt(w, 0).Node)
 	c.Equal(accessibility.Press, uiaRequestAt(w, 0).Action)
 
-	// An element that offers neither is still asked to toggle rather than pressed: pressing it is no more likely to
-	// work, and the request a client made is the one worth reporting.
+	// An element that offers neither is refused rather than asked to do something it has said it will not do, which is
+	// what every other write path does with one. Nothing follows a toggle for a client to notice, so answering S_OK
+	// would leave it believing the element had changed.
 	neither := patternTree()
 	neither.Nodes[5].Actions = 0
 	neither.Generation = 2
 	w.Publish(neither, nil)
-	c.Equal(COM_S_OK, uiaToggleToggle(w.providerFor(5).ifacePtr(uiaIfaceToggle)))
-	c.Equal(2, len(w.recorded()))
-	c.Equal(accessibility.Toggle, uiaRequestAt(w, 1).Action)
+	c.Equal(UIA_E_INVALIDOPERATION, uiaToggleToggle(w.providerFor(5).ifacePtr(uiaIfaceToggle)))
+	c.Equal(1, len(w.recorded()))
 
-	// A disabled element refuses either way.
+	// A disabled element refuses either way, and says so as not enabled rather than as unsupported: being unusable now
+	// is a different thing from never offering the action.
 	disabled := patternTree()
 	disabled.Nodes[5].Actions = accessibility.ActionSet(0).With(accessibility.Press)
 	disabled.Nodes[5].Disabled = true
 	disabled.Generation = 3
 	w.Publish(disabled, nil)
 	c.Equal(UIA_E_ELEMENTNOTENABLED, uiaToggleToggle(w.providerFor(5).ifacePtr(uiaIfaceToggle)))
-	c.Equal(2, len(w.recorded()))
+	c.Equal(1, len(w.recorded()))
 }
 
 // TestUIAValuePattern verifies the Value pattern: the text it reports, who owns the BSTR it reports it in, which

@@ -10,6 +10,7 @@
 package atspi
 
 import (
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -164,7 +165,7 @@ func TestWatchEnabledSaysNothingOnceItIsCanceled(t *testing.T) {
 	asked := make(chan struct{})
 	answer := make(chan struct{})
 	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
-		if msg.Interface == dbusPropertiesInterface && msg.Member == "Get" {
+		if msg.Interface == dbusPropertiesInterface && msg.Member == getMember {
 			// The watch is canceled while this reply is still owed, which is the race the second check closes.
 			close(asked)
 			<-answer
@@ -199,7 +200,7 @@ func TestWatchEnabledSaysNothingOnceItIsCanceledAfterASignal(t *testing.T) {
 	asked := make(chan struct{})
 	answer := make(chan struct{})
 	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
-		if msg.Interface == dbusPropertiesInterface && msg.Member == "Get" && reads.Add(1) == 2 {
+		if msg.Interface == dbusPropertiesInterface && msg.Member == getMember && reads.Add(1) == 2 {
 			// The first read is the one the watch takes as it starts; this is the one the signal below asked for, and
 			// the watch is canceled while it is still owed.
 			close(asked)
@@ -228,6 +229,71 @@ func TestWatchEnabledSaysNothingOnceItIsCanceledAfterASignal(t *testing.T) {
 		t.Fatalf("a canceled watch reported %v", reported)
 	default:
 	}
+}
+
+// TestWatchEnabledReportsOneAnswerAtATime covers the interleaving the generation count cannot close on its own.
+// [Enabled] is a round trip, and the launcher's own signal arrives on the session connection's dispatcher goroutine
+// while one is in flight: a read that checked the count, was descheduled while the signal bumped it and reported the
+// newer answer, and then reported its own would leave the stale answer as the last word the root package heard — a
+// bridge left running for a launcher that has just said it is not wanted, or torn down for one that is. Bumping the
+// count, checking it and calling all happen under one lock, so no two answers can be reported at once and the order
+// they are reported in is the order they were settled in.
+func TestWatchEnabledReportsOneAnswerAtATime(t *testing.T) {
+	clearAccessibilityEnvironment(t)
+	c := check.New(t)
+	var reads atomic.Int32
+	asked := make(chan struct{})
+	answer := make(chan struct{})
+	p := newTestPeer(t, func(peer *testPeer, msg *dbus.Message) bool {
+		if msg.Interface == dbusPropertiesInterface && msg.Member == getMember && reads.Add(1) == 2 {
+			// The first read is the one the watch takes as it starts; this is the one the signal below asked for.
+			close(asked)
+			<-answer
+		}
+		return statusAnswers(peer, msg)
+	})
+	// The count is deliberately left unguarded. Answers that are reported one at a time are ordered by the lock that
+	// reports them, so the race detector sees one goroutine hand the count to the next; answers that are not are two
+	// goroutines touching it with nothing between them, which is what this test is about and what the race detector
+	// reports.
+	reported := 0
+	var once sync.Once
+	entered := make(chan struct{})
+	proceed := make(chan struct{})
+	changes := make(chan bool, 8)
+	defer WatchEnabled(p.client, func(enabled bool) {
+		if enabled {
+			// This is the answer the held read produced, and it is held here, still being reported, while the
+			// launcher's own signal arrives.
+			once.Do(func() {
+				close(entered)
+				<-proceed
+			})
+		}
+		// Counted after the wait above rather than before it, so that the count really is touched from inside the
+		// report the signal has to wait for rather than from before it started.
+		reported++
+		changes <- enabled
+	})()
+	c.False(nextChange(t, changes), "the state the watch started in is reported first")
+	waitForRules(t, p, 2)
+
+	// A launcher that has just taken its name is asked what it has to say, and says yes.
+	p.enabled.Store(true)
+	p.emitFrom(dbusDestination, dbusObjectPath, dbusInterface, nameOwnerChanged, "sss", BusDestination, "",
+		testPeerName)
+	<-asked
+	close(answer)
+	<-entered
+
+	// It is switched off again while that answer is still being reported, which is the pair of reports that must not
+	// overlap.
+	p.emit(BusPath, dbusPropertiesInterface, propertiesChanged, "sa{sv}as", StatusInterface,
+		dbus.Dict{{Key: isEnabledProperty, Value: dbus.Variant{Sig: "b", Value: false}}}, []string{})
+	close(proceed)
+	c.True(nextChange(t, changes), "the read's answer is reported first, since it was settled first")
+	c.False(nextChange(t, changes), "and the signal that overtook it has the last word")
+	c.Equal(3, reported, "every answer was reported, and each of them once")
 }
 
 func TestWatchEnabledIgnoresWhatIsNotItsBusiness(t *testing.T) {

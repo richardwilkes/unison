@@ -12,7 +12,9 @@ package unison
 import (
 	"bufio"
 	"errors"
+	"io"
 	"net"
+	"path/filepath"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -42,8 +44,27 @@ const a11yTestTimeout = 10 * time.Second
 // a11yTestSettle is how long these tests give something that should not happen at all a chance to happen anyway.
 const a11yTestSettle = 250 * time.Millisecond
 
-// a11yTestBusName is the unique name the fake session bus hands out in reply to Hello.
+// a11yTestBusName is the unique name the fake buses hand out in reply to Hello.
 const a11yTestBusName = ":1.99"
+
+// a11yTestBusGUID is the server identifier the fake accessibility bus reports when it accepts the authentication
+// handshake. A client has no use for it beyond its being there.
+const a11yTestBusGUID = "0123456789abcdef0123456789abcdef"
+
+// a11yTestAuthLineLimit bounds how many lines of the authentication handshake the fake accessibility bus will read, so
+// that a client which never says BEGIN cannot keep its goroutine alive forever.
+const a11yTestAuthLineLimit = 4
+
+// a11yTestRegistryName is the bus name the fake accessibility bus answers Embed from, standing in for the registry.
+const a11yTestRegistryName = ":1.7"
+
+// a11yTestDesktopPath is the object the fake accessibility bus hands back as the desktop the application was embedded
+// into, which is what the real registry's Embed replies with.
+const a11yTestDesktopPath dbus.ObjectPath = "/org/a11y/atspi/accessible/desktop"
+
+// a11yTestObjectRefSignature is the signature of the reference to an object on the accessibility bus, which is the one
+// thing the fake accessibility bus has to encode.
+const a11yTestObjectRefSignature dbus.Signature = "(so)"
 
 // dbusPath is the path of a D-Bus daemon's own object.
 const dbusPath dbus.ObjectPath = "/org/freedesktop/DBus"
@@ -57,7 +78,7 @@ func saveA11yState(t *testing.T) {
 	t.Helper()
 	priorNo, priorEnv := noAccessibility.Load(), accessibilityEnv.Load()
 	priorAdapter, priorCancel := linuxA11y, linuxA11yCancelWatch
-	priorRejoin := linuxA11yRejoinAttempted
+	priorRejoin, priorInstalled, priorGrace := linuxA11yRejoinAttempted, linuxA11yInstalledAt, linuxA11yRejoinGrace
 	priorAttempt, priorCurrent, priorJoining := linuxA11yAttempt, linuxA11yCurrentAttempt, linuxA11yJoining
 	hadWatch := priorCancel != nil
 	t.Cleanup(func() {
@@ -67,7 +88,7 @@ func saveA11yState(t *testing.T) {
 		noAccessibility.Store(priorNo)
 		accessibilityEnv.Store(priorEnv)
 		linuxA11y, linuxA11yCancelWatch = priorAdapter, priorCancel
-		linuxA11yRejoinAttempted = priorRejoin
+		linuxA11yRejoinAttempted, linuxA11yInstalledAt, linuxA11yRejoinGrace = priorRejoin, priorInstalled, priorGrace
 		linuxA11yAttempt, linuxA11yCurrentAttempt, linuxA11yJoining = priorAttempt, priorCurrent, priorJoining
 	})
 	noAccessibility.Store(false)
@@ -75,6 +96,7 @@ func saveA11yState(t *testing.T) {
 	linuxA11y = nil
 	linuxA11yCancelWatch = nil
 	linuxA11yRejoinAttempted = false
+	linuxA11yInstalledAt = time.Time{}
 	linuxA11yCurrentAttempt = 0
 	linuxA11yJoining = false
 	t.Setenv("NO_AT_BRIDGE", "")
@@ -153,8 +175,12 @@ func TestLinuxA11yStatusInitWithoutSessionBus(t *testing.T) {
 }
 
 // TestLinuxA11yStatusInitIsRefusedByEnvironment is the other half: an application that has been told to stay away from
-// the accessibility bus must not even reach for the session bus, which is checked by making any attempt to use it fail
-// the test.
+// the accessibility bus must not even reach for the session bus.
+//
+// The session bus it is given is a working one that records everything asked of it, rather than a stub that fails every
+// call. A stub would prove nothing: linuxA11yStatusInit gives a session bus it cannot have up just as quietly as it
+// gives up on a refusal, so every assertion below would hold with the refusal deleted outright. What has to be shown is
+// that the connection was not used at all — no match rule asked for, and the launcher's IsEnabled property never read.
 func TestLinuxA11yStatusInitIsRefusedByEnvironment(t *testing.T) {
 	for name, refuse := range map[string]func(t *testing.T){
 		"NO_AT_BRIDGE":         func(t *testing.T) { t.Helper(); t.Setenv("NO_AT_BRIDGE", "1") },
@@ -164,12 +190,16 @@ func TestLinuxA11yStatusInitIsRefusedByEnvironment(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c := check.New(t)
 			saveA11yState(t)
-			restore := dbus.SetSessionForTest(nil, errors.New("the session bus must not be reached"))
-			t.Cleanup(restore)
+			bus := newFakeSessionBus(t)
+			t.Cleanup(dbus.SetSessionForTest(bus.conn, nil))
 			refuse(t)
 			linuxA11yStatusInit()
 			c.Nil(linuxA11y)
 			c.Nil(linuxA11yCancelWatch, "a refusal must not watch anything")
+			// The read follows the match rules, and both are asked for from a goroutine of the watch's own, so the
+			// settle is what gives either the chance to turn up before the count is believed.
+			c.Equal(0, bus.settledReads(0), "a refusal must not read the launcher's IsEnabled property")
+			c.Equal(0, len(bus.waitForRules(0)), "nor ask the session bus to deliver anything")
 		})
 	}
 }
@@ -226,7 +256,9 @@ func TestLinuxA11yHooksAreInertWithoutAnAdapter(t *testing.T) {
 	saveA11yState(t)
 	w := &Window{}
 	w.nativeAccessibilityPublish(&accessibility.Tree{}, nil)
-	w.nativeAccessibilityGeometryChanged()
+	// Nothing on this platform reaches the wrapper this sits behind, since the X11 event loop hands the adapter the
+	// geometry from the ConfigureNotify it is already handling, but it is what the shared code would call.
+	c.NotPanics(w.nativeAccessibilityGeometryChanged)
 	w.nativeAccessibilityShutdown()
 	w.x11RefreshAccessibilityGeometry(geom.NewPoint(10, 20))
 	nativeAccessibilityAnnounce("nobody is listening")
@@ -283,11 +315,10 @@ func TestLinuxA11yForcedModeActivatesWithoutABus(t *testing.T) {
 	c.False(IsAccessibilityActive())
 }
 
-// TestLinuxA11yRejoinKeepsForcedModeBuilding covers the same promise for the losses after the first one. Only one
-// rebuild is attempted for each thing the desktop says, and in forced mode the desktop says nothing at all — no watch
-// is created, so nothing ever clears linuxA11yRejoinAttempted — so the second loss of the accessibility bus connection
-// stops short of dialing again. Snapshot building, which the adapter took with it, still has to come back: it is the
-// half of the promise that has nothing to do with there being a bus.
+// TestLinuxA11yRejoinKeepsForcedModeBuilding covers the same promise for a loss the rebuild guard stops short of
+// dialing again after: a connection that was taken away within moments of being made, which no thing the desktop has
+// said stands between — forced mode creates no watch, so nothing reports one. Snapshot building, which the adapter took
+// with it, still has to come back: it is the half of the promise that has nothing to do with there being a bus.
 func TestLinuxA11yRejoinKeepsForcedModeBuilding(t *testing.T) {
 	c := check.New(t)
 	saveA11yState(t)
@@ -300,6 +331,11 @@ func TestLinuxA11yRejoinKeepsForcedModeBuilding(t *testing.T) {
 	// Nothing on this path may reach the session bus: the rebuild is not attempted, and forced mode would not ask the
 	// desktop in any case.
 	t.Cleanup(dbus.SetSessionForTest(nil, errors.New("the session bus must not be reached")))
+	// Every loss below is of a connection that was dropped as soon as it was accepted, which is the one case the guard
+	// refuses a second dial for. The grace period is lengthened rather than left at what it really is, so that a
+	// machine which stalls part way through cannot turn these into losses of a connection that lived.
+	linuxA11yRejoinGrace = time.Hour
+	linuxA11yInstalledAt = time.Now()
 	accessibilityEnv.Store(1)
 	linuxA11yRejoinAttempted = true // As the first loss left it
 	linuxA11yRejoin()
@@ -354,6 +390,56 @@ func TestLinuxA11yRejoinDialsAgainOnTheFirstLoss(t *testing.T) {
 	c.True(IsAccessibilityActive(), "but snapshot building must be on, since the environment asked for it")
 }
 
+// TestLinuxA11yRejoinRecoversFromEveryLongLivedLoss covers the accessibility bus that is restarted more than once while
+// the application runs, which is what the whole of this machinery exists for: at-spi-bus-launcher keeps org.a11y.Bus
+// across the restart, so the desktop reports nothing and the rebuild guard is never cleared by anything it says. Only a
+// connection that dies within moments of being made is the bus the guard is aimed at; one that had been serving an
+// assistive technology for far longer is a bus that really went away, and the launcher will have a new one up by the
+// time the dial arrives, so every such loss is dialed again. Without this, the second restart would leave the
+// application off the accessibility bus, and with snapshot building off, for the rest of its life.
+func TestLinuxA11yRejoinRecoversFromEveryLongLivedLoss(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	resetTaskQueue()
+	wasActive := IsAccessibilityActive()
+	t.Cleanup(func() {
+		if !wasActive {
+			deactivateAccessibility()
+		}
+	})
+	// As in the test above, there must be nothing to join, so that each rebuild is one dial that fails rather than an
+	// adapter to take apart: no session bus to ask for the address, no address in the environment, and no X11
+	// connection to read the root window's property from during a test. Forced mode is what has the rebuild happen
+	// without the session bus being asked anything.
+	t.Cleanup(dbus.SetSessionForTest(nil, errors.New("there is no session bus")))
+	t.Setenv("AT_SPI_BUS_ADDRESS", "")
+	accessibilityEnv.Store(1)
+
+	for i := range 2 {
+		// What the loss of a connection that had been up for far longer than the grace period leaves behind: the guard
+		// the rebuild before it set, and the adapter that has just been thrown away recorded as installed long ago.
+		linuxA11yRejoinAttempted = i > 0
+		linuxA11yInstalledAt = time.Now().Add(-time.Hour)
+
+		linuxA11yRejoin()
+		c.True(linuxA11yJoining, "loss %d should have dialed the accessibility bus again", i)
+		c.True(linuxA11yRejoinAttempted, "and used up the rebuild a loss that comes at once is refused, loss %d", i)
+		c.Equal(1, runQueuedA11yTasks(t, 1), "the join should have reported back, loss %d", i)
+		c.False(linuxA11yJoining, "the attempt must have been reported as finished, loss %d", i)
+		c.Nil(linuxA11y, "a join that failed must leave nothing behind, loss %d", i)
+		c.True(IsAccessibilityActive(), "snapshot building must be on, since the environment asked for it, loss %d", i)
+	}
+
+	// A connection that died within moments of being made is the case the guard is aimed at, and still costs one dial
+	// rather than an endless succession of them. The grace period is lengthened rather than left at what it really is,
+	// so that a machine which stalls between these two statements cannot turn this into one of the losses above.
+	linuxA11yRejoinGrace = time.Hour
+	linuxA11yInstalledAt = time.Now()
+	linuxA11yRejoin()
+	c.False(linuxA11yJoining, "a bus that accepts a connection and drops it must be dialed once rather than forever")
+	c.True(IsAccessibilityActive(), "though snapshot building comes back whatever the guard decides")
+}
+
 // TestLinuxA11yFinishStartIgnoresASupersededAttempt covers the race joining the accessibility bus off the user
 // interface thread creates: support may be turned off, or asked for again, while a join is in flight, and the answer to
 // a question nobody is waiting for any more must not be installed behind the back of what was decided since.
@@ -378,6 +464,42 @@ func TestLinuxA11yFinishStartIgnoresASupersededAttempt(t *testing.T) {
 	linuxStopA11y()
 	c.True(linuxA11yAttempt != before, "stopping must disown the attempt that is in flight")
 	c.False(linuxA11yJoining)
+}
+
+// TestLinuxA11yFinishStartRefusesADeadAdapter covers the connection that dies while the join to the accessibility bus
+// is still in flight. atspi.Start hands back an adapter all the same: the loss is reported through Config.Lost from the
+// moment Start decides to return, which is before the task that installs the adapter has even been queued, so
+// linuxA11yConnectionLost rejects that report as naming no current attempt — and Lost is called at most once. An
+// adapter that is not asked whether its connection is still alive would therefore sit in linuxA11y for the rest of the
+// process, dropping every snapshot published on it, refusing to be replaced, and never reporting the loss again.
+func TestLinuxA11yFinishStartRefusesADeadAdapter(t *testing.T) {
+	c := check.New(t)
+	saveA11yState(t)
+	wasActive := IsAccessibilityActive()
+	bus := newFakeA11yBus(t)
+	adapter, err := atspi.Start(atspi.Config{BusAddress: bus.address, ToolkitVersion: "test"})
+	c.NoError(err)
+	if adapter == nil {
+		t.Fatal("the fake accessibility bus should have produced an adapter")
+	}
+
+	// The bus goes away while the answer to the join is still on its way to the user interface thread, exactly as one
+	// restarted behind a launcher that keeps org.a11y.Bus does. The adapter learns of it on a goroutine of the
+	// connection's own, so it is waited for rather than assumed.
+	bus.disconnect()
+	deadline := time.Now().Add(a11yTestTimeout)
+	for adapter.Err() == nil && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	c.HasError(adapter.Err(), "the adapter should have noticed that its connection had ended")
+
+	linuxA11yAttempt++
+	linuxA11yJoining = true
+	linuxFinishStartA11y(linuxA11yAttempt, adapter, nil)
+	c.Nil(linuxA11y, "an adapter whose connection has already ended must not be installed")
+	c.False(linuxA11yJoining, "and must leave the way clear for another attempt")
+	c.Equal(uint64(0), linuxA11yCurrentAttempt, "nor may anything claim to be the adapter that is being served")
+	c.Equal(wasActive, IsAccessibilityActive(), "the desktop decides here, and there was nothing to reach")
 }
 
 // TestLinuxA11yGeometry verifies the geometry a window actually hands the adapter, which is what
@@ -414,11 +536,11 @@ func TestLinuxA11yGeometry(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestLinuxA11yWindowManagerMinimizeMarksForPublish covers the minimize the window manager performs by itself, which
-// Window.Minimize never sees: a taskbar, switching workspaces and "show desktop" all iconify a window that need not
-// hold the keyboard focus, and only one that does is rescued by the FocusOut that follows it. Marking the window for
-// publish is what has the event loop find a window it cannot draw and withdraw it from the accessibility tree, so
-// without it a window nobody can see goes on being listed as showing and visible.
+// TestLinuxA11yWindowManagerMinimizeMarksForPublish covers the minimize nothing in the application asked for: a
+// taskbar, switching workspaces and "show desktop" all iconify a window that need not hold the keyboard focus, and only
+// one that does is rescued by the FocusOut that follows it. Marking the window for publish is what has the event loop
+// find a window it cannot draw and withdraw it from the accessibility tree, so without it a window nobody can see goes
+// on being listed as showing and visible.
 func TestLinuxA11yWindowManagerMinimizeMarksForPublish(t *testing.T) {
 	c := check.New(t)
 	saveA11yState(t)
@@ -662,4 +784,146 @@ func (b *fakeSessionBus) write(msg *dbus.Message) {
 		return
 	}
 	_, _ = b.side.Write(data) //nolint:errcheck // The connection under test has gone away, which is not this end's problem
+}
+
+// fakeA11yBus is the least of an accessibility bus that atspi.Start needs in order to hand an adapter back: it listens
+// on a Unix socket, performs the server half of the EXTERNAL authentication handshake, hands out a unique name, takes
+// the match rule the adapter asks for and answers the registry's Embed with a desktop reference. Nothing is published
+// over it, since everything an adapter says once it is running belongs to internal/atspi's own tests; what it is for is
+// producing a real adapter whose connection can then be taken away.
+//
+// Unlike fakeSessionBus, which the root package hands to the code under test ready made, this has to be dialed: the
+// connection an adapter is built on is one atspi.Start makes for itself, and only an address can say where.
+type fakeA11yBus struct {
+	t        *testing.T
+	listener net.Listener
+	conn     net.Conn
+	address  string
+	lock     sync.Mutex
+	serial   uint32
+}
+
+// newFakeA11yBus starts a fake accessibility bus on a Unix socket in the test's own directory. Everything it holds is
+// closed when the test finishes.
+func newFakeA11yBus(t *testing.T) *fakeA11yBus {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "bus")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatalf("unable to listen on %s: %v", path, err)
+	}
+	b := &fakeA11yBus{t: t, listener: listener, address: "unix:path=" + path}
+	go b.serve()
+	t.Cleanup(func() {
+		xio.CloseIgnoringErrors(listener)
+		b.disconnect()
+	})
+	return b
+}
+
+// serve answers one connection until it goes away, which is all the single adapter a test builds ever needs.
+func (b *fakeA11yBus) serve() {
+	accepted, acceptErr := b.listener.Accept()
+	if acceptErr != nil {
+		return
+	}
+	b.lock.Lock()
+	b.conn = accepted
+	b.lock.Unlock()
+	in := bufio.NewReader(accepted)
+	if !b.authenticate(accepted, in) {
+		b.disconnect()
+		return
+	}
+	for {
+		msg, decodeErr := dbus.Decode(in)
+		if decodeErr != nil {
+			return
+		}
+		if msg.Type != dbus.TypeMethodCall {
+			continue
+		}
+		switch {
+		case msg.Path == dbusPath && msg.Member == "Hello":
+			b.reply(msg, "s", a11yTestBusName)
+		case msg.Path == dbusPath && (msg.Member == "AddMatch" || msg.Member == "RemoveMatch"):
+			b.reply(msg, "")
+		case msg.Path == atspi.RootPath && msg.Interface == atspi.InterfaceSocket && msg.Member == "Embed":
+			b.reply(msg, a11yTestObjectRefSignature,
+				dbus.ObjectRef{Name: a11yTestRegistryName, Path: a11yTestDesktopPath})
+		case msg.Path == atspi.RootPath && msg.Interface == atspi.InterfaceSocket && msg.Member == "Unembed":
+			// The registry has nothing to say to an application that is leaving, and none was asked for.
+		default:
+			b.write(dbus.NewError(msg, dbus.ServiceUnknown, "the fake accessibility bus has no "+msg.Member))
+		}
+	}
+}
+
+// authenticate performs the server half of the handshake dbus.Dial makes: the connection opens with a zero byte and an
+// AUTH line that the credentials of the socket itself answer for, and the BEGIN that follows the acceptance is where
+// the message stream starts.
+func (b *fakeA11yBus) authenticate(conn net.Conn, in *bufio.Reader) bool {
+	leading, err := in.ReadByte()
+	if err != nil || leading != 0 {
+		return false
+	}
+	for range a11yTestAuthLineLimit {
+		line, lineErr := in.ReadString('\n')
+		if lineErr != nil {
+			return false
+		}
+		switch {
+		case strings.HasPrefix(line, "AUTH "):
+			if _, err = io.WriteString(conn, "OK "+a11yTestBusGUID+"\r\n"); err != nil {
+				return false
+			}
+		case strings.HasPrefix(line, "BEGIN"):
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// disconnect takes the connection away without a word, which is what an accessibility bus that has been restarted does
+// to the application it was serving.
+func (b *fakeA11yBus) disconnect() {
+	b.lock.Lock()
+	conn := b.conn
+	b.conn = nil
+	b.lock.Unlock()
+	if conn != nil {
+		xio.CloseIgnoringErrors(conn)
+	}
+}
+
+// reply answers a method call.
+func (b *fakeA11yBus) reply(call *dbus.Message, sig dbus.Signature, args ...any) {
+	reply := dbus.NewReply(call)
+	if len(args) != 0 {
+		if err := reply.SetBodyWithSignature(sig, args...); err != nil {
+			b.t.Errorf("the fake accessibility bus could not build a reply to %s: %v", call, err)
+			return
+		}
+	}
+	b.write(reply)
+}
+
+// write sends a message to the connection under test, and does nothing once that connection has been taken away.
+func (b *fakeA11yBus) write(msg *dbus.Message) {
+	b.lock.Lock()
+	b.serial++
+	msg.Serial = b.serial
+	conn := b.conn
+	b.lock.Unlock()
+	if conn == nil {
+		return
+	}
+	data, err := msg.Encode()
+	if err != nil {
+		b.t.Errorf("the fake accessibility bus could not encode %s: %v", msg, err)
+		return
+	}
+	_, _ = conn.Write(data) //nolint:errcheck // The connection under test has gone away, which is not this end's problem
 }

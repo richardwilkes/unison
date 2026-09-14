@@ -151,11 +151,12 @@ func (d *decoder) getString() (string, error) {
 	if b[n] != 0 {
 		return "", errors.New("dbus: string is not NUL terminated")
 	}
-	s := string(b[:n])
-	if err = validateStringContent(s); err != nil {
+	// The content is checked before the copy rather than after it, so that a string a peer had no business sending is
+	// never copied at all; a peer may declare one of up to [MaxArraySize] bytes.
+	if err = validateStringBytes(b[:n]); err != nil {
 		return "", err
 	}
-	return s, nil
+	return string(b[:n]), nil
 }
 
 // getSignature reads a signature: a 1 byte length, the bytes, then a terminating NUL.

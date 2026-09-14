@@ -145,9 +145,11 @@ func NewReply(call *Message) *Message {
 }
 
 // NewError creates an error reply to a method call. If message is not empty, it becomes the body of the reply, which is
-// where D-Bus clients look for the human-readable part of an error. A name that is not a valid error name, which
-// includes the empty one, becomes [Failed]: a reply that will not encode is dropped rather than sent, leaving the peer
-// waiting for an answer that never comes, and a generic error name says far more than that does.
+// where D-Bus clients look for the human-readable part of an error; text that a D-Bus string cannot hold is repaired
+// rather than dropped, since a reply with no body at all tells the peer nothing (see [sanitizeErrorMessage]). A name
+// that is not a valid error name, which includes the empty one, becomes [Failed]: a reply that will not encode is
+// dropped rather than sent, leaving the peer waiting for an answer that never comes, and a generic error name says far
+// more than that does.
 func NewError(call *Message, name, message string) *Message {
 	if validateInterfaceName("error name", name) != nil {
 		name = Failed
@@ -159,12 +161,34 @@ func NewError(call *Message, name, message string) *Message {
 		ReplySerial: call.Serial,
 	}
 	if message != "" {
-		if body, err := Marshal("s", message); err == nil {
+		// Sanitizing leaves nothing that will not marshal, so the error can only be one that cannot happen; a reply
+		// without the body it was given is still worth sending if it ever does.
+		if body, err := Marshal("s", sanitizeErrorMessage(message)); err == nil {
 			m.Signature = "s"
 			m.Body = body
 		}
 	}
 	return m
+}
+
+// maxErrorMessageLength is how many bytes of the human-readable part of an error reply are worth sending. The text
+// comes from whoever answered the call, and nothing else bounds it: [publicErrorMessage] cuts an error at its first
+// newline, which an error with no newline in it at all leaves untouched.
+const maxErrorMessageLength = 4096
+
+// sanitizeErrorMessage turns arbitrary text into something a D-Bus string may hold: valid UTF-8, with no NUL in it and
+// no more of it than a peer can use. [Call.Error] passes text straight through from a handler, so this is the only
+// thing between a handler's error message and the wire, and dropping the body when the text would not marshal left the
+// peer with an error name and nothing else, which is precisely when the text is worth the most.
+func sanitizeErrorMessage(message string) string {
+	message = strings.ToValidUTF8(message, "\uFFFD")
+	message = strings.ReplaceAll(message, "\x00", "")
+	if len(message) > maxErrorMessageLength {
+		// Truncating by bytes can cut a rune in half, which would put back exactly the invalid UTF-8 that was just
+		// repaired, so whatever is left of a partial rune at the end is dropped.
+		message = strings.ToValidUTF8(message[:maxErrorMessageLength], "")
+	}
+	return message
 }
 
 // SetBody marshals args into the body of the message, deriving the signature from the values. Values whose signature
@@ -430,9 +454,34 @@ func (m *Message) validateRequiredFields() error {
 	return nil
 }
 
+// ErrMessageContent marks the errors that [Decode] reports for a message whose framing is intact: every byte the
+// message declared has been read, so the stream is still positioned at the start of the next message and only the one
+// message has to be thrown away. Everything else [Decode] reports is a fault in the stream itself, which nothing can
+// resynchronize, since the length that says where the next message starts is part of what could not be believed. Use
+// [errors.Is] to tell them apart.
+var ErrMessageContent = errors.New("dbus: the message is not valid")
+
+// contentFault marks an error as a fault confined to one message, leaving its own text exactly as it was: what the
+// message is wrong about is worth saying, and [ErrMessageContent] only says how much of the stream it cost.
+type contentFault struct{ err error }
+
+// Error implements the error interface.
+func (f contentFault) Error() string { return f.err.Error() }
+
+// Unwrap returns the error the fault was found as.
+func (f contentFault) Unwrap() error { return f.err }
+
+// Is reports the fault as [ErrMessageContent], which is what tells a reader that the stream is still usable.
+func (f contentFault) Is(target error) bool { return target == ErrMessageContent }
+
 // Decode reads one message from r. It reads exactly as many bytes as the message occupies, so r may be a stream
 // carrying more messages. A reader that has no more data returns [io.EOF], which is how a peer closing the connection
 // cleanly presents itself, while a message that stops part way through returns [io.ErrUnexpectedEOF].
+//
+// A message that arrives whole but is not one the specification permits, such as a signal with no INTERFACE field or a
+// header field that appears twice, is reported as an error that [errors.Is] matches against [ErrMessageContent]: the
+// bytes it declared have all been read, so the stream is still synchronized and the caller may go on reading from it.
+// Every other error leaves the stream where it was, which is nowhere useful.
 //
 // Either byte order is accepted, since the specification lets every peer choose the one that suits it. A big-endian
 // message is converted as it is decoded, so the [Message] that comes back is indistinguishable from one a little-endian
@@ -486,16 +535,19 @@ func Decode(r io.Reader) (*Message, error) {
 		Flags:  Flags(fixed[2]),
 		Serial: order.Uint32(fixed[8:12]),
 	}
+	// Everything from here on is read out of the bytes the message declared, all of which have now been taken from the
+	// reader, so a fault in any of it costs the one message rather than the stream; see [ErrMessageContent].
+	//
 	// The header field array starts with its length, which is part of the fixed header.
 	d := decoder{data: data, pos: 12, bigEndian: bigEndian}
 	if err := m.decodeHeaderFields(&d); err != nil {
-		return nil, err
+		return nil, contentFault{err: err}
 	}
 	// The body starts on an 8 byte boundary, and the padding that puts it there must be NUL like every other run of
 	// padding, which the decoder has no reason to look at because it stops at the end of the header field array.
 	for _, b := range data[fixedHeaderSize+int(fieldsLength) : fixedHeaderSize+int(padded)] {
 		if b != 0 {
-			return nil, errPaddingNotNUL
+			return nil, contentFault{err: errPaddingNotNUL}
 		}
 	}
 	if bodyLength != 0 {
@@ -505,7 +557,7 @@ func Decode(r io.Reader) (*Message, error) {
 		m.wireSize = int(total)
 	}
 	if err := m.validate(); err != nil {
-		return nil, err
+		return nil, contentFault{err: err}
 	}
 	if bigEndian {
 		// A body that will not convert is left in the encoding it arrived in, which [Message.Args] then reads it in.

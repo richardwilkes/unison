@@ -111,7 +111,7 @@ func TestTableInterfacesAreOnlyThereForGrids(t *testing.T) {
 		"a row holds the cells rather than being one of them")
 	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell},
 		ta.one(NodePath(65), InterfaceAccessible, "GetInterfaces", ""))
-	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(5), dbusPropertiesInterface, "Get", "ss", InterfaceTable,
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(5), dbusPropertiesInterface, getMember, "ss", InterfaceTable,
 		"NRows"), "a list box is not a grid")
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(6), InterfaceTableCell, "GetRowColumnSpan", ""),
 		"neither is one of its items")

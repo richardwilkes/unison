@@ -36,10 +36,10 @@ import (
 //     followed by TextSelectionChanged. RoleChanged comes first because a node's role decides how an adapter interprets
 //     everything else about it, so the adapter must know the new role before it applies the rest. At most one
 //     AttributesChanged is produced per node, and it covers the secondary facts no kind of its own reports:
-//     Placeholder, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Orientation and the LabeledBy, DescribedBy and
-//     Controls relations. Every platform carries those as attributes or relations of an element rather than as its
-//     value, and an assistive technology re-reads the ones it cares about when it is told the element's attributes
-//     changed, so naming which of them moved would buy nothing.
+//     Placeholder, Shortcut, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Step, Orientation and the LabeledBy,
+//     DescribedBy and Controls relations. Every platform carries those as attributes or relations of an element rather
+//     than as its value, and an assistive technology re-reads the ones it cares about when it is told the element's
+//     attributes changed, so naming which of them moved would buy nothing.
 //  6. WindowActivated or WindowDeactivated when the root's Focused flipped.
 //  7. FocusChanged last, whenever the focus moved, so an adapter has already applied every structural and value change
 //     before it tells its assistive technology where to look.
@@ -160,12 +160,19 @@ func appendChangesForNode(events []Event, prev, cur *Node) []Event {
 
 // appendAttributeChanges appends the one AttributesChanged a node gets when any of the secondary facts about it moved.
 // See the list in the Diff documentation for what they are and why they share a single event.
+//
+// Shortcut is here because an accelerator is live state: a menu item fills it in from its key binding every time it is
+// described, and MenuItem.SetKeyBinding is exported, so one can be rebound while the application runs. Every adapter
+// caches it as a property of the element — UI Automation re-reads AcceleratorKey only when a property-changed event
+// says to — and an item that went on announcing the key it used to answer to would be telling the person to press
+// something that no longer does anything. Step is here for the same reason, being what an assistive technology tells
+// the person one press of an arrow key will move a slider or a spin button by.
 func appendAttributeChanges(events []Event, prev, cur *Node) []Event {
-	if prev.Placeholder != cur.Placeholder || prev.Level != cur.Level || prev.RowIndex != cur.RowIndex ||
-		prev.ColumnIndex != cur.ColumnIndex || prev.RowCount != cur.RowCount ||
-		prev.ColumnCount != cur.ColumnCount || prev.Orientation != cur.Orientation ||
-		!slices.Equal(prev.LabeledBy, cur.LabeledBy) || !slices.Equal(prev.DescribedBy, cur.DescribedBy) ||
-		!slices.Equal(prev.Controls, cur.Controls) {
+	if prev.Placeholder != cur.Placeholder || prev.Shortcut != cur.Shortcut || prev.Level != cur.Level ||
+		prev.RowIndex != cur.RowIndex || prev.ColumnIndex != cur.ColumnIndex || prev.RowCount != cur.RowCount ||
+		prev.ColumnCount != cur.ColumnCount || numbersDiffer(prev.Step, cur.Step) ||
+		prev.Orientation != cur.Orientation || !slices.Equal(prev.LabeledBy, cur.LabeledBy) ||
+		!slices.Equal(prev.DescribedBy, cur.DescribedBy) || !slices.Equal(prev.Controls, cur.Controls) {
 		events = append(events, Event{Kind: AttributesChanged, Node: cur.ID})
 	}
 	return events

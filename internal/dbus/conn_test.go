@@ -900,6 +900,76 @@ func TestConnCarriesOnAfterAMalformedBody(t *testing.T) {
 	c.NoError(b.client.Hello()) // The connection is still usable, which is the whole point
 }
 
+func TestConnCarriesOnAfterAMessageThatIsNotValid(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	received := make(chan *Message, 2)
+	b.client.Subscribe(SignalFilter{Member: paddedMember}, func(msg *Message) { received <- msg })
+	lost := make(chan error, 1)
+	b.client.OnDisconnect(func(err error) { lost <- err })
+	wait := callAsync(t, b.client, greet(c, "hello"))
+	call := b.nextCall()
+	// A correctly framed signal with no INTERFACE field is a fault in that one message: every byte it declared has
+	// been read, so the stream is still positioned at the start of the next message. Ending the connection for it took
+	// every pending call and every subscription with it, and since a Session is never reconnected, accessibility with
+	// them.
+	b.writeRaw(interfacelessSignal(t, 1))
+	// The signal that follows it proves the reader picked up exactly where it should have, and that the invalid one
+	// was skipped rather than delivered.
+	b.emit(testPath, eventInterface, paddedMember, "s", "after")
+	msg, ok := awaitOne(received)
+	if !ok {
+		t.Fatal("timed out waiting for the signal that followed the invalid one")
+	}
+	c.Equal(eventInterface, msg.Interface)
+	// The call that was in flight is still waiting for its answer rather than having been failed.
+	b.replyTo(call, "s", "hi")
+	reply, err := wait()
+	c.NoError(err)
+	c.NotNil(reply)
+	select {
+	case err = <-lost:
+		t.Fatalf("the connection ended over one invalid message: %v", err)
+	default:
+	}
+	c.NoError(b.client.Hello())
+}
+
+func TestCallRemovesTheSerialItRegistered(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	b := newFakeBus(t)
+	// The write and the wait for the reply are both bounded by this, and the test deliberately touches the message
+	// while the call is in flight, which only the timeout path would ever look at again.
+	b.client.timeout = time.Hour
+	msg := greet(c, "hello")
+	wait := callAsync(t, b.client, msg)
+	call := b.nextCall()
+	// Sending the same *Message again overwrites the serial the call in flight registered, which is what two
+	// goroutines sharing one message do. This entry stands in for that second call: the first call's cleanup has to
+	// remove the serial it registered rather than whatever the field holds by the time it runs, or it removes the
+	// other call's channel instead, leaving its own entry in the map forever and the other call's reply to be
+	// discarded on arrival and time out five seconds later.
+	const offset = 1000
+	other := make(chan *Message, 1)
+	b.client.mu.Lock()
+	b.client.pending[call.Serial+offset] = other
+	b.client.mu.Unlock()
+	msg.Serial = call.Serial + offset
+	b.replyTo(call, "s", "hi")
+	reply, err := wait()
+	c.NoError(err)
+	c.NotNil(reply)
+	b.client.mu.Lock()
+	_, stillPending := b.client.pending[call.Serial+offset]
+	delete(b.client.pending, call.Serial+offset)
+	leftOver := len(b.client.pending)
+	b.client.mu.Unlock()
+	c.True(stillPending, "the cleanup removed another call's entry from the pending map")
+	c.Equal(0, leftOver, "the cleanup left its own entry in the pending map")
+}
+
 func TestQueueIsBoundedByItemsAndBytes(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -968,7 +1038,10 @@ func TestConnEndsWhenAMessageCannotBeDecoded(t *testing.T) {
 	b.nextCall() // In flight, and never answered
 
 	// Anything else on a shared bus may write nonsense, and there is nothing to be done with a stream that no longer
-	// makes sense but end it: the framing is lost, so there is no way to find where the next message would start.
+	// makes sense but end it: this is a fault in the framing rather than in one message, so the length that says where
+	// the next message would start is part of what cannot be believed and there is nothing to resynchronize to. A
+	// message that arrives whole and is merely wrong about itself costs only itself; see
+	// TestConnCarriesOnAfterAMessageThatIsNotValid.
 	b.writeRaw([]byte("Xnot a message at all, whatever else it may be"))
 	err, ok := awaitOne(lost)
 	if !ok {

@@ -80,6 +80,12 @@ type Adapter struct {
 	// returning an error instead. It is read and written under lock, so that it and err are decided together.
 	returned bool
 	lock     sync.RWMutex
+	// rejoining reports that a goroutine is inside [Adapter.embed] on behalf of [Adapter.reembed], and rejoinWanted
+	// that another registry has appeared since it started. Both are held under rejoinLock, which is a lock of its own
+	// so that a rejoin that is waiting for the registry to answer holds nothing a query needs.
+	rejoinLock   sync.Mutex
+	rejoining    bool
+	rejoinWanted bool
 }
 
 // Start connects to the accessibility bus, exports the AT-SPI objects and asks the registry to add the application to
@@ -239,12 +245,36 @@ func registryIsBack(msg *dbus.Message) bool {
 // reembed joins the accessibility tree again, replacing the desktop reference that the registry which has just gone
 // away handed out. Nothing is retried: a registry that cannot be talked to now will be talked to when it appears again,
 // which is the only thing that would make a retry work anyway.
+//
+// One rejoin runs at a time. A registry that crash-loops takes its name several times in quick succession, and an Embed
+// holds a pending call for as long as the connection's call timeout allows, so starting one per signal would leave
+// several in flight at once with nothing to order their replies: whichever landed last would decide the desktop the
+// application root reports as its parent, and that may well be the one an older registry incarnation handed back. A
+// signal that arrives while a rejoin is under way therefore only asks the goroutine already doing it to go again once
+// it is done, which is both what the newest registry needs and the last word on which desktop is current.
 func (a *Adapter) reembed() {
-	if a.stopping.Load() || a.Err() != nil {
+	a.rejoinLock.Lock()
+	if a.rejoining {
+		a.rejoinWanted = true
+		a.rejoinLock.Unlock()
 		return
 	}
-	if err := a.embed(); err != nil {
-		errs.Log(errs.NewWithCause("atspi: unable to rejoin the accessibility tree", err))
+	a.rejoining = true
+	a.rejoinLock.Unlock()
+	for {
+		if !a.stopping.Load() && a.Err() == nil {
+			if err := a.embed(); err != nil {
+				errs.Log(errs.NewWithCause("atspi: unable to rejoin the accessibility tree", err))
+			}
+		}
+		a.rejoinLock.Lock()
+		if !a.rejoinWanted {
+			a.rejoining = false
+			a.rejoinLock.Unlock()
+			return
+		}
+		a.rejoinWanted = false
+		a.rejoinLock.Unlock()
 	}
 }
 
@@ -381,7 +411,7 @@ func (a *Adapter) SetGeometry(key WindowKey, g Geometry) {
 		}
 		data := prior.withGeometry(g)
 		if ws.data.CompareAndSwap(prior, data) {
-			a.emitBoundsChanged(data, data.tree.Root)
+			a.emitBoundsChanged(nil, data, data.tree.Root)
 			return
 		}
 	}

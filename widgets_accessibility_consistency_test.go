@@ -263,10 +263,12 @@ func TestPopupMenuAccessibilityExpandRunsTheWillShowCallback(t *testing.T) {
 	if emptyNode == nil {
 		return
 	}
-	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+	// The click is queued rather than performed while the answer is awaited, so the request is taken whatever will
+	// come of it; the next description is what says nothing was shown.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   emptyNode.ID,
 		Action: accessibility.Expand,
-	}), "a popup that holds nothing even after its callback has run opens nothing")
+	}))
 	c.Equal(0, len(axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)), "nothing should have opened")
 
 	node := screen.AccessibilityNodeFor(filled)
@@ -365,7 +367,7 @@ func TestRadioButtonAccessibilitySelect(t *testing.T) {
 	})
 	c.True(selected, "selecting it should have made it the selection of its group")
 	c.False(wasSelected, "which takes the button that was selected out of it")
-	c.Equal(0, count, "selecting a radio button is not clicking it, so no callback runs")
+	c.Equal(1, count, "the application has to be told of a selection it would have been told of from a click")
 	screen.AccessibilityTree(wnd)
 	node = screen.AccessibilityNodeFor(second)
 	c.True(node != nil)

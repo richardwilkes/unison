@@ -1259,7 +1259,7 @@ func axDisclosedRowsOf(t *accessibility.Tree, n *accessibility.Node) []accessibi
 	}
 	rows := axRowsOf(t, t.Node(t.UnignoredParent(n.ID)), false)
 	var disclosed []accessibility.NodeID
-	for i := axIndexOfID(rows, n.ID) + 1; i > 0 && i < len(rows); i++ {
+	for i := slices.Index(rows, n.ID) + 1; i > 0 && i < len(rows); i++ {
 		row := t.Node(rows[i])
 		if row == nil || row.Level <= n.Level {
 			break
@@ -1278,7 +1278,7 @@ func axDisclosingRowOf(t *accessibility.Tree, n *accessibility.Node) accessibili
 		return 0
 	}
 	rows := axRowsOf(t, t.Node(t.UnignoredParent(n.ID)), false)
-	for i := axIndexOfID(rows, n.ID) - 1; i >= 0; i-- {
+	for i := slices.Index(rows, n.ID) - 1; i >= 0; i-- {
 		row := t.Node(rows[i])
 		if row == nil {
 			return 0
@@ -1379,16 +1379,6 @@ func axShortcutModifier(ch rune) (bits int64, command, isModifier bool) {
 	default:
 		return 0, false, false
 	}
-}
-
-// axIndexOfID returns the position of an id within a list of ids, or -1 if it is absent.
-func axIndexOfID(ids []accessibility.NodeID, id accessibility.NodeID) int {
-	for i, candidate := range ids {
-		if candidate == id {
-			return i
-		}
-	}
-	return -1
 }
 
 // axSetValue turns the value an assistive technology set on an element into a SetValue request.
@@ -1718,8 +1708,14 @@ func axElementMethods() []objc.MethodDef {
 // from the accessibilityPerform* methods a class implements, and answering it from the node is what makes the two ends
 // agree: an assistive technology is offered exactly what it will be allowed to do.
 //
-// Only the selectors axSelectorRules names are ever refused. Everything else is answered the way the default
-// implementation answers it, which is "yes if the class responds to it at all".
+// A selector axSelectorRules does not name is left to NSAccessibilityElement's own answer, which is not the same as
+// "yes if the class responds to it at all": NSAccessibilityElement responds to roughly 150 setAccessibility…:
+// selectors this class never overrides, and answering respondsToSelector: for those told every client that every
+// attribute an element exposes is writable. A write then landed in NSAccessibilityElement's own property storage,
+// was accepted, and either did nothing to the widget — VoiceOver writes AXSelectedText for braille and dictation
+// input, which would appear to work — or, for the getters this class does not override, quietly changed what the
+// element reports. Super refuses all of those and allows the getters, which is the answer wanted; the setters this
+// class does override are all named by axSelectorRules, so they never reach super at all.
 func axElementAllowedMethods() []objc.MethodDef {
 	return []objc.MethodDef{
 		{
@@ -1727,7 +1723,7 @@ func axElementAllowedMethods() []objc.MethodDef {
 			Fn: func(self objc.ID, _, selector objc.SEL) bool {
 				allowed, restricted := axSelectorRules()[selector]
 				if !restricted {
-					return objc.Send[bool](self, Sel("respondsToSelector:"), selector)
+					return axSuperAllowsSelector(self, selector)
 				}
 				a, n := axElementTarget(self, 0)
 				if a == nil || n == nil {
@@ -1743,8 +1739,18 @@ func axElementAllowedMethods() []objc.MethodDef {
 	}
 }
 
+// axSuperAllowsSelector reports what NSAccessibilityElement's own isAccessibilitySelectorAllowed: answers for a
+// selector, which is the answer an element gives for everything axSelectorRules leaves alone. The send has to go
+// through SendSuper rather than to self, since self's implementation is the caller.
+//
+// The result is a BOOL, which the Objective-C runtime returns as a signed char in the low byte of the return
+// register, so only that byte may be examined; this is the same conversion purego itself makes for a bool return.
+func axSuperAllowsSelector(self objc.ID, selector objc.SEL) bool {
+	return byte(SendSuper(self, axElementClass, Sel("isAccessibilitySelectorAllowed:"), selector)) != 0
+}
+
 // axSelectorRules returns the rule for each selector an element offers only when its node can back it, keyed by the
-// selector. A selector that is absent is always offered; see axElementAllowedMethods.
+// selector. A selector that is absent is left to NSAccessibilityElement's own answer; see axElementAllowedMethods.
 //
 // The rules answer from the same fields the methods themselves answer from, so what is advertised and what is answered
 // cannot drift apart: the performers from the node's action set, the text protocol from whether the node holds text at
@@ -1806,6 +1812,11 @@ func axSelectorRules() map[objc.SEL]func(t *accessibility.Tree, n *accessibility
 			},
 			Sel("setAccessibilitySelected:"): can(accessibility.Select, accessibility.RemoveFromSelection),
 			Sel("setAccessibilityExpanded:"): can(accessibility.Expand, accessibility.Collapse),
+			// Whether AXFocused can be set is the only way this platform has of saying that a node can be given the
+			// keyboard focus, which is what the other two report as AT-SPI's STATE_FOCUSABLE and UIA's
+			// IsKeyboardFocusable. The rule is the node's action set, because that is exactly what axPerform consults
+			// before it will dispatch the request; see uiaFragmentSetFocus in internal/w32 for the same refusal.
+			Sel("setAccessibilityFocused:"): can(accessibility.Focus),
 		}
 	})
 	return axSelectorRuleMap
@@ -2908,6 +2919,12 @@ func axAdvance(line *accessibility.Line, index int) float32 {
 // Node.Bounds. Line bounds are in the control's own coordinates, so the node's origin — which is where the control's
 // coordinate system starts within the window — is added. Without measured lines the best available answer is the whole
 // control.
+//
+// A range that spans more than one line answers with the bounding box of every line it touches, which is what
+// VoiceOver draws its selection highlight from. Each line contributes only the part of itself the range covers, and
+// axAdvance is what trims it: an index before a line's first rune clamps to its left edge and one past its last rune
+// clamps to its right edge, so the first and last lines contribute their fragments and the lines between them
+// contribute their whole width. A collapsed range still answers with the zero-width caret rectangle on its own line.
 func axRectForRuneRange(n *accessibility.Node, info *accessibility.TextInfo, start, end int) geom.Rect {
 	if len(info.Lines) == 0 {
 		return n.Bounds
@@ -2915,13 +2932,24 @@ func axRectForRuneRange(n *accessibility.Node, info *accessibility.TextInfo, sta
 	if start > end {
 		start, end = end, start
 	}
-	line := &info.Lines[axLineForRune(info, start)]
-	x := axAdvance(line, start)
-	right := axAdvance(line, end)
-	if right < x {
-		right = x
+	first := axLineForRune(info, start)
+	last := axLineForRune(info, end)
+	line := &info.Lines[first]
+	left := line.Bounds.X + axAdvance(line, start)
+	right := line.Bounds.X + axAdvance(line, end)
+	top := line.Bounds.Y
+	bottom := line.Bounds.Bottom()
+	for i := first + 1; i <= last; i++ {
+		line = &info.Lines[i]
+		left = min(left, line.Bounds.X+axAdvance(line, start))
+		right = max(right, line.Bounds.X+axAdvance(line, end))
+		top = min(top, line.Bounds.Y)
+		bottom = max(bottom, line.Bounds.Bottom())
 	}
-	r := geom.NewRect(line.Bounds.X+x, line.Bounds.Y, right-x, line.Bounds.Height)
+	if right < left {
+		right = left
+	}
+	r := geom.NewRect(left, top, right-left, bottom-top)
 	r.Point = r.Point.Add(n.Bounds.Point)
 	return r
 }
@@ -2951,8 +2979,9 @@ func axRuneForLocalPoint(info *accessibility.TextInfo, pt geom.Point) int {
 	return line.Start + best
 }
 
-// axViewIsAdapted reports whether the content view already has an adapter, which is what tells the view's three
-// activating selectors whether they have anything to answer from yet.
+// axViewIsAdapted reports whether the content view already has an adapter. Nothing in the adapter asks: the view's
+// three activating selectors all go through axViewAdapter, which does its own lookup. It exists for the tests, which
+// use it to watch accessibility turn on — and stay off — without reaching into axAdapters themselves.
 func axViewIsAdapted(v View) bool {
 	_, ok := axAdapters[v]
 	return ok

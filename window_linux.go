@@ -406,8 +406,10 @@ func (w *Window) nativeMaximize() {
 }
 
 // x11SetMinimized records that the window manager has iconified the window, or restored it, which is what a taskbar,
-// switching workspaces and "show desktop" all do. Window.Minimize does not come through here, so this is the only place
-// that hears about those.
+// switching workspaces and "show desktop" all do — and what Window.Minimize asks for, since all it can do is send
+// WM_CHANGE_STATE and wait. Every one of them arrives here as the PropertyNotify the window manager sends when it sets
+// WM_STATE, so this is where the application learns that the state has actually changed rather than where it was asked
+// for; the only cost of the overlap is the second, harmless axMarkForPublish a Window.Minimize leads to.
 func (w *Window) x11SetMinimized(minimized bool) {
 	if minimized != w.minimized {
 		w.minimized = minimized

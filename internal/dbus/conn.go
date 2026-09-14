@@ -263,12 +263,21 @@ func (c *Conn) Call(msg *Message) (*Message, error) {
 
 // CallWithFlags is [Conn.Call] with additional flags applied to the message. If the flags include
 // [FlagNoReplyExpected], the message is sent and a nil reply is returned as soon as it has been written.
+//
+// The message is modified: the flags are applied to it and it is given a serial, exactly as [Conn.Send] and
+// [Conn.Enqueue] give one. A [Conn] is safe for concurrent use, but one *Message is not: a message that is sent from
+// two goroutines at once has the two serials written over each other, so build a message per call rather than sharing
+// one.
 func (c *Conn) CallWithFlags(msg *Message, flags Flags) (*Message, error) {
 	msg.Flags |= flags
 	if msg.Flags&FlagNoReplyExpected != 0 {
 		return nil, c.Send(msg)
 	}
-	msg.Serial = c.nextSerial()
+	// The serial is kept here rather than read back from the message, which whoever shares it may have overwritten by
+	// the time the cleanup runs: removing another call's serial from the pending map leaks this call's entry and
+	// silently discards the reply the other one is waiting for.
+	serial := c.nextSerial()
+	msg.Serial = serial
 	data, err := msg.Encode()
 	if err != nil {
 		return nil, err
@@ -280,11 +289,11 @@ func (c *Conn) CallWithFlags(msg *Message, flags Flags) (*Message, error) {
 		c.mu.Unlock()
 		return nil, err
 	}
-	c.pending[msg.Serial] = ch
+	c.pending[serial] = ch
 	c.mu.Unlock()
 	defer func() {
 		c.mu.Lock()
-		delete(c.pending, msg.Serial)
+		delete(c.pending, serial)
 		c.mu.Unlock()
 	}()
 	if err = c.writeAndWait(data); err != nil {
@@ -432,10 +441,12 @@ func (c *Conn) Export(path ObjectPath, obj Object) error {
 }
 
 // ExportSubtree publishes the objects at and below a path, resolving each one as it is called. resolve is called on the
-// dispatcher goroutine and returns nil for a path that has nothing at it, which is answered with an UnknownObject
-// error. An object exported at an exact path with [Conn.Export] takes precedence, as does a subtree registered at a
-// longer prefix. Since the objects do not exist yet, they cannot be checked the way [Conn.Export] checks the one it is
-// given; a name that is not a valid D-Bus name simply cannot be called, and is escaped when it is introspected.
+// dispatcher goroutine and returns nil for a path that has nothing at it, which is answered with an UnknownObject error
+// only when nothing is exported below that path either; when something is, the path is answered by the [nodeObject]
+// placeholder instead, so that a client can introspect its way down to what is below it. An object exported at an exact
+// path with [Conn.Export] takes precedence, as does a subtree registered at a longer prefix. Since the objects do not
+// exist yet, they cannot be checked the way [Conn.Export] checks the one it is given; a name that is not a valid D-Bus
+// name simply cannot be called, and is escaped when it is introspected.
 func (c *Conn) ExportSubtree(prefix ObjectPath, resolve func(path ObjectPath) Object) error {
 	if err := prefix.Validate(); err != nil {
 		return err
@@ -565,14 +576,23 @@ func writeAll(w *bufio.Writer, items []*outgoing) error {
 	return nil
 }
 
-// readLoop decodes messages until the connection ends.
+// readLoop decodes messages until the connection ends. A message that arrived whole but is not one the specification
+// permits costs only itself: it is logged and skipped, exactly as a malformed body is, since every byte it declared has
+// been read and the stream is still positioned at the start of the next message. Ending the connection for that is what
+// let one message from a hostile or broken peer take every pending call, every subscription and, since a [Session] is
+// never reconnected, accessibility itself for the life of the process. Only a fault in the framing, which nothing can
+// resynchronize, ends the connection; see [ErrMessageContent].
 func (c *Conn) readLoop() {
 	for {
 		msg, err := Decode(c.in)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			switch {
+			case errors.Is(err, ErrMessageContent):
+				errs.Log(errs.NewWithCause("dbus: discarding a message that is not valid", err))
+				continue
+			case errors.Is(err, io.EOF):
 				c.fail(errors.New("dbus: the peer closed the connection"))
-			} else {
+			default:
 				c.fail(fmt.Errorf("dbus: unable to read a message: %w", err))
 			}
 			return

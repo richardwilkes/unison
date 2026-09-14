@@ -31,8 +31,10 @@ func TestW32HandleGetObjectIgnoresOtherObjectIDs(t *testing.T) {
 	wasActive := IsAccessibilityActive()
 	snapshots := axSnapshotCount
 	// Built the way every window is, with its platform state present but no native window behind it, since the handler
-	// reaches through w.wnd on its way to deciding there is nothing to describe.
-	w := &Window{wnd: &apiWindow{}}
+	// reaches through w.wnd on its way to deciding there is nothing to describe. It is marked valid so that what turns
+	// the UI Automation request below away is the absence of a root panel rather than the validity check that stands
+	// ahead of it: a window that never got past that check would prove nothing about the guards being tested.
+	w := &Window{wnd: &apiWindow{}, valid: true}
 	for i, objectID := range []int32{
 		0,  // OBJID_WINDOW: the window frame
 		-4, // OBJID_CLIENT: the client area, which is what MSAA clients ask for

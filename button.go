@@ -301,8 +301,13 @@ func (b *Button) ProvideAccessibility(builder *AccessibilityBuilder) {
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Pressing the button clicks it, which
 // runs the same animation and callback that a person's click would have. Selecting one makes it the selection of the
-// group it latches within, without the animation and without the callback, exactly as selecting one radio button of a
-// set does; a button that latches nothing has no selection to be.
+// group it latches within and then runs ClickCallback, exactly as selecting one radio button of a set does; a button
+// that latches nothing has no selection to be.
+//
+// The click animation is skipped for a selection, since nothing was clicked and the wait it spends showing the button
+// pressed would only hold up the answer to the request, but the callback is not: a person who moves the selection with
+// an assistive technology has made exactly the change a click makes, and an application never told of it would go on
+// acting on a value that no longer matches what is on the screen.
 func (b *Button) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Press:
@@ -313,6 +318,7 @@ func (b *Button) PerformAccessibilityAction(req accessibility.ActionRequest) boo
 			return false
 		}
 		b.group.Select(b)
+		SafeCall(b.ClickCallback)
 		return true
 	default:
 		return false

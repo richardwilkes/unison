@@ -34,6 +34,8 @@ const (
 	testPeerName = ":1.7"
 	// testDesktopPath is the path of the desktop object the fake registry hands back from Embed.
 	testDesktopPath dbus.ObjectPath = "/org/a11y/atspi/accessible/desktop"
+	// getMember is org.freedesktop.DBus.Properties.Get, which is how every property the tests read is asked for.
+	getMember = "Get"
 )
 
 // testPeer is the other end of a connection under test. It answers the calls the bus itself implements, answers the
@@ -238,7 +240,7 @@ func (p *testPeer) call(path dbus.ObjectPath, iface, member string, sig dbus.Sig
 // getProperty reads one property of an object the connection under test exports, unwrapping the variant it arrives in.
 func (p *testPeer) getProperty(path dbus.ObjectPath, iface, name string) any {
 	p.t.Helper()
-	args := p.replyValues(p.call(path, dbusPropertiesInterface, "Get", "ss", iface, name))
+	args := p.replyValues(p.call(path, dbusPropertiesInterface, getMember, "ss", iface, name))
 	p.c.Equal(1, len(args))
 	variant, ok := args[0].(dbus.Variant)
 	p.c.True(ok, "a property must come back as a variant")
@@ -308,7 +310,7 @@ func registryAnswers(p *testPeer, msg *dbus.Message) bool {
 // the peer's enabled flag say.
 func statusAnswers(p *testPeer, msg *dbus.Message) bool {
 	switch {
-	case msg.Interface == dbusPropertiesInterface && msg.Member == "Get":
+	case msg.Interface == dbusPropertiesInterface && msg.Member == getMember:
 		args, err := msg.Args()
 		if err != nil || len(args) != 2 {
 			return false

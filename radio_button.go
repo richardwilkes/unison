@@ -108,15 +108,21 @@ func (r *RadioButton) ProvideAccessibility(b *AccessibilityBuilder) {
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Selecting a radio button makes it the
-// selection of its group, without the click animation and without the callback, exactly as selecting the sticky Button
-// reported under the same role does; a button that belongs to no group has no selection to be. Everything else is left
-// to the shared handling, which clicks the button.
+// selection of its group and then runs ClickCallback, exactly as selecting the sticky Button reported under the same
+// role does; a button that belongs to no group has no selection to be. Everything else is left to the shared handling,
+// which clicks the button.
+//
+// The click animation is skipped, since nothing was clicked and the wait it spends showing the button pressed would
+// only hold up the answer to the request, but the callback is not: a person who moves the dot with an assistive
+// technology has made exactly the change a click makes, and an application never told of it would go on acting on a
+// value that no longer matches what is on the screen.
 func (r *RadioButton) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	if req.Action == accessibility.Select {
 		if r.group == nil {
 			return false
 		}
 		r.group.Select(r)
+		SafeCall(r.ClickCallback)
 		return true
 	}
 	return r.checkRadioBase.PerformAccessibilityAction(req)

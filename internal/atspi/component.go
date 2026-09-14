@@ -141,8 +141,14 @@ func (o *nodeObject) getAlpha(call *dbus.Call) {
 // grabFocus implements org.a11y.atspi.Component.GrabFocus. The answer is optimistic: the request is handed to the user
 // interface thread and "yes" means it was accepted, not that the focus has moved yet. A node that cannot take the focus
 // says so immediately.
+//
+// Being focusable and offering the focus action really do come apart: a snapshot sets Focusable on the highlighted item
+// of an open menu after the action set has been derived, an Accessibility.Callback can set it later still, and a
+// virtual child carries whatever action set its builder gave it. The user interface thread refuses a request for an
+// action the node does not offer, so answering "yes" to one would leave an assistive technology waiting for a focused
+// state change that never arrives. Both other adapters refuse the same request.
 func (o *nodeObject) grabFocus(call *dbus.Call) {
-	if o.node.Disabled || !o.node.Focusable {
+	if o.node.Disabled || !o.node.Focusable || !o.node.Actions.Has(accessibility.Focus) {
 		call.Reply(false)
 		return
 	}

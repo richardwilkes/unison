@@ -14,7 +14,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/dbus"
@@ -136,10 +135,34 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		return func() {}
 	}
 	done := make(chan struct{})
-	var latest atomic.Uint64
+	// latest counts the answers that have been settled on, and reporting is what it guards: every answer takes the
+	// lock, bumps or checks the count and calls onChange without letting go, so that a read whose answer is on its way
+	// back cannot slip an older value in between a newer one being counted and being reported. Checking the count and
+	// then calling would leave exactly that gap, which is the whole of what the count is for.
+	var reportLock sync.Mutex
+	var latest uint64
 	report := func(enabled bool) {
-		latest.Add(1)
+		reportLock.Lock()
+		defer reportLock.Unlock()
+		latest++
 		onChange(enabled)
+	}
+	// reportRead reports an answer that had to be read, unless something more recent has been reported while it was on
+	// its way back or the watch has been canceled since.
+	reportRead := func(enabled bool, wanted uint64) {
+		reportLock.Lock()
+		defer reportLock.Unlock()
+		if !canceled(done) && latest == wanted {
+			onChange(enabled)
+		}
+	}
+	// claimRead counts a read that is about to be made and returns what it has to still be for its answer to be worth
+	// reporting.
+	claimRead := func() uint64 {
+		reportLock.Lock()
+		defer reportLock.Unlock()
+		latest++
+		return latest
 	}
 	recheck := func() {
 		// Enabled makes a call, and this runs on the dispatcher goroutine, which must not be held up, so the answer is
@@ -150,13 +173,8 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		if canceled(done) {
 			return
 		}
-		wanted := latest.Add(1)
-		go func() {
-			enabled := Enabled(session)
-			if !canceled(done) && latest.Load() == wanted {
-				onChange(enabled)
-			}
-		}()
+		wanted := claimRead()
+		go func() { reportRead(Enabled(session), wanted) }()
 	}
 	cancelStatus := session.Subscribe(dbus.SignalFilter{
 		Path:      BusPath,
@@ -208,11 +226,8 @@ func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func(
 		// Cancellation is checked on both sides of the read, since [Enabled] makes a round trip to the session bus and
 		// the watch can be canceled while it is in flight.
 		if !canceled(done) {
-			wanted := latest.Add(1)
-			enabled := Enabled(session)
-			if !canceled(done) && latest.Load() == wanted {
-				onChange(enabled)
-			}
+			wanted := claimRead()
+			reportRead(Enabled(session), wanted)
 		}
 		<-done
 		for _, rule := range rules {

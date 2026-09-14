@@ -1454,12 +1454,21 @@ func (f *Field) ProvideAccessibility(b *AccessibilityBuilder) {
 		return
 	}
 	node.Value = f.Text()
+	// A field lays its content out over more than one line when it accepts line feeds, and also when it is a
+	// single-line field that wraps: buildLines breaks the one line such a field holds to the field's width, so it can
+	// show any number of them. That is the only case where this has to be measured — a single line that does not wrap
+	// is always the one line — and it has to agree with axTextLines, which hands back a line for each of them.
+	multiline := f.multiLine
+	if !multiline && f.wrap {
+		f.prepareLinesForCurrentWidth()
+		multiline = len(f.lines) > 1
+	}
 	info := &accessibility.TextInfo{
 		Text:      node.Value,
 		SelStart:  f.selectionStart,
 		SelEnd:    f.selectionEnd,
 		Caret:     f.axCaret(),
-		Multiline: f.multiLine,
+		Multiline: multiline,
 	}
 	if b.Focused() {
 		// Where the lines fall has to be measured, which is worth doing only for the field the person is actually

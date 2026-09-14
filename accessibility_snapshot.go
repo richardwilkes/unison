@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
@@ -89,9 +91,14 @@ type axSnapshot struct {
 	targets    map[accessibility.NodeID]axTarget
 	focusPanel *Panel
 	// cell is set while the panels inside one cell of a table are being described; see axCellContext.
-	cell       *axCellContext
-	focus      accessibility.NodeID
-	generation uint64
+	cell *axCellContext
+	// childrenDescribed holds the nodes whose children the widget itself described, through
+	// AccessibilityBuilder.DescribeChildren, which is what keeps visit from describing them a second time. It stays nil
+	// until something asks, and the only widgets that do are the pieces of static text holding something an assistive
+	// technology has to reach in its own right — a markdown heading with a link in it.
+	childrenDescribed map[accessibility.NodeID]bool
+	focus             accessibility.NodeID
+	generation        uint64
 }
 
 // axCellContext is in force while the panel a table row handed back for one of its cells, and everything inside it,
@@ -314,12 +321,18 @@ func (s *axSnapshot) openMenuFocus() accessibility.NodeID {
 // take it, which is the pair every other path here goes out of its way not to produce. See axSnapshot.visit and
 // axSnapshot.fallbackFocus, which both refuse a disabled node for the same reason. The search carries on to the menu
 // that item was opened from, exactly as it does when nothing is highlighted at all.
+//
+// Neither is a separator. It is highlighted like anything else the pointer crosses — menuItem.newPanel installs the
+// same enter and exit callbacks on one, since the highlight has to be taken off whatever the pointer left — but a
+// separator is the line drawn between the things that can be chosen rather than one of them, and it is published with
+// role.Separator. Reporting the focus on it would tell a screen reader the person had moved onto a divider, and would
+// say a divider is focusable besides, every time the pointer merely passed over one.
 func (s *axSnapshot) highlightedMenuItem(panel *menuPanel) accessibility.NodeID {
 	if panel == nil || panel.menu == nil {
 		return 0
 	}
 	for _, item := range panel.menu.items {
-		if !item.over || item.panel == nil {
+		if !item.over || item.isSeparator || item.panel == nil {
 			continue
 		}
 		if id := item.panel.Accessibility.id; id != 0 {
@@ -391,6 +404,12 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		// text — is decided by the role. Whatever the callback leaves behind is resolved again after it runs.
 		node.Role = role.Group
 	}
+	// Held here because this is the role the name is about to be resolved from, and the two halves of what being static
+	// text means — the children's text folded into the name, the children themselves not described — have to be decided
+	// by the same role. The callback runs after the name has been resolved, so a callback that moves the node off
+	// Heading or Label has not unfolded the name it already has, and one that moves it onto either has not folded
+	// anything into it. See the end of this function.
+	staticText := node.Role == role.Heading || node.Role == role.Label
 	s.resolveName(p, node)
 	if node.Description == "" {
 		// A widget with nothing but a tooltip to go on — an icon button, say — takes its name from that tooltip, and
@@ -442,12 +461,24 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	if node.Focused && s.focus == 0 {
 		s.focus = node.ID
 	}
-	if node.Role == role.Heading || node.Role == role.Label {
-		// Static text is one element, however many panels it is actually built from, so its children have already been
-		// folded into its name and are not visited.
+	if s.childrenDescribed[node.ID] || staticText {
+		// Either the widget described the children itself, from ProvideAccessibility — a heading holding a link asks for
+		// that, since a link has to be reachable in its own right — or the node is static text, which is one element
+		// however many panels it is actually built from, so its children have already been folded into its name.
+		// Describing them here as well would list every one of them beneath this node twice, which is what every
+		// position counted out of that list would then be wrong about.
 		return
 	}
 	s.visitChildren(p, node.ID, visible)
+}
+
+// markChildrenDescribed records that the children of a node have been described by the widget itself rather than being
+// left to visit. See AccessibilityBuilder.DescribeChildren.
+func (s *axSnapshot) markChildrenDescribed(id accessibility.NodeID) {
+	if s.childrenDescribed == nil {
+		s.childrenDescribed = make(map[accessibility.NodeID]bool)
+	}
+	s.childrenDescribed[id] = true
 }
 
 // visitChildren describes each of p's children as children of parent, in index order — which is reading order, and also
@@ -548,6 +579,12 @@ func axRoleUsesSiblingLabel(r role.Enum) bool {
 // axPrecedingLabel returns the Label immediately before p among its parent's children, or nil if there is not one. This
 // is the "label, then the thing it labels" convention that laying controls out in a two-column grid produces, and it is
 // used only as a last resort: a widget that knows its own label sets Accessibility.LabeledBy and never depends on it.
+//
+// Only a sibling that is still going to be published as static text counts. A *Label is the type several things in this
+// package are built out of rather than a promise about what any of them is — NewLink hands back one that describes
+// itself with role.Link — and a sibling that says it is something else is something a person acts on in its own right,
+// not a caption for what follows it. Naming the control after it would have an assistive technology read a hyperlink's
+// text as the name of the field beside it and hand back the link as the field's LabeledBy.
 func axPrecedingLabel(p *Panel) *Label {
 	parent := p.Parent()
 	if parent == nil {
@@ -558,7 +595,10 @@ func axPrecedingLabel(p *Panel) *Label {
 		return nil
 	}
 	previous := parent.Children()[i-1]
-	if previous.Hidden || previous.Accessibility.Role == role.None {
+	if previous.Hidden {
+		return nil
+	}
+	if r := previous.Accessibility.Role; r != role.Auto && r != role.Label {
 		return nil
 	}
 	label, ok := previous.Self.(*Label)
@@ -589,7 +629,7 @@ func axAppendLabelText(buffer *strings.Builder, p *Panel) {
 		}
 	}
 	if text != "" {
-		if buffer.Len() != 0 {
+		if axNeedsSeparatingSpace(buffer.String(), text) {
 			buffer.WriteByte(' ')
 		}
 		buffer.WriteString(text)
@@ -598,6 +638,22 @@ func axAppendLabelText(buffer *strings.Builder, p *Panel) {
 	for _, child := range p.Children() {
 		axAppendLabelText(buffer, child)
 	}
+}
+
+// axNeedsSeparatingSpace reports whether a space has to be put between two pieces of a name so that the words on either
+// side of the join are not run together.
+//
+// One is needed only when neither side already carries whitespace there. A run of text that has been broken into more
+// than one panel keeps its own spacing — markdown splits "A linked heading" into "A ", the link, and " heading", each
+// with the spaces that separate them still attached — so adding a space unconditionally would double every one of them
+// and leave a name an assistive technology reads with a stutter in it.
+func axNeedsSeparatingSpace(before, after string) bool {
+	if before == "" || after == "" {
+		return false
+	}
+	last, _ := utf8.DecodeLastRuneInString(before)
+	first, _ := utf8.DecodeRuneInString(after)
+	return !unicode.IsSpace(last) && !unicode.IsSpace(first)
 }
 
 // axTrimLabelText turns the text of a label into a name by dropping the surrounding whitespace and the trailing colon
@@ -661,12 +717,22 @@ func (w *Window) publishThrottledAccessibility() {
 }
 
 // publishAccessibilityNow describes the window and publishes it, without regard to the throttle.
+//
+// The window is laid out first, since a description is built from where the panels are: one built while a layout
+// invalidation is still pending reports the frames they had before it, which is both the geometry an assistive
+// technology draws its highlight from and what the BoundsChanged events of the next diff carry. The publish that
+// follows a draw is safe without this — Window.Draw validates the layout itself — but the throttled one runs from the
+// task queue ahead of that pass's redraws, and HeadlessScreen.AccessibilityTree asks for a tree without drawing at all.
+// It is a no-op when the layout is already valid, so the callers that lay the window out before reaching here pay
+// nothing for saying so.
 func (w *Window) publishAccessibilityNow() {
 	if w.ax.adapterFailed {
 		// There is nothing to publish to and there never will be, so describing the window would be work with nowhere
-		// to go. See windowAccessibility.adapterFailed.
+		// to go. See windowAccessibility.adapterFailed. Checked ahead of the layout below, since a window that publishes
+		// nowhere has no reason to be laid out either.
 		return
 	}
+	w.ValidateLayout()
 	w.ax.lastPublish = time.Now()
 	tree := w.buildAccessibilityTree()
 	events := accessibility.Diff(w.ax.last, tree)

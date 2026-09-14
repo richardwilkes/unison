@@ -11,8 +11,10 @@ package cocoa
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
@@ -531,6 +533,16 @@ func TestAXAdapterText(t *testing.T) {
 			if got := objc.Send[NSRect](field, Sel("accessibilityFrameForRange:"),
 				NSRange{Location: 0, Length: 1}); got != want {
 				t.Errorf("accessibilityFrameForRange:{0,1} = %+v, want %+v", got, want)
+			}
+			// A range that spans both lines answers with their union, which is what VoiceOver draws its selection
+			// highlight from. UTF-16 {5,6} runs from the space on the first line to the 'r' on the second, so the
+			// first line contributes from its advance 50 to its right edge at 80 and the second from its left edge to
+			// its advance 20: a box 80 wide and both line heights tall. Measuring both ends against the start's line
+			// instead would report only the 30-wide fragment the range covers on the first line.
+			want = a.screenRect(geom.NewRect(bounds.X, bounds.Y, 80, 32))
+			if got := objc.Send[NSRect](field, Sel("accessibilityFrameForRange:"),
+				NSRange{Location: 5, Length: 6}); got != want {
+				t.Errorf("accessibilityFrameForRange:{5,6} = %+v, want %+v", got, want)
 			}
 			// A position a quarter of the way along the first line lands on the third rune, whose UTF-16 range is
 			// {2,1}.
@@ -2580,6 +2592,10 @@ func axSelectorAllowed(element objc.ID, selector string) bool {
 // says its value can be set — including a progress bar, which is exactly the read-only node the other two platforms
 // report as READ_ONLY and IsReadOnly. What the element advertises now comes from the same fields the answers come
 // from, so an assistive technology is offered exactly what it will be allowed to do.
+//
+// The selectors no rule names are proved too, since they are answered by NSAccessibilityElement rather than by a rule:
+// the getters it supplies stay on offer, and the setters it supplies — which this class never overrides, so a write to
+// one of them would be swallowed by NSAccessibilityElement's own storage — are refused.
 func TestAXSelectorAllowed(t *testing.T) {
 	runOnMain(func() {
 		const (
@@ -2674,6 +2690,7 @@ func TestAXSelectorAllowed(t *testing.T) {
 				axByButton       = "nynnnnn"
 				axBySlider       = "nnynnnn"
 				axByTextField    = "nnnynnn"
+				axByFocusable    = "nynynnn"
 				axBySettable     = "nnyynnn"
 				axByRowContainer = "nnnnynn"
 				axByRow          = "nnnnnyn"
@@ -2691,7 +2708,26 @@ func TestAXSelectorAllowed(t *testing.T) {
 				{selector: "accessibilityChildren", allowed: axByEveryNode},
 				{selector: "accessibilityMaxValue", allowed: axByEveryNode},
 				{selector: "isAccessibilityFocused", allowed: axByEveryNode},
-				{selector: "setAccessibilityFocused:", allowed: axByEveryNode},
+				// The getters NSAccessibilityElement supplies and this class never overrides stay on offer too: the
+				// answer for them comes from super, which allows every getter it responds to.
+				{selector: "accessibilityTitle", allowed: axByEveryNode},
+				{selector: "accessibilityURL", allowed: axByEveryNode},
+				{selector: "accessibilityIdentifier", allowed: axByEveryNode},
+				// The setters NSAccessibilityElement supplies and this class never overrides are refused for every
+				// node, which is what super answers for them. Left to respondsToSelector: they were all offered, and
+				// a write then landed in NSAccessibilityElement's own storage: accepted, invisible to the widget, and
+				// for the getters above a lasting change to what the element reports.
+				{selector: "setAccessibilityLabel:", allowed: axByNoNode},
+				{selector: "setAccessibilityRole:", allowed: axByNoNode},
+				{selector: "setAccessibilityTitle:", allowed: axByNoNode},
+				{selector: "setAccessibilityURL:", allowed: axByNoNode},
+				{selector: "setAccessibilityIdentifier:", allowed: axByNoNode},
+				{selector: "setAccessibilityParent:", allowed: axByNoNode},
+				{selector: "setAccessibilityChildren:", allowed: axByNoNode},
+				{selector: "setAccessibilityFrame:", allowed: axByNoNode},
+				{selector: "setAccessibilityEnabled:", allowed: axByNoNode},
+				{selector: "setAccessibilitySelectedText:", allowed: axByNoNode},
+				{selector: "setAccessibilityVisibleCharacterRange:", allowed: axByNoNode},
 				// The performers, each offered by exactly the nodes whose action set has it. AppKit derives the
 				// AXIncrement and AXDecrement action names from these two being implemented at all, so a label that
 				// answers them advertises stepping it cannot do.
@@ -2725,6 +2761,10 @@ func TestAXSelectorAllowed(t *testing.T) {
 				{selector: "setAccessibilityValue:", allowed: axBySettable},
 				{selector: "setAccessibilitySelected:", allowed: axByRow},
 				{selector: "setAccessibilityExpanded:", allowed: axByRow},
+				// Whether AXFocused can be set is the only way this platform can say a node takes the keyboard focus,
+				// so it belongs to the nodes whose action set has Focus and to no others — a label, an anonymous
+				// group and a progress bar all offered it before, while axPerform refused every one of them.
+				{selector: "setAccessibilityFocused:", allowed: axByFocusable},
 			} {
 				if len(c.allowed) != len(elements) {
 					t.Fatalf("the row for %s covers %d elements, want %d", c.selector, len(c.allowed), len(elements))
@@ -2766,6 +2806,26 @@ func TestAXSelectorAllowed(t *testing.T) {
 			}
 		})
 	})
+}
+
+// TestAXEverySetterHasARule proves that every setter UnisonAXElement implements is named by axSelectorRules. A setter
+// that is not named falls through to NSAccessibilityElement's answer, and NSAccessibilityElement allows a setter its
+// subclass overrides — so a new setter added to the method table without a rule would be offered by every node,
+// including the ones axPerform and axRequest then silently refuse. That is the drift this whole facility exists to
+// prevent, and it cannot be caught by testing selectors a test has to remember to list.
+func TestAXEverySetterHasARule(t *testing.T) {
+	var selName func(sel objc.SEL) string
+	purego.RegisterLibFunc(&selName, libObjC(), "sel_getName")
+	rules := axSelectorRules()
+	for _, m := range axElementMethods() {
+		name := selName(m.Cmd)
+		if !strings.HasPrefix(name, "setAccessibility") {
+			continue
+		}
+		if _, ok := rules[m.Cmd]; !ok {
+			t.Errorf("%s is implemented but has no rule in axSelectorRules, so every node offers it", name)
+		}
+	}
 }
 
 // TestAXShortcutParser proves the accelerator parser against the strings the menus themselves draw. KeyBinding.String
