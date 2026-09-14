@@ -560,7 +560,7 @@ func TestLinuxA11yWindowManagerMinimizeMarksForPublish(t *testing.T) {
 		delete(redrawSet, w)
 		return pending
 	}
-	c.False(marked(), "the window has just been built, so nothing has marked it")
+	c.True(marked(), "installing the window's content marks it for its first draw")
 
 	w.x11SetMinimized(true)
 	c.True(marked(), "a window the window manager iconified must be described again, so the event loop withdraws it")
