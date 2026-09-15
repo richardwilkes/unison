@@ -61,7 +61,12 @@ func TestWMClassData(t *testing.T) {
 // instead, so those public methods always reported false on Linux no matter what the window manager did.
 func TestX11WindowStateIsVisibleToPublicAPI(t *testing.T) {
 	c := check.New(t)
-	w := &Window{valid: true}
+	// x11SetMinimized marks the window for redraw when an assistive technology is being served, and a window that has
+	// been marked is drawn by the next pass of whatever event loop runs after this test. Whether one is being served is
+	// package state that an earlier test may have left on, so it is pinned off here rather than trusted.
+	priorActive := accessibilityActive.Swap(false)
+	t.Cleanup(func() { accessibilityActive.Store(priorActive) })
+	w := &Window{valid: true, wnd: &apiWindow{}}
 	var minimizedCalls, maximizedCalls []bool
 	w.MinimizedCallback = func(minimized bool) { minimizedCalls = append(minimizedCalls, minimized) }
 	w.MaximizedCallback = func(maximized bool) { maximizedCalls = append(maximizedCalls, maximized) }
@@ -90,6 +95,43 @@ func TestX11WindowStateIsVisibleToPublicAPI(t *testing.T) {
 	c.Equal([]bool{true, false}, maximizedCalls)
 }
 
+// TestX11MinimizeMarksTheWindowForPublish covers what x11SetMinimized does for an assistive technology: a window the
+// window manager has iconified, or restored, is marked for redraw so that the event loop withdraws or republishes its
+// description, exactly as Window.Minimize does. Without it only a minimized window that held the keyboard focus would be
+// withdrawn, by the FocusOut that follows, and a background window a person cannot see would go on being listed.
+func TestX11MinimizeMarksTheWindowForPublish(t *testing.T) {
+	c := check.New(t)
+	priorActive, priorWake := accessibilityActive.Swap(true), redrawWakePending
+	w := &Window{valid: true, wnd: &apiWindow{}}
+	t.Cleanup(func() {
+		accessibilityActive.Store(priorActive)
+		redrawWakePending = priorWake
+		delete(redrawSet, w)
+	})
+	marked := func() bool {
+		_, ok := redrawSet[w]
+		return ok
+	}
+
+	w.x11SetMinimized(true)
+	c.True(marked(), "a window the window manager iconified must be described again")
+
+	// A repeat of the state already in effect changes nothing and so marks nothing.
+	delete(redrawSet, w)
+	w.x11SetMinimized(true)
+	c.False(marked(), "a repeat of the state in effect must not mark the window")
+
+	w.x11SetMinimized(false)
+	c.True(marked(), "a window the window manager restored must be described again")
+
+	// Nothing is marked when no assistive technology is being served: that is the whole cost of the support to an
+	// application nothing is watching.
+	delete(redrawSet, w)
+	accessibilityActive.Store(false)
+	w.x11SetMinimized(true)
+	c.False(marked(), "without an assistive technology a minimize must not mark the window")
+}
+
 // The X protocol constants the ConfigureNotify test needs. They are the wire's own numbers rather than anything
 // internal/x11 decides, and that package keeps its copies of them to itself: [x11.Synthetic] is the only way in from
 // out here to what the high bit of an event code means, which is why [x11ConfigureNotify] checks the event it builds
@@ -102,6 +144,9 @@ const (
 	// sets on an event another client sent rather than the server generating it.
 	x11ConfigureNotifyCode = 22
 	x11SyntheticEventFlag  = 0x80
+	// x11RequestErrorCode is the Request error, which is what the X server answers a request it does not understand
+	// with, and what the stand-in below answers everything it was not built to serve with.
+	x11RequestErrorCode = 1
 )
 
 // The windows the ConfigureNotify test works with, and where the window manager's frame sits on the root window: a
@@ -127,6 +172,13 @@ type x11Translation struct {
 // [x11.NewConnForTest] wires the connection the platform code uses to it, and internal/x11's own
 // TestNewConnForTestServesRequests is where the bytes below are checked, since nothing in this file builds anywhere but
 // Linux.
+//
+// TranslateCoordinates is the only request it serves, and the tests keep it that way by never marking a window valid:
+// ContentRect and BackingScale answer for an invalid window without asking the X server anything, which is what keeps
+// the event handling's moved() and the geometry refresh from making the GetGeometry, TranslateCoordinates and
+// ContentScale requests they would make for a real window. Any other request is a regression, and is failed and
+// answered with an error rather than ignored, since one that expects a reply would otherwise wait for it forever and
+// hang the test instead of failing it.
 type x11TestServer struct {
 	t     *testing.T
 	side  net.Conn
@@ -165,7 +217,11 @@ func (s *x11TestServer) run() {
 			return
 		}
 		if header[0] != x11TranslateCoordinatesOpcode {
-			continue // Nothing else the code under test sends here expects an answer
+			s.t.Errorf("the X server was sent request %d, which nothing in these tests expects it to serve", header[0])
+			if !s.writeError(seq, header[0]) {
+				return
+			}
+			continue
 		}
 		asked := x11Translation{
 			src: x11.WindowID(binary.LittleEndian.Uint32(body[0:4])),
@@ -191,6 +247,21 @@ func (s *x11TestServer) run() {
 			return
 		}
 	}
+}
+
+// writeError answers a request with a Request error, which is what a real X server sends for a request it does not
+// understand. The connection under test hands it to whoever is waiting on the request, so one that expects a reply
+// returns an error at once rather than waiting for a reply that will never come; one that expects nothing has the error
+// queued as an event nobody reads. It returns false when the connection under test has gone away.
+func (s *x11TestServer) writeError(seq uint16, opcode byte) bool {
+	// An error is 32 bytes: zero, the error code, the sequence, the value the error is about, the minor opcode, the
+	// major opcode, then padding.
+	e := make([]byte, 32)
+	e[1] = x11RequestErrorCode
+	binary.LittleEndian.PutUint16(e[2:4], seq)
+	e[10] = opcode
+	_, err := s.side.Write(e)
+	return err == nil
 }
 
 // nextTranslation returns the request the code under test made of the X server.
@@ -261,7 +332,7 @@ func TestX11ConfigureNotifyTranslatesOnlyRealEvents(t *testing.T) {
 	}
 	t.Cleanup(adapter.Stop)
 	linuxA11y = adapter
-	w := &Window{}
+	w := &Window{wnd: &apiWindow{}}
 	w.root = &rootPanel{}
 	w.wnd.id = x11TestWindowID
 	w.wnd.parent = x11TestFrameWindow
@@ -319,7 +390,7 @@ func x11Extents(x, y int32) dbus.Variant {
 func x11AnnouncedExtents(t *testing.T, bus *fakeA11yBus) any {
 	t.Helper()
 	args := bus.awaitSignal(atspi.InterfaceEventObject, "BoundsChanged")
-	if len(args) < 4 {
+	if len(args) != 5 {
 		t.Fatalf("a BoundsChanged signal carries five values, but this one carried %d", len(args))
 	}
 	return args[3]
@@ -349,7 +420,7 @@ func TestX11RefreshAccessibilityGeometryReachesTheAdapter(t *testing.T) {
 			1: {ID: 1, Role: role.Window, Name: "geometry", Bounds: geom.NewRect(0, 0, 200, 150)},
 		},
 	}, nil, atspi.Geometry{Scale: geom.NewPoint(1, 1)})
-	w := &Window{}
+	w := &Window{wnd: &apiWindow{}}
 	w.wnd.id = x11TestWindowID
 	w.ax = &windowAccessibility{}
 
