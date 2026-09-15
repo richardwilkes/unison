@@ -16,8 +16,10 @@ import (
 	"github.com/richardwilkes/toolbox/v2/collection/bitset"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultListTheme holds the default ListTheme values for Lists. Modifying this data will not alter existing Lists,
@@ -558,6 +560,11 @@ func (l *List[T]) SetAllowMultipleSelection(allow bool) *List[T] {
 		}
 		l.Select(false, i)
 	}
+	// Marked unconditionally, and not only on the path above that alters the selection: whether more than one row may
+	// be selected is part of what an assistive technology is told, both on the list and on every row of it, and a
+	// window is only described again once it has been drawn, so the change would otherwise not be published until
+	// something unrelated happened to redraw.
+	l.MarkForRedraw()
 	return l
 }
 
@@ -586,6 +593,197 @@ func (l *List[T]) rowAt(y float32) (row int, top float32) {
 		top = 0
 	}
 	return row, top
+}
+
+// ProvideAccessibility describes the list to assistive technologies. The rows have no panels of their own — a cell is
+// created to draw a row and thrown away again — so each one is described directly, as a virtual child keyed by its
+// index. Only the rows that can be seen, plus the ones that are selected, are described: a list may hold far more rows
+// than it shows, and an assistive technology is interested in what is on the screen and in what the selection is.
+func (l *List[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.List
+	}
+	node.Multiselectable = l.allowMultiple
+	node.RowCount = len(l.rows)
+	// Pressing the list is not activating it; the default behavior would synthesize a click at the center of the list's
+	// whole frame, which would replace the selection with whatever row happens to sit there — for a scrolled list, one
+	// nowhere near what can be seen.
+	node.Actions = node.Actions.Without(accessibility.Press)
+	if len(l.rows) == 0 {
+		return
+	}
+	reach := axReach(b.VisibleRect())
+	if cellHeight := xmath.Ceil(l.Factory.CellHeight()); cellHeight >= 1 {
+		l.axDescribeUniformRows(b, reach, cellHeight)
+		return
+	}
+	l.axDescribeVaryingRows(b, reach)
+}
+
+// axDescribeUniformRows describes the rows worth describing — those within reach of the part that can be seen (see
+// axReach), plus the selection — when every row is the same height, which is when where a row sits is arithmetic rather
+// than a walk through the rows before it.
+func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect, cellHeight float32) {
+	rect := l.ContentRect(false)
+	first, last := 0, -1
+	if !reach.Empty() {
+		first = max(int(xmath.Floor((reach.Y-rect.Y)/cellHeight)), 0)
+		last = min(int(xmath.Ceil((reach.Bottom()-rect.Y)/cellHeight)), len(l.rows)-1)
+	}
+	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, cellHeight)
+	for row := first; row <= last; row++ {
+		rowRect.Y = rect.Y + cellHeight*float32(row)
+		l.axAddRow(b, row, rowRect, nil)
+	}
+	// The selected rows that were not reached above are described as well, however far out of sight they are.
+	described := 0
+	for row := l.Selection.FirstSet(); row >= 0 && described < axMaxSelectedRows; row = l.Selection.NextSet(row + 1) {
+		if row >= len(l.rows) {
+			break
+		}
+		if row >= first && row <= last {
+			continue
+		}
+		rowRect.Y = rect.Y + cellHeight*float32(row)
+		l.axAddRow(b, row, rowRect, nil)
+		described++
+	}
+}
+
+// axDescribeVaryingRows describes the rows worth describing when each row's height is its own. Every row has to be
+// measured to know where the ones after it sit, and measuring means creating the cell, so the cell that was created is
+// handed on to be named from rather than being created a second time.
+//
+// The walk stops as soon as nothing worth describing can be left: creating and laying out a panel for every row of a
+// long list, up to twenty times a second, is exactly what VisibleRect exists to avoid, and is far more than drawing
+// does, which stops at the bottom of the dirty rect.
+func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect) {
+	rect := l.ContentRect(false)
+	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, 0)
+	described := 0
+	for row := range l.rows {
+		cell := l.cell(row)
+		_, pref, _ := cell.Sizes(geom.Size{})
+		rowRect.Height = pref.Ceil().Height
+		switch {
+		case rowRect.Intersects(reach):
+			l.axAddRow(b, row, rowRect, cell)
+		case l.Selection.State(row) && described < axMaxSelectedRows:
+			l.axAddRow(b, row, rowRect, cell)
+			described++
+		}
+		rowRect.Y += rowRect.Height
+		if rowRect.Y > reach.Bottom() && (described >= axMaxSelectedRows || l.Selection.NextSet(row+1) < 0) {
+			// Every row from here down starts below the reach, so none of them can be seen, and either there is no
+			// selected row left to describe or as many of them as will be described have been.
+			break
+		}
+	}
+}
+
+// axAddRow describes one row of the list. cell, when not nil, is the cell that was already created for the row, whose
+// text is what the row is named by; one is created if it is nil.
+func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cell *Panel) {
+	if cell == nil {
+		cell = l.cell(row)
+	}
+	name := axLabelText(cell)
+	selected := l.Selection.State(row)
+	b.AddVirtualChild(row, func(n *accessibility.Node) {
+		n.Role = role.ListItem
+		n.Name = name
+		n.Bounds = rect
+		n.RowIndex = row
+		n.Selectable = true
+		n.Selected = selected
+		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView)
+		if l.allowMultiple {
+			// A list that holds one row at a time has nothing to add to or take out of: Select on such a list replaces
+			// whatever was selected, so offering to add to the selection would be offering something that quietly does
+			// the opposite of what it says.
+			n.Actions = n.Actions.With(accessibility.AddToSelection, accessibility.RemoveFromSelection)
+		}
+		if l.DoubleClickCallback != nil {
+			// Pressing a row is opening it, which is what a double-click and the Return key do, so it is offered only
+			// when there is something for it to do.
+			n.Actions = n.Actions.With(accessibility.Press)
+		}
+	})
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Every request that reaches here names
+// one of the rows described by ProvideAccessibility, which arrives as the index that row was keyed by. Selecting a row
+// also scrolls it into view, as the arrow keys do, since an assistive technology moving through the rows selects each
+// one as it goes and expects to see where it has got to. Pressing a row opens it, which is the gesture a double-click
+// and the Return key stand for.
+func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	row, ok := req.Key.(int)
+	if !ok || row < 0 || row >= len(l.rows) {
+		return false
+	}
+	switch req.Action {
+	case accessibility.Press:
+		if l.DoubleClickCallback == nil {
+			return false
+		}
+		// Both of the gestures this stands for act on the selection: a double-click has already selected the row with
+		// its first click, and the Return key runs against whatever is selected. So the row is selected first when it
+		// was not already, and the callback then finds what it expects.
+		if !l.Selection.State(row) {
+			l.Select(false, row)
+			SafeCall(l.NewSelectionCallback)
+		}
+		SafeCall(l.DoubleClickCallback)
+	case accessibility.Select:
+		// The callback is for a selection that actually changed, exactly as it is for a click: an assistive technology
+		// moving through the rows re-selects the row it is already on often enough — landing on it, then acting on it —
+		// and an application told its selection changed sets about whatever it does when that happens. The selection is
+		// still made either way, since it also puts the anchor a later shift-click extends from on the row.
+		changed := !l.Selection.State(row) || l.Selection.Count() != 1
+		l.Select(false, row)
+		if changed {
+			SafeCall(l.NewSelectionCallback)
+		}
+		l.ScrollRectIntoView(l.RowRect(row))
+	case accessibility.AddToSelection:
+		if !l.allowMultiple {
+			// Select(true, row) on a list that holds one row at a time replaces the selection rather than adding to
+			// it, so carrying this out would quietly do the opposite of what it says. The rows of such a list are not
+			// described as offering it, but this method is exported and the dispatcher does not check that an action
+			// was advertised, so it is refused here too, the way Press refuses a list with nothing to open a row with.
+			// Taking a row out of the selection is left alone: that does exactly what it says whether or not more than
+			// one row may be selected.
+			return false
+		}
+		changed := !l.Selection.State(row)
+		l.Select(true, row)
+		// The row a later shift-click extends from is put on this row, which Select does only when there was no anchor
+		// at all. This request stands for the ctrl-click that adds a row to the selection, and DefaultMouseDown's
+		// DiscontiguousSelectionDown branch moves the anchor to the row it touched every time, so a shift-click after
+		// an assistive technology added a row has to extend from the same place it would have after the click.
+		l.anchor = row
+		if changed {
+			SafeCall(l.NewSelectionCallback)
+		}
+		l.ScrollRectIntoView(l.RowRect(row))
+	case accessibility.RemoveFromSelection:
+		if !l.Selection.State(row) {
+			return true
+		}
+		l.Selection.Clear(row)
+		// As for adding: the ctrl-click this stands for leaves the anchor on the row it touched whether it added the
+		// row to the selection or took it out, so taking a row out must not leave the list with no anchor at all —
+		// a shift-click after that would select only the row it landed on rather than extending from here.
+		l.anchor = row
+		l.MarkForRedraw()
+		SafeCall(l.NewSelectionCallback)
+	case accessibility.ScrollIntoView:
+		l.ScrollRectIntoView(l.RowRect(row))
+	default:
+		return false
+	}
+	return true
 }
 
 // FlashSelection flashes the current selection.

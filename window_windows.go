@@ -37,6 +37,8 @@ var (
 
 type nativeWindow struct {
 	dropTarget *w32.DropTarget
+	// uia is the UI Automation adapter serving this window, or nil until an assistive technology has asked about it.
+	uia *w32.UIAWindow
 	// The surface nativePresentCPUPixels draws through: a DIB section selected into a memory DC, whose pixels are
 	// written directly and then blitted to the window. See w32EnsurePresentSurface for why it works this way.
 	presentPixels []uint32
@@ -51,6 +53,9 @@ type nativeWindow struct {
 	highSurrogate uint16
 	mouseTracked  bool
 	mouseCaptured bool
+	// uiaActivating reports that the window is in the middle of building the first snapshot its adapter will be created
+	// with. See w32AccessibilityAdapter.
+	uiaActivating bool
 }
 
 // w32CaptureOp describes how a mouse button message should change the mouse capture state.
@@ -387,9 +392,11 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				w.lastHeight = height
 				w.resized()
 			}
+			w.w32RefreshAccessibilityGeometry()
 			return 0
 		case w32.WM_MOVE:
 			w.moved()
+			w.w32RefreshAccessibilityGeometry()
 			return 0
 		case w32.WM_SIZING:
 			return 1
@@ -462,14 +469,52 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			}
 			// Custom cursors are rasterized per monitor DPI, so refresh to the size that matches the new scale.
 			w.adjustToCursorChange()
+			w.w32RefreshAccessibilityGeometry()
 		case w32.WM_SETCURSOR:
 			if lParam&0xFFFF == w32.HTCLIENT {
 				w.nativeUpdateCursorImage()
 				return 1
 			}
+		case w32.WM_GETOBJECT:
+			if result, handled := w.w32HandleGetObject(wParam, lParam); handled {
+				return result
+			}
 		}
 	}
 	return w32.DefWindowProcW(hWnd, uMsg, wParam, lParam)
+}
+
+// w32HandleGetObject answers the message an assistive technology asks a window to describe itself through, reporting
+// whether it answered at all: a window that did not must let DefWindowProc have the message, which is what tells the
+// caller that nothing here implements the interface it asked for.
+//
+// Only UI Automation's request is answered. WM_GETOBJECT carries an object identifier in its lParam, and everything
+// else that arrives in one — the Microsoft Active Accessibility interfaces for the window frame, the client area, the
+// caret, the scroll bars — belongs to something this toolkit does not implement, so the whole of the cost to a window
+// that nothing has ever asked about is this one comparison. Answering the wrong identifier would be worse than useless:
+// telling a caller that asked for MSAA about a UI Automation provider makes it build a second, empty view of the window
+// alongside the real one.
+//
+// The first UI Automation request for a window is what turns accessibility support on for the application, builds the
+// window's first snapshot and creates its adapter, all of it before this returns, since the request has nothing else to
+// be answered from.
+func (w *Window) w32HandleGetObject(wParam w32.WPARAM, lParam w32.LPARAM) (result uintptr, handled bool) {
+	if int32(lParam) != w32.UiaRootObjectId {
+		return 0, false
+	}
+	uia := w.w32AccessibilityAdapter()
+	if uia == nil {
+		return 0, false
+	}
+	return uintptr(w32.UiaReturnRawElementProvider(w.wnd.wnd, wParam, lParam, uia.RootUnknown())), true
+}
+
+// w32RefreshAccessibilityGeometry tells the window's assistive-technology adapter, if it has one, that the screen
+// position, size or scale of its content area has changed. A window that is not being described pays one nil check.
+func (w *Window) w32RefreshAccessibilityGeometry() {
+	if w.ax != nil {
+		w.apiAccessibilityGeometryChanged()
+	}
 }
 
 func (w *Window) w32WindowStyle() uint32 {
@@ -993,6 +1038,10 @@ func (w *Window) nativeUpdateRegisteredDragTypes(types []*uti.DataType) {
 
 func (w *Window) nativeDestroy() {
 	w.glCtx.nativeDestroy()
+	// The adapter has handed UI Automation a provider for this window handle and raises the event that says the window
+	// has closed, so it has to be shut down while the handle is still valid. Window.destroy has normally done this
+	// already; a window torn down by any other path has not.
+	w.nativeAccessibilityShutdown()
 	w.w32DisposePresentSurface()
 	if w.wnd.dropTarget != nil {
 		w32.RevokeDragDrop(w.wnd.wnd)

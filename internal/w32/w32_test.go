@@ -70,10 +70,30 @@ func TestDropResultEffect(t *testing.T) {
 	c.Equal(DropEffectNone, dropResultEffect(false, drag.Copy))
 }
 
-// TestSourceHygiene guards against reintroducing patterns this package must not contain: syscall.NewLazyDLL searches
-// the application directory before the system directory (a DLL-planting vector — opengl32.dll is not a KnownDLL);
-// SysAllocString created BSTRs that were never freed and are unnecessary for PCWSTR parameters; and CoInitializeEx
-// with COINIT_MULTITHREADED on the STA UI thread only ever "worked" because it failed with RPC_E_CHANGED_MODE.
+// bstrAllocatorFile is the one file allowed to allocate a BSTR. Concentrating the allocator there is what makes the
+// callee-allocates contract auditable: the comment on SysAllocStringLen states who owns the result, and a reader can
+// see every place a BSTR is born without searching the package.
+const bstrAllocatorFile = "uia_variant_windows.go"
+
+// forbiddenSourcePatterns maps a source pattern this package must not contain to the set of files allowed to contain
+// it, which is empty for the patterns that are banned outright.
+//
+// syscall.NewLazyDLL searches the application directory before the system directory (a DLL-planting vector —
+// opengl32.dll is not a KnownDLL). CoInitializeEx with COINIT_MULTITHREADED on the STA UI thread only ever "worked"
+// because it failed with RPC_E_CHANGED_MODE. SysAllocString and SysAllocStringLen are the OLE automation allocators:
+// they were once used to build BSTRs that were never freed, and are unnecessary for the PCWSTR parameters that misuse
+// was for, so they are confined to the file that hands out BSTRs with their ownership spelled out. Only
+// SysAllocStringLen is bound at all — NewBSTR builds both the empty and the non-empty case with it — so the entry for
+// the other one guards against its return rather than against a second caller.
+var forbiddenSourcePatterns = map[string]map[string]bool{
+	"syscall.NewLazyDLL(": {},
+	"CoInitializeEx(":     {},
+	"SysAllocString(":     {bstrAllocatorFile: true},
+	"SysAllocStringLen(":  {bstrAllocatorFile: true},
+}
+
+// TestSourceHygiene guards against reintroducing the patterns forbiddenSourcePatterns describes, outside of whichever
+// files are allowed to use them.
 func TestSourceHygiene(t *testing.T) {
 	c := check.New(t)
 	entries, err := os.ReadDir(".")
@@ -86,11 +106,34 @@ func TestSourceHygiene(t *testing.T) {
 		data, readErr := os.ReadFile(name)
 		c.NoError(readErr)
 		content := string(data)
-		for _, forbidden := range []string{"syscall.NewLazyDLL(", "SysAllocString(", "CoInitializeEx("} {
+		for forbidden, allowed := range forbiddenSourcePatterns {
+			if allowed[name] {
+				continue
+			}
 			if strings.Contains(content, forbidden) {
 				t.Errorf("%s contains forbidden call %s", name, forbidden)
 			}
 		}
+	}
+}
+
+// TestBSTRAllocatorsAreConfined guards the other half of the rule TestSourceHygiene enforces. That test only looks at
+// the names of the two allocating functions, which a caller could sidestep by using the lazy-proc variables they wrap;
+// this one checks that nothing outside bstrAllocatorFile so much as mentions them. Everything else that needs a BSTR
+// calls NewBSTR, so the ownership rule stays stated in exactly one place.
+func TestBSTRAllocatorsAreConfined(t *testing.T) {
+	fset, files := parsePackageSources(t)
+	for name, file := range files {
+		if name == bstrAllocatorFile {
+			continue
+		}
+		ast.Inspect(file, func(n ast.Node) bool {
+			if ident, ok := n.(*ast.Ident); ok && strings.HasPrefix(ident.Name, "sysAllocString") {
+				t.Errorf("%s: %s: %s referenced outside %s; allocate BSTRs through NewBSTR instead", name,
+					fset.Position(ident.Pos()), ident.Name, bstrAllocatorFile)
+			}
+			return true
+		})
 	}
 }
 

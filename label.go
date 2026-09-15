@@ -65,6 +65,13 @@ func (l *Label) String() string {
 	return l.Text.String()
 }
 
+// axLabel returns the label itself. It is what axLabelOf recognizes a label by, and it is unexported so that only a
+// widget built by embedding a Label — which promotes this along with everything else the label offers — can be taken
+// for one. A widget that merely has a title of its own cannot claim to be a label by accident.
+func (l *Label) axLabel() *Label {
+	return l
+}
+
 // SetTitle sets the text of the label to the specified text. The theme's TextDecoration will be used, so any
 // changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
 // .Text field.
@@ -86,6 +93,14 @@ func (l *Label) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Si
 func (l *Label) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	DrawLabel(canvas, l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.OnBackgroundInk, l.BackgroundInk,
 		l.Drawable, l.Side, l.Gap, !l.Enabled())
+}
+
+// ProvideAccessibility describes the label to assistive technologies. A label is static text, or an image when a
+// drawable is all it holds, and one that nothing describes is skipped: see axDescribeStaticContent, which Tag and
+// DrawablePanel share. An explicitly set role is left alone, which is how NewLink turns a label into a link and how
+// Markdown turns one into a heading.
+func (l *Label) ProvideAccessibility(b *AccessibilityBuilder) {
+	axDescribeStaticContent(b, l.String(), l.Drawable != nil)
 }
 
 // LabelContentSizes returns the preferred size of a label, as well as the preferred size of the text within the label.

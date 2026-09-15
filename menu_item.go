@@ -14,9 +14,11 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -93,6 +95,7 @@ type menuItem struct {
 	isSeparator bool
 	enabled     bool
 	over        bool
+	checkable   bool
 }
 
 func (mi *menuItem) Factory() MenuFactory {
@@ -162,24 +165,139 @@ func (mi *menuItem) CheckState() check.Enum {
 
 func (mi *menuItem) SetCheckState(s check.Enum) {
 	mi.state = s
+	// Remembered so that an item that has been unchecked is still described as something with a check state. Nothing
+	// about the item itself says it is checkable, since an unchecked item draws exactly as a plain command does.
+	mi.checkable = true
 }
 
 func (mi *menuItem) newPanel() *Panel {
 	mi.panel = NewPanel()
 	if mi.isSeparator {
 		mi.panel.SetBorder(DefaultMenuItemTheme.SeparatorBorder)
+		mi.panel.Accessibility.Role = role.Separator
 	} else {
 		mi.panel.SetBorder(DefaultMenuItemTheme.ItemBorder)
+		mi.panel.Accessibility.Role = role.MenuItem
+		// Everything else about the item — its title, its key binding, whether it is enabled, checked, or the item the
+		// menu is pointing at — is read when a description is actually being built, since all of it can change while
+		// the menu is open. Both of these only ever run then.
+		mi.panel.Accessibility.Callback = mi.describeForAccessibility
+		mi.panel.Accessibility.ActionCallback = mi.performAccessibilityAction
 	}
 	mi.over = false
 	mi.panel.DrawCallback = mi.paint
 	mi.panel.MouseEnterCallback = mi.mouseEnter
 	mi.panel.MouseMoveCallback = mi.mouseMove
 	mi.panel.MouseExitCallback = mi.mouseExit
-	mi.panel.MouseDownCallback = mi.mouseDown
-	mi.panel.MouseUpCallback = mi.mouseUp
+	if !mi.isSeparator {
+		// A separator is a line drawn between the things that can be chosen rather than one of them: execute does
+		// nothing for one, so a click over it does nothing either. It goes without the two halves of a click, since a
+		// panel that handles both is described as something that can be pressed, and such a press would be reported as
+		// carried out while nothing had happened. The remaining mouse callbacks stay, so that the pointer passing over
+		// a separator behaves as it does everywhere else in the menu.
+		mi.panel.MouseDownCallback = mi.mouseDown
+		mi.panel.MouseUpCallback = mi.mouseUp
+	}
 	mi.panel.SetSizer(mi.sizer)
 	return mi.panel
+}
+
+// describeForAccessibility fills in what an assistive technology is told about the item. Whether this is the item a
+// person is choosing from is not settled here: an item is highlighted by the pointer merely passing over it, which on
+// the menu bar happens with no menu open at all, so the snapshot picks the one item that stands for the focus and marks
+// it, along with the focusable that has to accompany it. See axSnapshot.openMenuFocus.
+//
+// A check state is reported for an item that has ever been given one, whether or not it is showing a mark now. An item
+// that has been unchecked draws nothing to tell it from an ordinary command, but it is still a thing with two states,
+// and an assistive technology that stopped saying so the moment it was turned off would leave the person who had just
+// turned it off with nothing to hear and no way back.
+func (mi *menuItem) describeForAccessibility(node *accessibility.Node) {
+	node.Name = mi.title
+	node.Disabled = !mi.enabled
+	node.Actions = node.Actions.With(accessibility.Press)
+	if mi.keyBinding.KeyCode != 0 {
+		node.Shortcut = mi.keyBinding.String()
+	}
+	if mi.subMenu != nil {
+		node.Expandable = true
+		node.Expanded = mi.subMenu.popupPanel != nil
+		node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse)
+	} else if mi.checkable {
+		node.HasCheck = true
+		node.Checked = mi.state
+	}
+}
+
+// performAccessibilityAction carries out a request from an assistive technology. Pressing an item is choosing it, which
+// runs its handler or opens its sub-menu exactly as clicking it or pressing Return on it would. Focusing an item is
+// highlighting it. Collapsing an item takes its sub-menu away again, along with anything opened from within it, which
+// is what moving the pointer back onto the item or pressing Escape in the sub-menu does.
+func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press:
+		mi.click()
+		return true
+	case accessibility.Focus:
+		// The highlight is what a person choosing from a menu is on, and so is what a snapshot reports the focus on
+		// while one is open; the item's panel cannot hold the keyboard focus itself, since the focus stays wherever it
+		// was and the menu handles keys ahead of it. Carrying the request out here is what lets the focus action be
+		// advertised at all: nothing else could act on it, and all three adapters refuse to pass on a focus request a
+		// node does not offer. Every item of an open menu is published with it, not merely the one already highlighted,
+		// so an assistive technology can move through a menu with this rather than only re-state where it already is.
+		// See axSnapshot.markOpenMenuItems.
+		//
+		// The key index moves with the highlight so that the next arrow key carries on from the item the assistive
+		// technology moved to rather than from wherever the highlight was before, exactly as menu.doExitEnter leaves it
+		// when an arrow key does the moving.
+		//
+		// The sub-menu of an item that has one is deliberately not opened, which is the difference from what the
+		// pointer and the arrow keys do: that is what the separate Expand action is for, opening one runs the menu's
+		// updater and every one of its items' validators, and macOS carries a focus request out inline, from within the
+		// callback the assistive technology is waiting on. See the Expand case below for the same concern.
+		if mi.menu != nil && mi.menu.popupPanel != nil {
+			mi.menu.popupPanel.itemIndex = mi.Index()
+		}
+		mi.highlight()
+		mi.scrollIntoView()
+		return true
+	case accessibility.Expand:
+		if mi.subMenu == nil {
+			return false
+		}
+		// The sub-menu is opened from a queued task rather than here. Expand is a navigation action, carried out
+		// inline on macOS from within the callback the assistive technology is waiting on, and showing a sub-menu runs
+		// application code: menu.createPopup builds the panel through menu.newPanel, which calls the menu's updater
+		// and then every one of its items' validators. PopupMenu.axExpandLater defers the click that opens its choices
+		// for exactly that reason, and the two paths have to agree. The request is simply reported as accepted; what
+		// came of it shows in the next description of the item.
+		//
+		// What is queued may no longer be worth doing by the time it runs. The menu holding the item may have been
+		// taken down, which takes its panels out of the window with it, so an item that no longer belongs to a window
+		// is no longer there to be expanded. The item may have been disabled by the validator that ran in between, and
+		// a click cannot open the sub-menu of a disabled item. And the sub-menu may have been opened by other means,
+		// where opening it again would tear it down and build it back up — which an assistive technology that was told
+		// the item is expanded would not expect.
+		InvokeTask(func() {
+			if mi.subMenu == nil || mi.subMenu.popupPanel != nil || !mi.enabled || mi.panel == nil ||
+				mi.panel.Window() == nil {
+				return
+			}
+			mi.showSubMenu()
+		})
+		return true
+	case accessibility.Collapse:
+		if mi.subMenu == nil {
+			return false
+		}
+		if wnd := mi.panel.Window(); wnd != nil {
+			// Everything above the menu this item sits in goes, which is the item's own sub-menu and whatever was
+			// opened from that. The menu the item belongs to stays, since the item is still there to be chosen from.
+			wnd.root.closeMenuStackStoppingAt(mi.menu)
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
@@ -230,7 +348,10 @@ func (mi *menuItem) scrollIntoView() {
 	mi.panel.ScrollIntoView()
 }
 
-func (mi *menuItem) mouseEnter(_ geom.Point, _ mod.Modifiers) bool {
+// highlight moves the menu's highlight onto this item, taking it off whatever in the same menu had it. It is what the
+// pointer arriving over an item does, less the sub-menu that arriving over one opens, and it is what a request from an
+// assistive technology to focus an item does; see menuItem.performAccessibilityAction.
+func (mi *menuItem) highlight() {
 	if mi.menu != nil {
 		for _, item := range mi.menu.items {
 			if item.over {
@@ -241,6 +362,10 @@ func (mi *menuItem) mouseEnter(_ geom.Point, _ mod.Modifiers) bool {
 	}
 	mi.over = true
 	mi.panel.MarkForRedraw()
+}
+
+func (mi *menuItem) mouseEnter(_ geom.Point, _ mod.Modifiers) bool {
+	mi.highlight()
 	if mi.subMenu != nil && len(mi.panel.Window().root.openMenuPanels) != 0 {
 		mi.showSubMenu()
 	}

@@ -15,10 +15,12 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/slant"
 )
 
@@ -62,6 +64,7 @@ type PopupMenu[T comparable] struct {
 	ChoiceMadeCallback       func(popup *PopupMenu[T], index int, item T)
 	SelectionChangedCallback func(popup *PopupMenu[T])
 	ItemRendererCallback     func(item T) string
+	openMenu                 Menu
 	items                    []*popupMenuItem[T]
 	selection                map[int]bool
 	PopupMenuTheme
@@ -208,7 +211,10 @@ func (p *PopupMenu[T]) Click() {
 		SafeCall(func() { p.WillShowMenuCallback(p) })
 	}
 	hasItem := false
-	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
+	// The menu takes the popup's own name as its title, which is what an assistive technology announces as the person
+	// moves into the choices. Without it the choices hang off an anonymous menu, with nothing to say which control they
+	// belong to. Node.Controls says that outright while the menu is up; a name is what is heard.
+	m := p.MenuFactory.NewMenu(PopupMenuTemporaryBaseID, p.axName(), nil)
 	defer m.Dispose()
 	for i, one := range p.items {
 		if one.separator {
@@ -223,10 +229,20 @@ func (p *PopupMenu[T]) Click() {
 		if indexes := p.SelectedIndexes(); len(indexes) > 0 {
 			index = indexes[0]
 		}
+		// Remembered so that the popup can say whether its choices are showing. The menu is thrown away and built
+		// again on every click, so the one held here is the only one that could still be up.
+		p.openMenu = m
 		m.Popup(p.RectToRoot(p.ContentRect(true)), index)
 	}
 }
 
+// createMenuItem builds the item that stands for one of the popup's choices.
+//
+// Every item is given a check state, the selected ones checked and the rest explicitly not. An item that has never been
+// given a state at all is described as a plain command rather than as something with two states, so marking only the
+// selection would have a person hear "checked" for the current choice and nothing whatsoever for its alternatives — no
+// "not checked", and nothing saying that the items are one set of choices to pick from. See
+// menuItem.describeForAccessibility.
 func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]) MenuItem {
 	item := m.Factory().NewItem(PopupMenuTemporaryBaseID+index+1, p.renderItem(entry.item), KeyBinding{},
 		func(_ MenuItem) bool {
@@ -236,9 +252,11 @@ func (p *PopupMenu[T]) createMenuItem(m Menu, index int, entry *popupMenuItem[T]
 				SafeCall(func() { p.ChoiceMadeCallback(p, index, p.items[index].item) })
 			}
 		})
+	state := check.Off
 	if p.selection[index] {
-		item.SetCheckState(check.On)
+		state = check.On
 	}
+	item.SetCheckState(state)
 	return item
 }
 
@@ -250,16 +268,35 @@ func (p *PopupMenu[T]) AddItem(item ...T) {
 			enabled: true,
 		})
 	}
+	p.itemsChanged()
 }
 
 // AddDisabledItem appends a disabled menu item to the end of the PopupMenu.
 func (p *PopupMenu[T]) AddDisabledItem(item T) {
 	p.items = append(p.items, &popupMenuItem[T]{item: item})
+	p.itemsChanged()
 }
 
 // AddSeparator adds a separator to the end of the PopupMenu.
 func (p *PopupMenu[T]) AddSeparator() {
 	p.items = append(p.items, &popupMenuItem[T]{separator: true})
+	p.itemsChanged()
+}
+
+// itemsChanged brings the popup up to date with a change to the set of items it holds. The widest item decides the
+// preferred size, so the layout has to be redone, and whether the popup has anything to choose from at all is part of
+// what an assistive technology is told — a window is only described again once it has been drawn, so the first item
+// added to an empty popup would otherwise leave it described as something that opens nothing until something unrelated
+// happened to redraw it.
+//
+// The layout has to be redone above the popup rather than on it. A PopupMenu has no Layout of its own — NewPopupMenu
+// only gives it a sizer — so Panel.ValidateLayout would clear a flag set on the popup alone without anything having
+// re-measured it, and the popup would keep its old frame until something unrelated invalidated whatever holds it. It is
+// the panel above that asks the popup for its preferred size, which is the same reason printing's string popup and a
+// dock tab flag their parents when what they show changes width.
+func (p *PopupMenu[T]) itemsChanged() {
+	p.MarkForLayoutRecursivelyUpward()
+	p.MarkForRedraw()
 }
 
 // IndexOfItem returns the index of the specified menu item. -1 will be returned if the menu item isn't present.
@@ -276,7 +313,7 @@ func (p *PopupMenu[T]) IndexOfItem(item T) int {
 func (p *PopupMenu[T]) RemoveAllItems() {
 	p.selection = make(map[int]bool)
 	p.items = nil
-	p.MarkForRedraw()
+	p.itemsChanged()
 }
 
 // RemoveItem from the PopupMenu. Does nothing if the item is not present.
@@ -301,7 +338,7 @@ func (p *PopupMenu[T]) RemoveItemAt(index int) {
 					p.selection[one-1] = true
 				}
 			}
-			p.MarkForRedraw()
+			p.itemsChanged()
 		}
 	}
 }
@@ -331,7 +368,7 @@ func (p *PopupMenu[T]) SetItemAt(index int, item T, enabled bool) {
 			one.item = item
 			one.enabled = enabled
 			one.separator = false
-			p.MarkForRedraw()
+			p.itemsChanged()
 		}
 	}
 }
@@ -446,6 +483,187 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repe
 		return true
 	}
 	return false
+}
+
+// ProvideAccessibility describes the popup menu to assistive technologies. The choices themselves are not part of the
+// description: they exist only while the menu is open, as a native menu on the platforms that have one and as panels
+// within the window elsewhere, and either way they are described then rather than now. Whether they are showing is
+// still reported, since that is the difference between a popup a person has opened and one they have not, and while
+// they are, the menu they are showing in is pointed at, so that an assistive technology can tie the two together.
+//
+// A popup with nothing to choose from opens nothing: Click refuses one that holds no item other than separators. So
+// such a popup does not offer to expand either, rather than reporting that it had expanded and leaving an assistive
+// technology waiting for choices that are never going to appear.
+//
+// What WillShowMenuCallback would put in it is not counted here: describing a window must not run the application code
+// that fills a popup in, which is written to run as the popup is being opened rather than several times a second. A
+// popup that holds nothing until then is therefore described as one that opens nothing, but it still offers the press
+// that opens it, and an Expand asked for regardless is carried out; what came of it shows in the next description of
+// the popup, since the click it queues has not been performed by the time the request is answered. See
+// PerformAccessibilityAction.
+func (p *PopupMenu[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.PopupButton
+	}
+	node.Value = p.Text()
+	node.Expandable = p.hasItem()
+	node.Expanded = axMenuIsOpen(p.openMenu)
+	node.Actions = node.Actions.With(accessibility.Press)
+	if node.Expandable {
+		node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse)
+	}
+	axNoteOpenMenu(node, p.openMenu)
+}
+
+// axNoteOpenMenu points a widget's node at the menu panel it has open, so that an assistive technology can tie the
+// choices showing to the control that opened them. Only an in-window menu has a panel to point at: a native platform
+// menu is no part of the window's panel tree, and the platform describes its own menus. Nothing is added when there is
+// no menu showing.
+func axNoteOpenMenu(node *accessibility.Node, m Menu) {
+	if inWindow, ok := m.(*menu); ok && inWindow.popupPanel != nil {
+		node.Controls = append(node.Controls, axIDFor(inWindow.popupPanel.AsPanel()))
+	}
+}
+
+// axClickOpensMenu reports that clicking the popup shows its choices, which is all a click on it ever does. See
+// axMenuOpener: it is what keeps the synthesized click that stands for a press from opening the popup's menu in a
+// window the popup is not in, which is the very thing PerformAccessibilityAction refuses.
+func (p *PopupMenu[T]) axClickOpensMenu() bool {
+	return true
+}
+
+// axMenuOpeningActions reports which of the popup's actions would open its menu, so that a popup in a window a menu
+// would not open in is published without them rather than advertising what PerformAccessibilityAction is then going to
+// refuse. See axMenuActions.
+//
+// Nothing is named while the choices are already showing, which mirrors that refusal exactly: pressing or expanding a
+// popup that is already open is accepted as already done, without a menu being opened anywhere, so both remain worth
+// advertising. Collapse is never named, since taking a menu down acts on the menu that is showing rather than on
+// whatever window is active.
+func (p *PopupMenu[T]) axMenuOpeningActions(node *accessibility.Node) accessibility.ActionSet {
+	if node.Expanded {
+		return 0
+	}
+	return accessibility.ActionSet(0).With(accessibility.Press, accessibility.Expand)
+}
+
+// hasItem reports whether the popup holds anything that could be chosen, which is what decides whether opening it would
+// show anything at all. A popup holding nothing but separators has no more to show than an empty one.
+func (p *PopupMenu[T]) hasItem() bool {
+	for _, one := range p.items {
+		if !one.separator {
+			return true
+		}
+	}
+	return false
+}
+
+// axName returns the name the popup is known by, applied to the menu it opens so that the choices are announced as the
+// same thing the button is. See axControlName.
+func (p *PopupMenu[T]) axName() string {
+	return axControlName(p.AsPanel())
+}
+
+// axControlName returns the name a control is known by, which is the name it has been given outright or, failing that,
+// the text of the label the layout places before it — the same convention the description of the control itself falls
+// back to. A widget that pops a menu up passes it as the menu's title, which is what an assistive technology announces
+// as the person moves into the choices; without it the choices hang off an anonymous menu, with nothing to say which
+// control they belong to.
+func axControlName(p *Panel) string {
+	if name := p.Accessibility.Name; name != "" {
+		return name
+	}
+	if labeler := axPrecedingLabel(p); labeler != nil {
+		return axTrimLabelText(labeler.String())
+	}
+	return ""
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing the popup menu, or asking it
+// to expand, shows its choices; asking it to collapse takes them away again. Both are idempotent, since an assistive
+// technology that has been told the popup is already the way it is asking for expects nothing to change. A popup with
+// nothing to choose from refuses to expand, since nothing would come of it, and so does one whose window is not the one
+// a menu would open in — see axMayPopupMenu. Collapsing is not gated that way: it takes down a menu in this popup's own
+// window, which is exactly where the menu it opened went.
+func (p *PopupMenu[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press:
+		if !axMenuIsOpen(p.openMenu) {
+			if !axMayPopupMenu(p.AsPanel()) {
+				return false
+			}
+			p.Click()
+		}
+		return true
+	case accessibility.Expand:
+		if axMenuIsOpen(p.openMenu) {
+			return true
+		}
+		if !axMayPopupMenu(p.AsPanel()) {
+			return false
+		}
+		// Expanding goes through the very same path a click does rather than deciding for itself whether there is
+		// anything to show, since Click runs WillShowMenuCallback before it counts the items: a popup that is filled in
+		// on demand has nothing in it until that callback has run, and refusing here would leave such a popup unable to
+		// be opened by an assistive technology while a click on it opened it normally.
+		//
+		// That click is queued rather than performed here, which is why the answer is simply that the request was
+		// accepted. Expand is a navigation action, carried out inline on macOS from within the callback the assistive
+		// technology is waiting on, and Click runs application code and then pops a menu up — a native menu runs a
+		// modal tracking session that does not return until the person has dismissed it, so answering only once Click
+		// returned would hold the assistive technology for as long as the choices were showing. What actually came of
+		// it is reported by the next description of the popup instead: one that opened nothing still says it is not
+		// expanded, and one that holds nothing to choose from goes on saying it cannot be expanded at all.
+		p.axExpandLater()
+		return true
+	case accessibility.Collapse:
+		axCollapseMenu(p.AsPanel(), p.openMenu)
+		return true
+	default:
+		return false
+	}
+}
+
+// axExpandLater queues the click that shows the popup's choices, to be performed once the assistive technology's
+// request has been answered. See PerformAccessibilityAction for why it cannot be performed within it.
+//
+// What is queued may no longer be worth doing by the time it runs: the popup may have been taken out of its window, or
+// opened by other means in the meantime, and clicking it again would tear the open menu down and build it back up,
+// which an assistive technology that was told the popup is expanded would not expect. It may also have been disabled,
+// or its window may have stopped being the one a menu would open in, in between. Both were checked when the request
+// arrived — the first by the dispatcher, which gates every action on Panel.Enabled — but the work happens a task later,
+// and a click could do neither: Window.mouseDown passes over a panel that is not enabled, and a menu opened from a
+// window that is not the active one does not land where the popup is. See axMayPopupMenu.
+func (p *PopupMenu[T]) axExpandLater() {
+	InvokeTask(func() {
+		if !p.Enabled() || !axMayPopupMenu(p.AsPanel()) || axMenuIsOpen(p.openMenu) {
+			return
+		}
+		p.Click()
+	})
+}
+
+// axMenuIsOpen reports whether the menu a widget popped up is still showing. Only the in-window menus can be asked: a
+// native platform menu runs an event loop of its own while it is up, so nothing here runs to ask it, and it is no part
+// of the window's panel tree either. Such a menu is therefore reported as closed, which is what the rest of the
+// description says of it too, since the platform describes its own menus.
+func axMenuIsOpen(m Menu) bool {
+	inWindow, ok := m.(*menu)
+	return ok && inWindow.popupPanel != nil
+}
+
+// axCollapseMenu tears down the menu a widget popped up, which is what an assistive technology asks for when it
+// collapses that widget. The whole stack goes with it: a widget's menu is always the bottom of the stack, since opening
+// one closes whatever was open before it, and anything above it is a sub-menu of its own. Nothing happens when there
+// was nothing showing to take down.
+func axCollapseMenu(p *Panel, m Menu) {
+	if !axMenuIsOpen(m) {
+		return
+	}
+	if wnd := p.Window(); wnd != nil {
+		wnd.root.closeMenuStackStoppingAt(nil)
+	}
 }
 
 // DefaultUpdateCursor provides the default cursor for popup menus.

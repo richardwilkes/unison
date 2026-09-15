@@ -9,7 +9,10 @@
 
 package unison
 
-import "github.com/richardwilkes/toolbox/v2/geom"
+import (
+	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/role"
+)
 
 var _ Layout = &dockContainerContent{}
 
@@ -83,5 +86,38 @@ func (d *dockContainerContent) PerformLayout(_ *Panel) {
 	for i, c := range d.Children() {
 		c.Hidden = i != d.currentIndex
 		c.SetFrameRect(r)
+	}
+}
+
+// axCurrent returns the dockable that is showing, or nil if there is none. Unlike Current, it never adjusts the current
+// index to bring a stale one back into range: describing a window must not change what it is describing, and the next
+// draw heals the index in any case.
+func (d *dockContainerContent) axCurrent() Dockable {
+	children := d.Children()
+	if d.currentIndex < 0 || d.currentIndex >= len(children) {
+		return nil
+	}
+	if resolved, ok := children[d.currentIndex].Self.(Dockable); ok {
+		return resolved
+	}
+	return nil
+}
+
+// ProvideAccessibility describes the content area to assistive technologies. It holds every dockable of its container
+// but shows only the current one, which is what a tab panel is, and takes its name and description from that dockable.
+func (d *dockContainerContent) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.TabPanel
+	}
+	current := d.axCurrent()
+	if current == nil {
+		return
+	}
+	if node.Name == "" {
+		node.Name = current.Title()
+	}
+	if node.Description == "" {
+		node.Description = current.Tooltip()
 	}
 }

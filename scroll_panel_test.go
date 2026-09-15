@@ -71,6 +71,42 @@ func TestScrollPanelContentShrinkWhileScrolled(t *testing.T) {
 	c.Equal(float32(0), content.FrameRect().Y, "content should stay in view after a subsequent layout")
 }
 
+// TestScrollPanelScrollRectIntoViewWithColumnHeader verifies that a rect lying within the visible part of the content
+// is left alone, and one just past the bottom is brought in by exactly its overhang, when a column header is present.
+// DefaultScrollRectIntoView used to set the header aside a second time — the layout already places the content view
+// below it — which treated a strip the header's height along the bottom of the view as hidden, so that selecting a row
+// there scrolled the content for no reason and left an assistive technology's idea of where the row was one strip out.
+func TestScrollPanelScrollRectIntoViewWithColumnHeader(t *testing.T) {
+	c := check.New(t)
+	scroll := unison.NewScrollPanel()
+	contentW, contentH := float32(200), float32(2000)
+	content := resizablePanel(&contentW, &contentH)
+	headerW, headerH := float32(200), float32(20)
+	header := resizablePanel(&headerW, &headerH)
+	scroll.SetColumnHeader(header)
+	scroll.SetContent(content, behavior.Fill, behavior.Fill)
+	scroll.SetFrameRect(geom.NewRect(0, 0, 200, 500))
+	scroll.ValidateLayout()
+	view := scroll.ContentView().FrameRect()
+	c.Equal(float32(20), view.Y, "the content view should sit below the column header")
+	c.Equal(float32(480), view.Height, "the content view should fill the rest of the panel")
+
+	// The last twenty rows' worth of the visible content, right against the bottom edge, is in view.
+	content.ScrollRectIntoView(geom.NewRect(0, 460, 100, 20))
+	_, v := scroll.Position()
+	c.Equal(float32(0), v, "a rect that can be seen in full must not be scrolled")
+
+	// One that hangs ten units past the bottom is brought in by those ten units and no more.
+	content.ScrollRectIntoView(geom.NewRect(0, 470, 100, 20))
+	_, v = scroll.Position()
+	c.Equal(float32(10), v, "a rect just past the bottom should be scrolled in by its overhang")
+
+	// And one that is now at the top edge after that scroll stays put too.
+	content.ScrollRectIntoView(geom.NewRect(0, 10, 100, 20))
+	_, v = scroll.Position()
+	c.Equal(float32(10), v, "a rect at the top of the view must not be scrolled")
+}
+
 // TestScrollPanelHonorsOwnBorder verifies that a ScrollPanel with a border of its own lays out inside that border.
 // LayoutSizes already adds the border insets to the sizes it reports, but PerformLayout used to start from the frame
 // rect, so the content view, the headers and the scroll bars were all drawn on top of the border.

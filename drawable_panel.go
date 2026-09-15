@@ -41,6 +41,14 @@ func (d *DrawablePanel) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize
 	return prefSize, prefSize, prefSize
 }
 
+// ProvideAccessibility describes the panel to assistive technologies. A drawable is all such a panel shows, so it is an
+// image named by its tooltip and skipped when nothing describes it: see axDescribeStaticContent, which Label and Tag
+// share. The drawable is taken as present whether or not one has been set, since a panel of this type is an image
+// whatever it currently holds.
+func (d *DrawablePanel) ProvideAccessibility(b *AccessibilityBuilder) {
+	axDescribeStaticContent(b, "", true)
+}
+
 // DefaultDraw provides the default drawing.
 func (d *DrawablePanel) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	var paint *Paint

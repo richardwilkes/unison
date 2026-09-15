@@ -107,6 +107,10 @@ var (
 	msgSendSuper2Func func(super *objcSuper, cmd objc.SEL, args ...any) objc.ID
 	selCache          sync.Map // map[string]objc.SEL
 	clsCache          sync.Map // map[string]objc.Class
+	appKitStringCache sync.Map // map[string]objc.ID
+	axNotifyOnce      sync.Once
+	axPostNotify      func(element, notification objc.ID)
+	axPostNotifyInfo  func(element, notification, userInfo objc.ID)
 )
 
 // LoadFramework loads the named macOS system framework (e.g. "AppKit") into the process, making its symbols and
@@ -143,6 +147,19 @@ func NSStringConstant(framework, symbol string) objc.ID {
 		panic(fmt.Errorf("cocoa: unable to resolve %s in %s: %w", symbol, framework, err))
 	}
 	return *xruntime.PtrFromUintptr[objc.ID](ptr)
+}
+
+// AppKitString returns the value of an exported AppKit NSString* constant — a role, subrole or notification name, say —
+// caching it on first use so that a symbol consulted on every query from an assistive technology is resolved once
+// rather than dlsym'd over and over. The constants are immortal objects owned by AppKit, so the cached value stays
+// valid for the life of the process. It panics if the symbol does not exist, since the names are compile-time known.
+func AppKitString(symbol string) objc.ID {
+	if v, ok := appKitStringCache.Load(symbol); ok {
+		return v.(objc.ID) //nolint:errcheck // There is only one thing it can be
+	}
+	v := NSStringConstant("AppKit", symbol)
+	appKitStringCache.Store(symbol, v)
+	return v
 }
 
 // Sel returns the selector for name, caching the result since objc.RegisterName takes the global Objective-C
@@ -364,6 +381,55 @@ func IDsFromNSArray(array objc.ID) []objc.ID {
 	return ids
 }
 
+// NSDictionaryFromPairs returns an autoreleased NSDictionary built from alternating keys and values, as an
+// Objective-C @{key: value} literal would be. A trailing key with no value is dropped, and no pairs at all yields an
+// empty dictionary rather than nil, since AppKit's userInfo parameters reject nil.
+func NSDictionaryFromPairs(pairs ...objc.ID) objc.ID {
+	count := len(pairs) / 2
+	if count == 0 {
+		return objc.ID(Cls("NSDictionary")).Send(Sel("dictionary"))
+	}
+	keys := make([]objc.ID, count)
+	objects := make([]objc.ID, count)
+	for i := range count {
+		keys[i] = pairs[i*2]
+		objects[i] = pairs[i*2+1]
+	}
+	return objc.ID(Cls("NSDictionary")).Send(Sel("dictionaryWithObjects:forKeys:count:"),
+		unsafe.Pointer(&objects[0]), unsafe.Pointer(&keys[0]), uint64(count))
+}
+
+// ensureAXNotifyFuncs binds the two NSAccessibility notification functions on first use, so a process that never
+// serves an assistive technology never resolves them.
+func ensureAXNotifyFuncs() {
+	axNotifyOnce.Do(func() {
+		lib := LoadFramework("AppKit")
+		purego.RegisterLibFunc(&axPostNotify, lib, "NSAccessibilityPostNotification")
+		purego.RegisterLibFunc(&axPostNotifyInfo, lib, "NSAccessibilityPostNotificationWithUserInfo")
+	})
+}
+
+// NSAccessibilityPostNotification tells the accessibility system that something about element has changed. A nil
+// element or notification is ignored, since AppKit raises on those. Must be called on the main thread.
+func NSAccessibilityPostNotification(element, notification objc.ID) {
+	if element == 0 || notification == 0 {
+		return
+	}
+	ensureAXNotifyFuncs()
+	axPostNotify(element, notification)
+}
+
+// NSAccessibilityPostNotificationWithUserInfo is NSAccessibilityPostNotification for the notifications that carry
+// additional information, such as the text of an announcement. A nil element or notification is ignored. Must be
+// called on the main thread.
+func NSAccessibilityPostNotificationWithUserInfo(element, notification, userInfo objc.ID) {
+	if element == 0 || notification == 0 {
+		return
+	}
+	ensureAXNotifyFuncs()
+	axPostNotifyInfo(element, notification, userInfo)
+}
+
 // NSNumberFromInt64 returns an autoreleased NSNumber holding the given value.
 func NSNumberFromInt64(value int64) objc.ID {
 	return objc.ID(Cls("NSNumber")).Send(Sel("numberWithLongLong:"), value)
@@ -375,6 +441,13 @@ func Int64FromNSNumber(num objc.ID) int64 {
 		return 0
 	}
 	return objc.Send[int64](num, Sel("longLongValue"))
+}
+
+// NSNumberFromBool returns an autoreleased NSNumber holding the given boolean. It is not the same thing as
+// NSNumberFromInt64 of 0 or 1: an NSNumber made this way is a boolean rather than an integer, and bridges to the
+// CFBoolean that the accessibility attributes documented as holding one expect.
+func NSNumberFromBool(value bool) objc.ID {
+	return objc.ID(Cls("NSNumber")).Send(Sel("numberWithBool:"), value)
 }
 
 // NSNumberFromFloat64 returns an autoreleased NSNumber holding the given value.

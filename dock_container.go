@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 var (
@@ -287,4 +288,19 @@ func (d *DockContainer) PerformLayout(_ *Panel) {
 	fr.Y += pref.Height
 	fr.Height = max(r.Height-pref.Height, 0)
 	d.content.SetFrameRect(fr)
+}
+
+// ProvideAccessibility describes the container to assistive technologies. It is the group that holds a set of tabs and
+// the content of whichever one is current, named after that dockable so that an assistive technology moving through the
+// window can say which part of it this is.
+func (d *DockContainer) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.Group
+	}
+	if node.Name == "" {
+		if current := d.content.axCurrent(); current != nil {
+			node.Name = current.Title()
+		}
+	}
 }

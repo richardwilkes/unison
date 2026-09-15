@@ -36,6 +36,7 @@ const (
 	COM_E_NOINTERFACE                uint64 = 0x80004002
 	COM_E_POINTER                    uint64 = 0x80004003
 	COM_E_OUTOFMEMORY                uint64 = 0x8007000E
+	COM_E_INVALIDARG                 uint64 = 0x80070057
 	COM_DV_E_FORMATETC               uint64 = 0x80040064
 	COM_DV_E_TYMED                   uint64 = 0x80040069
 	COM_OLE_E_ADVISENOTSUPPORTED     uint64 = 0x80040003

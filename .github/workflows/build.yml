@@ -36,6 +36,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Tests whose outcome depends on timing or scheduler fairness skip themselves on macos-26-intel (see
+        # internal/testenv): that runner is slow enough to fail them for no reason, and the other platforms run them.
         os: [ubuntu-22.04, ubuntu-22.04-arm, macos-26-intel, macos-26, windows-2022, windows-11-arm]
     defaults:
       run:

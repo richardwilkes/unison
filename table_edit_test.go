@@ -20,6 +20,7 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 // These tests drive a table whose cells are real Fields the way a person would, through the headless driver: they
@@ -759,6 +760,7 @@ func TestTableCellFieldArrowsDoNotMoveSelection(t *testing.T) {
 // table just as it does anywhere else: it fires several times, finds the field still part of a window each time, and
 // leaves the editing session exactly as it was.
 func TestTableCellFieldCaretBlinks(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	c := check.New(t)
 	var e *editTable
 	// Every blink redraws the field, so the blinks are counted by counting the times the field is drawn while it holds

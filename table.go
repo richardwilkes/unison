@@ -12,16 +12,22 @@ package unison
 import (
 	"maps"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // TableDragData holds the data from a table row drag.
@@ -40,9 +46,9 @@ type ColumnInfo struct {
 	AutoMaximum float32
 }
 
-// resizable returns true if the user should be permitted to resize the column, i.e. its Minimum and Maximum don't pin it
-// to a single width. A Maximum of 0 or less means "no maximum", matching how the resize clamping treats it, so a column
-// with only a Minimum set remains resizable.
+// resizable returns true if the user should be permitted to resize the column, i.e. its Minimum and Maximum don't pin
+// it to a single width. A Maximum of 0 or less means "no maximum", matching how the resize clamping treats it, so a
+// column with only a Minimum set remains resizable.
 func (c *ColumnInfo) resizable() bool {
 	return c.Minimum <= 0 || c.Maximum <= 0 || c.Minimum < c.Maximum
 }
@@ -731,13 +737,6 @@ func (t *Table[T]) CellFrame(row, col int) geom.Rect {
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
 	}
-	x := insets.Left + t.leadingColumnDividerWidth()
-	for c := range col {
-		x += t.Columns[c].Current
-		if t.ShowColumnDivider && (t.ShowLastColumnDivider || c < len(t.Columns)-1) {
-			x++
-		}
-	}
 	y := insets.Top
 	for r := range row {
 		y += t.rowCache[r].height
@@ -745,7 +744,15 @@ func (t *Table[T]) CellFrame(row, col int) geom.Rect {
 			y++
 		}
 	}
-	rect := geom.NewRect(x, y, t.Columns[col].Current, t.rowCache[row].height).Inset(t.Padding)
+	return t.cellFrameAtY(row, col, y)
+}
+
+// cellFrameAtY returns the frame of the given cell, given the y coordinate of the top of its row. Walking the rows
+// before a row is the expensive half of finding a cell, so a caller that is already walking the rows in order — the
+// accessibility snapshot describing the visible ones — hands in the y it has instead of paying for it again. The row
+// and column must be in range.
+func (t *Table[T]) cellFrameAtY(row, col int, y float32) geom.Rect {
+	rect := geom.NewRect(t.columnLeft(col), y, t.Columns[col].Current, t.rowCache[row].height).Inset(t.Padding)
 	if t.Columns[col].ID == t.HierarchyColumnID {
 		if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
 			indent := hierarchyIndent*float32(t.rowCache[row].depth+1) + t.Padding.Left
@@ -838,7 +845,10 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 	return nil
 }
 
-// DefaultUpdateTooltipCallback provides the default tooltip update handling.
+// DefaultUpdateTooltipCallback provides the default tooltip update handling. The tooltip of the cell the pointer is
+// over is handed to the window through Panel.borrowedTooltip rather than through the table's own Tooltip: the cell is
+// not a panel of the table's, so what it has to say is not the table's to keep, and a description of the table built
+// while the borrowed tooltip sat in Tooltip would be a description of one of its cells.
 func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rect) geom.Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
@@ -848,7 +858,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 				t.installCell(cell, rect)
 				where = where.Sub(rect.Point)
 				target := cell.PanelAt(where)
-				t.Tooltip = nil
+				t.borrowedTooltip = nil
 				t.TooltipImmediate = false
 				for target != t.AsPanel() {
 					avoid = target.RectToRoot(target.ContentRect(true)).Align()
@@ -856,7 +866,7 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 						SafeCall(func() { avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid) })
 					}
 					if target.Tooltip != nil {
-						t.Tooltip = target.Tooltip
+						t.borrowedTooltip = target.Tooltip
 						t.TooltipImmediate = target.TooltipImmediate
 						break
 					}
@@ -866,13 +876,13 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 				return avoid
 			}
 			if cell.Tooltip != nil {
-				t.Tooltip = cell.Tooltip
+				t.borrowedTooltip = cell.Tooltip
 				t.TooltipImmediate = cell.TooltipImmediate
 				return t.RectToRoot(t.CellFrame(row, col)).Align()
 			}
 		}
 	}
-	t.Tooltip = nil
+	t.borrowedTooltip = nil
 	return geom.Rect{}
 }
 
@@ -923,8 +933,12 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 	return true
 }
 
-// DefaultMouseExit provides the default mouse exit handling.
+// DefaultMouseExit provides the default mouse exit handling. The tooltip borrowed from the cell the pointer was over
+// is given up here as well: the window asks for a tooltip only while the pointer is within the table, so nothing would
+// otherwise take back what was borrowed once the pointer had left, and the table would go on holding the cell's
+// tooltip panel alive until the pointer next passed over a cell.
 func (t *Table[T]) DefaultMouseExit() bool {
+	t.borrowedTooltip = nil
 	if t.lastMouseEnterCellPanel != nil && t.lastMouseEnterCellPanel.MouseExitCallback != nil &&
 		t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) &&
 		t.lastMouseMotionColumn >= 0 && t.lastMouseMotionColumn < len(t.Columns) {
@@ -1202,10 +1216,14 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 	}
 	switch keyCode {
 	case KeyLeft:
-		// A hierarchical filter shows every container it kept as open, whatever the container's own open state, so
-		// the keys that open and close containers are left alone while one is applied rather than changing the open
-		// states beneath the filter without anything to show for it.
-		if !repeat && !t.hierarchicalFilter && t.HasSelection() {
+		// The keys that open and close containers are left alone while any filter is applied, rather than changing
+		// open states beneath the filter without anything to show for it. A hierarchical filter shows every container
+		// it kept as open, whatever the container's own open state, and a flat one shows nothing beneath any row at
+		// all; the disclosure triangle a person would click is drawn without a hit rect under the one and not drawn at
+		// all under the other. This is the same refusal axSetRowOpen makes for the equivalent request from an
+		// assistive technology, and it is what ApplyFilter's promise that no modifications to the row data are
+		// performed requires.
+		if !repeat && !t.IsFiltered() && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
 				if mods.OptionDown() {
@@ -1223,7 +1241,8 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			}
 		}
 	case KeyRight:
-		if !repeat && !t.hierarchicalFilter && t.HasSelection() {
+		// Refused while a filter is applied, for the reasons given for KeyLeft above.
+		if !repeat && !t.IsFiltered() && t.HasSelection() {
 			altered := false
 			for _, row := range t.SelectedRows(false) {
 				if mods.OptionDown() {
@@ -1685,11 +1704,21 @@ func (t *Table[T]) SetRootRows(rows []T) {
 func (t *Table[T]) SyncToModel() {
 	rowCount := 0
 	roots := t.RootRows()
+	// A filter applied by ApplyFilter presents the rows that passed as a flat list: disclosedChildren shows nothing
+	// beneath any of them, whatever they are, so the table has no hierarchy while one is applied, however many
+	// containers passed the filter. Saying otherwise would draw a disclosure triangle, with a hit rect, that opens onto
+	// nothing and would describe such a row to an assistive technology as expandable, expanded and openable when there
+	// is nothing there to open.
 	t.hasHierarchy = false
-	for _, row := range roots {
-		if !t.hasHierarchy && row.CanHaveChildren() {
-			t.hasHierarchy = true
+	if !t.flatFilter() {
+		for _, row := range roots {
+			if row.CanHaveChildren() {
+				t.hasHierarchy = true
+				break
+			}
 		}
+	}
+	for _, row := range roots {
 		rowCount += t.countDisclosedRowsRecursively(row)
 	}
 	t.rowCache = make([]tableCache[T], rowCount)
@@ -2026,6 +2055,13 @@ func (t *Table[T]) IsFiltered() bool {
 	return t.filteredRows != nil
 }
 
+// flatFilter reports whether the filter in force is one that shows the rows that passed as a flat list, which is what
+// ApplyFilter applies and ApplyHierarchicalFilter does not. Nothing is shown beneath any row while such a filter is
+// applied, so the table has no hierarchy to draw, to describe or to change.
+func (t *Table[T]) flatFilter() bool {
+	return t.filteredRows != nil && !t.hierarchicalFilter
+}
+
 // ApplyFilter applies a filter to the data. When a non-nil filter is applied, all rows (recursively) are passed through
 // the filter. Only those that the filter returns false for will be visible in the table. When a filter is applied, no
 // hierarchy is display and no modifications to the row data should be performed. See ApplyHierarchicalFilter for a
@@ -2267,4 +2303,659 @@ func (t *Table[T]) FocusedCell() (row, col int) {
 		return -1, -1
 	}
 	return t.focusedCellRowIndex, t.focusedCellColumn
+}
+
+// ProvideAccessibility describes the table to assistive technologies. Neither the rows nor the cells have panels of
+// their own — a cell is borrowed from its row to draw it and handed back again — so each one is described directly,
+// as a virtual child. Rows are keyed by their model id rather than by their index, so that an assistive technology's
+// notion of a row survives the rows around it being sorted, filtered, inserted or removed.
+//
+// Only the rows that can be seen are described, plus the ones that are selected and the one holding the cell that has
+// the keyboard focus. A table may hold far more rows than it shows; what an assistive technology asks about is what is
+// on the screen, what the selection is, and where the focus is.
+func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		if t.hasHierarchy {
+			node.Role = role.Tree
+		} else {
+			node.Role = role.Table
+		}
+	}
+	node.Multiselectable = true
+	node.RowCount = len(t.rowCache)
+	node.ColumnCount = len(t.Columns)
+	if t.header != nil {
+		// A table and its header are separate panels — the header goes into the column-header slot of the scroll panel
+		// whose content is the table — so the header is nowhere within the table's own subtree and nothing else would
+		// say that the two belong together. All three platform adapters look here first and fall back to a proximity
+		// search that gives up when an ancestor holds more than one table, so a window that puts two tables under one
+		// common ancestor would otherwise report no column headers for either of them.
+		node.Controls = append(node.Controls, b.IDFor(t.header))
+	}
+	// Pressing the table is not activating it; the default behavior would synthesize a click at the center of the
+	// table's whole frame, which for a table in a scroll panel lands on a row somewhere near the middle of the model,
+	// far from anything that can be seen, and replaces the selection with it.
+	node.Actions = node.Actions.Without(accessibility.Press)
+	if len(t.rowCache) == 0 {
+		return
+	}
+	focusedRow := -1
+	if t.focusedCell != nil {
+		focusedRow = t.focusedCellRowIndex
+	}
+	reach := axReach(b.VisibleRect())
+	// The rows are walked in order, accumulating the y coordinate as their heights go by, since asking each row where
+	// it is would walk the rows before it all over again. Nothing is described until the walk reaches the rows worth
+	// describing, and it stops as soon as none can be left, so what a description costs is bounded by what is on the
+	// screen and what is selected rather than by the size of the model — but the rows above the view port are still
+	// stepped over one at a time, since neither this nor the draw path keeps the running heights that would let the
+	// first visible row be found by search, and a table scrolled to the bottom of a million rows pays for that walk on
+	// every description. Stepping over a row costs an addition, a comparison and, while anything is selected, a map
+	// lookup.
+	rect := t.ContentRect(false)
+	described := 0
+	// An upper bound on how many selected rows are still to come. It counts any rows the selection holds that are no
+	// longer showing as well, which costs the walk nothing but its early exit.
+	selectedLeft := len(t.selMap)
+	// The top of the most recent row seen at each depth, which is where the ancestors of a row described out of
+	// sequence sit: a row's ancestors are always the last rows seen above it at each shallower depth. A table whose
+	// rows cannot have children has no ancestors to describe and does not pay for any of this.
+	var depthTops []float32
+	// The last row described, so that a row arriving without the one before it can bring its ancestors with it.
+	last := -1
+	for row := range t.rowCache {
+		entry := &t.rowCache[row]
+		rect.Height = entry.height
+		if t.hasHierarchy {
+			for len(depthTops) <= entry.depth {
+				depthTops = append(depthTops, rect.Y)
+			}
+			depthTops[entry.depth] = rect.Y
+		}
+		selected := selectedLeft > 0 && t.IsRowSelected(row)
+		if selected {
+			selectedLeft--
+		}
+		outOfSequence := t.hasHierarchy && last != row-1
+		switch {
+		case rect.Intersects(reach), row == focusedRow:
+			if outOfSequence {
+				t.axAddRowAncestors(b, row, depthTops)
+			}
+			t.axAddRow(b, row, rect, false)
+			last = row
+		case selected && described < axMaxSelectedRows:
+			if outOfSequence {
+				t.axAddRowAncestors(b, row, depthTops)
+			}
+			t.axAddRow(b, row, rect, true)
+			last = row
+			described++
+		}
+		rect.Y += rect.Height
+		if t.ShowRowDivider {
+			rect.Y++
+		}
+		if rect.Y > reach.Bottom() && row >= focusedRow &&
+			(selectedLeft <= 0 || described >= axMaxSelectedRows) {
+			// Every row from here down starts below the reach, so none of them can be seen; the focused row has gone
+			// by; and either the selection holds nothing further or as much of it as will be described has been.
+			break
+		}
+	}
+}
+
+// axAddRowAncestors describes the rows a row hangs beneath, for a row that is being described although the row before
+// it was not.
+//
+// An assistive technology reads the nesting of a table's rows from their levels and the order they arrive in: the rows
+// disclosed by a container are the ones after it with a deeper level, up to the next row at the container's own level.
+// So a row that turned up without its container — one described only because it is selected, or the first row of what
+// can be seen — would be read as disclosed by whatever container came before it instead, which is the wrong row
+// whenever the two belong to different parts of the model. Bringing its ancestors along keeps the flat list honest;
+// they are described as the rows they are, with nothing in them, exactly as any other row that cannot be seen is.
+//
+// depthTops holds the top of the most recent row seen at each depth, which is where each of the ancestors sits.
+func (t *Table[T]) axAddRowAncestors(b *AccessibilityBuilder, row int, depthTops []float32) {
+	var chain []int
+	for parent := t.rowCache[row].parent; parent >= 0 && parent < len(t.rowCache); parent = t.rowCache[parent].parent {
+		chain = append(chain, parent)
+	}
+	rect := t.ContentRect(false)
+	for i := len(chain) - 1; i >= 0; i-- {
+		ancestor := chain[i]
+		if depth := t.rowCache[ancestor].depth; depth < len(depthTops) {
+			rect.Y = depthTops[depth]
+		}
+		rect.Height = t.rowCache[ancestor].height
+		// An ancestor that has already been described is left where it is: adding it again would list it among the
+		// table's children twice, which is what every position counted out of that list would then be wrong about.
+		t.axAddRow(b, ancestor, rect, true)
+	}
+}
+
+// columnLeft returns the x coordinate at which the given column begins, in the table's own coordinates.
+func (t *Table[T]) columnLeft(col int) float32 {
+	var insets geom.Insets
+	if border := t.Border(); border != nil {
+		insets = border.Insets()
+	}
+	x := insets.Left + t.leadingColumnDividerWidth()
+	for c := range col {
+		x += t.Columns[c].Current
+		if t.ShowColumnDivider && (t.ShowLastColumnDivider || c < len(t.Columns)-1) {
+			x++
+		}
+	}
+	return x
+}
+
+// disclosureFrameAtY returns the frame of the disclosure triangle drawn for the row whose top is at y, in the table's
+// own coordinates, or an empty rect when the row is drawn without one. It is the arithmetic DefaultDraw places the
+// triangle with, so that what an assistive technology is told can be pressed is what a person can click.
+func (t *Table[T]) disclosureFrameAtY(row int, y float32) geom.Rect {
+	hierarchyIndent := t.CurrentHierarchyIndent()
+	if hierarchyIndent <= 0 || t.hierarchicalFilter || !t.rowCache[row].row.CanHaveChildren() {
+		return geom.Rect{}
+	}
+	col := -1
+	for c := range t.Columns {
+		if t.Columns[c].ID == t.HierarchyColumnID {
+			col = c
+			break
+		}
+	}
+	if col < 0 {
+		return geom.Rect{}
+	}
+	const disclosureIndent = 2
+	size := min(hierarchyIndent, t.MinimumRowHeight) - disclosureIndent*2
+	if size <= 0 {
+		return geom.Rect{}
+	}
+	cellRect := geom.NewRect(t.columnLeft(col), y, t.Columns[col].Current, t.rowCache[row].height).Inset(t.Padding)
+	return geom.NewRect(cellRect.X+hierarchyIndent*float32(t.rowCache[row].depth)+disclosureIndent,
+		cellRect.Y+(t.MinimumRowHeight-size)/2, size, size)
+}
+
+// axDisclosureKey is the key under which the disclosure triangle of a row is described.
+type axDisclosureKey struct {
+	Row tid.TID
+}
+
+// axAddRow describes one row of the table, along with each of its cells. rect is the row's frame in the table's own
+// coordinates.
+//
+// A row described with nameOnly is described as itself and nothing more: what it is, where it is, and whether it is
+// selected, open or can be opened, without the disclosure triangle and the cells beneath it. That is what is left of a
+// row nobody can see — one described because the selection holds it, or because a row further down hangs beneath it —
+// and it is all an assistive technology asks of such a row, since what it does with the selection is read out what is
+// in it. Building the rest would mean asking the model for a panel per column, laying each one out and walking it,
+// over and over: several hundred panels on every description of a table where everything has just been selected.
+func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, nameOnly bool) {
+	entry := t.rowCache[row]
+	id := entry.row.ID()
+	depth := entry.depth
+	selected := t.IsRowSelected(row)
+	// A container is only something that expands while the table is showing a hierarchy at all. Under a flat filter it
+	// is not: nothing is shown beneath it, the table draws it without a disclosure triangle, and it is described as the
+	// plain row it appears as. See SyncToModel.
+	expandable := t.hasHierarchy && entry.row.CanHaveChildren()
+	expanded := expandable && t.isRowDisclosed(entry.row)
+	// A hierarchical filter shows every container it kept as open, whatever the container's own open state, so the row
+	// is reported as expanded but is not offered for opening and closing, exactly as the disclosure triangle is drawn
+	// open but given no hit rect and the keys that would change the open states are left alone.
+	toggleable := expandable && !t.hierarchicalFilter
+	var name string
+	if len(t.Columns) != 0 {
+		// The name comes from the first column, so a table with no columns has nothing to ask the row for. Asking
+		// anyway would have the model produce the data of a column that does not exist.
+		name = entry.row.CellDataForSort(0)
+	}
+	rowID := b.AddVirtualChild(id, func(n *accessibility.Node) {
+		n.Role = role.Row
+		n.Name = name
+		n.Bounds = rect
+		n.Level = depth + 1
+		n.RowIndex = row
+		n.Selectable = true
+		n.Selected = selected
+		n.Expandable = expandable
+		n.Expanded = expanded
+		n.Actions = n.Actions.With(accessibility.Select, accessibility.AddToSelection,
+			accessibility.RemoveFromSelection, accessibility.ScrollIntoView)
+		if toggleable {
+			n.Actions = n.Actions.With(accessibility.Expand, accessibility.Collapse)
+		}
+		if t.DoubleClickCallback != nil {
+			// Pressing a row is opening it, which is what a double-click and the Return key stand for, so it is offered
+			// only when there is something for it to do.
+			n.Actions = n.Actions.With(accessibility.Press)
+		}
+	})
+	if rowID == 0 || nameOnly {
+		return
+	}
+	// The triangle that opens and closes a row is drawn by the table rather than by any cell, so it is described here
+	// as the row's first child: something a screen reader can land on and press, as a person can click it.
+	if frame := t.disclosureFrameAtY(row, rect.Y); !frame.Empty() {
+		b.AddVirtualChildOf(rowID, axDisclosureKey{Row: id}, func(n *accessibility.Node) {
+			n.Role = role.DisclosureTriangle
+			n.Name = i18n.Text("Disclosure Triangle")
+			n.Bounds = frame
+			n.RowIndex = row
+			n.Pressed = expanded
+			n.Expandable = true
+			n.Expanded = expanded
+			n.Actions = n.Actions.With(accessibility.Press, accessibility.Toggle, accessibility.Expand,
+				accessibility.Collapse, accessibility.ScrollIntoView)
+		})
+	}
+	for col := range t.Columns {
+		frame := t.cellFrameAtY(row, col, rect.Y)
+		text := entry.row.CellDataForSort(col)
+		key := accessibility.CellKey{Row: id, Col: col}
+		cellID := b.AddVirtualChildOf(rowID, key, func(n *accessibility.Node) {
+			n.Role = role.Cell
+			n.Name = text
+			n.Bounds = frame
+			n.RowIndex = row
+			n.ColumnIndex = col
+			n.Actions = n.Actions.With(accessibility.ScrollIntoView)
+		})
+		if cellID == 0 {
+			continue
+		}
+		// Whatever the row hands back for the cell — a check box, a button, a field, a wrapper full of labels — is
+		// described within it, attached and laid out for the moment exactly as it is for drawing. A cell with content
+		// of its own to describe has no need of the sort text as a name on top of that; a cell whose content amounts to
+		// nothing keeps it.
+		cell := t.cell(row, col)
+		t.installCell(cell, frame)
+		b.addCellPanel(cellID, key, cell, cell == t.focusedCell)
+		t.uninstallCell(cell, row, col)
+		if content := b.snapshot.tree.UnignoredChildren(cellID); len(content) != 0 {
+			cellNode := b.snapshot.tree.Nodes[cellID]
+			cellNode.Name = ""
+			// A screen reader moving through a table treats the cell as the unit: it presses the cell, and it reports a
+			// change by reading the cell's value again. So a cell whose content can be pressed offers the press itself
+			// and passes it on (see axActOnCellContent), and a cell holding a single widget with a state reports that
+			// state as its own value, so that a change to it is a change to the cell.
+			for _, action := range []accessibility.Action{accessibility.Press, accessibility.Toggle} {
+				if axDescendantOffers(b.snapshot.tree, cellID, action) {
+					cellNode.Actions = cellNode.Actions.With(action)
+				}
+			}
+			if len(content) == 1 {
+				cellNode.Value = axContentValue(b.snapshot.tree.Node(content[0]))
+			}
+		}
+	}
+}
+
+// axContentValue returns the value a cell reports for the one widget it holds: the state of a check box or radio
+// button in words, otherwise the widget's own value, textual or numeric.
+func axContentValue(n *accessibility.Node) string {
+	switch {
+	case n == nil:
+		return ""
+	case n.HasCheck:
+		switch n.Checked {
+		case check.On:
+			return i18n.Text("Checked")
+		case check.Mixed:
+			return i18n.Text("Mixed")
+		default:
+			return i18n.Text("Unchecked")
+		}
+	case n.Value != "":
+		return n.Value
+	case n.HasNumber:
+		return strconv.FormatFloat(n.Number, 'g', -1, 64)
+	default:
+		return ""
+	}
+}
+
+// axDescendantOffers reports whether any node beneath the given one advertises the action.
+func axDescendantOffers(tree *accessibility.Tree, id accessibility.NodeID, action accessibility.Action) bool {
+	for _, child := range tree.UnignoredChildren(id) {
+		if n := tree.Node(child); n != nil && (n.Actions.Has(action) || axDescendantOffers(tree, child, action)) {
+			return true
+		}
+	}
+	return false
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Every request that reaches here names
+// one of the rows or cells described by ProvideAccessibility, which arrives as the key that row or cell was described
+// under; acting on a cell acts on the row it belongs to, apart from scrolling, which brings the cell itself into view.
+// Selecting a row also scrolls it into view, as the arrow keys do, since an assistive technology moving through the
+// rows selects each one as it goes and expects to see where it has got to. Pressing a row opens it, which is the
+// gesture a double-click and the Return key stand for.
+func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	var id tid.TID
+	col := -1
+	switch key := req.Key.(type) {
+	case tid.TID:
+		id = key
+	case accessibility.CellKey:
+		id = key.Row
+		col = key.Col
+	case axCellPanelKey:
+		return t.axPerformInCell(key, req)
+	case axDisclosureKey:
+		return t.axActOnDisclosure(key, req)
+	default:
+		return false
+	}
+	row := t.axRowIndexForID(id)
+	if row < 0 {
+		return false
+	}
+	if col >= 0 && (req.Action == accessibility.Press || req.Action == accessibility.Toggle) {
+		return t.axActOnCellContent(row, col, req)
+	}
+	switch req.Action {
+	case accessibility.Press:
+		if t.DoubleClickCallback == nil {
+			return false
+		}
+		// Both of the gestures this stands for act on the selection: a double-click has already selected the row with
+		// its first click, and the Return key runs against whatever is selected. So the row is selected first when it
+		// was not already, and the callback then finds what it expects.
+		if !t.IsRowSelected(row) {
+			t.axSelectOnly(id)
+		}
+		SafeCall(t.DoubleClickCallback)
+	case accessibility.Select:
+		t.axSelectOnly(id)
+		t.ScrollRowIntoView(row)
+	case accessibility.AddToSelection:
+		if !t.IsRowSelected(row) {
+			// A row that is already in the selection has nothing to be added to it. SelectByIndex would tell the
+			// application its selection had changed regardless, and an assistive technology acts on the row it is
+			// already on often enough — landing on it, then acting on it — that an application would set about whatever
+			// it does on a change to the selection over and over. The mouse path counts the same way.
+			t.SelectByIndex(row)
+		}
+		t.ScrollRowIntoView(row)
+	case accessibility.RemoveFromSelection:
+		if t.IsRowSelected(row) {
+			// As above: a row that is not selected has nothing to be taken out of the selection, and the row is left
+			// exactly as it was asked to be.
+			t.DeselectByIndex(row)
+		}
+	case accessibility.Expand:
+		return t.axSetRowOpen(row, true)
+	case accessibility.Collapse:
+		return t.axSetRowOpen(row, false)
+	case accessibility.ScrollIntoView:
+		if col >= 0 && col < len(t.Columns) {
+			t.ScrollRowCellIntoView(row, col)
+		} else {
+			t.ScrollRowIntoView(row)
+		}
+	default:
+		return false
+	}
+	return true
+}
+
+// axSelectOnly makes the row with the given id the whole of the selection, and the anchor a later shift-click extends
+// from. A plain click does both — setting the selection alone leaves the anchor wherever it last was, on a row that may
+// not even be selected any more — and a person who has just moved the selection with an assistive technology and then
+// shift-clicks expects the same thing to happen as if they had clicked the row themselves.
+//
+// The application is told the selection changed only when it did, exactly as DefaultMouseDown says nothing for a click
+// on the row that is already the whole of the selection. An assistive technology re-selects the row it is already on
+// constantly, and an application told its selection had changed does whatever it does when that happens. The selection
+// is made either way, since it also puts the anchor on the row.
+func (t *Table[T]) axSelectOnly(id tid.TID) {
+	changed := t.SelectionCount() != 1 || !t.selMap[id]
+	// Nothing needs pruning: the caller found the row in the row cache, so the one id the selection now holds is known
+	// to be in it, exactly as DefaultMouseDown's equivalent branch leaves the flag alone. Setting it would make the
+	// next HasSelection, SelectionCount or SelectedRows walk the whole row cache and rebuild the map — once for every
+	// row an assistive technology steps onto.
+	t.selMap = map[tid.TID]bool{id: true}
+	t.selAnchor = id
+	t.MarkForRedraw()
+	if changed {
+		t.notifyOfSelectionChange()
+	}
+}
+
+// axPerformInCell carries out a request aimed at a panel inside one of the table's cells. The cell is built and
+// attached again, exactly as it is to hand it a mouse event, so that the panel the request is for exists and can reach
+// its window; the panel is then found at the position within the cell it was described at. A widget that takes the
+// keyboard focus while handling the request stays attached as the focused cell, as one that took it from a click would.
+func (t *Table[T]) axPerformInCell(key axCellPanelKey, req accessibility.ActionRequest) bool {
+	row := t.axRowIndexForID(key.Cell.Row)
+	col := key.Cell.Col
+	if row < 0 || col < 0 || col >= len(t.Columns) {
+		return false
+	}
+	// The key that brought the request here named one of the table's virtual children. What it is being handed to is a
+	// real panel, for which ActionRequest.Key is nil: an application's own action callback on a panel within a cell
+	// would otherwise be given a key it never handed out, and a widget that keys virtual children of its own — a table
+	// header nested in a cell — would take the table's key for one of its own and act at whatever position it matched.
+	req.Key = nil
+	cell := t.cell(row, col)
+	t.installCell(cell, t.CellFrame(row, col))
+	handled := false
+	if target := axPanelAtPath(cell, key.Path); target != nil {
+		handled = target.axDispatchAction(req, false)
+	}
+	t.uninstallCell(cell, row, col)
+	t.MarkForRedraw()
+	return handled
+}
+
+// axActOnDisclosure carries out a request aimed at a row's disclosure triangle: pressing or toggling it turns the row
+// the other way, and expanding or collapsing it turns the row that way.
+func (t *Table[T]) axActOnDisclosure(key axDisclosureKey, req accessibility.ActionRequest) bool {
+	row := t.axRowIndexForID(key.Row)
+	if row < 0 {
+		return false
+	}
+	switch req.Action {
+	case accessibility.Press, accessibility.Toggle:
+		return t.axSetRowOpen(row, !t.rowCache[row].row.IsOpen())
+	case accessibility.Expand:
+		return t.axSetRowOpen(row, true)
+	case accessibility.Collapse:
+		return t.axSetRowOpen(row, false)
+	case accessibility.ScrollIntoView:
+		t.ScrollRowIntoView(row)
+		return true
+	default:
+		return false
+	}
+}
+
+// axActOnCellContent passes a press or toggle aimed at a cell on to the content within the cell that can carry it out,
+// with the cell built and attached as it is for a click. A screen reader moving through a table treats the cell as the
+// unit and presses that, expecting the check box or button within it to respond.
+//
+// Each candidate is offered the request in turn until one of them reports having carried it out, because what a widget
+// does with a request is only known from handing it over: a cell that holds a button and a check box advertises both a
+// press and a toggle, since between them they offer both, yet only the check box has a state to move on, so a toggle
+// handed to the button would be refused and the cell would have advertised something it then would not do.
+//
+// A candidate that was described as not offering the action is passed over rather than being handed it. The candidates
+// are picked by the shape of the panel — one with an action callback or actor of its own, or one that handles both
+// halves of a click — while what the cell advertises comes from what its content was actually described as offering,
+// and the two part company for a widget that withdrew the action: a Field takes Press out of its own description, yet
+// still looks pressable here because it handles both halves of a click. A press on a cell holding a field ahead of a
+// button — advertised only because of the button — would otherwise be handed to the field, which does not act on a
+// press but does not refuse one either, since the fallback synthesizes a click that merely drops the caret in it; the
+// button would never see the press, and the field would be left as the table's focused cell, quietly starting an
+// editing session nobody asked for.
+func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequest) bool {
+	if col >= len(t.Columns) {
+		return false
+	}
+	cellKey := accessibility.CellKey{Row: t.rowCache[row].row.ID(), Col: col}
+	action := req.Action
+	// The request named the cell, whose key is the table's own; the content it is being passed to is a real panel, for
+	// which ActionRequest.Key is nil. See axPerformInCell.
+	req.Key = nil
+	cell := t.cell(row, col)
+	t.installCell(cell, t.CellFrame(row, col))
+	handled := false
+	for _, target := range t.axCellTargetsOffering(cell, cellKey, action) {
+		if target.axDispatchAction(req, false) {
+			handled = true
+			break
+		}
+	}
+	t.uninstallCell(cell, row, col)
+	t.MarkForRedraw()
+	return handled
+}
+
+// axCellTargetsOffering returns the panels within a cell that a press or a toggle may be handed to, in the order they
+// should be tried: the ones whose description advertises the action first, then the ones that were not described at
+// all. A panel that was described without the action is left out entirely, since the cell only advertises what its
+// content was described as offering, and handing the request to something that was described as not offering it is how
+// the cell comes to answer for a widget that never saw it.
+//
+// A panel with no description of its own is still tried, after the rest. The cell is built afresh for every request, so
+// a row that builds something different from what it built when the window was last described has nothing to match
+// against, and refusing everything then would be worse than the order the panels are in.
+func (t *Table[T]) axCellTargetsOffering(cell *Panel, key accessibility.CellKey,
+	action accessibility.Action,
+) []*Panel {
+	candidates := axPressableTargets(cell)
+	offering := make([]*Panel, 0, len(candidates))
+	undescribed := make([]*Panel, 0, len(candidates))
+	for _, candidate := range candidates {
+		path, ok := axPathFromRoot(cell, candidate)
+		if !ok {
+			undescribed = append(undescribed, candidate)
+			continue
+		}
+		node := t.axDescribedCellNode(axCellPanelKey{Cell: key, Path: path})
+		switch {
+		case node == nil:
+			undescribed = append(undescribed, candidate)
+		case node.Actions.Has(action):
+			offering = append(offering, candidate)
+		}
+	}
+	return append(offering, undescribed...)
+}
+
+// axDescribedCellNode returns the node the table last described for the panel at a position within one of its cells, or
+// nil if it did not describe one. The panels inside a cell exist only while the cell is built, so they are described
+// under ids the table allocates for their position within it rather than under ids of their own; see axCellPanelKey.
+func (t *Table[T]) axDescribedCellNode(key axCellPanelKey) *accessibility.Node {
+	id := t.Accessibility.virtual[key].id
+	if id == 0 {
+		return nil
+	}
+	wnd := t.Window()
+	if wnd == nil || wnd.ax == nil || wnd.ax.last == nil {
+		return nil
+	}
+	return wnd.ax.last.Node(id)
+}
+
+// axPathFromRoot returns the position of p beneath root in the form axCellPanelKey.Path holds it: the child indexes on
+// the way down from root, joined with dots. Reports false if p is not beneath root at all. This is the inverse of
+// axPanelAtPath.
+func axPathFromRoot(root, p *Panel) (string, bool) {
+	var parts []string
+	for one := p; one != root; one = one.parent {
+		parent := one.parent
+		if parent == nil {
+			return "", false
+		}
+		index := slices.Index(parent.Children(), one)
+		if index < 0 {
+			return "", false
+		}
+		parts = append(parts, strconv.Itoa(index))
+	}
+	slices.Reverse(parts)
+	return strings.Join(parts, "."), true
+}
+
+// axPressableTargets returns the panels at or beneath p, front to back, that might respond to a press or a toggle: ones
+// with an accessibility action callback or actor of their own, and ones that handle both halves of a click.
+//
+// A hidden panel is left out along with everything beneath it, since nothing within something that is not drawn can be
+// reached. A disabled panel is left out too, since every path refuses it — Window.mouseDown and Window.mouseUp pass
+// over a panel that is not enabled, and so does axDispatchAction — but what is beneath it is not: being enabled is a
+// panel's own property rather than something it passes down, and a click landing on an enabled widget nested inside a
+// disabled wrapper is handed to that widget, so a request from an assistive technology must reach it too.
+//
+// What comes back is the panels that might respond, judged by their shape alone, which is not the same as the panels
+// the cell was described as offering the action: a widget that withdrew the action from its own description still
+// looks like one that would take it here. axCellTargetsOffering is what reconciles the two before anything is handed
+// over.
+func axPressableTargets(p *Panel) []*Panel {
+	var targets []*Panel
+	axAppendPressableTargets(&targets, p)
+	return targets
+}
+
+// axAppendPressableTargets appends the panels at or beneath p that might respond to a press or a toggle to targets.
+// The children come before the panel itself, and in index order, which is front to back: index 0 is drawn last and so
+// sits on top, and a press must land where a click would rather than on whatever was drawn underneath.
+func axAppendPressableTargets(targets *[]*Panel, p *Panel) {
+	if p.Hidden {
+		return
+	}
+	for _, child := range p.Children() {
+		axAppendPressableTargets(targets, child)
+	}
+	if !p.Enabled() {
+		return
+	}
+	if p.Accessibility.ActionCallback != nil || (p.MouseDownCallback != nil && p.MouseUpCallback != nil) {
+		*targets = append(*targets, p)
+	} else if _, ok := p.Self.(AccessibilityActor); ok {
+		*targets = append(*targets, p)
+	}
+}
+
+// axRowIndexForID returns the index of the row with the given id among the rows the table is currently showing, or -1
+// if it is not showing one. A request from an assistive technology names a row by its id, since that is what the row
+// was described under, and the rows may have been sorted or filtered since.
+func (t *Table[T]) axRowIndexForID(id tid.TID) int {
+	for i := range t.rowCache {
+		if t.rowCache[i].row.ID() == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// axSetRowOpen opens or closes a row on behalf of an assistive technology, bringing the table up to date with the
+// change exactly as clicking the row's disclosure triangle would. Reports false if the row cannot have children at all,
+// or if a filter is applied: a hierarchical filter shows every container it kept as open, whatever the container's own
+// open state, and a flat one shows nothing beneath any row at all, so neither has anything to show for a change to an
+// open state. The disclosure triangle a person would click is not there under either — drawn without a hit rect under a
+// hierarchical filter, not drawn at all under a flat one — so an assistive technology let through would be told a row
+// had opened or closed while everything it can observe stayed exactly as it was.
+func (t *Table[T]) axSetRowOpen(row int, open bool) bool {
+	if t.IsFiltered() {
+		return false
+	}
+	data := t.rowCache[row].row
+	if !data.CanHaveChildren() {
+		return false
+	}
+	if data.IsOpen() == open {
+		// The row is already the way it was asked to be, which is as good an outcome as having changed it.
+		return true
+	}
+	data.SetOpen(open)
+	t.SyncToModel()
+	if !open {
+		t.PruneSelectionOfUndisclosedNodes()
+	}
+	return true
 }

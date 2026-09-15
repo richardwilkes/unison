@@ -25,9 +25,12 @@ type tableTestRow struct {
 	// cellParams, when set, is told the parameters of every ColumnCell call, for the tests that check what the table
 	// tells a row about the cell it is asking for.
 	cellParams func(row, col int, fg, bg unison.Ink, selected, indirectlySelected, focused bool)
-	id         tid.TID
-	children   []*tableTestRow
-	open       bool
+	// cellData, when set, is what CellDataForSort returns, for the tests that need each column of a row to hold text of
+	// its own rather than the row's id.
+	cellData func(col int) string
+	id       tid.TID
+	children []*tableTestRow
+	open     bool
 }
 
 func newTableTestRow(id string) *tableTestRow {
@@ -48,7 +51,14 @@ func (r *tableTestRow) SetChildren(children []*tableTestRow) {
 		child.parent = r
 	}
 }
-func (r *tableTestRow) CellDataForSort(_ int) string { return string(r.id) }
+
+func (r *tableTestRow) CellDataForSort(col int) string {
+	if r.cellData != nil {
+		return r.cellData(col)
+	}
+	return string(r.id)
+}
+
 func (r *tableTestRow) ColumnCell(row, col int, fg, bg unison.Ink, selected, indirectlySelected,
 	focused bool,
 ) unison.Paneler {

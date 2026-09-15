@@ -16,7 +16,9 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/unison"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // testColumnHeader is a minimal TableColumnHeader built on a plain panel, avoiding the font work a label-based header
@@ -147,4 +149,230 @@ func TestTableHeaderSortsHierarchicalFilterInPlace(t *testing.T) {
 	c.Equal(tid.TID("a"), table.Model.RootRows()[1].ID())
 	c.Equal(tid.TID("c1"), parent.Children()[0].ID(), "the model's children must be left alone")
 	c.Equal(tid.TID("c0"), parent.Children()[1].ID())
+}
+
+// axCustomColumnHeader is a column header written the way the documentation describes one: it embeds a *unison.Label
+// and points Self at itself, so it is neither the library's own header type nor a plain *unison.Label.
+type axCustomColumnHeader struct {
+	*unison.Label
+	state unison.SortState
+}
+
+func newAxCustomColumnHeader(title string) *axCustomColumnHeader {
+	h := &axCustomColumnHeader{Label: unison.NewLabel()}
+	h.Self = h
+	h.state = unison.SortState{Order: -1, Ascending: true, Sortable: true}
+	h.SetTitle(title)
+	return h
+}
+
+func (h *axCustomColumnHeader) SortState() unison.SortState         { return h.state }
+func (h *axCustomColumnHeader) SetSortState(state unison.SortState) { h.state = state }
+func (h *axCustomColumnHeader) Less() func(a, b string) bool        { return nil }
+
+// TestTableHeaderAccessibilityNamesACustomColumnHeader verifies that a column header built around a label but not of
+// the library's own type is still named by that label's text. The fallback used to insist on the concrete type, so a
+// custom header matched neither it nor the check for a plain label and was handed to a screen reader with no name.
+func TestTableHeaderAccessibilityNamesACustomColumnHeader(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var header *unison.TableHeader[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table = axNewTable(flatRows(2)...)
+			header = unison.NewTableHeader[*tableTestRow](table,
+				unison.TableColumnHeader[*tableTestRow](newAxCustomColumnHeader("Custom")),
+				unison.NewTableColumnHeader[*tableTestRow]("Stock", "", nil))
+			scroller := axScroller(table, geom.NewSize(300, 200))
+			scroller.SetColumnHeader(header)
+			wnd = newHeadlessWindow(t, "custom header", geom.NewRect(10, 10, 400, 400), axColumn(scroller))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(header)
+	c.True(node != nil)
+	c.False(node.Actions.Has(accessibility.Press),
+		"pressing the header would sort the table on whichever column sits in the middle of it")
+
+	columns := axChildNodes(tree, node)
+	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
+	c.Equal("Custom", columns[0].Name, "a header built around a label is named by that label's text")
+	c.Equal("Stock", columns[1].Name)
+	c.True(columns[0].Actions.Has(accessibility.Press), "a sortable column header can still be pressed")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableHeaderAccessibilityColumnTooltipDoesNotDescribeTheHeader verifies that the tooltip a header borrows from
+// the column header the pointer is over stays out of what the header itself is described as. The borrowed tooltip used
+// to be parked in Panel.Tooltip, which is what a node's description falls back to, so the header was announced with
+// one column's tooltip as its own description, and that description changed as the pointer moved along the header. The
+// column it belongs to is described with it, which is where it was always meant to be heard, and the tooltip itself
+// must still appear.
+func TestTableHeaderAccessibilityColumnTooltipDoesNotDescribeTheHeader(t *testing.T) {
+	c := check.New(t)
+	var header *unison.TableHeader[*tableTestRow]
+	var away *unison.Label
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table := axNewTable(flatRows(2)...)
+			header = unison.NewTableHeader[*tableTestRow](table,
+				unison.NewTableColumnHeader[*tableTestRow]("Name", "What the thing is called", nil),
+				unison.NewTableColumnHeader[*tableTestRow]("Value", "", nil))
+			// The header does not carry a column header's own immediate flag across, so without this the tooltip would
+			// not appear until the delay a person's pause has to last, which is not something to wait on in a test.
+			header.TooltipImmediate = true
+			scroller := axScroller(table, geom.NewSize(300, 200))
+			scroller.SetColumnHeader(header)
+			// Somewhere outside the header for the pointer to move on to, since the defect was about what was left
+			// behind once it had. It sits above the table so that a tooltip, which is shown below what it belongs to,
+			// can never be what the pointer lands on instead.
+			away = unison.NewLabel()
+			away.SetTitle("Away")
+			wnd = newHeadlessWindow(t, "column tips", geom.NewRect(10, 10, 400, 400), axColumn(away, scroller))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	tree := screen.AccessibilityTree(wnd)
+	headerNode := axMustNode(c, screen.AccessibilityNodeFor(header))
+	headerID := headerNode.ID
+	c.Equal("", headerNode.Description, "nothing has been hovered yet")
+	columns := axChildNodes(tree, headerNode)
+	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
+	c.Equal("What the thing is called", columns[0].Description,
+		"the tooltip describes the column it was given to")
+	c.Equal("", columns[1].Description, "the column with no tooltip has nothing to say about itself")
+	c.Equal(0, len(axNodesWithRole(tree, role.Tooltip)), "no tooltip is showing yet")
+	screen.AccessibilityEvents(wnd)
+
+	var overColumn geom.Point
+	c.True(screen.Do(func() {
+		// Aimed well inside the first column: a point within ColumnResizeSlop of a divider is a resize rather than the
+		// column header itself.
+		frame := header.ColumnFrame(0)
+		overColumn = geom.NewPoint(frame.X+5, frame.CenterY())
+	}))
+	screen.MouseMove(screen.PanelPoint(header, overColumn), mod.None)
+
+	tree = screen.AccessibilityTree(wnd)
+	tips := axNodesWithRole(tree, role.Tooltip)
+	c.Equal(1, len(tips), "the column header's tooltip should be showing")
+	if len(tips) == 1 {
+		c.Equal("What the thing is called", tips[0].Name)
+	}
+	c.Equal("", axMustNode(c, screen.AccessibilityNodeFor(header)).Description,
+		"the tooltip belongs to the column the pointer is over, not to the header")
+	c.False(axHasEvent(screen.AccessibilityEvents(wnd), accessibility.DescriptionChanged, headerID),
+		"borrowing a column header's tooltip must not report that the header's description changed")
+
+	// Off the header altogether, which is where the borrowed tooltip used to stick.
+	screen.MouseMove(screen.PanelCenter(away), mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(0, len(axNodesWithRole(tree, role.Tooltip)), "the tooltip goes away with the pointer")
+	c.Equal("", axMustNode(c, screen.AccessibilityNodeFor(header)).Description,
+		"the header must not be left described as the column the pointer last crossed")
+	c.False(axHasEvent(screen.AccessibilityEvents(wnd), accessibility.DescriptionChanged, headerID))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableHeaderAccessibilityActionKeepsTheFocusInAColumnHeader verifies that a request carried out inside a column
+// header leaves the keyboard focus it moved in there reachable. A column header is installed only for as long as it
+// takes to hand it whatever it is being given and is detached again afterwards; a focusable widget in one that took
+// the focus while handling the request — which Focus does outright, and Press does on its way to the click it
+// synthesizes — was left hanging off a panel with no parent, so the window could no longer find it, the description
+// published immediately afterwards reported nothing focused, and the person's focus was silently gone until they
+// pressed Tab.
+func TestTableHeaderAccessibilityActionKeepsTheFocusInAColumnHeader(t *testing.T) {
+	c := check.New(t)
+	var header *unison.TableHeader[*tableTestRow]
+	var colHeader *axButtonHeader
+	var wnd *unison.Window
+	clicks := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table := axNewTable(flatRows(3)...)
+			// A header built around something other than a label, so that what it holds is described and can be acted
+			// on, and focusable, which is what makes the focus something to lose.
+			colHeader = newAxButtonHeader("Pick", &clicks)
+			header = unison.NewTableHeader[*tableTestRow](table,
+				unison.TableColumnHeader[*tableTestRow](colHeader),
+				unison.NewTableColumnHeader[*tableTestRow]("Value", "", nil))
+			scroller := axScroller(table, geom.NewSize(300, 200))
+			scroller.SetColumnHeader(header)
+			wnd = newHeadlessWindow(t, "header focus", geom.NewRect(10, 10, 400, 400), axColumn(scroller))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	tree := screen.AccessibilityTree(wnd)
+	inside := axColumnHeaderContent(c, screen, tree, header)
+	if inside == nil {
+		return
+	}
+	c.True(inside.Focusable, "the widget the header is built around can take the focus")
+	c.True(inside.Actions.Has(accessibility.Focus))
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   inside.ID,
+		Action: accessibility.Focus,
+	}))
+	axCheckColumnHeaderHoldsFocus(c, screen, wnd, header, colHeader)
+
+	// Pressing it focuses it as well, on the way to the click it synthesizes.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   inside.ID,
+		Action: accessibility.Press,
+	}))
+	var count int
+	screen.Do(func() { count = clicks })
+	c.Equal(1, count, "pressing the button in the header should have clicked it")
+	axCheckColumnHeaderHoldsFocus(c, screen, wnd, header, colHeader)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axColumnHeaderContent returns the one node describing what the header's first column header is built around, or nil
+// if it was not described.
+func axColumnHeaderContent(c check.Checker, screen *unison.HeadlessScreen, tree *accessibility.Tree,
+	header *unison.TableHeader[*tableTestRow],
+) *accessibility.Node {
+	c.Helper()
+	columns := axChildNodes(tree, axMustNode(c, screen.AccessibilityNodeFor(header)))
+	if len(columns) == 0 {
+		c.Error("the header's columns should have been described")
+		return nil
+	}
+	inside := axUnignoredNodes(tree, columns[0])
+	if len(inside) != 1 {
+		c.Errorf("the widget the column header is built around should have been described, found %d", len(inside))
+		return nil
+	}
+	return inside[0]
+}
+
+// axCheckColumnHeaderHoldsFocus asserts that the window's focus is still on the widget the first column header is
+// built around, both as the window answers for it and as the next description reports it.
+func axCheckColumnHeaderHoldsFocus(c check.Checker, screen *unison.HeadlessScreen, wnd *unison.Window,
+	header *unison.TableHeader[*tableTestRow], colHeader unison.Paneler,
+) {
+	c.Helper()
+	var focus *unison.Panel
+	screen.Do(func() { focus = wnd.CurrentFocus() })
+	c.True(focus != nil && focus.Is(colHeader),
+		"the focus must still be reachable rather than left on a panel with no parent")
+	tree := screen.AccessibilityTree(wnd)
+	inside := axColumnHeaderContent(c, screen, tree, header)
+	if inside == nil {
+		return
+	}
+	c.True(inside.Focused, "the widget in the column header should be described as holding the focus")
+	c.Equal(inside.ID, tree.Focus, "the description should report where the focus is")
 }

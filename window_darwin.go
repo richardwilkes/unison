@@ -22,6 +22,8 @@ import (
 )
 
 type nativeWindow struct {
+	// ax is the NSAccessibility adapter serving this window, or nil until an assistive technology has asked about it.
+	ax             *cocoa.AXAdapter
 	wnd            cocoa.Window
 	view           cocoa.View
 	nsCursorHidden bool
