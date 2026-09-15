@@ -192,6 +192,11 @@ func (f *NumericField[T]) axSetValue(req accessibility.ActionRequest) bool {
 	case !axValueIsNumber(req.Value, req.Number):
 		return f.Field.PerformAccessibilityAction(req)
 	}
+	// An edit of its own, not to be folded into whatever edit came before it — most likely the run of keystrokes just
+	// typed into this same field, since DefaultRuneTyped leaves the undo id alone so that typing merges — so the id is
+	// moved on first, exactly as Field.PerformAccessibilityAction moves it on before replacing the value. SetValue
+	// reaches the text through SetText, which does not move it.
+	f.undoID = NextUndoID()
 	// Brought into range before it is converted, both because a value out of range is no more acceptable here than one
 	// that was typed and because converting a float far outside an integer type's range is not defined.
 	f.SetValue(T(min(max(req.Number, float64(f.minimum)), float64(f.maximum))))
@@ -220,6 +225,8 @@ func (f *NumericField[T]) axStepValue(up bool) {
 	case !up && value > f.minimum:
 		value = max(value-step, f.minimum)
 	}
+	// An edit of its own rather than part of whatever was typed just before it, for the reason axSetValue gives.
+	f.undoID = NextUndoID()
 	f.SetValue(value)
 }
 

@@ -1233,3 +1233,72 @@ func TestHeadlessAccessibilityActionMustBeAdvertised(t *testing.T) {
 	c.Equal("replaced", text)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestAccessibilityPublishSurvivesSupportTurnedOffDuringTheBuild verifies that application code run while a window is
+// being described — a panel's Accessibility.Callback here — may turn support off without crashing the publish that ran
+// it. The build used to install its registry, and the publish to diff against the last tree, through window state that
+// SetAccessibilityEnabled(false) frees, and neither dereference sat inside the SafeCall around the callback.
+func TestAccessibilityPublishSurvivesSupportTurnedOffDuringTheBuild(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var label *unison.Label
+	var calls int
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			label = unison.NewLabel()
+			label.SetTitle("Saboteur")
+			label.Accessibility.Callback = func(_ *accessibility.Node) {
+				calls++
+				if calls == 1 {
+					unison.SetAccessibilityEnabled(false)
+				}
+			}
+			wnd = newHeadlessWindow(t, "withdrawn", geom.NewRect(10, 10, 300, 150), axColumn(label))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.AccessibilityTree(wnd) == nil, "support was turned off partway through the build, so nothing was published")
+	c.Equal(1, calls, "the callback should have run once, from the build that was abandoned")
+	c.False(unison.IsAccessibilityActive())
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+
+	// Turned back on, the window is described in full, from a fresh start rather than from the abandoned build.
+	unison.SetAccessibilityEnabled(true)
+	screen.Sync()
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil, "support is back on, so the window should be described again")
+	if tree != nil {
+		c.True(axNamed(tree, "Saboteur") != nil)
+	}
+	c.True(screen.AccessibilityNodeFor(label) != nil, "the registry should have been rebuilt")
+	c.True(calls > 1)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityPublishSurvivesDisposalDuringTheBuild verifies that application code run while a window is being
+// described may dispose of that window without crashing the publish that ran it. Disposal frees the same window state
+// that turning support off does, so the publish has to notice the window has gone before it reaches for it.
+func TestAccessibilityPublishSurvivesDisposalDuringTheBuild(t *testing.T) {
+	c := check.New(t)
+	var doomed, other *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			// Something to keep the session alive once the other window has gone.
+			other = newHeadlessWindow(t, "other", geom.NewRect(10, 10, 100, 100), axColumn(unison.NewLabel()))
+			label := unison.NewLabel()
+			label.SetTitle("Saboteur")
+			label.Accessibility.Callback = func(_ *accessibility.Node) { doomed.Dispose() }
+			doomed = newHeadlessWindow(t, "doomed", geom.NewRect(120, 10, 200, 150), axColumn(label))
+		}))
+	c.NotNil(doomed)
+	c.NotNil(other)
+	c.True(screen.AccessibilityTree(doomed) == nil, "the window went away partway through the build, so nothing was published")
+	var valid bool
+	screen.Do(func() { valid = doomed.IsValid() })
+	c.False(valid, "the callback should have disposed of the window")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+
+	// Support is still on, and the window that is left is still described.
+	c.True(unison.IsAccessibilityActive())
+	c.True(screen.AccessibilityTree(other) != nil)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

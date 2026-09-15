@@ -147,33 +147,49 @@ func (s *axSnapshot) identify(p *Panel) (accessibility.NodeID, axTarget) {
 // buildAccessibilityTree captures the window's hierarchy as an immutable tree. The window's node registry is replaced
 // with the one this tree was built with, so a request arriving afterwards is resolved against what the assistive
 // technology was last told about.
+//
+// Returns nil, having installed nothing, if the application code the build ran withdrew the window's accessibility
+// state partway through. Every ProvideAccessibility and Accessibility.Callback runs from inside the build, and either
+// is free to call SetAccessibilityEnabled(false) or Window.Dispose, both of which free that state — see
+// deactivateAccessibility and Window.destroy. The registry a build like that would install belongs to a state that is
+// gone, and there is nothing left to publish its tree to, so the tree is discarded rather than installed through a
+// pointer the withdrawal has nilled. The callbacks are run under SafeCall, but that guards only what the callbacks do,
+// not what the build does with the window afterwards.
 func (w *Window) buildAccessibilityTree() *accessibility.Tree {
 	axSnapshotCount++
 	if w.ax == nil {
 		w.ax = &windowAccessibility{}
 	}
+	// Held so that the state this build began with can be told from whatever the window holds once the application
+	// code the build runs has returned. Compared by identity rather than against nil, since that code could withdraw
+	// the state and then, by turning support back on and describing the window from a callback, have a fresh one
+	// installed: a registry built for the old one is no more valid in the new one than in none at all.
+	ax := w.ax
 	// Counted on the window rather than on the state above, which a withdrawal drops. See Window.axGeneration.
 	w.axGeneration++
-	w.ax.generation = w.axGeneration
+	ax.generation = w.axGeneration
 	// The previous tree's size is the best guess at this one's, since a window rarely changes shape wholesale between
 	// snapshots. The margin covers the ordinary case of something having just been added.
 	capacity := 16
-	if w.ax.last != nil {
-		capacity = len(w.ax.last.Nodes) + 16
+	if ax.last != nil {
+		capacity = len(ax.last.Nodes) + 16
 	}
 	s := &axSnapshot{
 		window: w,
 		tree: &accessibility.Tree{
 			Nodes:      make(map[accessibility.NodeID]*accessibility.Node, capacity),
-			Generation: w.ax.generation,
+			Generation: ax.generation,
 		},
 		targets:    make(map[accessibility.NodeID]axTarget, capacity),
 		focusPanel: w.CurrentFocus(),
-		generation: w.ax.generation,
+		generation: ax.generation,
 	}
 	s.buildRoot()
+	if w.ax != ax {
+		return nil
+	}
 	s.tree.Focus = s.focus
-	w.ax.targets = s.targets
+	ax.targets = s.targets
 	return s.tree
 }
 
@@ -858,8 +874,20 @@ func (w *Window) publishAccessibilityNow() {
 		return
 	}
 	w.ValidateLayout()
+	if w.ax == nil {
+		// The layout ran application code — sizers and layout callbacks — which may have turned support off or
+		// disposed of the window. Re-checked after running it, as Window.performAccessibilityAction re-checks after
+		// carrying out a request, since what follows reaches through the state a withdrawal frees.
+		return
+	}
 	w.ax.lastPublish = time.Now()
 	tree := w.buildAccessibilityTree()
+	if tree == nil {
+		// The build ran application code that withdrew the window's accessibility state; see buildAccessibilityTree.
+		// There is no state left to diff against and nothing left to publish to, and the dereferences below sit
+		// outside every SafeCall, so a publish that pressed on would take the event loop down with it.
+		return
+	}
 	events := accessibility.Diff(w.ax.last, tree)
 	w.ax.last = tree
 	w.apiAccessibilityPublish(tree, events)

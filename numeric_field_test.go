@@ -130,3 +130,26 @@ func TestNumericFieldAccessibilityObscuredWithholdsTheNumber(t *testing.T) {
 	c.Equal(float64(0), secretNode.Number)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestNumericFieldAccessibilityEditsStartANewUndo verifies that an assistive technology replacing or stepping the value
+// begins an edit of its own. SetValue reaches the text through SetText, which does not move the undo id on, so an
+// application's undo manager was free to fold the request into the run of keystrokes that preceded it, exactly the
+// merging DefaultRuneTyped leaves the id alone to allow.
+func TestNumericFieldAccessibilityEditsStartANewUndo(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewNumericField(5, 0, 100, strconv.Itoa, strconv.Atoi, nil)
+	for _, tc := range []struct {
+		name string
+		req  accessibility.ActionRequest
+		want int
+	}{
+		{name: "replacing", req: accessibility.ActionRequest{Action: accessibility.SetValue, Number: 42}, want: 42},
+		{name: "incrementing", req: accessibility.ActionRequest{Action: accessibility.Increment}, want: 43},
+		{name: "decrementing", req: accessibility.ActionRequest{Action: accessibility.Decrement}, want: 42},
+	} {
+		was := f.CurrentUndoID()
+		c.True(f.PerformAccessibilityAction(tc.req), tc.name)
+		c.Equal(tc.want, f.Value(), tc.name)
+		c.True(f.CurrentUndoID() != was, "%s must begin an edit of its own rather than joining the last one", tc.name)
+	}
+}
