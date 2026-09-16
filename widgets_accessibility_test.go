@@ -1035,3 +1035,129 @@ func TestMenuItemAccessibilityExpandDefersOpeningTheSubMenu(t *testing.T) {
 	c.Equal(1, updates, "the sub-menu that was already showing was left alone")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestClickTakesFocusOnlyWhileAccessibilityIsActive covers the two halves of the promise Panel.axFocusOnClick makes.
+// While no assistive technology is being served, clicking a check box, a radio button, a button, a popup menu or a
+// color well leaves the keyboard focus where it was, as it always has, so that a click on one of them does not pull the
+// focus out of the text field a person is typing in. Once one is being served, the same click moves the focus to the
+// control, and the description published for it reports the control's new state before it reports the focus, so that
+// what a screen reader speaks is the control as it now is rather than a state change on an element it was not watching.
+func TestClickTakesFocusOnlyWhileAccessibilityIsActive(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var box *unison.CheckBox
+	var first, second *unison.RadioButton
+	var button *unison.Button
+	var popup *unison.PopupMenu[string]
+	var well *unison.Well
+	var wellClicks int
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			box = unison.NewCheckBox()
+			box.SetTitle("Enabled")
+			first = unison.NewRadioButton()
+			first.SetTitle("First")
+			second = unison.NewRadioButton()
+			second.SetTitle("Second")
+			unison.NewGroup(first, second).Select(first)
+			button = unison.NewButton()
+			button.SetTitle("Bold")
+			button.Sticky = true
+			unison.NewGroup(button)
+			popup = unison.NewPopupMenu[string]()
+			popup.AddItem("Light", "Regular", "Bold")
+			popup.Select("Regular")
+			well = unison.NewWell()
+			// Counted rather than left to the default, which opens a dialog the test would then have to drive.
+			well.ClickCallback = func() { wellClicks++ }
+			wnd = newHeadlessWindow(t, "click focus", geom.NewRect(10, 10, 300, 320),
+				axColumn(field, box, first, second, button, popup, well))
+			if wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	c.NotNil(wnd)
+	screen.Sync()
+
+	type control struct {
+		panel     unison.Paneler
+		landed    func() bool
+		name      string
+		opensMenu bool
+	}
+	controls := []control{
+		{name: "check box", panel: box, landed: func() bool { return box.State == checkenum.On }},
+		{name: "radio button", panel: second, landed: func() bool { return second.Group().Selected(second) }},
+		{name: "button", panel: button, landed: func() bool { return button.Group().Selected(button) }},
+		{name: "popup menu", panel: popup, opensMenu: true},
+		{name: "color well", panel: well, landed: func() bool { return wellClicks > 0 }},
+	}
+	focusField := func() {
+		screen.Do(func() { field.RequestFocus() })
+	}
+	focused := func() *unison.Panel {
+		var p *unison.Panel
+		screen.Do(func() { p = wnd.CurrentFocus() })
+		return p
+	}
+	// click clicks the control and, for the one that opens a menu, closes the menu again so that the focus the window
+	// reports is the control's own rather than the menu's.
+	click := func(ctl control) {
+		screen.Click(screen.PanelCenter(ctl.panel))
+		if ctl.opensMenu {
+			screen.KeyPress(unison.KeyEscape, mod.None)
+		}
+		if ctl.landed != nil {
+			var landed bool
+			screen.Do(func() { landed = ctl.landed() })
+			c.True(landed, "the click on the %s should have landed", ctl.name)
+		}
+	}
+
+	// Nothing is being served, so a click changes the control and nothing else.
+	for _, ctl := range controls {
+		focusField()
+		click(ctl)
+		c.True(focused().Is(field), "with no assistive technology, clicking the %s must leave the focus on the field",
+			ctl.name)
+	}
+
+	// Now one is. The check box is the one whose events are read, since its state change is the one a person is most
+	// likely to miss: the box is drawn ticked, and a screen reader that was watching the field says nothing.
+	screen.EnableAccessibility()
+	screen.Do(func() {
+		box.State = checkenum.Off
+		box.MarkForRedraw()
+	})
+	for _, ctl := range controls {
+		focusField()
+		screen.AccessibilityEvents(wnd)
+		click(ctl)
+		events := screen.AccessibilityEvents(wnd)
+		tree := screen.AccessibilityTree(wnd)
+		c.NotNil(tree)
+		node := axMustNode(c, screen.AccessibilityNodeFor(ctl.panel), ctl.name)
+		c.Equal(node.ID, tree.Focus, "with an assistive technology, clicking the %s must move the focus to it",
+			ctl.name)
+		c.True(focused().Is(ctl.panel), "and the window's own focus must agree for the %s", ctl.name)
+		if ctl.panel != box {
+			continue
+		}
+		checked, focus := -1, -1
+		for i, e := range events {
+			switch {
+			case e.Kind == accessibility.StateChanged && e.State == accessibility.StateChecked && e.Node == node.ID:
+				checked = i
+			case e.Kind == accessibility.FocusChanged && e.Node == node.ID:
+				focus = i
+			}
+		}
+		c.True(checked >= 0, "the click's change to the check state should have been reported: %v", events)
+		c.True(focus >= 0, "as should the focus moving to the box: %v", events)
+		c.True(focus > checked, "and the state before the focus, so the box is read in its new state: %v", events)
+		c.Equal(checkenum.On, node.Checked)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

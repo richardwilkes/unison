@@ -22,6 +22,10 @@
   focus when clicked or tabbed to, steps its value with the arrow keys and jumps to the ends of its range with Home and
   End. While focused, its edge is drawn with the new `SliderTheme.SelectionInk`. Its reported height now includes its
   edge thickness, so sliders using the default theme are two pixels taller.
+- While a screen reader is running, clicking a `CheckBox`, `RadioButton`, `Button`, `PopupMenu` or `Well` now moves
+  the keyboard focus to it, so the screen reader announces the control in its new state. Screen readers only speak
+  changes to the control that holds the focus, so a click that left the focus elsewhere went unannounced. Nothing
+  changes when no screen reader is running: these controls still leave the focus where it was when clicked.
 
 ## Bug Fixes
 

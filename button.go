@@ -230,11 +230,13 @@ func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling.
+// DefaultMouseUp provides the default mouse up handling. A click that lands takes the keyboard focus while an assistive
+// technology is being served, so that the change it makes is announced; see Panel.axFocusOnClick.
 func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	if where.In(b.ContentRect(false)) {
+		b.axFocusOnClick()
 		b.group.Select(b)
 		SafeCall(b.ClickCallback)
 	}

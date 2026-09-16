@@ -111,11 +111,13 @@ func (c *checkRadioBase) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifie
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling.
+// DefaultMouseUp provides the default mouse up handling. A click that lands takes the keyboard focus while an assistive
+// technology is being served, so that the change it makes is announced; see Panel.axFocusOnClick.
 func (c *checkRadioBase) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
 	if where.In(c.ContentRect(false)) {
+		c.axFocusOnClick()
 		c.updateState()
 		SafeCall(c.ClickCallback)
 	}

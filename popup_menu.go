@@ -466,9 +466,12 @@ func (p *PopupMenu[T]) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers
 	return true
 }
 
-// DefaultMouseUp is the default implementation of the MouseUpCallback.
+// DefaultMouseUp is the default implementation of the MouseUpCallback. A click that lands takes the keyboard focus
+// while an assistive technology is being served, so that the choice made from the menu it opens is announced once the
+// menu has closed; see Panel.axFocusOnClick.
 func (p *PopupMenu[T]) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if where.In(p.ContentRect(true)) {
+		p.axFocusOnClick()
 		p.Click()
 	}
 	p.pressed = false

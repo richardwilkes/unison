@@ -220,11 +220,14 @@ func (w *Well) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool {
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling.
+// DefaultMouseUp provides the default mouse up handling. A click that lands takes the keyboard focus while an assistive
+// technology is being served, so that the ink chosen in the dialog it opens is announced once the dialog has closed;
+// see Panel.axFocusOnClick.
 func (w *Well) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	w.Pressed = false
 	w.MarkForRedraw()
 	if where.In(w.ContentRect(false)) {
+		w.axFocusOnClick()
 		SafeCall(w.ClickCallback)
 	}
 	return true

@@ -468,6 +468,24 @@ func (w *Window) axMarkForPublish() {
 	}
 }
 
+// axFocusOnClick moves the keyboard focus to a control a person has just clicked, for the controls that do not
+// otherwise take it — a check box, a radio button, a button, a popup menu and a color well — and only while an
+// assistive technology is being served. A screen reader speaks a change of state only for the control that holds the
+// focus, so a click that toggles a check box the focus is not on goes unspoken however faithfully the change is
+// published: the notification arrives for an element the screen reader is not watching. Taking the focus puts the two
+// together, and since accessibility.Diff reports the focus move after every other change in the same publish, what is
+// spoken is the control in its new state. Windows and GTK controls take the focus on a click regardless, so a person
+// using a screen reader there is given nothing they were not already used to.
+//
+// Nothing changes when no assistive technology is being served. These controls have never taken the focus on a click,
+// so that clicking a check box does not pull the focus out of the text field a person is typing in, and an application
+// nothing is listening to pays one atomic load for each click.
+func (p *Panel) axFocusOnClick() {
+	if accessibilityActive.Load() {
+		p.RequestFocus()
+	}
+}
+
 // axWindowHidden takes a window that is no longer on the screen out of the description an assistive technology holds,
 // where the platform calls for that.
 //
