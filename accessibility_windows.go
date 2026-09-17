@@ -15,6 +15,14 @@ import (
 	"github.com/richardwilkes/unison/internal/w32"
 )
 
+// axReadersFollowFocus reports that this platform's screen readers start from the keyboard focus, so that a panel which
+// takes the focus only for an assistive technology's sake takes it here; see Panel.axTakesFocus. Narrator keeps its
+// cursor on the focused element and, from a window in which nothing holds the focus, its scan mode, heading and link
+// navigation all stay on the window's own element, while its item navigation alone reaches the content — and only by
+// stepping through the title bar's buttons and the menu bar first. From any element inside the window, all of them
+// move through the rest of it freely.
+const axReadersFollowFocus = true
+
 // The Windows side of accessibility support: this file connects the snapshots the root package publishes to the UI
 // Automation provider in internal/w32, and connects the requests that come back from an assistive technology to the UI
 // thread.

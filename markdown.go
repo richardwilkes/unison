@@ -207,6 +207,12 @@ func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	// markdown is built out of is a panel in its own right, so there is nothing else to tell an assistive technology
 	// here: the headings, links and images below say what they are as they are created.
 	m.Accessibility.Role = role.Document
+	// A document takes the keyboard focus while a screen reader is running, on the platforms where the screen reader
+	// begins from the focus: with nothing in a window holding it, Narrator's cursor stays on the window's own element,
+	// from which its scan mode, heading and link navigation refuse to move into the content. Nothing changes for anyone
+	// else: a document has never been a tab stop, and it draws no differently for holding the focus. See
+	// Panel.axTakesFocus.
+	m.axFocusable = true
 	if autoSizingFromParent {
 		m.ParentChangedCallback = m.adjustSizeOnParentChange
 	}

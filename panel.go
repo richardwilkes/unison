@@ -76,6 +76,9 @@ type Panel struct {
 	disabled         bool
 	Hidden           bool
 	TooltipImmediate bool
+	// axFocusable marks a panel that takes the keyboard focus only while an assistive technology is being served, and
+	// only on the platforms whose screen readers need it to. See Panel.axTakesFocus.
+	axFocusable bool
 }
 
 // NewPanel creates a new panel.
@@ -489,7 +492,7 @@ func (p *Panel) SetEnabled(enabled bool) {
 
 // Focusable returns true if this panel can have the keyboard focus.
 func (p *Panel) Focusable() bool {
-	return p.focusable && p.Enabled()
+	return (p.focusable || p.axTakesFocus()) && p.Enabled()
 }
 
 // SetFocusable sets whether this panel can have the keyboard focus.

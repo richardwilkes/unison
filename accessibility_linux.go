@@ -22,6 +22,12 @@ import (
 	"github.com/richardwilkes/unison/internal/x11"
 )
 
+// axReadersFollowFocus reports that this platform's screen readers start from the keyboard focus, so that a panel which
+// takes the focus only for an assistive technology's sake takes it here; see Panel.axTakesFocus. Orca, like Narrator
+// on Windows, follows the focused object, and a window in which nothing holds the focus offers it nothing inside the
+// content to start from.
+const axReadersFollowFocus = true
+
 // The Linux side of accessibility support: this file connects the snapshots the root package publishes to the AT-SPI2
 // server in internal/atspi, and connects the requests that come back from an assistive technology to the UI thread.
 //

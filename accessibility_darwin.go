@@ -17,6 +17,12 @@ import (
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
+// axReadersFollowFocus reports whether this platform's screen readers start from the keyboard focus. VoiceOver's cursor
+// is its own: it moves through a window's content from the window itself, whether or not anything inside holds the
+// focus, so a panel that takes the focus only for an assistive technology's sake — see Panel.axTakesFocus — has no
+// reason to take it here, and a window in which nothing holds the focus is left as it is.
+const axReadersFollowFocus = false
+
 // The macOS side of accessibility support: this file connects the snapshots the root package publishes to the
 // NSAccessibility adapter in internal/cocoa, and connects the requests that come back from an assistive technology to
 // the UI thread.

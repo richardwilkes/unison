@@ -427,7 +427,10 @@ func applyAccessibilityEnvRequest() {
 //
 // Every window is marked for redraw, since publishing happens after a window is drawn: without this, a window that is
 // sitting idle when an assistive technology starts up would not be described until something else happened to make it
-// redraw.
+// redraw. On the platforms whose screen readers start from the keyboard focus, the active window is also given the
+// chance to choose a focus if nothing in it holds one, since the panels that take the focus only for an assistive
+// technology's sake have just become able to; see Panel.axTakesFocus. A window that already holds a focus keeps it,
+// and any other window chooses one as it is next activated, exactly as it always has.
 func activateAccessibility() bool {
 	if noAccessibility.Load() || accessibilityEnv.Load() < 0 {
 		return false
@@ -435,6 +438,9 @@ func activateAccessibility() bool {
 	if !accessibilityActive.Swap(true) {
 		for _, wnd := range windowList {
 			wnd.MarkForRedraw()
+			if axReadersFollowFocus && wnd.Focused() && wnd.focus == nil {
+				wnd.FocusNext()
+			}
 		}
 	}
 	return true
@@ -532,4 +538,19 @@ func axIDFor(p *Panel) accessibility.NodeID {
 func axAllocID() accessibility.NodeID {
 	axNextID++
 	return accessibility.NodeID(axNextID)
+}
+
+// axTakesFocus reports whether a panel that takes the keyboard focus only for an assistive technology's sake — a
+// Markdown, whose content is read rather than acted on — takes it now. It does so while an assistive technology is
+// being served, and only on the platforms whose screen readers start from the keyboard focus; see axReadersFollowFocus.
+//
+// Such a panel has no use for the focus itself: it draws no differently for holding it and handles no keys of its
+// own. What it holds the focus for is where a screen reader begins. Narrator keeps its cursor on the focused element,
+// and a window in which nothing holds the focus leaves that cursor on the window's own element, from which Narrator's
+// scan mode, heading and link navigation all refuse to move — while from any element inside the window they move
+// through the rest of it freely. Giving the document the focus puts the cursor inside the content, where the person can
+// read it. A keyboard user nothing is listening to is left alone, since these panels have never been tab stops, and an
+// application pays one atomic load per Focusable call on a panel marked this way, and nothing at all for the rest.
+func (p *Panel) axTakesFocus() bool {
+	return p.axFocusable && axReadersFollowFocus && accessibilityActive.Load()
 }
