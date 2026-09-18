@@ -106,12 +106,12 @@ func TestTableInterfacesAreOnlyThereForGrids(t *testing.T) {
 	t.Parallel()
 	ta := newTableAdapter(t)
 	c := ta.c
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceSelection, InterfaceTable},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceSelection, InterfaceTable},
 		ta.one(NodePath(61), InterfaceAccessible, "GetInterfaces", ""))
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		ta.one(NodePath(62), InterfaceAccessible, "GetInterfaces", ""),
 		"a row holds the cells rather than being one of them")
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceTableCell},
 		ta.one(NodePath(65), InterfaceAccessible, "GetInterfaces", ""))
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(5), dbusPropertiesInterface, getMember, "ss", InterfaceTable,
 		"NRows"), "a list box is not a grid")

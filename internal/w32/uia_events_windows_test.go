@@ -332,8 +332,9 @@ func TestUIARaiseToggleState(t *testing.T) {
 
 // TestUIARaiseTextEdit verifies what an edit to a text field says: the value it changed to, reported as the Value
 // pattern's property, since that is where a client reads the text from, and nothing else. Neither of UI Automation's
-// text events is raised — they belong to the Text pattern, which this package does not implement and which every
-// element answers NULL for — and the caret moving reports nothing at all.
+// text events is raised — they belong to the Text pattern, which a field answers NULL for, so a client that responded
+// to one would have nothing to read — and the caret moving reports nothing at all. TestUIATextEventsRaised covers the
+// element that does hand out the pattern: a document.
 func TestUIARaiseTextEdit(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
@@ -761,4 +762,58 @@ func TestUIARaisedPropertyVariantTypes(t *testing.T) {
 	c.Equal(VT_BOOL, value.VT)
 	c.False(uiaVariantBool(value))
 	value.Clear()
+}
+
+// TestUIATextEventsRaised verifies that an edit to a document and a caret move inside it reach a client as UI
+// Automation's two text events, raised on the document itself. They are the only way a client can be told: the
+// pattern's text is not a property, so there is nothing to raise a property change on, and a client answers either
+// event by reading the document again through ITextProvider.
+//
+// A caret move is what NVDA reads as the caret having moved, which is the whole of its arrow-key reading, so the event
+// has to go out for a selection change that alters nothing else about the snapshot.
+func TestUIATextEventsRaised(t *testing.T) {
+	c := check.New(t)
+	old := uiaTextFixtureTree()
+	w, r := newRecordingUIAWindow(t, old, true)
+
+	cur := uiaTextFixtureTree()
+	cur.Generation = 2
+	cur.Node(uiaTextDocumentID).Document = &accessibility.DocumentInfo{
+		Text: accessibility.TextInfo{
+			Text:      "Title!" + uiaTextFixtureText[5:],
+			Lines:     old.Node(uiaTextDocumentID).Document.Text.Lines,
+			Runs:      old.Node(uiaTextDocumentID).Document.Text.Runs,
+			Spans:     old.Node(uiaTextDocumentID).Document.Text.Spans,
+			SelStart:  20,
+			SelEnd:    20,
+			Caret:     20,
+			Multiline: true,
+		},
+	}
+	w.Publish(cur, accessibility.Diff(old, cur))
+
+	document := w.providerFor(uiaTextDocumentID).Unknown()
+	c.Equal(2, r.count())
+	c.Equal(UIARaiseEvent, r.at(0).Kind)
+	c.Equal(document, r.at(0).Provider)
+	c.Equal(UIA_Text_TextChangedEventId, r.at(0).Event)
+	c.Equal(UIARaiseEvent, r.at(1).Kind)
+	c.Equal(document, r.at(1).Provider)
+	c.Equal(UIA_Text_TextSelectionChangedEventId, r.at(1).Event)
+
+	// A caret move on its own is still an event, since that is what a client follows the reading cursor by. The stream
+	// itself is carried over from the publish above, so that nothing but the caret has changed.
+	r.reset()
+	moved := uiaTextFixtureTree()
+	moved.Generation = 3
+	moved.Node(uiaTextDocumentID).Document = &accessibility.DocumentInfo{
+		Text: cur.Node(uiaTextDocumentID).Document.Text,
+	}
+	moved.Node(uiaTextDocumentID).Document.Text.SelStart = 25
+	moved.Node(uiaTextDocumentID).Document.Text.SelEnd = 25
+	moved.Node(uiaTextDocumentID).Document.Text.Caret = 25
+	w.Publish(moved, accessibility.Diff(cur, moved))
+	c.Equal(1, r.count())
+	c.Equal(UIA_Text_TextSelectionChangedEventId, r.at(0).Event)
+	c.Equal(document, r.at(0).Provider)
 }

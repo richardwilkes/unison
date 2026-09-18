@@ -2791,8 +2791,11 @@ func TestAXSelectorAllowed(t *testing.T) {
 				// The getters NSAccessibilityElement supplies and this class never overrides stay on offer too: the
 				// answer for them comes from super, which allows every getter it responds to.
 				{selector: "accessibilityTitle", allowed: axByEveryNode},
-				{selector: "accessibilityURL", allowed: axByEveryNode},
 				{selector: "accessibilityIdentifier", allowed: axByEveryNode},
+				// Where a link leads belongs to the nodes that name one, and nothing in this tree does — super would
+				// allow it for all of them and answer nil, which reads as a link leading nowhere. TestAXLinkURL proves
+				// the other half: a node with a URL both offers the attribute and answers it.
+				{selector: "accessibilityURL", allowed: axByNoNode},
 				// The setters NSAccessibilityElement supplies and this class never overrides are refused for every
 				// node, which is what super answers for them. Left to respondsToSelector: they were all offered, and
 				// a write then landed in NSAccessibilityElement's own storage: accepted, invisible to the widget, and
@@ -4199,6 +4202,892 @@ func TestAXSelectedRowsCostsOnePublish(t *testing.T) {
 			if !slices.Equal(selected, []objc.ID{rows[1], rows[2]}) {
 				t.Errorf("the table's selected rows after the request = %v, want the last two %v", selected,
 					[]objc.ID{rows[1], rows[2]})
+			}
+		})
+	})
+}
+
+// axDocElement returns the element serving one of the document fixture's nodes, creating it the way the first query
+// from an assistive technology about that node would.
+func axDocElement(t *testing.T, a *AXAdapter, id accessibility.NodeID) objc.ID {
+	t.Helper()
+	element := a.elementFor(id)
+	if element == 0 {
+		t.Fatalf("there is no element for %s", axDocNames([]accessibility.NodeID{id}))
+	}
+	return element
+}
+
+// axAttributeNames returns the attribute names an element lists through the informal protocol.
+func axAttributeNames(element objc.ID) []string {
+	return GoStringsFromNSArray(element.Send(Sel("accessibilityAttributeNames")))
+}
+
+// axLegacyAttribute returns what an element answers for one attribute of the informal protocol.
+func axLegacyAttribute(element objc.ID, name string) objc.ID {
+	return element.Send(Sel("accessibilityAttributeValue:"), NSStringFromGo(name))
+}
+
+// axParameterizedAttributeNames returns the parameterized attribute names an element lists.
+func axParameterizedAttributeNames(element objc.ID) []string {
+	return GoStringsFromNSArray(element.Send(Sel("accessibilityParameterizedAttributeNames")))
+}
+
+// axParameterizedAttribute returns what an element answers for one parameterized attribute.
+func axParameterizedAttribute(element objc.ID, name string, parameter objc.ID) objc.ID {
+	return element.Send(Sel("accessibilityAttributeValue:forParameter:"), NSStringFromGo(name), parameter)
+}
+
+// TestAXHeadingLevelAttribute proves a heading reports how deep it sits. VoiceOver asks for AXHeadingLevel by name —
+// the attribute has no property in the modern protocol, so it is answered through the informal one — and a heading that
+// does not answer it is announced without a level at all. Everything that is not a heading neither lists it nor answers
+// it.
+func TestAXHeadingLevelAttribute(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			for _, c := range []struct {
+				node  accessibility.NodeID
+				level int64
+			}{{node: axDocHeading1, level: 1}, {node: axDocHeading2, level: 2}, {node: axDocHeading1b, level: 1}} {
+				element := axDocElement(t, a, c.node)
+				if names := axAttributeNames(element); !slices.Contains(names, axAttrHeadingLevel) {
+					t.Errorf("the heading's attributes %v do not include %s", names, axAttrHeadingLevel)
+				}
+				if got := Int64FromNSNumber(axLegacyAttribute(element, axAttrHeadingLevel)); got != c.level {
+					t.Errorf("the heading's %s = %d, want %d", axAttrHeadingLevel, got, c.level)
+				}
+				// The value a heading reports is its level as well, so the two ways of asking agree.
+				if got := Int64FromNSNumber(element.Send(Sel("accessibilityValue"))); got != c.level {
+					t.Errorf("the heading's value = %d, want %d", got, c.level)
+				}
+			}
+			paragraph := axDocElement(t, a, axDocParagraph)
+			names := axAttributeNames(paragraph)
+			if slices.Contains(names, axAttrHeadingLevel) {
+				t.Errorf("a paragraph advertises %s", axAttrHeadingLevel)
+			}
+			if got := axLegacyAttribute(paragraph, axAttrHeadingLevel); got != 0 {
+				t.Errorf("a paragraph answered %s with %#x, want nothing", axAttrHeadingLevel, got)
+			}
+			// What the superclass lists goes on being listed, which is what the guarded send to it is there to
+			// preserve: AXRole is NSAccessibilityElement's answer and nothing here adds it.
+			if !slices.Contains(names, "AXRole") {
+				t.Errorf("an element lists %v, which does not include the superclass's own AXRole", names)
+			}
+			// A heading whose snapshot says nothing about its depth neither lists the attribute nor answers it, and
+			// reports its content as its value rather than a level of zero: VoiceOver speaks the number it is given,
+			// and zero is heard as "heading level 0". The fixture's second heading has its level taken away in place,
+			// which an element notices at once — every answer is read from the current snapshot as it is asked for.
+			tree.Node(axDocHeading2).Level = 0
+			levelless := axDocElement(t, a, axDocHeading2)
+			if listed := axAttributeNames(levelless); slices.Contains(listed, axAttrHeadingLevel) {
+				t.Errorf("a heading with no level advertises %s", axAttrHeadingLevel)
+			}
+			if got := axLegacyAttribute(levelless, axAttrHeadingLevel); got != 0 {
+				t.Errorf("a heading with no level answered %s with %#x, want nothing", axAttrHeadingLevel, got)
+			}
+			if got := GoStringFromNSString(levelless.Send(Sel("accessibilityValue"))); got != "Details" {
+				t.Errorf("a heading with no level reports the value %q, want its own text", got)
+			}
+		})
+	})
+}
+
+// TestAXBlockQuoteLevel proves everything inside a quote says how many quotes it sits inside, counting itself, which is
+// what VoiceOver speaks as "quote level 1" on entering one. The nodes inside the quote answer it as well as the quote
+// itself, since VoiceOver asks whichever element it has landed on, and a nested quote answers one deeper.
+func TestAXBlockQuoteLevel(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			for _, c := range []struct {
+				node  accessibility.NodeID
+				level int64
+			}{
+				{node: axDocQuote, level: 1},
+				{node: axDocQuoteParagraph, level: 1},
+				{node: axDocInnerQuote, level: 2},
+				{node: axDocInnerParagraph, level: 2},
+				{node: axDocQuote2, level: 1},
+			} {
+				element := axDocElement(t, a, c.node)
+				name := axDocNames([]accessibility.NodeID{c.node})
+				if names := axAttributeNames(element); !slices.Contains(names, axAttrBlockQuoteLevel) {
+					t.Errorf("%s lists %v, which does not include %s", name, names, axAttrBlockQuoteLevel)
+				}
+				if got := Int64FromNSNumber(axLegacyAttribute(element, axAttrBlockQuoteLevel)); got != c.level {
+					t.Errorf("%s answered %s with %d, want %d", name, axAttrBlockQuoteLevel, got, c.level)
+				}
+			}
+			// A block outside every quote neither lists the attribute nor answers it.
+			outside := axDocElement(t, a, axDocParagraph)
+			if names := axAttributeNames(outside); slices.Contains(names, axAttrBlockQuoteLevel) {
+				t.Errorf("a paragraph outside every quote advertises %s", axAttrBlockQuoteLevel)
+			}
+			if got := axLegacyAttribute(outside, axAttrBlockQuoteLevel); got != 0 {
+				t.Errorf("a paragraph outside every quote answered %s with %#x, want nothing", axAttrBlockQuoteLevel,
+					got)
+			}
+		})
+	})
+}
+
+// TestAXParagraphAndCodeBlocks proves a document's text blocks are presented as static text, which is the one kind of
+// element VoiceOver reads by line and by word. A code block says what it is through its role description, since macOS
+// has no role for preformatted code, and neither a paragraph nor a code block reports a label: their content is their
+// value, and a name as well would be spoken ahead of every line of it.
+func TestAXParagraphAndCodeBlocks(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			// Both blocks carry a name in the snapshot, so the label each of them does not report is a name being
+			// withheld rather than a name that was never there.
+			for _, id := range []accessibility.NodeID{axDocParagraph, axDocCode} {
+				if tree.Node(id).Name == "" {
+					t.Fatalf("%s carries no name, so withholding its label proves nothing",
+						axDocNames([]accessibility.NodeID{id}))
+				}
+			}
+			paragraph := axDocElement(t, a, axDocParagraph)
+			code := axDocElement(t, a, axDocCode)
+			staticText := GoStringFromNSString(AppKitString(axRoleStaticText))
+			for _, c := range []struct {
+				what    string
+				element objc.ID
+			}{{what: "a paragraph", element: paragraph}, {what: "a code block", element: code}} {
+				if got := GoStringFromNSString(c.element.Send(Sel("accessibilityRole"))); got != staticText {
+					t.Errorf("%s reports the role %q, want %q", c.what, got, staticText)
+				}
+				if got := c.element.Send(Sel("accessibilityLabel")); got != 0 {
+					t.Errorf("%s reports a label, %q, and its content is its value", c.what,
+						GoStringFromNSString(got))
+				}
+			}
+			// The role description is where a code block says it is code; a paragraph keeps AppKit's own description of
+			// static text, which is "text".
+			plain := GoStringFromNSString(axRoleDescriptionFor(AppKitString(axRoleStaticText), 0))
+			if got := GoStringFromNSString(paragraph.Send(Sel("accessibilityRoleDescription"))); got != plain {
+				t.Errorf("a paragraph describes its role as %q, want %q", got, plain)
+			}
+			if got := GoStringFromNSString(code.Send(Sel("accessibilityRoleDescription"))); got != "code" {
+				t.Errorf("a code block describes its role as %q, want code", got)
+			}
+			// The content of each is its value, and each answers the whole text protocol: the block is what VoiceOver
+			// reads, line by line.
+			if got := GoStringFromNSString(paragraph.Send(Sel("accessibilityValue"))); got != axDocParagraphText {
+				t.Errorf("a paragraph's value = %q, want %q", got, axDocParagraphText)
+			}
+			if got := GoStringFromNSString(code.Send(Sel("accessibilityValue"))); got != "go build ./..." {
+				t.Errorf("a code block's value = %q, want %q", got, "go build ./...")
+			}
+			// 26 runes, one of which needs two UTF-16 code units.
+			if got := objc.Send[int64](paragraph, Sel("accessibilityNumberOfCharacters")); got != 27 {
+				t.Errorf("a paragraph reports %d characters, want 27", got)
+			}
+			for _, selector := range []string{
+				"accessibilityStringForRange:", "accessibilityAttributedStringForRange:", "accessibilityRangeForLine:",
+				"accessibilityLineForIndex:", "setAccessibilitySelectedTextRange:",
+			} {
+				if !axSelectorAllowed(paragraph, selector) {
+					t.Errorf("a paragraph does not offer %s", selector)
+				}
+			}
+			// A block that carries a name and no text at all reports that name as its value, which is the only thing
+			// it has to say: the label is withheld from these roles, so a name reported as neither would leave
+			// VoiceOver announcing an element that says nothing but "text" — and the same node says its name on both
+			// other platforms. Markdown always fills a block's text in, but Paragraph and Code are public roles.
+			bare := &accessibility.Node{
+				ID:       axDocOutline + 100,
+				Parent:   axDocDocument,
+				Name:     "Nothing measured",
+				Role:     role.Paragraph,
+				Bounds:   geom.NewRect(20, 300, 260, 16),
+				ReadOnly: true,
+			}
+			next := axDocTestTree()
+			next.Generation = 2
+			next.Nodes[bare.ID] = bare
+			doc := next.Nodes[axDocDocument]
+			doc.Children = append(doc.Children, bare.ID)
+			a.Publish(next, accessibility.Diff(tree, next))
+			element := axDocElement(t, a, bare.ID)
+			if got := element.Send(Sel("accessibilityLabel")); got != 0 {
+				t.Errorf("a named block with no text reports the label %q, and its name is its value",
+					GoStringFromNSString(got))
+			}
+			if got := GoStringFromNSString(element.Send(Sel("accessibilityValue"))); got != bare.Name {
+				t.Errorf("a named block with no text reports the value %q, want its name %q", got, bare.Name)
+			}
+			// A table cell stays a cell — it is what a table is made of, and VoiceOver moves through one by rows and
+			// cells — and picks up the text protocol from holding text, the same rule the blocks are given it by.
+			cell := axDocElement(t, a, axDocCell)
+			if got := GoStringFromNSString(cell.Send(Sel("accessibilityRole"))); got != "AXCell" {
+				t.Errorf("a cell reports the role %q, want AXCell", got)
+			}
+			if !axSelectorAllowed(cell, "accessibilityStringForRange:") {
+				t.Error("a cell holding text does not offer accessibilityStringForRange:")
+			}
+		})
+	})
+}
+
+// TestAXStaticTextFollowsTheReportedRole proves the static-text search keys agree with the role a client is actually
+// shown. axIsStaticText decides which nodes answer AXStaticTextSearchKey, AXPlainTextSearchKey and, through
+// axSearchTypeOf, the same-type and different-type keys, so a node reported as AXStaticText that the static-text rotor
+// refuses — or one the rotor offers that is reported as something else — is the drift between what is advertised and
+// what is answered that every other answer here is written to avoid.
+//
+// A heading is the case that depends on the system: macOS has no public heading role, so axHeadingRole reports
+// AXHeading where the accessibility system understands it and falls back to AXStaticText where it does not, and on such
+// a system a heading is one more block of text to everything that asks. The assertion is written against what axRoleFor
+// reports rather than against either answer, so it holds whichever way the system goes.
+func TestAXStaticTextFollowsTheReportedRole(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		WithPool(func() {
+			staticText := AppKitString(axRoleStaticText)
+			for _, id := range axDocPresentedOrder {
+				n := tree.Node(id)
+				roleID, _ := axRoleFor(tree, n)
+				if got, want := axIsStaticText(n), roleID == staticText; got != want {
+					t.Errorf("%s is reported as %q and axIsStaticText answers %v, want %v",
+						axDocNames([]accessibility.NodeID{id}), GoStringFromNSString(roleID), got, want)
+				}
+			}
+			// And the heading rule is the one the system decides, so it is named rather than assumed either way.
+			if got, want := axIsStaticText(tree.Node(axDocHeading1)), axHeadingIsStaticText(); got != want {
+				t.Errorf("a heading answers axIsStaticText with %v while a heading is reported as static text = %v",
+					got, want)
+			}
+			t.Logf("this system reports a heading as static text: %v", axHeadingIsStaticText())
+		})
+	})
+}
+
+// TestAXDocumentExposesNoStream proves a Document keeps its composed stream to itself on this platform. The blocks
+// beneath it are what VoiceOver reads, so a document that also reported the whole text would have everything in it
+// heard twice: it carries its stream in Node.Document, leaves Node.Text nil, and therefore answers no part of the text
+// protocol and no value at all.
+func TestAXDocumentExposesNoStream(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		doc := tree.Node(axDocDocument)
+		if doc.Document == nil {
+			t.Fatal("the fixture's document carries no stream, so there is nothing to keep to itself")
+		}
+		if doc.Text != nil {
+			t.Error("the fixture's document carries a TextInfo of its own, which is what this platform must not be " +
+				"given: the stream belongs in Node.Document")
+		}
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			element := axDocElement(t, a, axDocDocument)
+			if got := GoStringFromNSString(element.Send(Sel("accessibilityRole"))); got != "AXGroup" {
+				t.Errorf("the document reports the role %q, want AXGroup", got)
+			}
+			if got := element.Send(Sel("accessibilityValue")); got != 0 {
+				t.Errorf("the document reports the value %q, and its blocks are what say its content",
+					GoStringFromNSString(got))
+			}
+			for _, selector := range []string{
+				"accessibilityNumberOfCharacters", "accessibilitySelectedText", "accessibilitySelectedTextRange",
+				"accessibilityStringForRange:", "accessibilityAttributedStringForRange:",
+				"accessibilityRangeForLine:", "accessibilityLineForIndex:", "accessibilityFrameForRange:",
+				"setAccessibilitySelectedTextRange:",
+			} {
+				if axSelectorAllowed(element, selector) {
+					t.Errorf("the document offers %s, so an assistive technology would read the stream as well as "+
+						"the blocks", selector)
+				}
+			}
+			if got := objc.Send[int64](element, Sel("accessibilityNumberOfCharacters")); got != 0 {
+				t.Errorf("the document reports %d characters, want 0", got)
+			}
+			if got := element.Send(Sel("accessibilityStringForRange:"), NSRange{Length: 5}); got != 0 {
+				t.Errorf("the document answered a range with %q, want nothing", GoStringFromNSString(got))
+			}
+			if got := element.Send(Sel("accessibilityAttributedStringForRange:"), NSRange{Length: 5}); got != 0 {
+				t.Error("the document answered an attributed range, want nothing")
+			}
+			if got := objc.Send[int64](element, Sel("accessibilityInsertionPointLineNumber")); got != -1 {
+				t.Errorf("the document reports its insertion point on line %d, want -1", got)
+			}
+			// What it does advertise is what it can do: taking the keyboard focus, and opening the context menu a
+			// Markdown document offers — which VoiceOver performs as AXShowMenu and this adapter turns back into
+			// ShowContextMenu.
+			for _, selector := range []string{"setAccessibilityFocused:", "accessibilityPerformShowMenu"} {
+				if !axSelectorAllowed(element, selector) {
+					t.Errorf("the document does not offer %s, and its action set has the action behind it", selector)
+				}
+			}
+			if action, ok := axActionForName("AXShowMenu"); !ok || action != accessibility.ShowContextMenu {
+				t.Errorf("AXShowMenu stands for %v, want ShowContextMenu", action)
+			}
+		})
+	})
+}
+
+// TestAXDocumentTextEventsAreNotPosted proves a change to a stream this platform does not present is announced nowhere.
+// A Document carries its composed text in Node.Document, which the adapter deliberately never exposes (see
+// TestAXDocumentExposesNoStream), while accessibility.Diff derives TextInserted, TextDeleted and TextSelectionChanged
+// from that same stream — so every arrow key inside a Markdown document produces text events naming an element that
+// reports no value, no selected text and no characters at all. Posting AXValueChanged or AXSelectedTextChanged for one
+// would send VoiceOver to read back something that is not there, while the block whose own text really did change is
+// what has something to say.
+func TestAXDocumentTextEventsAreNotPosted(t *testing.T) {
+	runOnMain(func() {
+		before := axDocTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// Both elements have to exist first: a notification about a node nothing has ever asked about is not posted
+		// either, which would make this pass for the wrong reason.
+		var document, paragraph objc.ID
+		WithPool(func() {
+			document = axDocElement(t, a, axDocDocument)
+			paragraph = axDocElement(t, a, axDocParagraph)
+		})
+		after := axDocTestTree()
+		after.Generation = 2
+		// The document's stream gains a word and its caret moves, which is what typing into a Markdown produces, and
+		// the first block's own text changes with it.
+		stream := after.Nodes[axDocDocument].Document
+		stream.Text.Text = "Release notes now\n"
+		stream.Text.SelStart = 17
+		stream.Text.SelEnd = 17
+		stream.Text.Caret = 17
+		block := after.Nodes[axDocParagraph]
+		block.Text.Text = axDocParagraphText + "!"
+		events := accessibility.Diff(before, after)
+		// The events this is about really are produced, and against the document itself.
+		kinds := make(map[accessibility.EventKind]int)
+		for _, e := range events {
+			if e.Node == axDocDocument {
+				kinds[e.Kind]++
+			}
+		}
+		for _, kind := range []accessibility.EventKind{accessibility.TextInserted, accessibility.TextSelectionChanged} {
+			if kinds[kind] == 0 {
+				t.Fatalf("the edit produced no %v event against the document, so the gating proves nothing", kind)
+			}
+		}
+		var recorded []axRecordedNotification
+		defer axRecordNotifications(&recorded)()
+		a.Publish(after, events)
+		for _, notification := range recorded {
+			if notification.element == document {
+				t.Errorf("the document was told %s about a stream this platform does not present", notification.name)
+			}
+		}
+		// The block's own edit is announced, which is what says the gate is on the stream rather than on text events.
+		value := GoStringFromNSString(AppKitString(axNotifyValueChanged))
+		if !slices.Contains(recorded, axRecordedNotification{element: paragraph, name: value}) {
+			t.Errorf("the edited block was not told %s; the publish posted %v", value, recorded)
+		}
+	})
+}
+
+// TestAXLinkURL proves a link says where it leads. AXURL is what VoiceOver speaks when asked about the link under its
+// cursor, and the attribute is offered by the nodes that name one and by no others: NSAccessibilityElement would
+// otherwise allow it for every element and answer nil, which reads as a link leading nowhere.
+func TestAXLinkURL(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			link := axDocElement(t, a, axDocLink)
+			if !axSelectorAllowed(link, "accessibilityURL") {
+				t.Error("a link does not offer accessibilityURL")
+			}
+			url := link.Send(Sel("accessibilityURL"))
+			if url == 0 {
+				t.Fatal("a link answered accessibilityURL with nothing")
+			}
+			if !objc.Send[bool](url, Sel("isKindOfClass:"), Cls("NSURL")) {
+				t.Error("a link's accessibilityURL is not an NSURL")
+			}
+			want := tree.Node(axDocLink).URL
+			if got := GoStringFromNSString(url.Send(Sel("absoluteString"))); got != want {
+				t.Errorf("a link's accessibilityURL = %q, want %q", got, want)
+			}
+			// Everything that leads nowhere neither offers the attribute nor answers it.
+			paragraph := axDocElement(t, a, axDocParagraph)
+			if axSelectorAllowed(paragraph, "accessibilityURL") {
+				t.Error("a paragraph offers accessibilityURL")
+			}
+			if got := paragraph.Send(Sel("accessibilityURL")); got != 0 {
+				t.Errorf("a paragraph answered accessibilityURL with %#x, want nothing", got)
+			}
+		})
+	})
+}
+
+// axAttributedFontName returns the font name the attributes in force at a UTF-16 index of an attributed string name,
+// and "" when they name no font.
+func axAttributedFontName(str objc.ID, index uint64) string {
+	font := NSDictionaryObjectForKey(NSAttributedStringAttributesAtIndex(str, index), NSStringFromGo(axAttrFont))
+	return GoStringFromNSString(NSDictionaryObjectForKey(font, NSStringFromGo(axAttrFontName)))
+}
+
+// axAttributedValue returns what the attributes in force at a UTF-16 index of an attributed string hold for one
+// attribute, and 0 when they hold none.
+func axAttributedValue(str objc.ID, index uint64, attribute string) objc.ID {
+	return NSDictionaryObjectForKey(NSAttributedStringAttributesAtIndex(str, index), NSStringFromGo(attribute))
+}
+
+// TestAXAttributedStringCarriesRunsAndLinks proves the attributed form of a block's text says what the plain form
+// cannot: the font each run is drawn in, whether it is underlined or struck through, which part of the text is a link
+// and where an image stands in the stream. It is what VoiceOver asks for when it announces bold text, links and images
+// inline, and NSAccessibilityElement answers nil for it, so an element that does not override it advertises the
+// attribute and then reports every range as empty.
+//
+// The offsets are the test's point as much as the attributes are: the paragraph holds an emoji, so a UTF-16 offset and
+// a rune index part company part-way through it, and the attributes of a sub-range have to be written where that range
+// begins rather than where the text does.
+func TestAXAttributedStringCarriesRunsAndLinks(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			paragraph := axDocElement(t, a, axDocParagraph)
+			whole := paragraph.Send(Sel("accessibilityAttributedStringForRange:"), NSRange{Length: 27})
+			if whole == 0 {
+				t.Fatal("a paragraph answered no attributed string")
+			}
+			if !objc.Send[bool](whole, Sel("isKindOfClass:"), Cls("NSAttributedString")) {
+				t.Fatal("a paragraph's attributed string is not an NSAttributedString")
+			}
+			if got := GoStringFromNSString(whole.Send(Sel("string"))); got != axDocParagraphText {
+				t.Errorf("the attributed string holds %q, want %q", got, axDocParagraphText)
+			}
+			if got := objc.Send[uint64](whole, Sel("length")); got != 27 {
+				t.Errorf("the attributed string is %d UTF-16 units long, want 27", got)
+			}
+			// The plain run at the start: the family and size the snapshot recorded, a name derived from them, and
+			// nothing else.
+			attrs := NSAttributedStringAttributesAtIndex(whole, 0)
+			font := NSDictionaryObjectForKey(attrs, NSStringFromGo(axAttrFont))
+			if font == 0 {
+				t.Fatal("the first run of the attributed string names no font")
+			}
+			if got := GoStringFromNSString(NSDictionaryObjectForKey(font,
+				NSStringFromGo(axAttrFontFamily))); got != axDocSerif {
+				t.Errorf("the first run's font family = %q, want %s", got, axDocSerif)
+			}
+			if got := GoStringFromNSString(NSDictionaryObjectForKey(font,
+				NSStringFromGo(axAttrFontName))); got != axDocSerif {
+				t.Errorf("the first run's font name = %q, want %s", got, axDocSerif)
+			}
+			if got := Float64FromNSNumber(NSDictionaryObjectForKey(font, NSStringFromGo(axAttrFontSize))); got != 13 {
+				t.Errorf("the first run's font size = %v, want 13", got)
+			}
+			for _, attribute := range []string{axAttrLink, axAttrAttachment, axAttrUnderline, axAttrStrikethrough} {
+				if got := NSDictionaryObjectForKey(attrs, NSStringFromGo(attribute)); got != 0 {
+					t.Errorf("the plain run at the start of the paragraph carries %s", attribute)
+				}
+			}
+			// The link's own text is bold and carries the link's element, which is what VoiceOver follows when it is
+			// asked to open the link under its cursor. The emoji is inside that text, so both the span and the bold run
+			// straddle a surrogate pair: what the attributes say has to hold at the code unit after the pair as much as
+			// at the one before it, which is the arithmetic axAttributedString does one interval edge at a time.
+			for _, index := range []uint64{
+				5,  // within "the", before the emoji
+				8,  // the emoji's leading surrogate
+				9,  // its trailing surrogate
+				10, // the code unit after the pair, which is the rune following the emoji
+				15, // the last code unit of the link's text
+			} {
+				if got := axAttributedFontName(whole, index); got != "Serif-Bold" {
+					t.Errorf("the font name at UTF-16 index %d of the link = %q, want Serif-Bold", index, got)
+				}
+				if got, want := axAttributedValue(whole, index, axAttrLink), a.Element(axDocLink); got != want {
+					t.Errorf("the link attribute at UTF-16 index %d = %#x, want the link's element %#x", index, got,
+						want)
+				}
+			}
+			// Where the link ends the struck-through run begins, and neither trespasses on the other.
+			if got := axAttributedValue(whole, 16, axAttrLink); got != 0 {
+				t.Errorf("the code unit after the link carries the link attribute %#x", got)
+			}
+			if !BoolFromNSNumber(axAttributedValue(whole, 16, axAttrStrikethrough)) {
+				t.Error("the struck-through run does not carry the strikethrough attribute")
+			}
+			if !BoolFromNSNumber(axAttributedValue(whole, 20, axAttrStrikethrough)) {
+				t.Error("the struck-through run stops short of its last code unit")
+			}
+			if got := axAttributedValue(whole, 21, axAttrStrikethrough); got != 0 {
+				t.Errorf("the run after the struck-through one carries the strikethrough attribute %#x", got)
+			}
+			// The U+FFFC an image stands in as carries the image's element, which is how an assistive technology knows
+			// it is an image rather than an unreadable character.
+			if got, want := axAttributedValue(whole, 26, axAttrAttachment), a.Element(axDocImage); got != want {
+				t.Errorf("the attachment attribute at the image = %#x, want the image's element %#x", got, want)
+			}
+			// A sub-range answers the same attributes, written where that range begins rather than where the text does —
+			// including across the emoji, whose pair sits at indexes 4 and 5 of this range.
+			part := paragraph.Send(Sel("accessibilityAttributedStringForRange:"), NSRange{Location: 4, Length: 12})
+			if got := GoStringFromNSString(part.Send(Sel("string"))); got != "the 😀 guide" {
+				t.Errorf("the attributed form of the link's range holds %q, want %q", got, "the 😀 guide")
+			}
+			for _, index := range []uint64{0, 6} {
+				if got := axAttributedFontName(part, index); got != "Serif-Bold" {
+					t.Errorf("the font name at index %d of the link's range = %q, want Serif-Bold", index, got)
+				}
+				if got, want := axAttributedValue(part, index, axAttrLink), a.Element(axDocLink); got != want {
+					t.Errorf("the link attribute at index %d of the link's range = %#x, want %#x", index, got, want)
+				}
+			}
+			// The other blocks: an italic quote, an underlined list item and a monospaced code block.
+			quote := axDocElement(t, a, axDocQuoteParagraph)
+			if got := axAttributedFontName(quote.Send(Sel("accessibilityAttributedStringForRange:"),
+				NSRange{Length: 12}), 0); got != "Serif-Italic" {
+				t.Errorf("the quote's font name = %q, want Serif-Italic", got)
+			}
+			item := axDocElement(t, a, axDocItem2Paragraph)
+			underlined := item.Send(Sel("accessibilityAttributedStringForRange:"), NSRange{Length: 6})
+			if got := Int64FromNSNumber(axAttributedValue(underlined, 0, axAttrUnderline)); got !=
+				axUnderlineStyleSingle {
+				t.Errorf("the underlined item's underline style = %d, want %d", got, axUnderlineStyleSingle)
+			}
+			code := axDocElement(t, a, axDocCode)
+			codeString := code.Send(Sel("accessibilityAttributedStringForRange:"), NSRange{Length: 14})
+			if got := axAttributedFontName(codeString, 0); got != axDocMono {
+				t.Errorf("the code block's font name = %q, want %s", got, axDocMono)
+			}
+			// A node holding no text at all answers nothing rather than an empty attributed string.
+			if got := axDocElement(t, a, axDocButton).Send(Sel("accessibilityAttributedStringForRange:"),
+				NSRange{Length: 2}); got != 0 {
+				t.Errorf("a button answered an attributed string, %#x, and it holds no text", got)
+			}
+			// The two forms of the same question agree on what the text is, whatever range they are asked about: both
+			// turn the range into rune bounds through axRuneBoundsOf, which is what keeps them from drifting apart.
+			for _, r := range []NSRange{
+				{Length: 27},
+				{Location: 4, Length: 12},
+				{Location: 8, Length: 2},
+				{Location: 9, Length: 3},
+				{Location: 26, Length: 1},
+				{Location: 20, Length: 99},
+				{Location: 27},
+				{Location: 40, Length: 3},
+			} {
+				plain := GoStringFromNSString(paragraph.Send(Sel("accessibilityStringForRange:"), r))
+				attributed := paragraph.Send(Sel("accessibilityAttributedStringForRange:"), r)
+				if got := GoStringFromNSString(attributed.Send(Sel("string"))); got != plain {
+					t.Errorf("the range %+v reads as %q plain and %q attributed", r, plain, got)
+				}
+			}
+			// A run that names no family says nothing about its font: AXFont's required keys are a name and a size, and
+			// the name is derived from the family, so a size on its own would be a dictionary missing one of the two
+			// things it is defined to hold.
+			if got := axFontDictionaryFor(&accessibility.TextRun{Size: 13}); got != 0 {
+				t.Errorf("a run with a size and no family answered the font dictionary %q",
+					GoStringFromNSString(got.Send(Sel("description"))))
+			}
+			if got := axFontDictionaryFor(&accessibility.TextRun{Family: axDocSerif, Size: 13}); got == 0 {
+				t.Error("a run naming a family answered no font dictionary")
+			}
+		})
+	})
+}
+
+// TestAXTextIntervals proves the partition the attributed string is written from: one interval per stretch over which
+// the run and the nodes occupying the text both hold still, with the boundaries of each run and each span inside the
+// range and no others. A text carrying no runs is one interval, which is the whole of what a plain label has to say
+// about itself.
+func TestAXTextIntervals(t *testing.T) {
+	info := axDocTestTree().Node(axDocParagraph).Text
+	var got [][2]int
+	for _, interval := range axTextIntervals(info, 0, len([]rune(axDocParagraphText))) {
+		got = append(got, [2]int{interval.start, interval.end})
+	}
+	want := [][2]int{
+		{0, axDocLinkStart},
+		{axDocLinkStart, axDocLinkEnd},
+		{axDocLinkEnd, axDocStrikeEnd},
+		{axDocStrikeEnd, axDocImageStart},
+		{axDocImageStart, axDocImageEnd},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the paragraph partitions into %v, want %v", got, want)
+	}
+	intervals := axTextIntervals(info, axDocLinkStart, axDocLinkEnd)
+	if len(intervals) != 1 {
+		t.Fatalf("the link's own range partitions into %d intervals, want 1", len(intervals))
+	}
+	if intervals[0].run == nil || intervals[0].run.Weight != 700 {
+		t.Error("the link's range does not carry the bold run")
+	}
+	if !slices.Equal(intervals[0].spans, []accessibility.NodeID{axDocLink}) {
+		t.Errorf("the link's range carries the spans %v, want just the link", intervals[0].spans)
+	}
+	// A range that touches nothing, and one with nothing in it, are no intervals at all.
+	if got := axTextIntervals(info, 5, 5); got != nil {
+		t.Errorf("an empty range partitions into %d intervals, want none", len(got))
+	}
+	unstyled := &accessibility.TextInfo{Text: "Plain"}
+	intervals = axTextIntervals(unstyled, 0, 5)
+	if len(intervals) != 1 || intervals[0].run != nil || intervals[0].spans != nil {
+		t.Errorf("text with no runs partitions into %d intervals, want one carrying nothing", len(intervals))
+	}
+}
+
+// TestAXParameterizedAttributeNamesIncludeSearch proves the search predicate is advertised where an assistive
+// technology will look for it — on every element — and pins the two facts the overrides are built on.
+//
+// The first is that NSAccessibilityElement lists no parameterized attribute of its own, not even for an element that
+// implements the whole text protocol: what an element hands over is exactly the two search attributes, so the appended
+// list preserves nothing because there is nothing to preserve. The second is that the legacy way of asking for
+// AXStringForRange is answered by that same superclass, with nil, while the modern selector answers the text — which is
+// what says the text protocol is reached through its own methods rather than through this one. Both are asserted here
+// because they are what makes it safe not to list the text protocol's parameterized attributes as well: an AXUIElement
+// client in another process is handed AXStringForRange, AXAttributedStringForRange, AXRangeForLine, AXLineForIndex,
+// AXBoundsForRange, AXRangeForIndex and AXRangeForPosition alongside these two, because AppKit merges the list it
+// derives from the modern protocol methods with this one (verified at runtime on macOS 27; nothing inside this process
+// can ask that question, since the merge happens at the API boundary).
+//
+// The content view answers neither, and nothing about it may turn accessibility support on: AppKit splices it out of
+// the hierarchy, so no client can hold it — see axElementSearchMethods for the evidence and for why the window is not
+// answered either.
+func TestAXParameterizedAttributeNamesIncludeSearch(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		want := []string{axAttrUIElementsForSearchPredicate, axAttrResultsForSearchPredicate}
+		WithPool(func() {
+			for _, c := range []struct {
+				what    string
+				element objc.ID
+			}{
+				{what: "the document's element", element: axDocElement(t, a, axDocDocument)},
+				{what: "a paragraph's element", element: axDocElement(t, a, axDocParagraph)},
+				{what: "a button's element", element: axDocElement(t, a, axDocButton)},
+			} {
+				if names := axParameterizedAttributeNames(c.element); !slices.Equal(names, want) {
+					t.Errorf("%s lists %v, want %v", c.what, names, want)
+				}
+				if names := GoStringsFromNSArray(SendSuper(c.element, axElementClass,
+					Sel("accessibilityParameterizedAttributeNames"))); len(names) != 0 {
+					t.Errorf("NSAccessibilityElement lists %v for %s, so the comment on what the override preserves "+
+						"needs revisiting", names, c.what)
+				}
+			}
+			// The text protocol is answered by its own selectors. Asking for it the legacy way reaches the superclass,
+			// which answers nothing, and that is the whole reason the merge above matters.
+			paragraph := axDocElement(t, a, axDocParagraph)
+			rangeValue := objc.ID(Cls("NSValue")).Send(Sel("valueWithRange:"), NSRange{Length: 3})
+			if got := axParameterizedAttribute(paragraph, "AXStringForRange", rangeValue); got != 0 {
+				t.Errorf("a paragraph answered AXStringForRange the legacy way with %q; the text protocol is reached "+
+					"through accessibilityStringForRange:", GoStringFromNSString(got))
+			}
+			if got := GoStringFromNSString(paragraph.Send(Sel("accessibilityStringForRange:"),
+				NSRange{Length: 3})); got != "See" {
+				t.Errorf("a paragraph's accessibilityStringForRange: answered %q, want %q", got, "See")
+			}
+			// The content view is not a receiver: it is not an accessibility element, and it advertises neither
+			// attribute.
+			if objc.Send[bool](objc.ID(v), Sel("isAccessibilityElement")) {
+				t.Error("the content view reports itself as an accessibility element, so it is no longer spliced out")
+			}
+			for _, name := range want {
+				if names := axParameterizedAttributeNames(objc.ID(v)); slices.Contains(names, name) {
+					t.Errorf("the content view lists %s, which no client can ever ask it for", name)
+				}
+			}
+		})
+		// A second window, never asked anything that needs a snapshot, must stay unadapted.
+		w2, v2, closeWindow := newTestWindowAndView(t)
+		defer closeWindow()
+		w2.MakeKeyAndOrderFront()
+		WithPool(func() {
+			if names := axParameterizedAttributeNames(objc.ID(v2)); slices.Contains(names,
+				axAttrUIElementsForSearchPredicate) {
+				t.Errorf("a view with no adapter lists %s", axAttrUIElementsForSearchPredicate)
+			}
+			if axViewIsAdapted(v2) {
+				t.Error("asking a view for its parameterized attributes turned accessibility support on")
+			}
+		})
+	})
+}
+
+// axSearchParameter returns the NSDictionary an assistive technology asks a search with, built from alternating keys
+// and values the way it builds one itself.
+func axSearchParameter(pairs ...objc.ID) objc.ID {
+	return NSDictionaryFromPairs(pairs...)
+}
+
+// axSearchAnswerElements asks a receiver for the elements matching a search predicate.
+func axSearchAnswerElements(receiver, parameter objc.ID) []objc.ID {
+	return IDsFromNSArray(axParameterizedAttribute(receiver, axAttrUIElementsForSearchPredicate, parameter))
+}
+
+// axCheckElements fails the test unless a search answered with exactly the elements of the nodes wanted, in that order.
+func axCheckElements(t *testing.T, a *AXAdapter, what string, got []objc.ID, want []accessibility.NodeID) {
+	t.Helper()
+	wanted := make([]objc.ID, 0, len(want))
+	for _, id := range want {
+		wanted = append(wanted, axDocElement(t, a, id))
+	}
+	if !slices.Equal(got, wanted) {
+		names := make([]accessibility.NodeID, 0, len(got))
+		for _, element := range got {
+			names = append(names, accessibility.NodeID(objc.Send[uint64](element, Sel("axNodeID"))))
+		}
+		t.Errorf("%s answered %s, want %s", what, axDocNames(names), axDocNames(want))
+	}
+}
+
+// TestAXSearchPredicate proves the two search attributes answer what an assistive technology asks them with: a real
+// dictionary naming a key, a start element, a start range, a direction, a limit and a text. It is how VoiceOver's rotor
+// lists a document's headings and how Quick Nav jumps from one to the next, and it is the one question this adapter
+// answers that another process composes for it — so a parameter that is not a dictionary, an entry holding the wrong
+// kind of thing and an attribute this adapter knows nothing about all have to be answered safely rather than crash
+// inside an AppKit callback.
+//
+// Every search is asked of an element, since the elements are the only receivers a client is ever handed; see
+// axElementSearchMethods.
+func TestAXSearchPredicate(t *testing.T) {
+	runOnMain(func() {
+		tree := axDocTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			document := axDocElement(t, a, axDocDocument)
+			key := NSStringFromGo(axSearchParamKey)
+			headings := axSearchParameter(
+				key, NSStringFromGo(axSearchKeyHeading),
+				NSStringFromGo(axSearchParamDirection), NSStringFromGo(axSearchDirectionNext),
+				NSStringFromGo(axSearchParamResultsLimit), NSNumberFromInt64(5),
+				// A start range holding something other than a range is the same as no start range at all. An NSNumber
+				// is an NSValue too, so this is what proves the entry is read by what it holds rather than by its class.
+				NSStringFromGo(axSearchParamStartRange), NSNumberFromInt64(3),
+			)
+			axCheckElements(t, a, "the headings of the document", axSearchAnswerElements(document, headings),
+				[]accessibility.NodeID{axDocHeading1, axDocHeading2, axDocHeading1b})
+			// From a start element, which is never itself an answer, and then backwards from a later one.
+			from := axSearchParameter(
+				key, NSStringFromGo(axSearchKeyHeading),
+				NSStringFromGo(axSearchParamStartElement), axDocElement(t, a, axDocHeading1),
+			)
+			axCheckElements(t, a, "the headings after the first", axSearchAnswerElements(document, from),
+				[]accessibility.NodeID{axDocHeading2, axDocHeading1b})
+			back := axSearchParameter(
+				key, NSStringFromGo(axSearchKeyHeading),
+				NSStringFromGo(axSearchParamStartElement), axDocElement(t, a, axDocHeading2),
+				NSStringFromGo(axSearchParamDirection), NSStringFromGo(axSearchDirectionPrevious),
+			)
+			axCheckElements(t, a, "the headings before the second", axSearchAnswerElements(document, back),
+				[]accessibility.NodeID{axDocHeading1})
+			// A start range the cursor has read past: asked for the things inside the paragraph from a position after
+			// its link, the search answers with the image ahead of that position and not with the link behind it. The
+			// range is in UTF-16 code units, which is what an assistive technology works in.
+			pastLink := axSearchParameter(
+				key, NSArrayFromIDs(NSStringFromGo(axSearchKeyLink), NSStringFromGo(axSearchKeyGraphic)),
+				NSStringFromGo(axSearchParamStartElement), axDocElement(t, a, axDocParagraph),
+				NSStringFromGo(axSearchParamStartRange), objc.ID(Cls("NSValue")).Send(Sel("valueWithRange:"),
+					NSRange{Location: uint64(axUTF16FromRune(axDocParagraphText, axDocLinkEnd))}),
+			)
+			axCheckElements(t, a, "the links and images after the paragraph's link",
+				axSearchAnswerElements(document, pastLink), []accessibility.NodeID{axDocImage})
+			// Several keys at once, which is how the rotor asks for a list of more than one kind of thing.
+			both := axSearchParameter(key, NSArrayFromIDs(NSStringFromGo(axSearchKeyHeading),
+				NSStringFromGo(axSearchKeyLink)))
+			axCheckElements(t, a, "the headings and links", axSearchAnswerElements(document, both),
+				[]accessibility.NodeID{axDocHeading1, axDocLink, axDocHeading2, axDocHeading1b})
+			// Narrowed by text, by visibility and to the immediate children.
+			text := axSearchParameter(NSStringFromGo(axSearchParamText), NSStringFromGo("GUIDE"))
+			axCheckElements(t, a, "a search for the word guide", axSearchAnswerElements(document, text),
+				[]accessibility.NodeID{axDocParagraph, axDocLink})
+			visible := axSearchParameter(NSStringFromGo(axSearchParamVisibleOnly), NSNumberFromBool(true))
+			list := axDocElement(t, a, axDocList)
+			axCheckElements(t, a, "the visible nodes of the list", axSearchAnswerElements(list, visible),
+				[]accessibility.NodeID{axDocItem1, axDocItem1Paragraph})
+			immediate := axSearchParameter(
+				key, NSStringFromGo(axSearchKeyAnyType),
+				NSStringFromGo(axSearchParamImmediateOnly), NSNumberFromBool(true),
+			)
+			axCheckElements(t, a, "the list's own children", axSearchAnswerElements(list, immediate),
+				[]accessibility.NodeID{axDocItem1, axDocItem2})
+			// An element is searched within itself, so the document does not find itself.
+			frame := axSearchParameter(key, NSStringFromGo(axSearchKeyFrame))
+			axCheckElements(t, a, "the documents within the document", axSearchAnswerElements(document, frame), nil)
+			// The results form answers a dictionary per match, holding the element and nothing else: a range naming the
+			// whole of an element's own text would say nothing the element does not say for itself.
+			results := IDsFromNSArray(axParameterizedAttribute(document, axAttrResultsForSearchPredicate, headings))
+			if len(results) != 3 {
+				t.Fatalf("the results form answered %d matches, want 3", len(results))
+			}
+			for i, want := range []accessibility.NodeID{axDocHeading1, axDocHeading2, axDocHeading1b} {
+				if !objc.Send[bool](results[i], Sel("isKindOfClass:"), Cls("NSDictionary")) {
+					t.Fatalf("result %d is not a dictionary", i)
+				}
+				got := NSDictionaryObjectForKey(results[i], NSStringFromGo(axSearchResultElementKey))
+				if got != axDocElement(t, a, want) {
+					t.Errorf("result %d holds %#x, want %s", i, got, axDocNames([]accessibility.NodeID{want}))
+				}
+				if extra := NSDictionaryObjectForKey(results[i], NSStringFromGo("AXSearchResultRange")); extra != 0 {
+					t.Errorf("result %d carries a search result range", i)
+				}
+			}
+			// A parameter that is not a dictionary, and an attribute nothing here answers, are both handled without
+			// raising: the first is nothing this adapter can answer, and the second is the superclass's to answer.
+			if got := axParameterizedAttribute(document, axAttrUIElementsForSearchPredicate,
+				NSStringFromGo("not a dictionary")); got != 0 {
+				t.Errorf("a search asked with a string answered %#x, want nothing", got)
+			}
+			if got := axParameterizedAttribute(document, axAttrResultsForSearchPredicate,
+				NSNumberFromInt64(7)); got != 0 {
+				t.Errorf("a search asked with a number answered %#x, want nothing", got)
+			}
+			if got := axParameterizedAttribute(document, "AXBogusParameterizedAttribute", headings); got != 0 {
+				t.Errorf("an unknown parameterized attribute answered %#x, want whatever the superclass says, which "+
+					"is nothing", got)
+			}
+			// An entry holding the wrong kind of thing is the same as no entry at all, which leaves a search for
+			// everything within the document.
+			wrong := axSearchParameter(key, NSNumberFromInt64(3), NSStringFromGo(axSearchParamDirection),
+				NSNumberFromInt64(1))
+			if got, want := len(axSearchAnswerElements(document, wrong)), len(axDocDocumentOrder()); got != want {
+				t.Errorf("a search whose entries hold the wrong kinds of thing answered %d elements, want %d", got,
+					want)
 			}
 		})
 	})

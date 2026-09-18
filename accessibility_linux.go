@@ -28,6 +28,15 @@ import (
 // content to start from.
 const axReadersFollowFocus = true
 
+// axCaretBlockReportsFocus reports that the block of a document holding the reading caret publishes the focus as well
+// as the document itself, which is what makes Orca's focus mode present a caret the application moved. Orca presents a
+// caret move from an object that is not its locus of focus only when that object carries the FOCUSED state, and then
+// quietly re-targets itself there; without the state the line the caret moved to is never spoken. Two objects claiming
+// FOCUSED is ordinary on AT-SPI — the state is per object rather than per desktop, and Tree.Focus still names the
+// document — so nothing else is confused by it. It is a var rather than a const so that a test can pin both answers
+// on whichever platform it runs on.
+var axCaretBlockReportsFocus = true
+
 // The Linux side of accessibility support: this file connects the snapshots the root package publishes to the AT-SPI2
 // server in internal/atspi, and connects the requests that come back from an assistive technology to the UI thread.
 //

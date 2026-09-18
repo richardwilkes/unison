@@ -47,6 +47,9 @@ const (
 	PatternTable
 	PatternTableItem
 	PatternWindow
+	PatternText
+	PatternText2
+	PatternTextChild
 )
 
 // uiaPatternInfo pairs one PatternSet bit with the UI Automation identifier clients ask for it by, the property that
@@ -96,6 +99,15 @@ var uiaPatternInfos = []uiaPatternInfo{
 		pattern: PatternTableItem,
 	},
 	{name: "window", id: UIA_WindowPatternId, available: UIA_IsWindowPatternAvailablePropertyId, pattern: PatternWindow},
+	{name: "text", id: UIA_TextPatternId, available: UIA_IsTextPatternAvailablePropertyId, pattern: PatternText},
+	{
+		name: "text2", id: UIA_TextPattern2Id, available: UIA_IsTextPattern2AvailablePropertyId,
+		pattern: PatternText2,
+	},
+	{
+		name: "text-child", id: UIA_TextChildPatternId, available: UIA_IsTextChildPatternAvailablePropertyId,
+		pattern: PatternTextChild,
+	},
 }
 
 // Has returns true if the set contains every pattern in patterns. Passing more than one bit therefore asks whether all
@@ -186,19 +198,28 @@ func UIAPropertyPattern(propertyID PropertyID) PatternSet {
 }
 
 // UIAProvidedPatterns returns the patterns an element actually hands interfaces out for, which is what UIAPatterns says
-// with one exception: the Window pattern belongs to the fragment root alone. A nested node with a window-like role is a
-// dialog-shaped panel rather than a window of its own, and the provider refuses IWindowProvider for it — see
-// UIAProvider.supports — so a set that still held the bit would have the adapter describe an element through a pattern
-// a client cannot obtain from it. A nil tree, or one that does not hold the node, cannot say the node is the root, so
-// it is treated as a nested one, exactly as UIAControlType treats it.
+// with two exceptions, both of which need the tree rather than the node:
+//
+//   - The Window pattern belongs to the fragment root alone. A nested node with a window-like role is a dialog-shaped
+//     panel rather than a window of its own, and the provider refuses IWindowProvider for it — see UIAProvider.supports
+//     — so a set that still held the bit would have the adapter describe an element through a pattern a client cannot
+//     obtain from it. A nil tree, or one that does not hold the node, cannot say the node is the root, so it is treated
+//     as a nested one, exactly as UIAControlType treats it.
+//   - The TextChild pattern belongs to an element that sits inside a document's stream, which is a fact about where the
+//     node is rather than about what it is: the pattern's two methods report the document that contains the element and
+//     the stretch of that document's text the element occupies, so it is handed out precisely when there is such a
+//     document to point at. See uiaTextContainerFor.
 //
 // Everything that decides what an element supports goes through this rather than through UIAPatterns, which knows a
-// node and not which one is the root: the provider that hands the interfaces out, UIAReportsProperty, and the decider
-// that reports a pattern appearing or vanishing.
+// node and not where it sits: the provider that hands the interfaces out, UIAReportsProperty, and the decider that
+// reports a pattern appearing or vanishing.
 func UIAProvidedPatterns(t *accessibility.Tree, n *accessibility.Node) PatternSet {
 	patterns := UIAPatterns(n)
 	if patterns.Has(PatternWindow) && (t == nil || n.ID != t.Root) {
 		patterns &^= PatternWindow
+	}
+	if uiaTextContainerFor(t, n) != 0 {
+		patterns |= PatternTextChild
 	}
 	return patterns
 }
@@ -249,7 +270,9 @@ func UIAControlType(t *accessibility.Tree, n *accessibility.Node) ControlTypeID 
 			return UIA_WindowControlTypeId
 		}
 		return UIA_PaneControlTypeId
-	case role.Group:
+	case role.Group, role.BlockQuote:
+		// UI Automation has no control type for a quoted passage, so a block quote is a group, which is what it is: a
+		// container of the blocks inside it, with the quoting itself said as a text attribute of the content.
 		return UIA_GroupControlTypeId
 	case role.TabPanel, role.ScrollArea:
 		return UIA_PaneControlTypeId
@@ -263,7 +286,10 @@ func UIAControlType(t *accessibility.Tree, n *accessibility.Node) ControlTypeID 
 		return UIA_RadioButtonControlTypeId
 	case role.Link:
 		return UIA_HyperlinkControlTypeId
-	case role.Label, role.Heading:
+	case role.Label, role.Heading, role.Paragraph, role.Code:
+		// Text is the control type for a run of static text, which is what each of these is: a paragraph and a code
+		// block are the blocks a document is read as, and Narrator's item navigation steps onto them and speaks their
+		// content.
 		return UIA_TextControlTypeId
 	case role.TextField, role.TextArea:
 		return UIA_EditControlTypeId
@@ -310,11 +336,18 @@ func UIAControlType(t *accessibility.Tree, n *accessibility.Node) ControlTypeID 
 	case role.Tooltip:
 		return UIA_ToolTipControlTypeId
 	case role.Document:
-		// A group, rather than the document control type, whose only required control pattern is ITextProvider: this
-		// package implements no Text pattern at all, so a client handed a document element would ask for the pattern
-		// every document is documented to have and be given NULL. Markdown is what sets the role, and it presents its
-		// content through the elements beneath it rather than as one body of text, which is what a group is. The Cocoa
-		// adapter treats the role as a plain group for the same reason.
+		// The document control type lists ITextProvider as a required pattern, so it is the right answer for exactly
+		// the documents that have one: those carrying a composed stream in Node.Document, which uiaRolePatterns hands
+		// out the Text and Text2 patterns for. It is what puts Narrator into its document reading mode, where the text
+		// is read by line, word and character through the pattern rather than element by element.
+		//
+		// A Document without a stream is a group. Nothing would be there for a client to read through the pattern it
+		// would then be entitled to ask for, and the elements beneath it are all there is — which is what a group is.
+		// The Cocoa adapter draws the same distinction: a document with a stream answers no text selectors either way,
+		// since AppKit reads the blocks beneath it instead.
+		if n.Document != nil {
+			return UIA_DocumentControlTypeId
+		}
 		return UIA_GroupControlTypeId
 	case role.Toolbar:
 		return UIA_ToolBarControlTypeId
@@ -354,9 +387,13 @@ func uiaRolePatterns(n *accessibility.Node) PatternSet {
 	case role.Window, role.Dialog:
 		return PatternWindow
 	case role.Button, role.ColorWell, role.Link, role.ColumnHeader:
-		// A color well also reports its color through a read-only Value, and a column header sorts when invoked.
+		// A color well also reports its color through a read-only Value, and a column header sorts when invoked. A link
+		// that knows where it leads reports the target the same way: UI Automation has no property for a hyperlink's
+		// destination, and the Value pattern is where every client looks for one — which is what lets a screen reader
+		// say where a link goes before the user follows it. It is read-only, since nothing retargets a link through
+		// accessibility; see UIAIsValueReadOnly.
 		patterns := PatternInvoke
-		if n.Role == role.ColorWell {
+		if n.Role == role.ColorWell || (n.Role == role.Link && n.URL != "") {
 			patterns |= PatternValue
 		}
 		return patterns
@@ -440,16 +477,32 @@ func uiaRolePatterns(n *accessibility.Node) PatternSet {
 			patterns |= PatternExpandCollapse
 		}
 		return patterns
+	case role.Document:
+		// A document that carries a composed stream is read as text, which is the whole of what the Text pattern is
+		// for: Narrator's document mode and NVDA's caret reading both work through it, and without it a document is a
+		// pile of elements a person cannot read by line, word or character at all.
+		//
+		// Both patterns or neither. ITextProvider2 derives from ITextProvider and one interface answers both — see
+		// uiaPatternIfaces — so a node that handed out one and not the other would have a client reach the same six
+		// methods through a pattern the element says it does not support. Text2 adds GetCaretRange, which is how a
+		// client finds the reading caret without a selection to go by.
+		//
+		// A Document with no stream reports neither, and no value either: the value would be the empty string as the
+		// whole content of the document, instead of letting a client fall through to the elements that hold it.
+		if n.Document != nil {
+			return PatternText | PatternText2
+		}
+		return 0
 	default:
-		// Group, TabPanel, ScrollArea, TableHeader, Label, Heading, Image, Separator, MenuBar, Menu, Tooltip, Document
-		// and Toolbar all present themselves through their properties and their children alone.
+		// Group, TabPanel, ScrollArea, TableHeader, Label, Heading, Image, Separator, MenuBar, Menu, Tooltip, Toolbar,
+		// Paragraph, Code and BlockQuote all present themselves through their properties and their children alone.
 		//
-		// A Document looks as though it should report a value, since UI Automation's document control type usually
-		// carries the Text pattern and a value alongside it. The only thing that produces the role here is Markdown,
-		// which fills in neither Value nor Text, so the pattern would hand a client an empty string as the whole
-		// content of the document instead of letting it fall through to the child elements that actually hold it.
+		// The last three of those are the blocks a document is composed of, and a client reads their text without a
+		// pattern: through the containing document's Text pattern, which is what a document is read by, and as the Name
+		// each of them takes from its own content for the item navigation that steps onto elements — see UIANameString.
+		// A Value pattern would have that same text spoken twice.
 		//
-		// A Menu is the one of those that looks as though it should expand: the role belongs to the panel of an open
+		// A Menu is the one of these that looks as though it should expand: the role belongs to the panel of an open
 		// menu, which nothing ever collapses and which never reports Expandable, so ExpandCollapse would be a pattern
 		// whose state is permanently LeafNode and whose two methods report success without doing anything. The menu
 		// item that opened it carries the pattern instead, which is where a client looks for it.
@@ -487,6 +540,47 @@ func UIAIsContentElement(t *accessibility.Tree, n *accessibility.Node) bool {
 		return !uiaMemoizedNamesAnother(t, n.ID)
 	default:
 		return true
+	}
+}
+
+// UIANameString returns the text a node answers the Name property with. It is Node.Name for everything but the blocks a
+// document is made of — a paragraph, a code block and a table cell — whose name is their own content when the widget
+// gave them none.
+//
+// Those blocks need it because Narrator steps onto elements as well as reading text: its item navigation walks the
+// control view and speaks each element's name, and a paragraph with no name at all is announced as a bare "text". The
+// content is the only thing there is to say about such a block, and both other adapters say exactly that — AT-SPI reads
+// the block through its Text interface and AppKit through AXValue — so nothing is invented.
+//
+// It is the name and not the value because the name is the one of the two a client reads for an element it has stepped
+// onto. A paragraph and a code block hand out no patterns at all, and a cell's Value pattern is there only while the
+// widget filled one in, so nothing here is reachable through UIAValueString — which is deliberate: an element answering
+// the same text as both its name and its value has Narrator speak it twice.
+//
+// A block the widget did name keeps that name. A heading folds its fragments into a name of its own, and a cell that
+// holds one widget is named by the column it sits in, which is more useful than the text drawn in it.
+func UIANameString(n *accessibility.Node) string {
+	if n == nil {
+		return ""
+	}
+	if n.Name == "" && uiaNamedByItsText(n) {
+		return n.Text.Text
+	}
+	return n.Name
+}
+
+// uiaNamedByItsText reports whether a node's name comes from its own text, which is what UIANameString answers with and
+// what makes an edit to that text a change of name. A block with no text carries none, and a node that already has a
+// name is not renamed by what it draws.
+func uiaNamedByItsText(n *accessibility.Node) bool {
+	if n == nil || n.Text == nil || n.Text.Text == "" {
+		return false
+	}
+	switch n.Role {
+	case role.Paragraph, role.Code, role.Cell:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -915,10 +1009,12 @@ func (r UIARaise) String() string {
 //     The exception is the moment the flag itself flips, which is the node joining or leaving the tree a client sees
 //     while nobody's list of children changed — a scroll bar appearing as its content outgrows its view port is exactly
 //     this — so the nearest unignored parent is told to read its children again.
-//   - UI Automation's two text events are never raised. Both belong to the Text control pattern, which this package
-//     does not implement and which every element here answers NULL for, so a client that responded to one by asking for
-//     ITextProvider would have nothing to read. An edit reports the Value pattern's property instead, which is where
-//     the text a client reads comes from.
+//   - UI Automation's two text events are raised on the elements that hand out the Text pattern, which is every
+//     document carrying a composed stream and nothing else. A client answers TextChanged by reading the document's text
+//     again and TextSelectionChanged by reading the selection, both through ITextProvider, so an element that has no
+//     such pattern to be read through reports the edit as a change to its value instead — and as a change to its name
+//     as well, when the name is the text itself; see UIANameString. A caret move on such an element reports nothing at
+//     all, since it changes no property a client could read back.
 //   - Duplicates are dropped. One text edit arrives as a value change and as the deletion and the insertion that made
 //     it, and all three ask for the same value property, so without this a client would hear about one edit three
 //     times.
@@ -1043,12 +1139,13 @@ func (d *uiaDecider) translate(event accessibility.Event) {
 	case accessibility.StateChanged:
 		d.state(event)
 	case accessibility.TextInserted, accessibility.TextDeleted:
-		// UIA_Text_TextChangedEventId belongs to the Text pattern, which nothing here implements, so the edit is
-		// reported through the value property alone. See the rule in the doc comment on UIADecideRaises.
-		d.valueProperty(event.Node)
+		d.textChanged(event.Node)
 	case accessibility.TextSelectionChanged:
-		// Nothing. UIA_Text_TextSelectionChangedEventId is the other half of the Text pattern, and a caret move changes
-		// no property this package answers, so there is nothing a client could read even if it were told.
+		// The Text pattern's own event, and the only thing that reports a caret move: an element without the pattern
+		// has no selection a client could read, so nothing is said about it at all.
+		if d.patterns(event.Node).Has(PatternText) {
+			d.event(event.Node, UIA_Text_TextSelectionChangedEventId)
+		}
 	case accessibility.ChildrenChanged:
 		d.add(UIARaise{
 			Kind:   UIARaiseStructure,
@@ -1211,12 +1308,45 @@ var uiaAttributeProperties = []PropertyID{
 // The availability of any pattern that came or went is reported first. An attributes change is the only event that
 // reports a change to the action set, and the ScrollItem pattern is gated on the ScrollIntoView action alone, so this
 // is the one place a client can be told that the pattern has appeared or gone.
+//
+// Two more properties are reported that are not element-wide, because this event is the only thing that reports the
+// fields behind them:
+//
+//   - The control type, when the two snapshots disagree about it. See controlType.
+//   - The Value pattern's value, on a node that hands the pattern out. A link's value is its URL, and an application
+//     that re-points an existing link changes nothing else: the pattern is there both before and after, so the
+//     availability raise says nothing, and Node.Value is untouched, so no text change is reported either. A client that
+//     cached the link's value would go on announcing the old destination for the life of the window. The other elements
+//     that hand out the pattern read their value from a field this event does not carry, so for them this reports a
+//     value that has not changed — the same bargain the element-wide properties above are reported on.
 func (d *uiaDecider) attributes(id accessibility.NodeID) {
 	d.patternAvailability(id)
+	d.controlType(id)
 	for _, propertyID := range uiaAttributeProperties {
 		d.property(id, propertyID)
 	}
+	if d.patterns(id).Has(PatternValue) {
+		d.property(id, UIA_ValueValuePropertyId)
+	}
 	d.labelContent(id)
+}
+
+// controlType records the control type as changed when the two snapshots disagree about what it is.
+//
+// One field an attributes change carries decides a control type: a Document that gains or loses its composed stream is
+// a Document with one and a Group without, since a Group is what an element a client cannot read as text has to be.
+// That flip arrives as an attributes change and as nothing else, so a client that cached the control type — Narrator
+// keys its document reading mode off it — would go on treating a document as a group, or a group as a document, for the
+// life of the window.
+//
+// A node only one of the snapshots holds is left alone, for the reason patternAvailability gives.
+func (d *uiaDecider) controlType(id accessibility.NodeID) {
+	old := d.old.Node(id)
+	cur := d.cur.Node(id)
+	if old == nil || cur == nil || UIAControlType(d.old, old) == UIAControlType(d.cur, cur) {
+		return
+	}
+	d.property(id, UIA_ControlTypePropertyId)
 }
 
 // labelContent records the content-view change that a change to one node's LabeledBy relation makes to the labels at
@@ -1280,6 +1410,28 @@ func (d *uiaDecider) focus(id accessibility.NodeID) {
 		id = d.cur.Root
 	}
 	d.event(id, UIA_AutomationFocusChangedEventId)
+}
+
+// textChanged records the calls an insertion or a deletion asks for.
+//
+// An element that hands out the Text pattern reports UI Automation's own text event, which is what tells a client to
+// read the document again through ITextProvider. Nothing else can: the pattern's text is not a property, so there is no
+// property change to raise, and the event may only be raised on an element that has the pattern.
+//
+// Everything else reports the edit as a change to its value, which is where a client reads such an element's text, and
+// as a change to its name when the name is that text — a paragraph and a code block within a document are named by
+// their content, so an edit renames them, and a client that cached the name would otherwise go on speaking the old one
+// while item navigation stepped onto the block. Either snapshot having been named by its text is enough: a block whose
+// text is emptied is named by nothing afterwards, which is as much a change of name as gaining one is.
+func (d *uiaDecider) textChanged(id accessibility.NodeID) {
+	if d.patterns(id).Has(PatternText) {
+		d.event(id, UIA_Text_TextChangedEventId)
+		return
+	}
+	d.valueProperty(id)
+	if uiaNamedByItsText(d.old.Node(id)) || uiaNamedByItsText(d.cur.Node(id)) {
+		d.property(id, UIA_NamePropertyId)
+	}
 }
 
 // valueProperty records the change of whichever value property the node actually has, and nothing when it has neither.

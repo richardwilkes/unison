@@ -10,6 +10,7 @@
 package atspi
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -114,14 +115,14 @@ func TestTextInterfaceIsOnlyThereForText(t *testing.T) {
 	c := ta.c
 	// Neither taking the focus nor setting a selection is one of the things AT-SPI's Action interface covers, so a text
 	// area that does both still has nothing to do.
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceEditableText, InterfaceText},
 		ta.one(NodePath(41), InterfaceAccessible, "GetInterfaces", ""))
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
 		ta.one(NodePath(44), InterfaceAccessible, "GetInterfaces", ""),
 		"text that cannot be changed has no EditableText")
 	// A password field carries no text at all in a published snapshot, so it has no text interface either: what an
 	// assistive technology is told is that it is a password field, which is what ATSPI_ROLE_PASSWORD_TEXT says.
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		ta.one(NodePath(43), InterfaceAccessible, "GetInterfaces", ""))
 	c.Equal(uint32(RolePasswordText), ta.one(NodePath(43), InterfaceAccessible, "GetRole", ""))
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(43), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
@@ -540,7 +541,7 @@ func TestTextSynthesizedFromAValue(t *testing.T) {
 	ta := newTestAdapter(t)
 	c := ta.c
 	// The main window's field is carrying no text of its own, so its value is what there is to read.
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
 		ta.one(NodePath(4), InterfaceAccessible, "GetInterfaces", ""))
 	c.Equal(int32(4), ta.peer.getProperty(NodePath(4), InterfaceText, "CharacterCount"))
 	c.Equal(int32(0), ta.peer.getProperty(NodePath(4), InterfaceText, "CaretOffset"),
@@ -586,7 +587,7 @@ func TestTextSynthesizedFromAValue(t *testing.T) {
 	cell.Name = ""
 	cell.Value = "10"
 	ta.Publish(tableWindow, table, nil, sampleGeometry())
-	c.Equal([]string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell, InterfaceText},
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceTableCell, InterfaceText},
 		ta.one(NodePath(65), InterfaceAccessible, "GetInterfaces", ""))
 	c.Equal("10", ta.one(NodePath(65), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
 	c.Equal("", ta.peer.getProperty(NodePath(65), InterfaceAccessible, "Name"))
@@ -692,4 +693,332 @@ func TestTextIntrospection(t *testing.T) {
 	advertised, ok := ta.one(NodePath(41), InterfaceAccessible, "GetInterfaces", "").([]string)
 	c.True(ok)
 	c.Equal(advertised, atspiInterfacesIn(xml))
+}
+
+// documentRunAttributes is what one styled run of the document reports. Every run says all six of these things, so a
+// client comparing two of them to find out where the style changes is comparing like with like.
+func documentRunAttributes(weight int, underline, family, size string) dbus.Dict {
+	return dbus.Dict{
+		{Key: weightTextAttribute, Value: strconv.Itoa(weight)},
+		{Key: styleTextAttribute, Value: normalStyleValue},
+		{Key: underlineTextAttribute, Value: underline},
+		{Key: strikethroughTextAttribute, Value: falseValue},
+		{Key: familyNameTextAttribute, Value: family},
+		{Key: sizeTextAttribute, Value: size},
+	}
+}
+
+// proseAttributes is what the document's ordinary prose reports, and linkAttributes what the bold, underlined run over
+// the link within the paragraph does.
+func proseAttributes() dbus.Dict {
+	return documentRunAttributes(regularWeight, noUnderlineValue, proseFamily, "12")
+}
+
+func linkAttributes() dbus.Dict {
+	return documentRunAttributes(boldWeight, singleUnderlineValue, proseFamily, "12")
+}
+
+// TestTextAttributesFromRuns covers the attributes of a document's block, which is the one text Unison styles a piece
+// at a time. The range each answer covers is what a client walks the content by, asking about the offset the last run
+// ended at.
+func TestTextAttributesFromRuns(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentAdapter(t)
+	c := ta.c
+	for _, one := range []struct {
+		why        string
+		attributes dbus.Dict
+		offset     int32
+		start      int32
+		end        int32
+	}{
+		{offset: 0, attributes: proseAttributes(), start: 0, end: paragraphLinkStart, why: "the prose before the link"},
+		{offset: 4, attributes: proseAttributes(), start: 0, end: paragraphLinkStart},
+		{
+			offset: paragraphLinkStart, attributes: linkAttributes(), start: paragraphLinkStart,
+			end: paragraphLinkEnd, why: "the link itself, which is bold and underlined",
+		},
+		{offset: paragraphLinkEnd - 1, attributes: linkAttributes(), start: paragraphLinkStart, end: paragraphLinkEnd},
+		{
+			offset: paragraphLinkEnd, attributes: proseAttributes(), start: paragraphLinkEnd,
+			end: paragraphImageStart, why: "the prose between the link and the image, which reaches neither",
+		},
+		{
+			offset: paragraphImageStart, attributes: proseAttributes(), start: paragraphImageStart,
+			end: paragraphImageEnd, why: "the one character the image occupies",
+		},
+		{
+			offset: paragraphImageEnd, attributes: proseAttributes(), start: paragraphImageEnd,
+			end: documentParagraphLength, why: "the prose after the image",
+		},
+		{
+			offset: documentParagraphLength - 1, attributes: proseAttributes(), start: paragraphImageEnd,
+			end: documentParagraphLength,
+		},
+	} {
+		c.Equal([]any{one.attributes, one.start, one.end},
+			ta.values(NodePath(103), InterfaceText, "GetAttributes", "i", one.offset),
+			"the attributes at offset %d: %s", one.offset, one.why)
+		c.Equal([]any{one.attributes, one.start, one.end},
+			ta.values(NodePath(103), InterfaceText, "GetAttributeRun", "ib", one.offset, true),
+			"folding in the defaults adds nothing, since a run reports everything")
+	}
+	// An offset the block does not reach has no attributes and an empty range, which is what stops a client walking the
+	// runs from being handed the whole content again at the end.
+	for _, offset := range []int32{-1, documentParagraphLength, 99} {
+		c.Equal([]any{dbus.Dict{}, int32(0), int32(0)},
+			ta.values(NodePath(103), InterfaceText, "GetAttributes", "i", offset))
+	}
+	// The defaults are the attributes of the first run, which is the style the block's prose begins in.
+	c.Equal(proseAttributes(), ta.one(NodePath(103), InterfaceText, "GetDefaultAttributes", ""))
+	// One attribute at a time, which is how a client that only cares about the weight asks.
+	c.Equal("700", ta.one(NodePath(103), InterfaceText, "GetAttributeValue", "is", int32(paragraphLinkStart),
+		weightTextAttribute))
+	c.Equal(proseFamily, ta.one(NodePath(103), InterfaceText, "GetAttributeValue", "is", int32(0),
+		familyNameTextAttribute))
+	c.Equal("", ta.one(NodePath(103), InterfaceText, "GetAttributeValue", "is", int32(0), "justification"),
+		"an attribute this package does not report has no value")
+	c.Equal("", ta.one(NodePath(103), InterfaceText, "GetAttributeValue", "is", int32(99), weightTextAttribute),
+		"and neither has any attribute of an offset the text does not reach")
+
+	// The other blocks are drawn in one style throughout, so the whole of each is one run: code in a fixed-pitch face,
+	// a heading larger than the prose.
+	c.Equal([]any{
+		documentRunAttributes(regularWeight, noUnderlineValue, codeFamily, "11"),
+		int32(0), int32(len([]rune(documentCodeText))),
+	}, ta.values(NodePath(108), InterfaceText, "GetAttributes", "i", int32(3)))
+	c.Equal([]any{
+		documentRunAttributes(boldWeight, noUnderlineValue, proseFamily, "18"),
+		int32(0), int32(len([]rune(documentHeadingText))),
+	}, ta.values(NodePath(102), InterfaceText, "GetAttributes", "i", int32(0)))
+}
+
+// TestTextAttributesOfStyledRuns covers the values themselves, which are the ones ATK reports and the ones Orca reads.
+// A run that says nothing about its family or its size reports neither, rather than reporting an empty name and a size
+// of zero as though the text were drawn in them.
+func TestTextAttributesOfStyledRuns(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	c.Equal(dbus.Dict{
+		{Key: weightTextAttribute, Value: "400"},
+		{Key: styleTextAttribute, Value: normalStyleValue},
+		{Key: underlineTextAttribute, Value: noUnderlineValue},
+		{Key: strikethroughTextAttribute, Value: falseValue},
+	}, runAttributes(accessibility.TextRun{End: 4}), "a run that says nothing is regular, upright and undecorated")
+	c.Equal(dbus.Dict{
+		{Key: weightTextAttribute, Value: "300"},
+		{Key: styleTextAttribute, Value: italicStyleValue},
+		{Key: underlineTextAttribute, Value: singleUnderlineValue},
+		{Key: strikethroughTextAttribute, Value: trueValue},
+		{Key: familyNameTextAttribute, Value: "Mono"},
+		{Key: sizeTextAttribute, Value: "10.5"},
+	}, runAttributes(accessibility.TextRun{
+		Family: "Mono", Size: 10.5, Start: 0, End: 4, Weight: 300, Italic: true, Underline: true,
+		Strikethrough: true, Monospace: true,
+	}), "a fractional size keeps its fraction, and a monospaced face is said with its name")
+	c.Equal(dbus.Dict{}, defaultTextAttributes(nil), "a node with no text has no defaults")
+	c.Equal(dbus.Dict{}, defaultTextAttributes(&accessibility.TextInfo{Text: "plain"}))
+}
+
+// TestScrollSubstringTo covers the call Orca makes after every caret move it asks for, which is what keeps a document
+// whose reader has arrowed past the bottom of the view port scrolling along with them.
+func TestScrollSubstringTo(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentAdapter(t)
+	c := ta.c
+	ta.Publish(textWindow, textTree(), nil, sampleGeometry())
+	c.Equal(true, ta.one(NodePath(103), InterfaceText, "ScrollSubstringTo", "iiu", int32(paragraphLinkStart),
+		int32(paragraphLinkEnd), uint32(0)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 103, Action: accessibility.ScrollRangeIntoView, Start: paragraphLinkStart, End: paragraphLinkEnd,
+	}, ta.nextRequest(t))
+	// A range reaching outside the content is brought within it rather than refused: refusing would leave the caret at
+	// the end of a document off the bottom of the screen.
+	c.Equal(true, ta.one(NodePath(103), InterfaceText, "ScrollSubstringTo", "iiu", int32(-5), int32(99), uint32(0)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 103, Action: accessibility.ScrollRangeIntoView, Start: 0, End: documentParagraphLength,
+	}, ta.nextRequest(t))
+	c.Equal(true, ta.one(NodePath(103), InterfaceText, "ScrollSubstringTo", "iiu", int32(paragraphLinkEnd), int32(2),
+		uint32(0)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 103, Action: accessibility.ScrollRangeIntoView, Start: paragraphLinkEnd, End: paragraphLinkEnd,
+	}, ta.nextRequest(t), "a range that ends before it starts is the empty range where it starts")
+
+	// A control that does not offer to scroll a range of its text into view says no and is asked for nothing.
+	c.Equal(false, ta.one(NodePath(41), InterfaceText, "ScrollSubstringTo", "iiu", int32(0), int32(2), uint32(0)))
+	// Where in the view the range ends up is the widget's business, so the one method that asks for a particular place
+	// on the screen reports that it did nothing, as ScrollToPoint does.
+	c.Equal(false, ta.one(NodePath(103), InterfaceText, "ScrollSubstringToPoint", "iiuii", int32(0), int32(2),
+		uint32(0), int32(10), int32(10)))
+	ta.noRequest(t)
+}
+
+// TestCaretPlacementInAReadOnlyBlock covers what Orca's caret navigation does as it crosses from one block of a
+// document into the next: it puts the caret in the block it has moved to. The block's content cannot be changed, which
+// is a different thing from its caret being fixed, so the request is carried out although the object hands over no
+// interface to edit it through.
+func TestCaretPlacementInAReadOnlyBlock(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentAdapter(t)
+	c := ta.c
+	c.Equal(true, ta.one(NodePath(103), InterfaceText, "SetCaretOffset", "i", int32(7)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 103, Action: accessibility.SetTextSelection, Start: 7, End: 7,
+	}, ta.nextRequest(t))
+	c.Equal(true, ta.one(NodePath(103), InterfaceText, "SetSelection", "iii", int32(0), int32(paragraphLinkStart),
+		int32(paragraphLinkEnd)))
+	c.Equal(accessibility.ActionRequest{
+		Node: 103, Action: accessibility.SetTextSelection, Start: paragraphLinkStart, End: paragraphLinkEnd,
+	}, ta.nextRequest(t))
+	// An offset the block does not reach is refused rather than brought into it, since a client told the caret went
+	// where it asked would have to be told otherwise by the next snapshot.
+	c.Equal(false, ta.one(NodePath(103), InterfaceText, "SetCaretOffset", "i", int32(99)))
+	c.Equal(false, ta.one(NodePath(103), InterfaceText, "SetCaretOffset", "i", int32(-1)))
+	// Nothing about the block can be typed into, and nothing is selected in it to begin with.
+	c.Equal(dbus.UnknownInterface,
+		ta.errorName(NodePath(103), InterfaceEditableText, "InsertText", "isi", int32(0), "no", int32(2)))
+	c.Equal(int32(0), ta.one(NodePath(103), InterfaceText, "GetNSelections", ""))
+	c.Equal(int32(0), ta.peer.getProperty(NodePath(103), InterfaceText, "CaretOffset"))
+	ta.noRequest(t)
+
+	// The caret and the selection of a block are read from the block, as a field's are.
+	selected := documentTree()
+	selected.Generation++
+	selected.Node(103).Text.SelStart = paragraphLinkStart
+	selected.Node(103).Text.SelEnd = paragraphLinkEnd
+	selected.Node(103).Text.Caret = paragraphLinkStart
+	ta.Publish(documentWindow, selected, nil, sampleGeometry())
+	c.Equal(int32(1), ta.one(NodePath(103), InterfaceText, "GetNSelections", ""))
+	c.Equal([]any{int32(paragraphLinkStart), int32(paragraphLinkEnd)},
+		ta.values(NodePath(103), InterfaceText, "GetSelection", "i", int32(0)))
+	c.Equal(int32(paragraphLinkStart), ta.peer.getProperty(NodePath(103), InterfaceText, "CaretOffset"),
+		"a selection extended backwards has its caret at the start")
+}
+
+// TestTextAttributeWireStrings pins the strings this package hands an assistive technology, written out rather than
+// spelled with the same constants the production code uses. The keys and values are the whole of the contract with Orca
+// — it reads weight to decide whether a stretch of text is bold, style for italic, underline and strikethrough for the
+// two decorations, and xml-roles together with tag to recognize a block of code — so a typo inside one of those
+// constants would leave every other expectation in the suite agreeing with it and silently break what Orca matches on.
+func TestTextAttributeWireStrings(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	for _, one := range []struct {
+		why  string
+		want dbus.Dict
+		run  accessibility.TextRun
+	}{
+		{
+			why: "a run that says nothing about how it is drawn still reports the four attributes every run has",
+			run: accessibility.TextRun{End: 4},
+			want: dbus.Dict{
+				{Key: "weight", Value: "400"},
+				{Key: "style", Value: "normal"},
+				{Key: "underline", Value: "none"},
+				{Key: "strikethrough", Value: "false"},
+			},
+		},
+		{
+			why: "and one that says everything a Unison font can reports all six",
+			run: accessibility.TextRun{
+				End: 4, Family: "Serif", Size: 12.5, Weight: 700, Italic: true, Underline: true, Strikethrough: true,
+			},
+			want: dbus.Dict{
+				{Key: "weight", Value: "700"},
+				{Key: "style", Value: "italic"},
+				{Key: "underline", Value: "single"},
+				{Key: "strikethrough", Value: "true"},
+				{Key: "family-name", Value: "Serif"},
+				{Key: "size", Value: "12.5"},
+			},
+		},
+	} {
+		c.Equal(one.want, runAttributes(one.run), one.why)
+	}
+
+	// The object attributes of a block of code, which is the one role AT-SPI has no role for: the pair below is what
+	// Orca reads on a web page, where a code block is a <pre> element carrying the code role.
+	c.Equal(dbus.Dict{
+		{Key: "toolkit", Value: "unison"},
+		{Key: "xml-roles", Value: "code"},
+		{Key: "tag", Value: "pre"},
+	}, Attributes(nil, documentCode(1, documentCodeText, geom.Rect{}), nil))
+}
+
+// TestWordUnitsAroundAnInlineObject covers the division of a block's words around the U+FFFC that stands in for an
+// image, which is the one place the word rule is more than "a run of characters that are not spaces". The character has
+// nothing to read out, so it is a word of its own however tightly it is written against the prose — otherwise a screen
+// reader walking by word would read the image's name as part of the word beside it — while a space that follows it
+// belongs to that word rather than beginning one of its own: an empty word would have Orca stop between the image and
+// the word after it with nothing to say, which is exactly what Markdown's `![alt](x) text` renders as.
+//
+// Both shapes are asked for here, since only the tight one tells this rule apart from a plain scan for spaces.
+func TestWordUnitsAroundAnInlineObject(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentAdapter(t)
+	c := ta.c
+	const object = "￼"
+	for _, one := range []struct {
+		why    string
+		text   string
+		offset int32
+		start  int32
+		end    int32
+	}{
+		{why: "the word before the image", text: "guide ", offset: 9, start: 9, end: paragraphImageStart},
+		{
+			why: "the word before the image, from the space that ends it", text: "guide ", offset: 14, start: 9,
+			end: paragraphImageStart,
+		},
+		{
+			why: "the image is a word of its own, and takes the space after it", text: object + " ",
+			offset: paragraphImageStart, start: paragraphImageStart, end: paragraphImageEnd + 1,
+		},
+		{
+			why:  "the space after the image is part of the image's word rather than a word of its own",
+			text: object + " ", offset: paragraphImageEnd, start: paragraphImageStart, end: paragraphImageEnd + 1,
+		},
+		{
+			why: "and the word after it begins at its own first character", text: "now.",
+			offset: paragraphImageEnd + 1, start: paragraphImageEnd + 1, end: documentParagraphLength,
+		},
+	} {
+		c.Equal([]any{one.text, one.start, one.end},
+			ta.values(NodePath(103), InterfaceText, "GetStringAtOffset", "iu", one.offset, uint32(GranularityWord)),
+			one.why)
+		c.Equal([]any{one.text, one.start, one.end},
+			ta.values(NodePath(103), InterfaceText, textAtOffset, "iu", one.offset, uint32(BoundaryWordStart)),
+			"the older form answers the same unit: %s", one.why)
+	}
+	c.Equal([]any{"now.", int32(paragraphImageEnd + 1), int32(documentParagraphLength)},
+		ta.values(NodePath(103), InterfaceText, textAfterOffset, "iu", int32(paragraphImageStart),
+			uint32(BoundaryWordStart)),
+		"walking on from the image reaches the next word rather than the space after it")
+
+	// The same rule with nothing to separate the image from the prose, which is what `text![alt](x)text` renders as:
+	// three words, one of them the object replacement on its own.
+	const tight = "head" + object + "tail"
+	tree := documentTree()
+	tree.Generation++
+	tree.Nodes[107] = documentBlock(107, 106, role.Paragraph, tight, geom.NewRect(0, 60, 300, 20))
+	ta.Publish(documentWindow, tree, nil, sampleGeometry())
+	for _, one := range []struct {
+		text   string
+		offset int32
+		start  int32
+		end    int32
+	}{
+		{offset: 0, text: "head", start: 0, end: 4},
+		{offset: 3, text: "head", start: 0, end: 4},
+		{offset: 4, text: object, start: 4, end: 5},
+		{offset: 5, text: "tail", start: 5, end: 9},
+		{offset: 8, text: "tail", start: 5, end: 9},
+	} {
+		c.Equal([]any{one.text, one.start, one.end},
+			ta.values(NodePath(107), InterfaceText, "GetStringAtOffset", "iu", one.offset, uint32(GranularityWord)),
+			"the word at offset %d of %q", one.offset, tight)
+		c.Equal([]any{one.text, one.start, one.end},
+			ta.values(NodePath(107), InterfaceText, textAtOffset, "iu", one.offset, uint32(BoundaryWordStart)),
+			"and the older form says the same")
+	}
 }

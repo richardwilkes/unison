@@ -35,6 +35,9 @@ var expectedRoles = map[role.Enum]Role{
 	role.Link:               RoleLink,
 	role.Label:              RoleLabel,
 	role.Heading:            RoleHeading,
+	role.Paragraph:          RoleParagraph,
+	role.BlockQuote:         RoleBlockQuote,
+	role.Code:               RoleParagraph,
 	role.TextField:          RoleEntry,
 	role.TextArea:           RoleText,
 	role.SpinButton:         RoleSpinButton,
@@ -45,7 +48,7 @@ var expectedRoles = map[role.Enum]Role{
 	role.ScrollBar:          RoleScrollBar,
 	role.ScrollArea:         RoleScrollPane,
 	role.Separator:          RoleSeparator,
-	role.List:               RoleListBox,
+	role.List:               RoleList,
 	role.ListItem:           RoleListItem,
 	role.Table:              RoleTable,
 	role.Tree:               RoleTreeTable,
@@ -97,6 +100,10 @@ func TestRoleName(t *testing.T) {
 	c.Equal("table row", RoleName(RoleTableRow))
 	c.Equal("application", RoleName(RoleApplication))
 	c.Equal("password text", RoleName(RolePasswordText))
+	c.Equal("paragraph", RoleName(RoleParagraph))
+	c.Equal("list", RoleName(RoleList))
+	c.Equal("list box", RoleName(RoleListBox))
+	c.Equal("block quote", RoleName(RoleBlockQuote))
 	c.Equal("unknown", RoleName(Role(12345)))
 }
 
@@ -104,14 +111,15 @@ func TestInterfaces(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	for _, one := range []struct {
-		name     string
-		expected []string
-		node     accessibility.Node
+		name       string
+		expected   []string
+		node       accessibility.Node
+		spanTarget bool
 	}{
 		{
 			name:     "a label has nothing but the basics",
 			node:     accessibility.Node{Role: role.Label},
-			expected: []string{InterfaceAccessible, InterfaceComponent},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		},
 		{
 			name: "a button can be pressed",
@@ -119,7 +127,7 @@ func TestInterfaces(t *testing.T) {
 				Role:    role.Button,
 				Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Focus),
 			},
-			expected: []string{InterfaceAccessible, InterfaceAction, InterfaceComponent},
+			expected: []string{InterfaceAccessible, InterfaceAction, InterfaceCollection, InterfaceComponent},
 		},
 		{
 			name: "a slider has a value and can be nudged",
@@ -128,42 +136,42 @@ func TestInterfaces(t *testing.T) {
 				HasNumber: true,
 				Actions:   accessibility.ActionSet(0).With(accessibility.Increment, accessibility.SetValue),
 			},
-			expected: []string{InterfaceAccessible, InterfaceAction, InterfaceComponent, InterfaceValue},
+			expected: []string{InterfaceAccessible, InterfaceAction, InterfaceCollection, InterfaceComponent, InterfaceValue},
 		},
 		{
 			name:     "a progress bar has a value it cannot change",
 			node:     accessibility.Node{Role: role.ProgressBar, HasNumber: true},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceValue},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceValue},
 		},
 		{
 			name:     "a list holds a selection",
 			node:     accessibility.Node{Role: role.List},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceSelection},
 		},
 		{
 			name:     "a tree holds a selection and is laid out as a grid",
 			node:     accessibility.Node{Role: role.Tree},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection, InterfaceTable},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceSelection, InterfaceTable},
 		},
 		{
 			name:     "a table is a grid as well as a selection",
 			node:     accessibility.Node{Role: role.Table, RowCount: 3, ColumnCount: 2},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection, InterfaceTable},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceSelection, InterfaceTable},
 		},
 		{
 			name:     "a cell says where in the grid it sits",
 			node:     accessibility.Node{Role: role.Cell, RowIndex: 1, ColumnIndex: 0},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceTableCell},
 		},
 		{
 			name:     "a row is the container the cells sit in rather than one of them",
 			node:     accessibility.Node{Role: role.Row, RowIndex: 1},
-			expected: []string{InterfaceAccessible, InterfaceComponent},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		},
 		{
 			name:     "a list is not a grid",
 			node:     accessibility.Node{Role: role.List, RowCount: 3},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceSelection},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceSelection},
 		},
 		{
 			name: "focus alone is not an AT-SPI action",
@@ -171,7 +179,7 @@ func TestInterfaces(t *testing.T) {
 				Role:    role.TextField,
 				Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetTextSelection),
 			},
-			expected: []string{InterfaceAccessible, InterfaceComponent},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		},
 		{
 			name: "a field with content holds navigable text, and is a kind of control that is typed into",
@@ -179,7 +187,9 @@ func TestInterfaces(t *testing.T) {
 				Role: role.TextField,
 				Text: &accessibility.TextInfo{Text: "content"},
 			},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText},
+			expected: []string{
+				InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceEditableText, InterfaceText,
+			},
 		},
 		{
 			name: "the same field with its content locked has nothing to edit",
@@ -188,12 +198,12 @@ func TestInterfaces(t *testing.T) {
 				ReadOnly: true,
 				Text:     &accessibility.TextInfo{Text: "content"},
 			},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
 		},
 		{
 			name:     "a password field has no text to navigate",
 			node:     accessibility.Node{Role: role.TextField, Protected: true},
-			expected: []string{InterfaceAccessible, InterfaceComponent},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		},
 		{
 			name: "a spin button has both text and a number, in that order",
@@ -203,11 +213,59 @@ func TestInterfaces(t *testing.T) {
 				Text:      &accessibility.TextInfo{Text: "42"},
 			},
 			expected: []string{
-				InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText, InterfaceValue,
+				InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceEditableText, InterfaceText,
+				InterfaceValue,
 			},
 		},
+		{
+			name: "a paragraph whose text holds a link has a hypertext",
+			node: accessibility.Node{
+				Role:     role.Paragraph,
+				ReadOnly: true,
+				Text: &accessibility.TextInfo{
+					Text:  "see this",
+					Spans: []accessibility.TextSpan{{Node: 2, Start: 4, End: 8}},
+				},
+			},
+			expected: []string{
+				InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceHypertext, InterfaceText,
+			},
+		},
+		{
+			name: "a paragraph whose text holds nothing has none",
+			node: accessibility.Node{
+				Role:     role.Paragraph,
+				ReadOnly: true,
+				Text:     &accessibility.TextInfo{Text: "see this"},
+			},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
+		},
+		{
+			name:     "a link leads somewhere",
+			node:     accessibility.Node{Role: role.Link, Name: "Home", URL: "https://example.com/"},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceHyperlink},
+		},
+		{
+			name:       "and so, as far as AT-SPI is concerned, does an image within someone's text",
+			node:       accessibility.Node{Role: role.Image, Name: "Diagram"},
+			spanTarget: true,
+			expected:   []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceHyperlink},
+		},
+		{
+			name:     "while an image that is nobody's is just an image",
+			node:     accessibility.Node{Role: role.Image, Name: "Diagram"},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
+		},
+		{
+			name: "a document hands over no text at all, however much of it it has composed",
+			node: accessibility.Node{
+				Role:     role.Document,
+				Document: &accessibility.DocumentInfo{Text: accessibility.TextInfo{Text: "a whole document"}},
+			},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
+		},
 	} {
-		c.Equal(one.expected, Interfaces(&one.node), one.name)
+		c.Equal(one.expected, Interfaces(&one.node, one.spanTarget), one.name)
 	}
 }
 
@@ -398,7 +456,7 @@ func TestStatesOfTextControlsWithNoText(t *testing.T) {
 	c := check.New(t)
 	password := &accessibility.Node{Role: role.TextField, Protected: true}
 	c.Equal(RolePasswordText, MapRole(password))
-	c.False(slices.Contains(Interfaces(password), InterfaceText), "a protected field hands over no text")
+	c.False(slices.Contains(Interfaces(password, false), InterfaceText), "a protected field hands over no text")
 	set := States(password, true, false)
 	for _, one := range []struct {
 		name  string
@@ -525,7 +583,7 @@ func TestAttributesOfARunOfSiblings(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	tree := treeOf(1,
-		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2, 6}},
+		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2, 6, 10}},
 		&accessibility.Node{ID: 2, Parent: 1, Role: role.TabList, Children: []accessibility.NodeID{3, 4, 5}},
 		&accessibility.Node{ID: 3, Parent: 2, Role: role.Tab, Name: "Summary"},
 		&accessibility.Node{ID: 4, Parent: 2, Role: role.Tab, Name: "Details"},
@@ -534,6 +592,10 @@ func TestAttributesOfARunOfSiblings(t *testing.T) {
 		&accessibility.Node{ID: 7, Parent: 6, Role: role.RadioButton, Name: "Yes"},
 		&accessibility.Node{ID: 8, Parent: 6, Role: role.Separator},
 		&accessibility.Node{ID: 9, Parent: 6, Role: role.RadioButton, Name: "No"},
+		&accessibility.Node{ID: 10, Parent: 1, Role: role.Menu, Children: []accessibility.NodeID{11, 12}},
+		&accessibility.Node{ID: 11, Parent: 10, Role: role.MenuItem, Name: "Open"},
+		&accessibility.Node{ID: 12, Parent: 10, Role: role.Group, Ignored: true, Children: []accessibility.NodeID{13}},
+		&accessibility.Node{ID: 13, Parent: 12, Role: role.MenuItem, Name: "Close"},
 	)
 	list := tree.Node(2)
 	c.Equal(dbus.Dict{
@@ -553,6 +615,27 @@ func TestAttributesOfARunOfSiblings(t *testing.T) {
 		"a separator is not one of a numbered run")
 	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}}, Attributes(nil, tree.Node(4), list),
 		"a caller with no tree to count has nothing to report")
+
+	// A published snapshot counts the same sets from the indexes it built when it was published rather than deriving a
+	// sibling list from the tree for every node it is asked about, which is what keeps an
+	// org.a11y.atspi.Collection search over a menu or a radio group from rebuilding that list once per candidate. The
+	// two have to agree node for node, including where an ignored container's children are spliced into the run: the
+	// second menu item sits under a group nobody is shown, and is the second of two all the same.
+	data := newWindowData(tree, sampleGeometry())
+	tree.Walk(func(n *accessibility.Node) bool {
+		c.Equal(Attributes(tree, n, tree.Node(tree.UnignoredParent(n.ID))), data.attributesOf(n),
+			"the attributes of node %d", n.ID)
+		position, size := tree.PositionInSet(n.ID)
+		fromSnapshot, sizeFromSnapshot := data.positionInSet(n.ID)
+		c.Equal(position, fromSnapshot, "where node %d sits in its set", n.ID)
+		c.Equal(size, sizeFromSnapshot, "how big node %d's set is", n.ID)
+		return true
+	})
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: positionInSetAttribute, Value: "2"},
+		{Key: setSizeAttribute, Value: "2"},
+	}, data.attributesOf(tree.Node(13)), "the spliced menu item is the second of the menu's two items")
 }
 
 // TestTextInterfaceFromATextualValue covers the one way AT-SPI has of reporting a value that is not a number. A popup
@@ -563,34 +646,35 @@ func TestTextInterfaceFromATextualValue(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	for _, one := range []struct {
-		name     string
-		expected []string
-		node     accessibility.Node
+		name       string
+		expected   []string
+		node       accessibility.Node
+		spanTarget bool
 	}{
 		{
 			name:     "a popup button reports the item it has chosen",
 			node:     accessibility.Node{Role: role.PopupButton, Value: "Weekly"},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
 		},
 		{
 			name:     "so does a table cell whose content was moved into its value",
 			node:     accessibility.Node{Role: role.Cell, Value: "10"},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceTableCell, InterfaceText},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceTableCell, InterfaceText},
 		},
 		{
 			name:     "a value that is a number is reported as one instead",
 			node:     accessibility.Node{Role: role.Slider, Value: "40%", HasNumber: true, Number: 0.4},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceValue},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceValue},
 		},
 		{
 			name:     "a node with no value at all has no text",
 			node:     accessibility.Node{Role: role.PopupButton},
-			expected: []string{InterfaceAccessible, InterfaceComponent},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		},
 		{
 			name:     "and neither has a password field, whatever it is carrying",
 			node:     accessibility.Node{Role: role.TextField, Protected: true, Value: "hunter2"},
-			expected: []string{InterfaceAccessible, InterfaceComponent},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		},
 		{
 			name: "text of its own is the real thing rather than a description of it",
@@ -599,10 +683,12 @@ func TestTextInterfaceFromATextualValue(t *testing.T) {
 				Value: testFieldValue,
 				Text:  &accessibility.TextInfo{Text: testFieldValue},
 			},
-			expected: []string{InterfaceAccessible, InterfaceComponent, InterfaceEditableText, InterfaceText},
+			expected: []string{
+				InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceEditableText, InterfaceText,
+			},
 		},
 	} {
-		c.Equal(one.expected, Interfaces(&one.node), one.name)
+		c.Equal(one.expected, Interfaces(&one.node, one.spanTarget), one.name)
 	}
 	// The states that describe text are not claimed for a synthesized one: they describe a control the user is inside,
 	// with a caret and a selection, which a value is not.
@@ -663,7 +749,7 @@ func TestTheEditableStateAndInterfaceAgree(t *testing.T) {
 		},
 	} {
 		c.Equal(one.editable, supportsEditableText(&one.node), one.name)
-		c.Equal(one.editable, slices.Contains(Interfaces(&one.node), InterfaceEditableText), one.name)
+		c.Equal(one.editable, slices.Contains(Interfaces(&one.node, false), InterfaceEditableText), one.name)
 		c.Equal(one.editable, States(&one.node, true, false).Has(StateEditable), one.name)
 	}
 }
@@ -694,4 +780,165 @@ func TestNodeActionOrder(t *testing.T) {
 		Role:    role.Label,
 		Actions: accessibility.ActionSet(0).With(accessibility.Focus),
 	}), "the actions AT-SPI has no name for do not make an Action interface")
+}
+
+// TestStaticListsAreListsNotListBoxes covers the one role that two different AT-SPI roles are wanted for. A Unison List
+// is a control a person picks from, which is what ATSPI_ROLE_LIST_BOX means; the lists of a Markdown document are
+// static panels of items a person reads, which is what ATSPI_ROLE_LIST means and the only thing Orca's L and I
+// structural navigation will find. A list box is presented as a control and never navigated into.
+func TestStaticListsAreListsNotListBoxes(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	c.Equal(RoleList, MapRole(&accessibility.Node{Role: role.List}), "a static list of items to read")
+	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Focusable: true}),
+		"a list that takes the focus is a control")
+	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, RowCount: 3}),
+		"and so is one that samples its rows")
+	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Focusable: true, RowCount: 3}))
+	// A greyed-out list box is still a control. Panel.Focusable answers only while the panel is enabled, so the
+	// snapshot's Focusable is false for a disabled List exactly as it is for a static panel, and reading that alone
+	// would hand Orca an ordinary disabled control as static document content until it was enabled again.
+	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Disabled: true}),
+		"a disabled list is a control that cannot be used rather than a list of items to read")
+	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Disabled: true, RowCount: 3}))
+	// The items are list items either way, since AT-SPI has one role for both.
+	c.Equal(RoleListItem, MapRole(&accessibility.Node{Role: role.ListItem}))
+	// A list is a selection whichever of the two it is reported as, and never a grid.
+	for _, list := range []accessibility.Node{{Role: role.List}, {Role: role.List, Focusable: true}} {
+		interfaces := Interfaces(&list, false)
+		c.True(slices.Contains(interfaces, InterfaceSelection))
+		c.False(slices.Contains(interfaces, InterfaceTable))
+	}
+}
+
+// TestStatesOfReadOnlyTextBlocks covers the state set of the blocks a document is made of. Each carries text a person
+// can move a caret and a selection through but cannot change, and says whether it was laid out over one line or
+// several, which is what decides whether Orca's caret navigation offers to move through it line by line.
+func TestStatesOfReadOnlyTextBlocks(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	for _, one := range []struct {
+		name string
+		role role.Enum
+	}{
+		{name: "a paragraph", role: role.Paragraph},
+		{name: "a block of code", role: role.Code},
+		{name: "a heading", role: role.Heading},
+		{name: "a table cell", role: role.Cell},
+		{name: "a column header", role: role.ColumnHeader},
+	} {
+		block := accessibility.Node{
+			Role:     one.role,
+			ReadOnly: true,
+			Text:     &accessibility.TextInfo{Text: "a line of it"},
+		}
+		set := States(&block, true, false)
+		c.True(set.Has(StateSingleLine), "%s laid out over one line", one.name)
+		c.False(set.Has(StateMultiLine), "%s", one.name)
+		c.True(set.Has(StateSelectableText), "%s can have a selection put in it", one.name)
+		c.True(set.Has(StateReadOnly), "%s cannot be changed", one.name)
+		c.False(set.Has(StateEditable), "%s is not typed into", one.name)
+		c.False(supportsEditableText(&block), "%s", one.name)
+		c.False(slices.Contains(Interfaces(&block, false), InterfaceEditableText), "%s", one.name)
+		block.Text.Multiline = true
+		wrapped := States(&block, true, false)
+		c.True(wrapped.Has(StateMultiLine), "%s laid out over several lines", one.name)
+		c.False(wrapped.Has(StateSingleLine), "%s", one.name)
+		c.Equal(stateNameMultiLine, lineStateName(&block), "%s announces the line count it has arrived at", one.name)
+	}
+	// A block that carries no text has neither state, and so has a role that is text-like but holds nothing.
+	empty := States(&accessibility.Node{Role: role.Paragraph, ReadOnly: true}, true, false)
+	c.False(empty.Has(StateSingleLine))
+	c.False(empty.Has(StateMultiLine))
+	c.False(empty.Has(StateSelectableText))
+}
+
+// TestAttributesOfACodeBlock covers the one thing that says a paragraph is really a block of code. [MapRole] reports it
+// as ATSPI_ROLE_PARAGRAPH, since that is the role a reader arrows through and the role Orca's P navigation looks for,
+// so the pair of attributes Orca reads for the same thing on a web page is what is left to say it with.
+func TestAttributesOfACodeBlock(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	code := &accessibility.Node{Role: role.Code, ReadOnly: true, Text: &accessibility.TextInfo{Text: "go build"}}
+	c.Equal(RoleParagraph, MapRole(code))
+	c.Equal(dbus.Dict{
+		{Key: toolkitAttribute, Value: toolkitName},
+		{Key: xmlRolesAttribute, Value: codeXMLRole},
+		{Key: tagAttribute, Value: preTag},
+	}, Attributes(nil, code, nil))
+	// An ordinary paragraph says nothing of the sort, which is what tells the two apart.
+	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}},
+		Attributes(nil, &accessibility.Node{Role: role.Paragraph}, nil))
+}
+
+// TestDocumentHasNoTextInterface covers the one thing a document must not do. Orca enters browse mode when the focus
+// lands in an object with a document role and then reads the document by walking the objects within it, moving its
+// caret from one to the next; a document that also handed over the whole content as text would have Orca read
+// everything twice, once as the stream and once block by block, and its caret would never leave the document object.
+func TestDocumentHasNoTextInterface(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentAdapter(t)
+	c := ta.c
+	document := documentTree().Node(101)
+	c.NotNil(document.Document, "the document has composed its content into one stream")
+	c.Nil(document.Text, "and carries none of it as its own text")
+	c.Equal([]string{
+		InterfaceAccessible, InterfaceAction, InterfaceCollection, InterfaceComponent,
+	}, ta.one(NodePath(101), InterfaceAccessible, "GetInterfaces", ""))
+	c.Equal(uint32(RoleDocumentFrame), ta.one(NodePath(101), InterfaceAccessible, "GetRole", ""))
+	for _, member := range []struct {
+		name string
+		sig  dbus.Signature
+		args []any
+	}{
+		{name: "GetText", sig: "ii", args: []any{int32(0), int32(-1)}},
+		{name: "GetStringAtOffset", sig: "iu", args: []any{int32(0), uint32(GranularityLine)}},
+		{name: "SetCaretOffset", sig: "i", args: []any{int32(1)}},
+		{name: "GetAttributes", sig: "i", args: []any{int32(0)}},
+		{name: "ScrollSubstringTo", sig: "iiu", args: []any{int32(0), int32(1), uint32(0)}},
+	} {
+		c.Equal(dbus.UnknownInterface,
+			ta.errorName(NodePath(101), InterfaceText, member.name, member.sig, member.args...),
+			"a document answers no text call, and %s is one", member.name)
+	}
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(101), InterfaceHypertext, "GetNLinks", ""),
+		"the spans of its stream are not hypertext links either")
+	// Not even a value can put text on a document. Every other role with a value and no text of its own is handed a
+	// read-only text interface synthesized from it, which for a document would be one more thing for Orca to read the
+	// content through.
+	valued := documentTree()
+	valued.Generation++
+	valued.Node(101).Value = "a whole document"
+	c.Equal("", textualValue(valued.Node(101)))
+	ta.Publish(documentWindow, valued, nil, sampleGeometry())
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(101), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
+	// None of the states that describe a control holding text are claimed, since there is no text interface for a
+	// client to reach for.
+	states, ok := ta.one(NodePath(101), InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	set := StateSet{states[0], states[1]}
+	c.False(set.Has(StateSelectableText))
+	c.False(set.Has(StateMultiLine))
+	c.False(set.Has(StateSingleLine))
+	c.True(set.Has(StateFocused), "what it does report is that it holds the keyboard focus")
+
+	// A widget that filled in both is refused just as firmly, so that the guarantee does not rest on what a snapshot
+	// builder happens to publish. [supportsText] reads the stream before it reads the text, and [lineState] refuses the
+	// same node, which is what keeps the interface and the states that describe it together.
+	both := documentTree()
+	both.Generation += 2
+	both.Node(101).Text = &accessibility.TextInfo{Text: documentStream().Text.Text, Multiline: true}
+	c.False(supportsText(both.Node(101)), "a document carrying a stream has no text interface whatever else it holds")
+	_, ok = lineState(both.Node(101))
+	c.False(ok, "and neither of the line states")
+	c.Nil(textStates(both.Node(101)))
+	ta.Publish(documentWindow, both, nil, sampleGeometry())
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(101), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
+		"a document that also carries its stream as its own text hands out none of it")
+	states, ok = ta.one(NodePath(101), InterfaceAccessible, "GetState", "").([]uint32)
+	c.True(ok)
+	set = StateSet{states[0], states[1]}
+	c.False(set.Has(StateSelectableText))
+	c.False(set.Has(StateMultiLine))
+	c.False(set.Has(StateSingleLine))
 }

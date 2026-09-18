@@ -180,21 +180,45 @@ type Markdown struct {
 	columnWidths               []int
 	drawableCache              map[string]*drawableCacheEntry
 	anchors                    map[string]*Panel
+	// axDoc is the content composed into one stream of text, built on demand and thrown away whenever anything that
+	// would move a rune of it changes. See Markdown.axDocument.
+	axDoc *axDocument
 	MarkdownTheme
 	Panel
+	// axGeneration counts how many times the content has moved, which is what the text each block within it worked out
+	// for itself is thrown away by. See Markdown.axInvalidate.
+	axGeneration      uint64
 	drawableCacheLock sync.Mutex
 	PerImageByteLimit int64 // Used when retrieving data from a remote host
 	index             int
 	columnIndex       int
-	alert             int
-	maxWidth          float32
-	maxLineWidth      float32
-	ordered           bool
-	isHeader          bool
+	// tableRow is the row the cells being built belong to, while a table is being built.
+	tableRow int
+	alert    int
+	// caret is where the reading caret sits within the composed stream, and anchor is the end of the selection it was
+	// made from. They are equal when nothing is selected. See Markdown.axSetSelection.
+	caret  int
+	anchor int
+	// axWordStart and axWordEnd are the word a double-click landed on, which a drag from it extends rather than
+	// shrinking back into. They mean nothing unless axWordDrag is set.
+	axWordStart  int
+	axWordEnd    int
+	maxWidth     float32
+	maxLineWidth float32
+	ordered      bool
+	isHeader     bool
+	// axWordDrag reports that the gesture in progress began with a double-click, so it selects whole words.
+	axWordDrag bool
 }
 
 // NewMarkdown creates a new markdown widget. If autoSizingFromParent is true, then the Markdown will attempt to keep
 // its content wrapped to its parent's width. Currently, things like tables don't play nice with width management.
+//
+// An application that installs a FrameChangeInChildHierarchyCallback of its own on the result must call
+// Markdown.DefaultFrameChangeInChildHierarchy from it, or chain whatever this installed: everything the text of the
+// document says about itself is read from where the panels holding it were placed, and that callback is the only thing
+// that throws it away when they move. Without it a caret, a highlight and the lines a screen reader is told about all
+// keep the places they had before the last layout.
 func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	m := &Markdown{
 		MarkdownTheme: DefaultMarkdownTheme,
@@ -213,10 +237,51 @@ func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	// else: a document has never been a tab stop, and it draws no differently for holding the focus. See
 	// Panel.axTakesFocus.
 	m.axFocusable = true
+	// Everything the text of the document says about itself — which runes are on which line, and where each of them is
+	// on the screen — is read from where the panels holding it were placed, so all of it is thrown away whenever any of
+	// them moves. Whatever was already installed is chained rather than dropped, since a caller that set a callback
+	// before the markdown was handed back is entitled to go on being told. See DefaultFrameChangeInChildHierarchy.
+	m.FrameChangeInChildHierarchyCallback = m.DefaultFrameChangeInChildHierarchy
+	// The reading caret: the keys that move it, the mouse that places it, the drawing of it and the two commands that
+	// act on what it has selected. Every one of them does nothing at all while the markdown is not focusable, which is
+	// what keeps an ordinary markdown — one no screen reader is watching and no application has opted in for — exactly
+	// as it was. See Markdown.DefaultKeyDown and Markdown.DefaultMouseDown.
+	m.KeyDownCallback = m.DefaultKeyDown
+	m.MouseDownCallback = m.DefaultMouseDown
+	m.MouseDragCallback = m.DefaultMouseDrag
+	m.MouseUpCallback = m.DefaultMouseUp
+	m.DrawOverCallback = m.DefaultDrawOver
+	// The caret and the selection are drawn only while the document holds the focus, so the focus arriving and leaving
+	// are both things the document is drawn differently for. Nothing else repaints for them: the window marks itself
+	// for redraw on a focus change only while an assistive technology is being served, which the application that opted
+	// in by making its markdown focusable need not have. See Markdown.DefaultDrawOver and Window.axMarkForPublish.
+	m.GainedFocusCallback = m.DefaultFocusGained
+	m.LostFocusCallback = m.DefaultFocusLost
+	m.InstallCmdHandlers(CopyItemID, func(_ any) bool { return m.CanCopy() }, func(_ any) { m.Copy() })
+	m.InstallCmdHandlers(SelectAllItemID, func(_ any) bool { return m.CanSelectAll() }, func(_ any) { m.SelectAll() })
 	if autoSizingFromParent {
 		m.ParentChangedCallback = m.adjustSizeOnParentChange
 	}
 	return m
+}
+
+// DefaultFrameChangeInChildHierarchy provides the default frame change in child hierarchy handling, which is throwing
+// away everything worked out from where the panels drawing the content were placed. A layout moves hundreds of frames
+// and this is called for each of them, so it does no more than mark what was worked out as no longer current; it is
+// worked out again the next time something asks. See Markdown.axInvalidate.
+func (m *Markdown) DefaultFrameChangeInChildHierarchy(panel *Panel) {
+	m.axInvalidate()
+}
+
+// DefaultFocusGained provides the default focus gained handling, which is redrawing so that the reading caret appears.
+func (m *Markdown) DefaultFocusGained() {
+	m.MarkForRedraw()
+}
+
+// DefaultFocusLost provides the default focus lost handling, which is redrawing so that the reading caret and whatever
+// it had selected stop being drawn.
+func (m *Markdown) DefaultFocusLost() {
+	m.MarkForRedraw()
 }
 
 func (m *Markdown) adjustSizeOnParentChange() {
@@ -265,6 +330,14 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	if m.maxWidth == maxWidth && bytes.Equal(m.content, content) {
 		return
 	}
+	if !bytes.Equal(m.content, content) {
+		// Different content is a different document, so the reading caret goes back to the top of it. The same content
+		// laid out to a different width is the same document re-wrapped, and the caret stays where it was in it —
+		// clamped, since the stream it is an offset into is rebuilt from the same runes.
+		m.caret = 0
+		m.anchor = 0
+	}
+	m.axInvalidate()
 	m.RemoveAllChildren()
 	m.maxWidth = maxWidth
 	m.maxLineWidth = maxWidth
@@ -371,8 +444,7 @@ func (m *Markdown) processChildren() {
 }
 
 func (m *Markdown) processParagraphOrTextBlock() {
-	p := NewPanel()
-	p.SetLayout(&FlexLayout{Columns: 1})
+	p := newMarkdownBlock(m, role.Paragraph).AsPanel()
 	p.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
 	save := m.block
 	m.block.AddChild(p)
@@ -394,7 +466,9 @@ func (m *Markdown) processHeading() {
 		level := min(max(heading.Level, 1), 6)
 		m.decoration = m.decoration.Clone()
 		m.decoration.Font = m.HeadingFont[level-1]
-		p := newMarkdownHeading(level).AsPanel()
+		block := newMarkdownBlock(m, role.Heading)
+		block.level = level
+		p := block.AsPanel()
 		insets := m.stdBottomMargin()
 		insets.Top = m.collapseMarginWithPrevious(m.decoration.Font.Baseline())
 		if m.block == m.AsPanel() && len(m.block.Children()) == 0 {
@@ -426,42 +500,6 @@ func (m *Markdown) processHeading() {
 			hr.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
 			m.block.AddChild(hr)
 		}
-	}
-}
-
-// markdownHeading is the panel a heading's content is laid out in. It has a type of its own so that it can describe
-// itself: a heading holding a link or an image holds something an assistive technology has to be able to reach, and
-// asking for that has to be done while the description is being built.
-type markdownHeading struct {
-	Panel
-	level int
-}
-
-// newMarkdownHeading returns the panel for a heading at the given level, which is between 1 and 6.
-func newMarkdownHeading(level int) *markdownHeading {
-	h := &markdownHeading{level: level}
-	h.Self = h
-	h.SetLayout(&FlexLayout{Columns: 1})
-	h.Accessibility.Role = role.Heading
-	return h
-}
-
-// ProvideAccessibility describes the heading to assistive technologies. A heading is one element, however many labels
-// its text is broken into: their text is folded into the heading's name rather than described a label at a time, which
-// is what a screen reader moving from heading to heading reads out.
-//
-// A heading holding a link or an image is described with its content as well. Such a thing is not text: it is
-// announced as what it is, moved to on its own and, for a link, followed, and a heading that swallowed it would leave
-// the person who heard the heading with no way to reach what was in it. The heading still reads as the whole of its
-// text, since the name is gathered from everything within it either way.
-func (h *markdownHeading) ProvideAccessibility(b *AccessibilityBuilder) {
-	node := b.Node()
-	if node.Role == role.Auto {
-		node.Role = role.Heading
-	}
-	node.Level = h.level
-	if markdownHasInlineElement(h.AsPanel()) {
-		b.DescribeChildren()
 	}
 }
 
@@ -519,18 +557,21 @@ func (m *Markdown) processCodeBlock() {
 	m.decoration.OnBackgroundInk = m.OnCodeBackground
 	m.maxLineWidth -= m.CodeAndQuotePadding * 2
 
-	p := NewPanel()
+	// The padded panel the background is drawn behind is the block: it is what holds the lines of code, so it is what
+	// an assistive technology reads the code as. The wrapper around it exists only for the margin below it.
+	block := newMarkdownBlock(m, role.Code)
+	p := block.AsPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
 		gc.DrawRect(rect, paint)
 	}
-	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
 	p.SetBorder(NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)))
 	wrapper := NewPanel()
+	wrapper.Accessibility.Role = role.None
 	wrapper.SetLayout(&FlexLayout{Columns: 1})
 	wrapper.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
@@ -545,6 +586,7 @@ func (m *Markdown) processCodeBlock() {
 	for i := range count {
 		segment := lines.At(i)
 		label := NewLabel()
+		label.Accessibility.Role = role.None
 		label.Text = NewText(string(bytes.TrimRight(segment.Value(m.content), "\n")), m.decoration)
 		p.AddChild(label)
 	}
@@ -563,17 +605,18 @@ func (m *Markdown) processBlockquote() {
 	m.decoration.OnBackgroundInk = m.OnCodeBackground
 	m.maxLineWidth -= m.QuoteBarThickness + m.CodeAndQuotePadding*2
 
-	p := NewPanel()
+	quote := newMarkdownContainer(role.BlockQuote)
+	p := quote.AsPanel()
 	p.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		paint := m.CodeBackground.Paint(gc, rect, paintstyle.Fill)
 		gc.DrawRect(rect, paint)
 	}
-	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
 	wrapper := NewPanel()
+	wrapper.Accessibility.Role = role.None
 	wrapper.SetLayout(&FlexLayout{Columns: 1})
 	wrapper.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
@@ -616,6 +659,11 @@ func (m *Markdown) processBlockquote() {
 		}
 		if str != "" {
 			label := NewLabel()
+			// What kind of alert this is belongs to the quote rather than to a label within it: the title and its icon
+			// are how the quote says so on the screen, and an assistive technology hears it as the name of the passage
+			// it introduces. The label's text is still part of the document's stream, read where it is drawn.
+			p.Accessibility.Name = str
+			label.Accessibility.Role = role.None
 			label.Gap *= 2
 			label.Font = m.HeadingFont[3]
 			label.OnBackgroundInk = quoteBarColor
@@ -658,11 +706,12 @@ func (m *Markdown) processList() {
 		saveBlock := m.block
 		m.index = list.Start
 		m.ordered = list.IsOrdered()
-		p := NewPanel()
-		p.SetLayout(&FlexLayout{
-			Columns:  2,
-			HSpacing: m.decoration.Font.Baseline() / 3,
-		})
+		// A list is a list of items, each of which pairs a bullet with its content, rather than one grid of alternating
+		// bullets and content: an assistive technology moves from item to item, says which of how many it is on, and
+		// reads the whole of it. The look is unchanged because each item lays its bullet and content out in the same two
+		// columns the one grid used, with every bullet given the width of the widest so that the numbers of an ordered
+		// list still line up. See Markdown.equalizeListBulletWidths.
+		p := newMarkdownContainer(role.List).AsPanel()
 		p.SetLayoutData(&FlexLayoutData{
 			HAlign: align.Fill,
 			HGrab:  true,
@@ -682,10 +731,40 @@ func (m *Markdown) processList() {
 		saveMaxLineWidth := m.maxLineWidth
 		m.maxLineWidth -= insets.Left
 		m.processChildren()
+		m.equalizeListBulletWidths(p)
 		m.maxLineWidth = saveMaxLineWidth
 		m.index = saveIndex
 		m.ordered = saveOrdered
 		m.block = saveBlock
+	}
+}
+
+// equalizeListBulletWidths gives every bullet of a list the width of the widest of them, which is what keeps the
+// numbers of an ordered list aligned with one another now that each item lays its own bullet out rather than all of
+// them sharing one column of one grid. The bullet's text is aligned to the end of that width, exactly where the one
+// grid put it, and the label is measured rather than the width being guessed so that "10." and "1." are as they were.
+func (m *Markdown) equalizeListBulletWidths(list *Panel) {
+	var widest float32
+	items := list.Children()
+	bullets := make([]*Panel, 0, len(items))
+	for _, item := range items {
+		children := item.Children()
+		if len(children) == 0 {
+			continue
+		}
+		bullet := children[0]
+		if _, ok := bullet.Self.(*Label); !ok {
+			continue
+		}
+		_, prefSize, _ := bullet.Sizes(geom.Size{})
+		widest = max(widest, prefSize.Width)
+		bullets = append(bullets, bullet)
+	}
+	for _, bullet := range bullets {
+		bullet.SetLayoutData(&FlexLayoutData{
+			HAlign:   align.End,
+			SizeHint: geom.NewSize(widest, 0),
+		})
 	}
 }
 
@@ -700,19 +779,36 @@ func (m *Markdown) processListItem() {
 		bullet = "•"
 		m.maxLineWidth -= m.decoration.Font.SimpleWidth("• ")
 	}
+	item := newMarkdownContainer(role.ListItem).AsPanel()
+	item.SetLayout(&FlexLayout{
+		Columns:  2,
+		HSpacing: m.decoration.Font.Baseline() / 3,
+	})
+	item.SetLayoutData(&FlexLayoutData{
+		HAlign: align.Fill,
+		HGrab:  true,
+	})
+	m.block.AddChild(item)
 	label := NewLabel()
+	// The bullet is not something to move to or hear announced on its own: it says which item this is, which the item
+	// itself reports, and it is read where it is drawn as the first thing in the item's text.
+	label.Accessibility.Role = role.None
+	// The text is aligned to the end of the label rather than the label to the end of its cell, since every bullet is
+	// given the width of the widest; see Markdown.equalizeListBulletWidths.
+	label.HAlign = align.End
 	label.Text = NewText(bullet, m.decoration)
 	label.SetLayoutData(&FlexLayoutData{HAlign: align.End})
-	m.block.AddChild(label)
+	item.AddChild(label)
 	saveBlock := m.block
 	p := NewPanel()
+	p.Accessibility.Role = role.None
 	p.SetLayout(&FlexLayout{Columns: 1})
 	p.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
 	p.ClientData()[markdownListItemKey] = true
-	m.block.AddChild(p)
+	item.AddChild(p)
 	m.block = p
 	m.processChildren()
 	removeBottomMarginFromLastChild(p)
@@ -724,16 +820,20 @@ func (m *Markdown) processTable() {
 	if table, ok := m.node.(*astex.Table); ok {
 		if len(table.Alignments) != 0 {
 			saveBlock := m.block
+			saveTableRow := m.tableRow
 			m.columnWidths = make([]int, len(table.Alignments))
 			for i := 0; i < len(m.columnWidths); i++ {
 				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
 			}
-			p := NewPanel()
+			// The grid is kept as it is — one flow of cells in as many columns as the table has — because its column
+			// alignment is what the table looks like. The rows an assistive technology moves through are described over
+			// the top of it; see markdownTable.ProvideAccessibility.
+			p := newMarkdownTable(len(table.Alignments)).AsPanel()
 			p.SetBorder(NewCompoundBorder(NewEmptyBorder(m.stdBottomMargin()),
 				NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false)))
-			p.SetLayout(&FlexLayout{Columns: len(table.Alignments)})
 			m.block.AddChild(p)
 			m.block = p
+			m.tableRow = 0
 			m.processChildren()
 			m.block = saveBlock
 
@@ -811,9 +911,11 @@ func (m *Markdown) processTable() {
 				}
 				p.RemoveAllChildren()
 				m.block = p
+				m.tableRow = 0
 				m.processChildren()
 				m.block = saveBlock
 			}
+			m.tableRow = saveTableRow
 			m.MarkForLayoutRecursively()
 		}
 	}
@@ -822,8 +924,10 @@ func (m *Markdown) processTable() {
 func (m *Markdown) processTableHeader() {
 	if m.hasNonEmptyContentInTree(m.node) {
 		m.isHeader = true
+		m.columnIndex = 0
 		m.processChildren()
 		m.isHeader = false
+		m.tableRow++
 	}
 }
 
@@ -849,6 +953,7 @@ func (m *Markdown) hasNonEmptyContentInTree(node ast.Node) bool {
 func (m *Markdown) processTableRow() {
 	m.columnIndex = 0
 	m.processChildren()
+	m.tableRow++
 }
 
 func (m *Markdown) processTableCell() {
@@ -863,7 +968,14 @@ func (m *Markdown) processTableCell() {
 				hAlign = align.Middle
 			}
 		}
-		p := NewPanel()
+		kind := role.Cell
+		if m.isHeader {
+			kind = role.ColumnHeader
+		}
+		cell := newMarkdownBlock(m, kind)
+		cell.row = m.tableRow
+		cell.col = m.columnIndex
+		p := cell.AsPanel()
 		p.SetBorder(NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false))
 		p.SetLayout(&FlexLayout{
 			Columns: 1,
@@ -877,6 +989,7 @@ func (m *Markdown) processTableCell() {
 		m.block.AddChild(p)
 
 		inner := NewPanel()
+		inner.Accessibility.Role = role.None
 		inner.SetBorder(NewEmptyBorder(StdInsets()))
 		inner.SetLayout(&FlexLayout{
 			Columns: 1,
@@ -1240,6 +1353,10 @@ func (m *Markdown) updateDrawable(target string, d Drawable) {
 	}
 	entry.drawable = d
 	d = m.constrainImage(d)
+	// An image that has just arrived takes up room where a placeholder was, so every rune after it on its line has
+	// moved. The frames it changes would say so on their own, but the drawables are replaced here before the layout
+	// runs, so the stream is thrown away here as well.
+	m.axInvalidate()
 	for _, panel := range entry.targets {
 		panel.Drawable = d
 		panel.Ink = nil
@@ -1327,6 +1444,15 @@ func (m *Markdown) processImage() {
 				panel.Tooltip = NewTooltipWithText(primary)
 			}
 		}
+		if m.text != nil {
+			// An image that will not fit in what is left of the line begins a new one, exactly as a link does. Without
+			// this the row's FlowLayout wraps it onto a second visual row of its own while the row still counts as the
+			// one line it was built as, and everything read from where that line was drawn — every rune boundary on it,
+			// the caret dropped at one and the highlight drawn from one — describes two rows as if they were one. See
+			// Markdown.createLink and axBlockTextBuilder.collect.
+			_, prefSize, _ := panel.Sizes(geom.Size{})
+			m.prepareToFlushText(prefSize.Width)
+		}
 		m.addToTextRow(panel)
 	}
 }
@@ -1340,8 +1466,7 @@ func (m *Markdown) processAutoLink() {
 
 func (m *Markdown) addToTextRow(p Paneler) {
 	if m.textRow == nil {
-		m.textRow = NewPanel()
-		m.textRow.SetLayout(&FlowLayout{})
+		m.textRow = newMarkdownRow().AsPanel()
 		m.textRow.SetLayoutData(&FlexLayoutData{
 			HAlign: align.Fill,
 			HGrab:  true,
@@ -1353,25 +1478,48 @@ func (m *Markdown) addToTextRow(p Paneler) {
 
 func (m *Markdown) addLabelToTextRow(t *Text) {
 	label := NewLabel()
+	// A fragment of a line is not an element of its own: the block it belongs to reports the whole of its text, and a
+	// label per piece would have an assistive technology read the line a few words at a time.
+	label.Accessibility.Role = role.None
 	label.Text = t
 	m.addToTextRow(label)
 }
 
 func (m *Markdown) flushAndIssueLineBreak() {
 	m.flushText()
-	m.issueLineBreak()
+	m.endTextRow(true)
 }
 
 func (m *Markdown) issueLineBreak() {
+	m.endTextRow(false)
+}
+
+// endTextRow finishes the row being filled. hard says the line was ended by a break in the markdown itself rather than
+// by the text running out of room, which is the difference between the line ending in a line feed and the space that
+// was there being taken off the end of it — the row remembers both so that the block's text reads as what was written.
+// See markdownRow and markdownBlock.axText.
+func (m *Markdown) endTextRow(hard bool) {
 	var children []*Panel
 	if m.textRow != nil {
 		children = m.textRow.Children()
 	}
 	if len(children) == 0 {
-		m.addToTextRow(NewLabel())
+		// A line with nothing on it is still a line, and still as tall as one, so it is kept as an empty label rather
+		// than left out. See Label.axTextLine, which reports the one place a caret can sit in it.
+		empty := NewLabel()
+		empty.Accessibility.Role = role.None
+		m.addToTextRow(empty)
 	} else if child, ok := children[len(children)-1].Self.(*Label); ok && !child.Text.Empty() {
 		if r := child.Text.Runes(); len(r) > 1 && r[len(r)-1] == ' ' {
 			child.Text = child.Text.Slice(0, len(r)-1)
+			if row, is := m.textRow.Self.(*markdownRow); is {
+				row.strippedSpace = true
+			}
+		}
+	}
+	if hard {
+		if row, ok := m.textRow.Self.(*markdownRow); ok {
+			row.hardBreak = true
 		}
 	}
 	m.textRow = nil

@@ -53,6 +53,8 @@ const (
 	uiaIfaceGridItem                       // IGridItemProvider
 	uiaIfaceTable                          // ITableProvider
 	uiaIfaceTableItem                      // ITableItemProvider
+	uiaIfaceText                           // ITextProvider2, which also answers the ITextProvider IID
+	uiaIfaceTextChild                      // ITextChildProvider
 	uiaIfaceCount                          // Not an interface: how many there are
 )
 
@@ -80,7 +82,18 @@ const (
 	uiaGridItemSlots       = uiaUnknownSlots + 5 // get_Row .. get_ContainingGrid
 	uiaTableSlots          = uiaUnknownSlots + 3 // GetRowHeaders, GetColumnHeaders, get_RowOrColumnMajor
 	uiaTableItemSlots      = uiaUnknownSlots + 2 // GetRowHeaderItems, GetColumnHeaderItems
+	uiaTextSlots           = uiaUnknownSlots + 8 // GetSelection .. GetCaretRange
+	uiaTextChildSlots      = uiaUnknownSlots + 2 // get_TextContainer, get_TextRange
 )
+
+// uiaTextRangeSlots is the size of the virtual method table of a text range, which is the one COM object in this file's
+// scheme that is not a provider: a range stands for a stretch of one document's text rather than for an element, so it
+// is an object of its own with a single table rather than one of a provider's interfaces. See UIATextRange.
+//
+// The table is ITextRangeProvider2's: its first eighteen methods are ITextRangeProvider's, in the order that interface
+// declares them, and ShowContextMenu is the nineteenth. One object answers both interface identifiers, exactly as the
+// Text pattern's provider answers both of its.
+const uiaTextRangeSlots = uiaUnknownSlots + 19 // Clone .. GetChildren, then ShowContextMenu
 
 // uiaIfaceSlots holds the table size of each interface, indexed by uiaIface, so that a test can check the tables the
 // Windows-only code declares against the counts above without repeating them.
@@ -102,6 +115,8 @@ var uiaIfaceSlots = [uiaIfaceCount]int{
 	uiaIfaceGridItem:       uiaGridItemSlots,
 	uiaIfaceTable:          uiaTableSlots,
 	uiaIfaceTableItem:      uiaTableItemSlots,
+	uiaIfaceText:           uiaTextSlots,
+	uiaIfaceTextChild:      uiaTextChildSlots,
 }
 
 // uiaIfacePointerSize is the size of one virtual method table pointer within a provider. Every platform this package
@@ -110,7 +125,7 @@ const uiaIfacePointerSize = unsafe.Sizeof(uintptr(0))
 
 // uiaIfaceOffset returns how far into a provider the virtual method table pointer for one interface sits. A method of
 // that interface subtracts this from the this pointer it was handed to find the provider itself, which is the whole
-// trick that lets one Go object implement seventeen COM interfaces without seventeen objects.
+// trick that lets one Go object implement every one of those COM interfaces without an object apiece.
 func uiaIfaceOffset(iface uiaIface) uintptr {
 	return uintptr(iface) * uiaIfacePointerSize
 }
@@ -124,6 +139,13 @@ type uiaPatternIface struct {
 // uiaPatternIfaces lists the interface behind each control pattern. QueryInterface and GetPatternProvider both work
 // from this list and from UIAPatterns, which is what keeps the two answers consistent: a client that reaches a pattern
 // by asking for its interface directly and one that asks for it by pattern identifier get the same answer.
+//
+// The Text and Text2 patterns are the one place two patterns share an interface, and they must: ITextProvider2 derives
+// from ITextProvider, so the eight slots that answer Text2 begin with the six that answer Text, and a second table
+// would be the same six methods twice with two ways of getting them out of step. The two patterns are granted and taken
+// away together — uiaRolePatterns hands out both or neither — so nothing can ask for one and be handed the other's
+// answer. uiaPatternForIface reports Text for the shared interface, which is the pattern supports checks the element
+// against, and Text2 is present for a client that asks for it by identifier.
 var uiaPatternIfaces = []uiaPatternIface{
 	{pattern: PatternInvoke, iface: uiaIfaceInvoke},
 	{pattern: PatternToggle, iface: uiaIfaceToggle},
@@ -138,6 +160,9 @@ var uiaPatternIfaces = []uiaPatternIface{
 	{pattern: PatternTable, iface: uiaIfaceTable},
 	{pattern: PatternTableItem, iface: uiaIfaceTableItem},
 	{pattern: PatternWindow, iface: uiaIfaceWindow},
+	{pattern: PatternText, iface: uiaIfaceText},
+	{pattern: PatternText2, iface: uiaIfaceText},
+	{pattern: PatternTextChild, iface: uiaIfaceTextChild},
 }
 
 // uiaIfaceForPattern returns the interface that implements a single-bit pattern, and whether there is one.

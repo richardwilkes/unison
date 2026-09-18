@@ -81,9 +81,15 @@ func (s SortDirection) String() string {
 type Node struct {
 	// Text holds the text content, caret and selection. Only a node whose Role is one of the text roles (see
 	// role.Enum.IsText) ever carries it, but not every such node does: it is nil when Protected is true, so that a
-	// password never reaches an assistive technology, and nil for a Document, whose content is described by the nodes
-	// beneath it rather than as one body of text. Check it for nil rather than deciding from the role.
+	// password never reaches an assistive technology, and nil on a Document, whose one stream of text is carried by
+	// Document instead so that only the adapters which present a document as text ever see it. Check it for nil rather
+	// than deciding from the role.
 	Text *TextInfo
+	// Document holds the one body of text a Document presents, which is the content of every node beneath it composed
+	// into a single stream. Only a node whose Role is Document ever carries it, and only one that has composed its
+	// content does: check it for nil rather than deciding from the role. The nodes beneath it describe the same content
+	// as elements, so an adapter presents either the stream or those elements, never both.
+	Document *DocumentInfo
 	// Name is what an assistive technology announces for this node. It is the primary label, not a description.
 	Name string
 	// Description elaborates on Name when there is more to say, and falls back to the panel's tooltip text.
@@ -94,6 +100,11 @@ type Node struct {
 	Placeholder string
 	// Shortcut is the human-readable key binding that activates this node, such as a menu item's accelerator.
 	Shortcut string
+	// URL is where a Link leads, exactly as the application supplied it and with nothing checked about it: a fragment
+	// such as "#section", a relative path, or a token that means something only to the application are all passed
+	// through as they were given, since only the application knows what following one would do. It is empty for
+	// everything else, and for a link that was given no target at all.
+	URL string
 	// Children holds the child nodes in reading order, which is also the panel index order. Index 0 is the topmost
 	// child, so it is the one a hit test at an overlapping point should choose.
 	Children []NodeID
@@ -147,6 +158,14 @@ type Node struct {
 	Focusable bool
 	// Focused reports that the node holds the keyboard focus within its window, whether or not that window is active.
 	// On the root, it instead reports that the window itself is active.
+	//
+	// Exactly one node of a window other than the root reports it, which is the node Tree.Focus names, with one
+	// deliberate exception: a node inside the panel that really holds the focus may report it as well, which is how a
+	// document whose reading caret has been moved says which of its blocks the caret is now in. That second claim is
+	// kept only on the platforms whose screen readers need it — AT-SPI carries the state per object, while UI
+	// Automation and AppKit have one focused element apiece — and only while the focus panel's own node is what
+	// Tree.Focus names, so a window whose focus an open menu has taken over carries none. A claim from anywhere else is
+	// taken away before the tree is published.
 	Focused bool
 	// Selectable reports that the node can be selected within its container.
 	Selectable bool
@@ -192,10 +211,19 @@ type Node struct {
 type TextInfo struct {
 	// Text is the full content of the control.
 	Text string
-	// Lines holds the laid-out lines of Text. It is filled in only for the focused control, since the measurements it
-	// needs are too expensive to take for every text control in a window on every snapshot. When it is empty, an
-	// adapter must treat the whole content as one line.
+	// Lines holds the laid-out lines of Text. An editable control fills it in only while it holds the focus, since the
+	// measurements it needs are too expensive to take for every text control in a window on every snapshot; a document's
+	// blocks always fill it in, since laying the text out is what drew them and the advances have already been measured.
+	// When it is empty, an adapter must treat the whole content as one line.
 	Lines []Line
+	// Runs holds the styled runs of Text, in ascending order and tiling it end to end, so that run i ends where run i+1
+	// begins. It is empty for a control that draws the whole of its content in one style, which an adapter reads as one
+	// unstyled run covering everything.
+	Runs []TextRun
+	// Spans holds the nodes that occupy part of Text, which is how a document says where the links, images and blocks
+	// within its stream are. They are ordered outermost first and then by Start, so a span is always preceded by the
+	// spans that contain it. It is empty for a control whose content is nothing but its own text.
+	Spans []TextSpan
 	// SelStart is the rune index where the selection begins. It is never greater than SelEnd: a widget that keeps its
 	// selection as an anchor and a caret orders the pair before filling these in, and reports which end the caret is
 	// at through Caret.
@@ -225,6 +253,53 @@ type Line struct {
 	End int
 	// Bounds is the line's area in panel-local, top-left origin, logical units.
 	Bounds geom.Rect
+}
+
+// TextRun describes one run of uniformly styled runes within a TextInfo's text. The runs tile the text, so every rune
+// belongs to exactly one of them, and an adapter that is asked about a range which crosses two of them reports the
+// attributes they disagree on as mixed.
+type TextRun struct {
+	// Family is the name of the font family the run is drawn in.
+	Family string
+	// Start is the rune index in TextInfo.Text where this run begins.
+	Start int
+	// End is the rune index in TextInfo.Text just past this run's last rune.
+	End int
+	// Weight is the font's weight on the usual 100-to-900 scale, where 400 is regular and 700 is bold.
+	Weight int
+	// Size is the font's size in logical units.
+	Size float32
+	// Italic reports that the run is drawn in an italic or oblique face.
+	Italic bool
+	// Underline reports that the run is underlined.
+	Underline bool
+	// Strikethrough reports that the run has a line struck through it.
+	Strikethrough bool
+	// Monospace reports that the run is drawn in a fixed-pitch face, which is what marks code out from prose.
+	Monospace bool
+}
+
+// TextSpan says that another node occupies a range of a TextInfo's text: a link or an image within a document's stream,
+// a block of it, or a container holding several blocks. It is what lets an adapter answer both questions an assistive
+// technology asks about a document — which element is at this offset, and which part of the text is this element — from
+// the one stream.
+type TextSpan struct {
+	// Node is the node occupying the range. An image occupies the single U+FFFC that stands in for it.
+	Node NodeID
+	// Start is the rune index in TextInfo.Text where the node's content begins.
+	Start int
+	// End is the rune index in TextInfo.Text just past the node's last rune.
+	End int
+}
+
+// DocumentInfo holds the one stream of text a Document presents: the content of every node beneath it, composed in
+// reading order, with a span per node saying which part of the stream that node occupies. It is a type of its own
+// rather than a second TextInfo on the node so that an adapter has to opt into presenting a document as text — the
+// nodes beneath it describe the same content as elements, and an assistive technology told to read both would hear
+// everything twice.
+type DocumentInfo struct {
+	// Text is the composed stream, along with its lines, runs, spans, caret and selection.
+	Text TextInfo
 }
 
 // CellKey identifies one cell of a table, for use as the stable key of a virtual child. It is comparable, so it works

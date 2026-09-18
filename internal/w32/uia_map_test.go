@@ -107,6 +107,9 @@ func TestUIAControlType(t *testing.T) {
 		role.Link:               UIA_HyperlinkControlTypeId,
 		role.Label:              UIA_TextControlTypeId,
 		role.Heading:            UIA_TextControlTypeId,
+		role.Paragraph:          UIA_TextControlTypeId,
+		role.BlockQuote:         UIA_GroupControlTypeId,
+		role.Code:               UIA_TextControlTypeId,
 		role.TextField:          UIA_EditControlTypeId,
 		role.TextArea:           UIA_EditControlTypeId,
 		role.SpinButton:         UIA_SpinnerControlTypeId,
@@ -134,9 +137,9 @@ func TestUIAControlType(t *testing.T) {
 		role.Image:              UIA_ImageControlTypeId,
 		role.ColorWell:          UIA_ButtonControlTypeId,
 		role.Tooltip:            UIA_ToolTipControlTypeId,
-		// A document is a group: the document control type requires the Text pattern, which nothing here implements, so
-		// a client would ask for the one pattern every document has and be handed NULL. The Cocoa adapter treats the
-		// role the same way.
+		// A document with no composed stream is a group: the document control type requires the Text pattern, and a
+		// document with nothing to read it from would have a client ask for the one pattern every document has and be
+		// handed NULL. TestUIAControlTypeDocument covers the other half, where the stream is there.
 		role.Document: UIA_GroupControlTypeId,
 		role.Toolbar:  UIA_ToolBarControlTypeId,
 		role.Unknown:  UIA_CustomControlTypeId,
@@ -169,6 +172,22 @@ func TestUIAControlTypeNested(t *testing.T) {
 	c.Equal(UIA_PaneControlTypeId, UIAControlType(nil, tree.Node(1)))
 }
 
+// TestUIAControlTypeDocument verifies that a Document reports the document control type exactly when it carries the
+// composed stream that makes it readable. The control type lists ITextProvider as a required pattern, so the two have
+// to agree: a document element a client could not read text from would be a broken element, and a Document with a
+// stream that reported itself a group would never put Narrator into the reading mode this whole pattern exists for.
+func TestUIAControlTypeDocument(t *testing.T) {
+	c := check.New(t)
+	tree := uiaTextFixtureTree()
+	document := tree.Node(uiaTextDocumentID)
+	c.Equal(UIA_DocumentControlTypeId, UIAControlType(tree, document))
+	c.True(UIAPatterns(document).Has(PatternText | PatternText2))
+
+	document.Document = nil
+	c.Equal(UIA_GroupControlTypeId, UIAControlType(tree, document))
+	c.Equal(PatternSet(0), UIAPatterns(document)&(PatternText|PatternText2))
+}
+
 // TestUIAPatterns verifies the role-to-patterns table, including the handful of roles whose patterns depend on state.
 // Every node here is given no actions at all, so that the role's own answer is what is being checked;
 // TestUIAPatternsScrollItem covers the one pattern that comes from the action set instead.
@@ -186,6 +205,15 @@ func TestUIAPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.TableHeader}},
 		{node: &accessibility.Node{Role: role.Label}},
 		{node: &accessibility.Node{Role: role.Heading}},
+		// The blocks a document is composed of hand out nothing at all, whether or not they carry text: a client reads
+		// their content through the document's Text pattern and as the name each takes from that content, and a Value
+		// pattern would have Narrator speak the same text twice. See UIANameString.
+		{node: &accessibility.Node{Role: role.Paragraph}},
+		{node: &accessibility.Node{Role: role.Code}},
+		{node: &accessibility.Node{Role: role.BlockQuote}},
+		{node: &accessibility.Node{Role: role.Paragraph, Text: &accessibility.TextInfo{Text: "Hello"}}},
+		{node: &accessibility.Node{Role: role.Code, Text: &accessibility.TextInfo{Text: "x = 1"}}},
+		{node: &accessibility.Node{Role: role.BlockQuote, Text: &accessibility.TextInfo{Text: "Quoted"}}},
 		{node: &accessibility.Node{Role: role.Image}},
 		{node: &accessibility.Node{Role: role.Separator}},
 		{node: &accessibility.Node{Role: role.MenuBar}},
@@ -193,6 +221,12 @@ func TestUIAPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.Toolbar}},
 		{node: &accessibility.Node{Role: role.Button}, patterns: PatternInvoke},
 		{node: &accessibility.Node{Role: role.Link}, patterns: PatternInvoke},
+		// A link that knows where it leads reports the target through a read-only Value, which is where every client
+		// looks for a hyperlink's destination: UI Automation has no property of its own for one.
+		{
+			node:     &accessibility.Node{Role: role.Link, URL: "https://example.com"},
+			patterns: PatternInvoke | PatternValue,
+		},
 		{node: &accessibility.Node{Role: role.ColumnHeader}, patterns: PatternInvoke},
 		{node: &accessibility.Node{Role: role.ColorWell}, patterns: PatternInvoke | PatternValue},
 		{node: &accessibility.Node{Role: role.ToggleButton}, patterns: PatternToggle},
@@ -207,9 +241,14 @@ func TestUIAPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.RadioButton}, patterns: PatternSelectionItem},
 		{node: &accessibility.Node{Role: role.TextField}, patterns: PatternValue},
 		{node: &accessibility.Node{Role: role.TextArea}, patterns: PatternValue},
-		// A document carries no value: the only thing that produces the role never fills one in, so the pattern would
-		// answer a client with an empty string as the whole content of the document.
+		// A document with no composed stream carries nothing at all: no value, since the pattern would answer a client
+		// with an empty string as the whole content of the document, and no Text pattern, since there is no text to
+		// read through it. TestUIAControlTypeDocument covers the other half.
 		{node: &accessibility.Node{Role: role.Document}},
+		{
+			node:     &accessibility.Node{Role: role.Document, Document: &accessibility.DocumentInfo{}},
+			patterns: PatternText | PatternText2,
+		},
 		// A spin button has a range only once it has a number, exactly as a progress bar does: an obscured numeric
 		// field fills in none of them, and the pattern would report a PIN field as zero.
 		{node: &accessibility.Node{Role: role.SpinButton}, patterns: PatternValue},
@@ -231,6 +270,12 @@ func TestUIAPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.List}, patterns: PatternSelection},
 		{node: &accessibility.Node{Role: role.TabList}, patterns: PatternSelection},
 		{node: &accessibility.Node{Role: role.ListItem}, patterns: PatternSelectionItem},
+		// A list item within a document carries the text of its paragraph, which grants it nothing either: what it
+		// hands out is what it is, a thing that can be selected.
+		{
+			node:     &accessibility.Node{Role: role.ListItem, Text: &accessibility.TextInfo{Text: "one"}},
+			patterns: PatternSelectionItem,
+		},
 		{node: &accessibility.Node{Role: role.Tab}, patterns: PatternSelectionItem},
 		{node: &accessibility.Node{Role: role.Table}, patterns: PatternGrid | PatternTable | PatternSelection},
 		{node: &accessibility.Node{Role: role.Tree}, patterns: PatternGrid | PatternTable | PatternSelection},
@@ -279,6 +324,77 @@ func TestUIAPatternsScrollItem(t *testing.T) {
 		UIAPatterns(&accessibility.Node{Role: role.Row, Disabled: true, Actions: scrollable}))
 }
 
+// TestUIAProvidedPatternsTextChild verifies the one pattern that comes from where a node sits rather than from what it
+// is: an element inside a document's stream hands out TextChild, which is how a client that has walked the element tree
+// to a link or an image asks which part of the document it is.
+//
+// It is granted through UIAProvidedPatterns rather than UIAPatterns, since the answer needs the tree, which is also
+// what makes the decider report it appearing and vanishing.
+func TestUIAProvidedPatternsTextChild(t *testing.T) {
+	c := check.New(t)
+	tree := uiaTextFixtureTree()
+	for _, id := range []accessibility.NodeID{
+		uiaTextHeadingID, uiaTextParagraphID, uiaTextLinkID, uiaTextImageID, uiaTextCodeID, uiaTextListItemID,
+		uiaTextCellAID, uiaTextLabelID,
+	} {
+		n := tree.Node(id)
+		c.True(UIAProvidesPattern(tree, n, PatternTextChild), "node %d", id)
+		c.False(UIAPatterns(n).Has(PatternTextChild), "node %d needs the tree to be told", id)
+	}
+
+	// The document is the container rather than a child of one, and nothing outside it is either.
+	c.False(UIAProvidesPattern(tree, tree.Node(uiaTextDocumentID), PatternTextChild))
+	c.False(UIAProvidesPattern(tree, tree.Node(uiaTextButtonID), PatternTextChild))
+	c.False(UIAProvidesPattern(tree, tree.Node(uiaTextWindowID), PatternTextChild))
+
+	// A Document that loses its stream takes the pattern away from everything inside it, since there is no longer any
+	// text for an element to occupy.
+	plain := uiaTextFixtureTree()
+	plain.Node(uiaTextDocumentID).Document = nil
+	c.False(UIAProvidesPattern(plain, plain.Node(uiaTextLinkID), PatternTextChild))
+}
+
+// TestUIANameString verifies the one place a node's name is not Node.Name: the blocks a document is made of, whose name
+// is their own content when the widget gave them none. Narrator's item navigation walks the control view and speaks
+// each element's name, so a paragraph with no name at all would be announced as a bare "text".
+func TestUIANameString(t *testing.T) {
+	c := check.New(t)
+	for i, one := range []struct {
+		node     *accessibility.Node
+		expected string
+	}{
+		{
+			node:     &accessibility.Node{Role: role.Paragraph, Text: &accessibility.TextInfo{Text: "Body text"}},
+			expected: "Body text",
+		},
+		{
+			node:     &accessibility.Node{Role: role.Code, Text: &accessibility.TextInfo{Text: "x = 1"}},
+			expected: "x = 1",
+		},
+		{
+			node:     &accessibility.Node{Role: role.Cell, Text: &accessibility.TextInfo{Text: "42"}},
+			expected: "42",
+		},
+		{
+			node:     &accessibility.Node{Role: role.Paragraph, Name: "Summary", Text: &accessibility.TextInfo{Text: "Body"}},
+			expected: "Summary",
+		},
+		// A heading folds its fragments into a name of its own, and a label is named by the widget, so neither is
+		// renamed by what it draws.
+		{
+			node:     &accessibility.Node{Role: role.Heading, Name: "Title", Text: &accessibility.TextInfo{Text: "Title"}},
+			expected: "Title",
+		},
+		{node: &accessibility.Node{Role: role.Label, Text: &accessibility.TextInfo{Text: "drawn"}}},
+		{node: &accessibility.Node{Role: role.Paragraph}},
+		{node: &accessibility.Node{Role: role.Paragraph, Text: &accessibility.TextInfo{}}},
+		{node: &accessibility.Node{Role: role.Button, Name: "Close"}, expected: "Close"},
+	} {
+		c.Equal(one.expected, UIANameString(one.node), "case %d (%s)", i, one.node.Role.Key())
+	}
+	c.Equal("", UIANameString(nil))
+}
+
 // TestPatternSet verifies the bookkeeping around the pattern bitset: that every pattern a provider implements can be
 // looked up by the identifier a client asks for it by, that a pattern this package does not implement looks up to
 // nothing, and that Has is an all-of test rather than an any-of one.
@@ -301,10 +417,12 @@ func TestPatternSet(t *testing.T) {
 		{id: UIA_TablePatternId, pattern: PatternTable},
 		{id: UIA_TableItemPatternId, pattern: PatternTableItem},
 		{id: UIA_WindowPatternId, pattern: PatternWindow},
+		{id: UIA_TextPatternId, pattern: PatternText},
+		{id: UIA_TextPattern2Id, pattern: PatternText2},
+		{id: UIA_TextChildPatternId, pattern: PatternTextChild},
 	} {
 		c.Equal(one.pattern, PatternSetForID(one.id))
 	}
-	c.Equal(PatternSet(0), PatternSetForID(UIA_TextPatternId))
 	c.Equal(PatternSet(0), PatternSetForID(UIA_ScrollPatternId))
 	c.Equal(PatternSet(0), PatternSetForID(0))
 
@@ -381,6 +499,7 @@ func TestUIAIdentifierValues(t *testing.T) {
 	c.Equal(PatternID(10015), UIA_TogglePatternId)
 	c.Equal(PatternID(10017), UIA_ScrollItemPatternId)
 	c.Equal(PatternID(10024), UIA_TextPattern2Id)
+	c.Equal(PatternID(10029), UIA_TextChildPatternId)
 
 	// Events, every one of which is raised by identifier.
 	c.Equal(EventID(20000), UIA_ToolTipOpenedEventId)
@@ -484,6 +603,9 @@ func TestUIAIdentifierValues(t *testing.T) {
 	c.Equal(PropertyID(30041), UIA_IsTogglePatternAvailablePropertyId)
 	c.Equal(PropertyID(30043), UIA_IsValuePatternAvailablePropertyId)
 	c.Equal(PropertyID(30044), UIA_IsWindowPatternAvailablePropertyId)
+	c.Equal(PropertyID(30040), UIA_IsTextPatternAvailablePropertyId)
+	c.Equal(PropertyID(30119), UIA_IsTextPattern2AvailablePropertyId)
+	c.Equal(PropertyID(30136), UIA_IsTextChildPatternAvailablePropertyId)
 
 	// Heading levels, which are identifiers of their own rather than plain integers.
 	c.Equal(HeadingLevelID(80050), HeadingLevel_None)
@@ -496,6 +618,61 @@ func TestUIAIdentifierValues(t *testing.T) {
 	c.Equal(HeadingLevelID(80057), HeadingLevel7)
 	c.Equal(HeadingLevelID(80058), HeadingLevel8)
 	c.Equal(HeadingLevelID(80059), HeadingLevel9)
+
+	// The Text pattern's enumerations. The units and the endpoints are sequences a client passes in, so a value out of
+	// place would have a range expanded by the wrong unit or moved at the wrong end; the selection kinds are what
+	// get_SupportedTextSelection answers with.
+	c.Equal(TextUnit(0), TextUnit_Character)
+	c.Equal(TextUnit(1), TextUnit_Format)
+	c.Equal(TextUnit(2), TextUnit_Word)
+	c.Equal(TextUnit(3), TextUnit_Line)
+	c.Equal(TextUnit(4), TextUnit_Paragraph)
+	c.Equal(TextUnit(5), TextUnit_Page)
+	c.Equal(TextUnit(6), TextUnit_Document)
+	c.Equal(6, int(TextUnit_Document), "uiaTextUnitCount depends on the document being the last unit")
+	c.Equal(uiaTextUnitCount, int(TextUnit_Document)+1)
+	c.Equal(TextPatternRangeEndpoint(0), TextPatternRangeEndpoint_Start)
+	c.Equal(TextPatternRangeEndpoint(1), TextPatternRangeEndpoint_End)
+	c.Equal(SupportedTextSelection(0), SupportedTextSelection_None)
+	c.Equal(SupportedTextSelection(1), SupportedTextSelection_Single)
+	c.Equal(SupportedTextSelection(2), SupportedTextSelection_Multiple)
+
+	// The text attributes, which a client asks for by identifier and searches by.
+	c.Equal(TextAttributeID(40004), UIA_CultureAttributeId)
+	c.Equal(TextAttributeID(40005), UIA_FontNameAttributeId)
+	c.Equal(TextAttributeID(40006), UIA_FontSizeAttributeId)
+	c.Equal(TextAttributeID(40007), UIA_FontWeightAttributeId)
+	c.Equal(TextAttributeID(40013), UIA_IsHiddenAttributeId)
+	c.Equal(TextAttributeID(40014), UIA_IsItalicAttributeId)
+	c.Equal(TextAttributeID(40015), UIA_IsReadOnlyAttributeId)
+	c.Equal(TextAttributeID(40026), UIA_StrikethroughStyleAttributeId)
+	c.Equal(TextAttributeID(40030), UIA_UnderlineStyleAttributeId)
+	c.Equal(TextAttributeID(40031), UIA_AnnotationTypesAttributeId)
+	c.Equal(TextAttributeID(40033), UIA_StyleNameAttributeId)
+	c.Equal(TextAttributeID(40034), UIA_StyleIdAttributeId)
+	c.Equal(TextAttributeID(40035), UIA_LinkAttributeId)
+	c.Equal(TextAttributeID(40036), UIA_IsActiveAttributeId)
+
+	// The decoration styles and the style identifiers, which are the values of four of those attributes.
+	c.Equal(TextDecorationLineStyle(0), TextDecorationLineStyle_None)
+	c.Equal(TextDecorationLineStyle(1), TextDecorationLineStyle_Single)
+	c.Equal(StyleID(70000), StyleId_Custom)
+	c.Equal(StyleID(70001), StyleId_Heading1)
+	c.Equal(StyleID(70002), StyleId_Heading2)
+	c.Equal(StyleID(70003), StyleId_Heading3)
+	c.Equal(StyleID(70004), StyleId_Heading4)
+	c.Equal(StyleID(70005), StyleId_Heading5)
+	c.Equal(StyleID(70006), StyleId_Heading6)
+	c.Equal(StyleID(70007), StyleId_Heading7)
+	c.Equal(StyleID(70008), StyleId_Heading8)
+	c.Equal(StyleID(70009), StyleId_Heading9)
+	c.Equal(StyleID(70010), StyleId_Title)
+	c.Equal(StyleID(70011), StyleId_Subtitle)
+	c.Equal(StyleID(70012), StyleId_Normal)
+	c.Equal(StyleID(70013), StyleId_Emphasis)
+	c.Equal(StyleID(70014), StyleId_Quote)
+	c.Equal(StyleID(70015), StyleId_BulletedList)
+	c.Equal(StyleID(70016), StyleId_NumberedList)
 
 	// The two bare integers UI Automation defines: the WM_GETOBJECT lParam and the runtime-id prefix.
 	c.Equal(int32(-25), UiaRootObjectId)
@@ -1054,8 +1231,8 @@ func TestUIADecideRaisesTextProperties(t *testing.T) {
 
 // TestUIADecideRaisesAttributes verifies that an attributes change reports every property the provider derives from the
 // fields that event covers. The event does not say which of them changed — a watermark, a level, a row index, an
-// orientation or one of the three relations — so each of the properties GetPropertyValue answers from them is reported
-// once, in a fixed order.
+// orientation, a link's target or one of the three relations — so each of the properties GetPropertyValue answers from
+// them is reported once, in a fixed order, the value of a node that hands out the Value pattern last.
 func TestUIADecideRaisesAttributes(t *testing.T) {
 	c := check.New(t)
 	c.Equal([]UIARaise{
@@ -1068,6 +1245,7 @@ func TestUIADecideRaisesAttributes(t *testing.T) {
 		raiseProperty(2, UIA_LabeledByPropertyId),
 		raiseProperty(2, UIA_DescribedByPropertyId),
 		raiseProperty(2, UIA_ControllerForPropertyId),
+		raiseProperty(2, UIA_ValueValuePropertyId),
 	}, UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
 		{Kind: accessibility.AttributesChanged, Node: 2},
 	}))
@@ -1090,9 +1268,26 @@ func TestUIADecideRaisesAttributes(t *testing.T) {
 		raiseProperty(2, UIA_LabeledByPropertyId),
 		raiseProperty(2, UIA_DescribedByPropertyId),
 		raiseProperty(2, UIA_ControllerForPropertyId),
+		raiseProperty(2, UIA_ValueValuePropertyId),
 	}, UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
 		{Kind: accessibility.DescriptionChanged, Node: 2},
 		{Kind: accessibility.AttributesChanged, Node: 2},
+	}))
+
+	// A node that hands out no value pattern reports no value: a check box's state is its Toggle pattern's, and there
+	// is no value property on it for a client to read.
+	c.Equal([]UIARaise{
+		raiseProperty(3, UIA_HelpTextPropertyId),
+		raiseProperty(3, UIA_LevelPropertyId),
+		raiseProperty(3, UIA_HeadingLevelPropertyId),
+		raiseProperty(3, UIA_PositionInSetPropertyId),
+		raiseProperty(3, UIA_SizeOfSetPropertyId),
+		raiseProperty(3, UIA_OrientationPropertyId),
+		raiseProperty(3, UIA_LabeledByPropertyId),
+		raiseProperty(3, UIA_DescribedByPropertyId),
+		raiseProperty(3, UIA_ControllerForPropertyId),
+	}, UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: 3},
 	}))
 }
 
@@ -1142,12 +1337,13 @@ func TestUIADecideRaisesLabelContent(t *testing.T) {
 		)
 	}
 	// The attribute properties themselves are pinned by TestUIADecideRaisesAttributes; what matters here is what
-	// follows them.
+	// follows them. The field hands out the Value pattern, so its value comes after them; see attributes.
 	expected := func(extra ...UIARaise) []UIARaise {
-		raises := make([]UIARaise, 0, len(uiaAttributeProperties)+len(extra))
+		raises := make([]UIARaise, 0, len(uiaAttributeProperties)+len(extra)+1)
 		for _, propertyID := range uiaAttributeProperties {
 			raises = append(raises, raiseProperty(2, propertyID))
 		}
+		raises = append(raises, raiseProperty(2, UIA_ValueValuePropertyId))
 		return append(raises, extra...)
 	}
 	for i, one := range []struct {
@@ -1535,12 +1731,13 @@ func TestUIADecideRaisesValue(t *testing.T) {
 	}))
 }
 
-// TestUIADecideRaisesText verifies that an edit reports the new value once, even though the diff describes it as a
-// value change plus the deletion and insertion that made it.
+// TestUIADecideRaisesText verifies that an edit to an element without the Text pattern reports the new value once, even
+// though the diff describes it as a value change plus the deletion and insertion that made it.
 //
-// Neither of UI Automation's text events is raised: both belong to the Text control pattern, which this package does
-// not implement and which every element answers NULL for, so a client that responded to one by asking for ITextProvider
-// would have nothing to read. A caret move reports nothing at all, since it changes no property a client can read back.
+// Neither of UI Automation's text events is raised for such an element: both belong to the Text control pattern, and a
+// client that responded to one by asking an element that answers NULL for it would have nothing to read. A caret move
+// reports nothing at all there, since it changes no property a client can read back. TestUIADecideRaisesDocumentText
+// covers the elements that do have the pattern.
 func TestUIADecideRaisesText(t *testing.T) {
 	c := check.New(t)
 	c.Equal([]UIARaise{raiseProperty(2, UIA_ValueValuePropertyId)},
@@ -1561,6 +1758,102 @@ func TestUIADecideRaisesText(t *testing.T) {
 	c.Nil(UIADecideRaises(eventTree(), eventTree(), []accessibility.Event{
 		{Kind: accessibility.TextInserted, Node: 10, Start: 0, Length: 1, New: "x"},
 		{Kind: accessibility.TextSelectionChanged, Node: 10},
+	}))
+}
+
+// TestUIADecideRaisesDocumentText verifies the two events UI Automation has for text, which are raised on the elements
+// that hand out the Text pattern and nowhere else: a client answers TextChanged by reading the document again and
+// TextSelectionChanged by reading the selection, both of which it can only do through ITextProvider.
+//
+// The blocks inside a document are the other half. They have no Text pattern of their own — a client reads them as
+// elements — so an edit to one reports its value, and its name as well when the name is the text itself, which is what
+// Narrator's item navigation speaks.
+func TestUIADecideRaisesDocumentText(t *testing.T) {
+	c := check.New(t)
+	c.Equal([]UIARaise{
+		raiseEvent(uiaTextDocumentID, UIA_Text_TextChangedEventId),
+		raiseEvent(uiaTextDocumentID, UIA_Text_TextSelectionChangedEventId),
+	}, UIADecideRaises(uiaTextFixtureTree(), uiaTextFixtureTree(), []accessibility.Event{
+		{Kind: accessibility.TextDeleted, Node: uiaTextDocumentID, Start: 3, Length: 2},
+		{Kind: accessibility.TextInserted, Node: uiaTextDocumentID, Start: 3, Length: 1},
+		{Kind: accessibility.TextSelectionChanged, Node: uiaTextDocumentID, Start: 12},
+	}), "the edit is one event however many pieces the diff describes it in")
+
+	// A caret move on its own is the event NVDA reads as the caret having moved, which is the whole of its arrow-key
+	// reading.
+	c.Equal([]UIARaise{raiseEvent(uiaTextDocumentID, UIA_Text_TextSelectionChangedEventId)},
+		UIADecideRaises(uiaTextFixtureTree(), uiaTextFixtureTree(), []accessibility.Event{
+			{Kind: accessibility.TextSelectionChanged, Node: uiaTextDocumentID, Start: 20},
+		}))
+
+	// A paragraph within the document is named by its own content, so an edit to it renames it.
+	c.Equal([]UIARaise{raiseProperty(uiaTextParagraphID, UIA_NamePropertyId)},
+		UIADecideRaises(uiaTextFixtureTree(), uiaTextFixtureTree(), []accessibility.Event{
+			{Kind: accessibility.TextInserted, Node: uiaTextParagraphID, Start: 0, Length: 1},
+		}), "and it has no value pattern to report the text through")
+
+	// Emptying such a block renames it just as much: its name was its text and is now nothing at all, and a client that
+	// cached the old name would go on speaking text that has been deleted.
+	emptied := uiaTextFixtureTree()
+	emptied.Node(uiaTextParagraphID).Text = &accessibility.TextInfo{}
+	c.Equal([]UIARaise{raiseProperty(uiaTextParagraphID, UIA_NamePropertyId)},
+		UIADecideRaises(uiaTextFixtureTree(), emptied, []accessibility.Event{
+			{Kind: accessibility.TextDeleted, Node: uiaTextParagraphID, Start: 0, Length: 16},
+		}))
+
+	// A caret move within a block reports nothing: the block has no Text pattern, so there is no selection a client
+	// could read from it, and the document's own event is what carries the news.
+	c.Nil(UIADecideRaises(uiaTextFixtureTree(), uiaTextFixtureTree(), []accessibility.Event{
+		{Kind: accessibility.TextSelectionChanged, Node: uiaTextParagraphID, Start: 4},
+	}))
+
+	// A Document that loses its stream loses both patterns, which is reported through the availability properties — the
+	// only ones that may be raised on an element without the pattern — and arrives as an attributes change.
+	before := uiaTextFixtureTree()
+	after := uiaTextFixtureTree()
+	after.Node(uiaTextDocumentID).Document = nil
+	raises := UIADecideRaises(before, after, []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: uiaTextDocumentID},
+	})
+	c.Equal(raiseProperty(uiaTextDocumentID, UIA_IsTextPatternAvailablePropertyId), raises[0])
+	c.Equal(raiseProperty(uiaTextDocumentID, UIA_IsTextPattern2AvailablePropertyId), raises[1])
+
+	// The same flip changes what the element is: a Document with a stream is a Document and one without is a Group, and
+	// nothing but this event reports it. Narrator keys its document reading mode off the control type, so a client that
+	// cached it would go on reading a group as a document.
+	c.Equal(raiseProperty(uiaTextDocumentID, UIA_ControlTypePropertyId), raises[2])
+	c.Equal(UIA_DocumentControlTypeId, UIAControlType(before, before.Node(uiaTextDocumentID)))
+	c.Equal(UIA_GroupControlTypeId, UIAControlType(after, after.Node(uiaTextDocumentID)))
+
+	// A change that leaves the control type alone reports none, which is what keeps the raise to the elements it is
+	// true of.
+	raises = UIADecideRaises(uiaTextFixtureTree(), uiaTextFixtureTree(), []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: uiaTextDocumentID},
+	})
+	for _, raise := range raises {
+		c.NotEqual(raiseProperty(uiaTextDocumentID, UIA_ControlTypePropertyId), raise)
+	}
+
+	// And so does a link that gains a target, which is what grants it the Value pattern.
+	plain := uiaTextFixtureTree()
+	plain.Node(uiaTextLinkID).URL = ""
+	raises = UIADecideRaises(plain, uiaTextFixtureTree(), []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: uiaTextLinkID},
+	})
+	c.Equal(raiseProperty(uiaTextLinkID, UIA_IsValuePatternAvailablePropertyId), raises[0])
+
+	// A link re-pointed from one target to another keeps the pattern, so no availability raise says anything: the value
+	// itself is the only thing that can tell a client the destination changed, and without it Narrator and Inspect go
+	// on reading the old URL for the life of the window.
+	repointed := uiaTextFixtureTree()
+	repointed.Node(uiaTextLinkID).URL = "https://example.com/elsewhere"
+	expected := make([]UIARaise, 0, len(uiaAttributeProperties)+1)
+	for _, propertyID := range uiaAttributeProperties {
+		expected = append(expected, raiseProperty(uiaTextLinkID, propertyID))
+	}
+	expected = append(expected, raiseProperty(uiaTextLinkID, UIA_ValueValuePropertyId))
+	c.Equal(expected, UIADecideRaises(uiaTextFixtureTree(), repointed, []accessibility.Event{
+		{Kind: accessibility.AttributesChanged, Node: uiaTextLinkID},
 	}))
 }
 

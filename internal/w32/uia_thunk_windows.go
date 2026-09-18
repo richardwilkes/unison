@@ -11,10 +11,16 @@ package w32
 
 import "golang.org/x/sys/windows"
 
-// Two of the vtable slots a UI Automation provider has to fill take a double:
+// Three of the vtable slots a UI Automation provider has to fill arrive with a double in a floating-point register:
 //
 //	IRawElementProviderFragmentRoot::ElementProviderFromPoint(this, double x, double y, out)
 //	IRangeValueProvider::SetValue(this, double value)
+//	ITextProvider::RangeFromPoint(this, UiaPoint point, out) — on arm64 only
+//
+// The third is there because a UiaPoint is two doubles and nothing else, which the ARM64 convention passes in
+// floating-point registers rather than by reference; on amd64 the same structure arrives as an ordinary pointer and
+// needs none of this. Its halves live in uia_text_point_windows_arm64.go and uia_text_point_windows_amd64.go, and its
+// thunk is in the arm64 assembly beside the other two.
 //
 // syscall.NewCallback (windows.NewCallback) refuses to build a trampoline for a Go function with a float64 parameter,
 // and it is right to: the Go callback reads its arguments out of the integer argument registers, and on both Windows
@@ -45,18 +51,28 @@ import "golang.org/x/sys/windows"
 //	    the out pointer has to move out of the way first, so: MOVD R1, R3; FMOVD F0, R1; FMOVD F1, R2; B (R16)
 //	SetValue(this, value):                      this=X0 ✓  value=D0
 //	    FMOVD F0, R1; B (R16)
+//	RangeFromPoint(this, point, out):           this=X0 ✓  point.X=D0  point.Y=D1  out=X1
+//	    the same plan as ElementProviderFromPoint, and the same three instructions in the same order
 //
-// Both thunks are NOSPLIT|NOFRAME and clobber only registers the ABI makes volatile: AX on amd64, R16 on arm64. R27,
+// Every thunk is NOSPLIT|NOFRAME and clobbers only registers the ABI makes volatile: AX on amd64, R16 on arm64. R27,
 // the Go assembler's scratch register, is callee-saved in the ARM64 ABI and is deliberately not used, which is why the
 // arm64 thunks materialize the address of the variable in R16 rather than letting the assembler pick.
 //
-// Fallback. If a thunk ever misbehaves on some target, set uiaThunksEnabled to false. ElementProviderFromPoint then
-// reports the point as unhandled, costing a screen reader the ability to identify the element under the mouse — UI
-// Automation falls back to the window itself — and IRangeValueProvider::SetValue reports the operation as unsupported,
-// costing the ability to set a slider or spinner to a typed value. Nothing else depends on either.
+// Fallback. If a thunk ever misbehaves on some target, set uiaThunksEnabled to false. Each of the three slots then
+// answers that it cannot do what it was asked:
+//
+//   - ElementProviderFromPoint reports the point as unhandled, costing a screen reader the ability to identify the
+//     element under the mouse — UI Automation falls back to the window itself.
+//   - IRangeValueProvider::SetValue reports the operation as unsupported, costing the ability to set a slider or
+//     spinner to a typed value.
+//   - ITextProvider::RangeFromPoint does the same on arm64, costing a client the ability to place the reading caret in
+//     a document by pointing at it, which is what Narrator's mouse mode and NVDA's mouse tracking do. The amd64 slot
+//     needs no thunk and is unaffected.
+//
+// Nothing else depends on any of them.
 
-// uiaThunksEnabled says whether the two vtable slots that take doubles use the assembly thunks. See the fallback note
-// above for what turning it off costs.
+// uiaThunksEnabled says whether the vtable slots that arrive with a double in a floating-point register use the
+// assembly thunks. See the fallback note above for what turning it off costs.
 const uiaThunksEnabled = true
 
 // The NewCallback trampolines the thunks tail-jump to. They are plain uintptr rather than pointers because the

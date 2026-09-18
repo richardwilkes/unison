@@ -173,6 +173,8 @@ func uiaVtblsForTest() [uiaIfaceCount][]uintptr {
 		uiaIfaceGridItem:       uiaGridItemVtbl[:],
 		uiaIfaceTable:          uiaTableVtbl[:],
 		uiaIfaceTableItem:      uiaTableItemVtbl[:],
+		uiaIfaceText:           uiaTextVtbl[:],
+		uiaIfaceTextChild:      uiaTextChildVtbl[:],
 	}
 }
 
@@ -187,6 +189,11 @@ func TestUIAVtbls(t *testing.T) {
 		for slot, method := range vtbl {
 			c.True(method != 0, "interface %d slot %d is empty", iface, slot)
 		}
+	}
+	// The text range's table is not one of a provider's interfaces, so it is not in the list above and has no entry in
+	// uiaVtblStarts, but every slot of it has to be filled in just the same.
+	for slot, method := range uiaTextRangeVtbl {
+		c.True(method != 0, "text range slot %d is empty", slot)
 	}
 }
 

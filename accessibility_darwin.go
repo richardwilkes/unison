@@ -23,6 +23,13 @@ import (
 // reason to take it here, and a window in which nothing holds the focus is left as it is.
 const axReadersFollowFocus = false
 
+// axCaretBlockReportsFocus reports whether the block of a document that holds the reading caret publishes the focus as
+// well as the document itself. VoiceOver reads a document through its elements and has no use for a second element
+// claiming the focus: AppKit expects exactly one focused element per window, and NSAccessibilityFocusedUIElement can
+// only name one, so a block that claimed it would either be ignored or take the focus away from the document. It is a
+// var rather than a const so that a test can pin both answers whichever platform it runs on.
+var axCaretBlockReportsFocus = false
+
 // The macOS side of accessibility support: this file connects the snapshots the root package publishes to the
 // NSAccessibility adapter in internal/cocoa, and connects the requests that come back from an assistive technology to
 // the UI thread.
@@ -104,8 +111,9 @@ func macPerformAccessibilityActions(macWnd cocoa.Window, reqs []accessibility.Ac
 // dialog, and so must never be carried out while the assistive technology is waiting for an answer.
 func axActionIsNavigation(action accessibility.Action) bool {
 	switch action {
-	case accessibility.Focus, accessibility.ScrollIntoView, accessibility.Select, accessibility.AddToSelection,
-		accessibility.RemoveFromSelection, accessibility.Expand, accessibility.Collapse, accessibility.SetTextSelection:
+	case accessibility.Focus, accessibility.ScrollIntoView, accessibility.ScrollRangeIntoView, accessibility.Select,
+		accessibility.AddToSelection, accessibility.RemoveFromSelection, accessibility.Expand, accessibility.Collapse,
+		accessibility.SetTextSelection:
 		return true
 	default:
 		return false

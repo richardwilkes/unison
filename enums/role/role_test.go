@@ -27,9 +27,12 @@ func TestMembership(t *testing.T) {
 		members []role.Enum
 	}{
 		{
-			name:    "IsText",
-			fn:      role.Enum.IsText,
-			members: []role.Enum{role.TextField, role.TextArea, role.SpinButton, role.ComboBox, role.Document},
+			name: "IsText",
+			fn:   role.Enum.IsText,
+			members: []role.Enum{
+				role.TextField, role.TextArea, role.SpinButton, role.ComboBox, role.Document, role.Paragraph,
+				role.Heading, role.Code, role.Cell, role.ColumnHeader,
+			},
 		},
 		{
 			name:    "IsRowLike",

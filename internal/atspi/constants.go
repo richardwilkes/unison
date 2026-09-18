@@ -20,47 +20,50 @@ type Role uint32
 
 // The AT-SPI roles that Unison's own roles map onto. See [MapRole].
 const (
-	RoleInvalid       Role = 0  // ATSPI_ROLE_INVALID, which this package never reports; see [MapRole]
-	RoleCheckBox      Role = 7  // ATSPI_ROLE_CHECK_BOX
-	RoleCheckMenuItem Role = 8  // ATSPI_ROLE_CHECK_MENU_ITEM
-	RoleColumnHeader  Role = 10 // ATSPI_ROLE_COLUMN_HEADER
-	RoleComboBox      Role = 11 // ATSPI_ROLE_COMBO_BOX
-	RoleDialog        Role = 16 // ATSPI_ROLE_DIALOG
-	RoleFrame         Role = 23 // ATSPI_ROLE_FRAME
-	RoleImage         Role = 27 // ATSPI_ROLE_IMAGE
-	RoleLabel         Role = 29 // ATSPI_ROLE_LABEL
-	RoleListItem      Role = 32 // ATSPI_ROLE_LIST_ITEM
-	RoleMenu          Role = 33 // ATSPI_ROLE_MENU
-	RoleMenuBar       Role = 34 // ATSPI_ROLE_MENU_BAR
-	RoleMenuItem      Role = 35 // ATSPI_ROLE_MENU_ITEM
-	RolePageTab       Role = 37 // ATSPI_ROLE_PAGE_TAB
-	RolePageTabList   Role = 38 // ATSPI_ROLE_PAGE_TAB_LIST
-	RolePanel         Role = 39 // ATSPI_ROLE_PANEL
-	RolePasswordText  Role = 40 // ATSPI_ROLE_PASSWORD_TEXT
-	RoleProgressBar   Role = 42 // ATSPI_ROLE_PROGRESS_BAR
-	RolePushButton    Role = 43 // ATSPI_ROLE_PUSH_BUTTON
-	RoleRadioButton   Role = 44 // ATSPI_ROLE_RADIO_BUTTON
-	RoleScrollBar     Role = 48 // ATSPI_ROLE_SCROLL_BAR
-	RoleScrollPane    Role = 49 // ATSPI_ROLE_SCROLL_PANE
-	RoleSeparator     Role = 50 // ATSPI_ROLE_SEPARATOR
-	RoleSlider        Role = 51 // ATSPI_ROLE_SLIDER
-	RoleSpinButton    Role = 52 // ATSPI_ROLE_SPIN_BUTTON
-	RoleTable         Role = 55 // ATSPI_ROLE_TABLE
-	RoleTableCell     Role = 56 // ATSPI_ROLE_TABLE_CELL
-	RoleText          Role = 61 // ATSPI_ROLE_TEXT
-	RoleToggleButton  Role = 62 // ATSPI_ROLE_TOGGLE_BUTTON
-	RoleToolBar       Role = 63 // ATSPI_ROLE_TOOL_BAR
-	RoleToolTip       Role = 64 // ATSPI_ROLE_TOOL_TIP
-	RoleTreeTable     Role = 66 // ATSPI_ROLE_TREE_TABLE
-	RoleUnknown       Role = 67 // ATSPI_ROLE_UNKNOWN
-	RoleApplication   Role = 75 // ATSPI_ROLE_APPLICATION
-	RoleEntry         Role = 79 // ATSPI_ROLE_ENTRY
-	RoleDocumentFrame Role = 82 // ATSPI_ROLE_DOCUMENT_FRAME
-	RoleHeading       Role = 83 // ATSPI_ROLE_HEADING
-	RoleLink          Role = 88 // ATSPI_ROLE_LINK
-	RoleTableRow      Role = 90 // ATSPI_ROLE_TABLE_ROW
-	RoleListBox       Role = 98 // ATSPI_ROLE_LIST_BOX
-	RoleGrouping      Role = 99 // ATSPI_ROLE_GROUPING
+	RoleInvalid       Role = 0   // ATSPI_ROLE_INVALID, which this package never reports; see [MapRole]
+	RoleCheckBox      Role = 7   // ATSPI_ROLE_CHECK_BOX
+	RoleCheckMenuItem Role = 8   // ATSPI_ROLE_CHECK_MENU_ITEM
+	RoleColumnHeader  Role = 10  // ATSPI_ROLE_COLUMN_HEADER
+	RoleComboBox      Role = 11  // ATSPI_ROLE_COMBO_BOX
+	RoleDialog        Role = 16  // ATSPI_ROLE_DIALOG
+	RoleFrame         Role = 23  // ATSPI_ROLE_FRAME
+	RoleImage         Role = 27  // ATSPI_ROLE_IMAGE
+	RoleLabel         Role = 29  // ATSPI_ROLE_LABEL
+	RoleList          Role = 31  // ATSPI_ROLE_LIST
+	RoleListItem      Role = 32  // ATSPI_ROLE_LIST_ITEM
+	RoleMenu          Role = 33  // ATSPI_ROLE_MENU
+	RoleMenuBar       Role = 34  // ATSPI_ROLE_MENU_BAR
+	RoleMenuItem      Role = 35  // ATSPI_ROLE_MENU_ITEM
+	RolePageTab       Role = 37  // ATSPI_ROLE_PAGE_TAB
+	RolePageTabList   Role = 38  // ATSPI_ROLE_PAGE_TAB_LIST
+	RolePanel         Role = 39  // ATSPI_ROLE_PANEL
+	RolePasswordText  Role = 40  // ATSPI_ROLE_PASSWORD_TEXT
+	RoleProgressBar   Role = 42  // ATSPI_ROLE_PROGRESS_BAR
+	RolePushButton    Role = 43  // ATSPI_ROLE_PUSH_BUTTON
+	RoleRadioButton   Role = 44  // ATSPI_ROLE_RADIO_BUTTON
+	RoleScrollBar     Role = 48  // ATSPI_ROLE_SCROLL_BAR
+	RoleScrollPane    Role = 49  // ATSPI_ROLE_SCROLL_PANE
+	RoleSeparator     Role = 50  // ATSPI_ROLE_SEPARATOR
+	RoleSlider        Role = 51  // ATSPI_ROLE_SLIDER
+	RoleSpinButton    Role = 52  // ATSPI_ROLE_SPIN_BUTTON
+	RoleTable         Role = 55  // ATSPI_ROLE_TABLE
+	RoleTableCell     Role = 56  // ATSPI_ROLE_TABLE_CELL
+	RoleText          Role = 61  // ATSPI_ROLE_TEXT
+	RoleToggleButton  Role = 62  // ATSPI_ROLE_TOGGLE_BUTTON
+	RoleToolBar       Role = 63  // ATSPI_ROLE_TOOL_BAR
+	RoleToolTip       Role = 64  // ATSPI_ROLE_TOOL_TIP
+	RoleTreeTable     Role = 66  // ATSPI_ROLE_TREE_TABLE
+	RoleUnknown       Role = 67  // ATSPI_ROLE_UNKNOWN
+	RoleParagraph     Role = 73  // ATSPI_ROLE_PARAGRAPH
+	RoleApplication   Role = 75  // ATSPI_ROLE_APPLICATION
+	RoleEntry         Role = 79  // ATSPI_ROLE_ENTRY
+	RoleDocumentFrame Role = 82  // ATSPI_ROLE_DOCUMENT_FRAME
+	RoleHeading       Role = 83  // ATSPI_ROLE_HEADING
+	RoleLink          Role = 88  // ATSPI_ROLE_LINK
+	RoleTableRow      Role = 90  // ATSPI_ROLE_TABLE_ROW
+	RoleListBox       Role = 98  // ATSPI_ROLE_LIST_BOX
+	RoleGrouping      Role = 99  // ATSPI_ROLE_GROUPING
+	RoleBlockQuote    Role = 105 // ATSPI_ROLE_BLOCK_QUOTE
 )
 
 // StateBit is the position of one state within the bitset that org.a11y.atspi.Accessible.GetState reports, from
@@ -212,6 +215,58 @@ const (
 	LayerWindow Layer = 7
 )
 
+// MatchType is how one criterion of an org.a11y.atspi.Collection match rule is compared against an object, from
+// AtspiCollectionMatchType. A rule carries one per criterion — one for the states it names, one for the attributes, one
+// for the roles and one for the interfaces — so a client can ask for any of several roles while insisting on all of
+// several states.
+type MatchType int32
+
+// The ways a criterion is compared. See [matchRule.matches].
+const (
+	// MatchInvalid is the uninitialized value, which this package reads as a criterion that constrains nothing.
+	MatchInvalid MatchType = 0 // ATSPI_Collection_MATCH_INVALID
+	// MatchAll requires every member of the criterion to be present on the object.
+	MatchAll MatchType = 1 // ATSPI_Collection_MATCH_ALL
+	// MatchAny requires at least one member of the criterion to be present on the object.
+	MatchAny MatchType = 2 // ATSPI_Collection_MATCH_ANY
+	// MatchNone requires no member of the criterion to be present on the object.
+	MatchNone MatchType = 3 // ATSPI_Collection_MATCH_NONE
+	// MatchEmpty is MatchAll for a criterion that names anything at all, and requires the object's own set to be empty
+	// for one that names nothing.
+	MatchEmpty MatchType = 4 // ATSPI_Collection_MATCH_EMPTY
+)
+
+// SortOrder is the order an org.a11y.atspi.Collection search reports its matches in, from AtspiCollectionSortOrder.
+type SortOrder uint32
+
+// The orders AT-SPI defines. Only the canonical one and its reverse mean anything here: flow order and tab order are
+// answered as the canonical order is, since a Unison window's reading order is the order its panels are described in
+// and nothing separate says how the focus moves through it.
+const (
+	SortInvalid          SortOrder = 0 // ATSPI_Collection_SORT_ORDER_INVALID
+	SortCanonical        SortOrder = 1 // ATSPI_Collection_SORT_ORDER_CANONICAL
+	SortFlow             SortOrder = 2 // ATSPI_Collection_SORT_ORDER_FLOW
+	SortTab              SortOrder = 3 // ATSPI_Collection_SORT_ORDER_TAB
+	SortReverseCanonical SortOrder = 4 // ATSPI_Collection_SORT_ORDER_REVERSE_CANONICAL
+	SortReverseFlow      SortOrder = 5 // ATSPI_Collection_SORT_ORDER_REVERSE_FLOW
+	SortReverseTab       SortOrder = 6 // ATSPI_Collection_SORT_ORDER_REVERSE_TAB
+)
+
+// TreeTraversal is how much of the hierarchy around the object a search starts at an org.a11y.atspi.Collection search
+// considers, from AtspiCollectionTreeTraversalType. It only applies to the two searches that start somewhere within the
+// collection; see [nodeObject.getMatchesFrom].
+type TreeTraversal uint32
+
+// The traversals AT-SPI defines.
+const (
+	// TreeRestrictChildren looks only within the object the search starts at.
+	TreeRestrictChildren TreeTraversal = 0 // ATSPI_Collection_TREE_RESTRICT_CHILDREN
+	// TreeRestrictSibling looks only at the objects that sit beside the object the search starts at.
+	TreeRestrictSibling TreeTraversal = 1 // ATSPI_Collection_TREE_RESTRICT_SIBLING
+	// TreeInorder looks at everything the collection holds, in reading order, which is what Orca asks for.
+	TreeInorder TreeTraversal = 2 // ATSPI_Collection_TREE_INORDER
+)
+
 // The AT-SPI interface names.
 const (
 	// InterfaceAccessible is implemented by every object.
@@ -222,11 +277,24 @@ const (
 	InterfaceApplication = "org.a11y.atspi.Application"
 	// InterfaceCache is implemented by the cache object.
 	InterfaceCache = "org.a11y.atspi.Cache"
+	// InterfaceCollection is implemented by every object, and is how an assistive technology finds the objects within a
+	// subtree that match a description instead of walking it a call at a time. Orca's structural navigation — the
+	// commands that jump by heading, link, list, table or paragraph — is built on it alone, and announces "not
+	// supported" for a document whose objects do not implement it.
+	InterfaceCollection = "org.a11y.atspi.Collection"
 	// InterfaceComponent is implemented by every object that occupies space on the screen.
 	InterfaceComponent = "org.a11y.atspi.Component"
 	// InterfaceEditableText is implemented by the objects whose text can be changed, which is the only way AT-SPI has
 	// of typing into a control.
 	InterfaceEditableText = "org.a11y.atspi.EditableText"
+	// InterfaceHyperlink is implemented by the objects that lead somewhere, which is what a link does, and by the
+	// objects that occupy part of another object's text, which is what a link or an image within a paragraph does. It is
+	// the object itself that implements it rather than a separate one: libatspi's atspi_accessible_get_hyperlink hands
+	// back a hyperlink at the very same path.
+	InterfaceHyperlink = "org.a11y.atspi.Hyperlink"
+	// InterfaceHypertext is implemented by the objects whose text holds such objects, and is how an assistive technology
+	// asks which of them a paragraph holds and where in its text each one sits.
+	InterfaceHypertext = "org.a11y.atspi.Hypertext"
 	// InterfaceSelection is implemented by the containers whose children can be selected.
 	InterfaceSelection = "org.a11y.atspi.Selection"
 	// InterfaceSocket is what the registry implements, and is only ever called rather than answered.
@@ -309,6 +377,11 @@ const (
 	// rowColumnSpanSignature is the reply of org.a11y.atspi.TableCell.GetRowColumnSpan, which is the same without the
 	// selection.
 	rowColumnSpanSignature dbus.Signature = "biiii"
+	// matchRuleSignature is the description of the objects an org.a11y.atspi.Collection search is looking for: the
+	// states, the attributes, the roles and the interfaces it asks about, each followed by the [MatchType] saying how
+	// that criterion is to be compared, and finally whether the whole rule is inverted. The states and the roles arrive
+	// as bit arrays of 32-bit words rather than as lists of numbers; see [decodeMatchRule].
+	matchRuleSignature dbus.Signature = "(aiia{ss}iaiiasib)"
 	// eventSignature is the body of every AT-SPI event: the detail string, the two integers whose meaning depends on
 	// the event, the value it carries, and the properties of the object it came from. libatspi refuses an event with
 	// any other signature, so this is the one place it is spelled out.

@@ -32,6 +32,8 @@ var (
 	uiautomationcore                           = windows.NewLazySystemDLL("uiautomationcore.dll")
 	uiaClientsAreListeningProc                 = uiautomationcore.NewProc("UiaClientsAreListening")
 	uiaDisconnectProviderProc                  = uiautomationcore.NewProc("UiaDisconnectProvider")
+	uiaGetReservedMixedAttributeValueProc      = uiautomationcore.NewProc("UiaGetReservedMixedAttributeValue")
+	uiaGetReservedNotSupportedValueProc        = uiautomationcore.NewProc("UiaGetReservedNotSupportedValue")
 	uiaHostProviderFromHwndProc                = uiautomationcore.NewProc("UiaHostProviderFromHwnd")
 	uiaRaiseAutomationEventProc                = uiautomationcore.NewProc("UiaRaiseAutomationEvent")
 	uiaRaiseAutomationPropertyChangedEventProc = uiautomationcore.NewProc("UiaRaiseAutomationPropertyChangedEvent")
@@ -53,6 +55,64 @@ type UiaRect struct {
 	Width float64
 	// Height is how tall the rectangle is.
 	Height float64
+}
+
+// UiaPoint is a point in screen coordinates. Like UiaRect its members are doubles, since UI Automation works in
+// device-independent units, and it is the one argument in the whole provider API passed as a structure by value:
+// ITextProvider::RangeFromPoint takes one. Which registers it arrives in differs between the two architectures, which
+// is what uia_text_point_windows_amd64.go and uia_text_point_windows_arm64.go are for.
+//
+// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcore/ns-uiautomationcore-uiapoint
+type UiaPoint struct {
+	// X is the horizontal coordinate.
+	X float64
+	// Y is the vertical coordinate.
+	Y float64
+}
+
+// UiaGetReservedNotSupportedValue returns the singleton UI Automation defines for "this provider will never supply this
+// value", which is the only thing a text range may answer for an attribute it knows nothing about: an empty VARIANT
+// means "ask the host provider instead" and a made-up value would be read as the truth about the text.
+//
+// The pointer is a process-wide singleton rather than an object with a lifetime, so it is stored into a VARIANT without
+// adding a reference and must not be released — the one place in this package where that is right. UI Automation's
+// documentation says so explicitly, and VariantClear on such a VARIANT is harmless because the singleton's Release does
+// nothing.
+//
+// The export is looked up rather than called blind, because this is reached from inside a COM callback: Call panics
+// when the DLL or the export is missing, and a panic crossing back into UI Automation is far worse than a refusal. A
+// missing export answers COM_E_NOTIMPL, which the caller reports as UIA_E_NOTSUPPORTED — the truth about the attribute
+// either way. See uiaStoreReserved.
+//
+// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcoreapi/nf-uiautomationcoreapi-uiagetreservednotsupportedvalue
+func UiaGetReservedNotSupportedValue() (value *Unknown, hr uintptr) {
+	if uiaGetReservedNotSupportedValueProc.Find() != nil {
+		return nil, uintptr(COM_E_NOTIMPL)
+	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	r, _, _ := uiaGetReservedNotSupportedValueProc.Call(uintptr(unsafe.Pointer(&value)))
+	if !hresultSucceeded(r) {
+		return nil, r
+	}
+	return value, r
+}
+
+// UiaGetReservedMixedAttributeValue returns the singleton UI Automation defines for "the text in this range does not
+// agree about this attribute", which is how a client is told that a range covers more than one kind of text without
+// having to be handed one of the values. The same reference rule applies as for UiaGetReservedNotSupportedValue, and
+// the export is looked up for the same reason.
+//
+// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcoreapi/nf-uiautomationcoreapi-uiagetreservedmixedattributevalue
+func UiaGetReservedMixedAttributeValue() (value *Unknown, hr uintptr) {
+	if uiaGetReservedMixedAttributeValueProc.Find() != nil {
+		return nil, uintptr(COM_E_NOTIMPL)
+	}
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	r, _, _ := uiaGetReservedMixedAttributeValueProc.Call(uintptr(unsafe.Pointer(&value)))
+	if !hresultSucceeded(r) {
+		return nil, r
+	}
+	return value, r
 }
 
 // UiaReturnRawElementProvider answers a WM_GETOBJECT message by handing UI Automation the fragment root for a window.

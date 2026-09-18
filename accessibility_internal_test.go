@@ -914,3 +914,530 @@ func TestAccessibilityBatchedActionsPublishOnce(t *testing.T) {
 	c.Equal(uint64(0), after-before, "a set that achieved nothing should not have described the window")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// axCaretDoc stands in for a Markdown: a focusable panel with a document's role, holding blocks of its own.
+type axCaretDoc struct {
+	Panel
+}
+
+// newAXCaretDoc creates a document holding two blocks, the first of which claims to hold the reading caret.
+func newAXCaretDoc() (doc *axCaretDoc, caretBlock, otherBlock *axCaretBlock) {
+	doc = &axCaretDoc{}
+	doc.Self = doc
+	doc.SetFocusable(true)
+	doc.SetLayout(&FlexLayout{Columns: 1})
+	doc.Accessibility.Role = role.Document
+	caretBlock = newAXCaretBlock(true)
+	otherBlock = newAXCaretBlock(false)
+	doc.AddChild(caretBlock)
+	doc.AddChild(otherBlock)
+	return doc, caretBlock, otherBlock
+}
+
+func (d *axCaretDoc) ProvideAccessibility(b *AccessibilityBuilder) {
+	b.Node().Name = "Document"
+}
+
+// axCaretBlock stands in for one block of a document's content, which reports the focus for itself when it is the block
+// the reading caret is in. See axCaretBlockReportsFocus, which is what decides whether that claim stands.
+type axCaretBlock struct {
+	Panel
+	holdsCaret bool
+}
+
+// newAXCaretBlock creates one block, which claims the focus only if it is the one holding the caret.
+func newAXCaretBlock(holdsCaret bool) *axCaretBlock {
+	b := &axCaretBlock{holdsCaret: holdsCaret}
+	b.Self = b
+	b.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+		size := geom.NewSize(100, 20)
+		return size, size, size
+	})
+	return b
+}
+
+func (b *axCaretBlock) ProvideAccessibility(builder *AccessibilityBuilder) {
+	node := builder.Node()
+	node.Role = role.Paragraph
+	node.Name = "Block"
+	node.ReadOnly = true
+	node.Text = &accessibility.TextInfo{Text: "block"}
+	if b.holdsCaret {
+		// Claimed whatever the platform does with it, so that what the builder makes of the claim is what this pins.
+		node.Focused = true
+	}
+}
+
+// TestAccessibilityCaretBlockReportsFocus covers the second claim on the focus a document's block makes while it holds
+// the reading caret: on the platforms whose screen readers need it the claim stands, and the document is still what
+// Tree.Focus names, while everywhere else the builder takes it away. Two elements claiming the focus is ordinary on
+// AT-SPI, which is how Orca presents a caret the application moved, and wrong on UI Automation and AppKit, which have
+// one focused element apiece.
+//
+// Both answers are pinned whichever platform this runs on, since the widget that will rely on this is built once for
+// all three.
+func TestAccessibilityCaretBlockReportsFocus(t *testing.T) {
+	c := check.New(t)
+	var doc *axCaretDoc
+	var caretBlock, otherBlock *axCaretBlock
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 400},
+		StartupFinishedCallback(func() {
+			doc, caretBlock, otherBlock = newAXCaretDoc()
+			wnd = axNewTestWindow(t, "caret focus", geom.NewRect(10, 10, 300, 300), doc)
+			if wnd != nil {
+				wnd.ToFront()
+				wnd.SetFocus(doc)
+			}
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	saved := axCaretBlockReportsFocus
+	defer screen.Do(func() { axCaretBlockReportsFocus = saved })
+
+	for _, reports := range []bool{true, false} {
+		// Written on the UI thread, which is the only thread that reads it, since a snapshot is built there.
+		screen.Do(func() { axCaretBlockReportsFocus = reports })
+		tree := screen.AccessibilityTree(wnd)
+		c.NotNil(tree)
+		docNode := screen.AccessibilityNodeFor(doc)
+		caretNode := screen.AccessibilityNodeFor(caretBlock)
+		otherNode := screen.AccessibilityNodeFor(otherBlock)
+		c.NotNil(docNode)
+		c.NotNil(caretNode)
+		c.NotNil(otherNode)
+		if tree == nil || docNode == nil || caretNode == nil || otherNode == nil {
+			return
+		}
+		c.True(docNode.Focused, "the document holds the keyboard focus whatever its blocks say")
+		c.Equal(docNode.ID, tree.Focus, "and is what the tree reports the focus on")
+		c.Equal(reports, caretNode.Focused,
+			"the block holding the caret reports the focus only where a screen reader needs it (%v)", reports)
+		c.False(otherNode.Focused, "no other block ever does")
+	}
+
+	// A claim made while the focus is somewhere else entirely is a mistake rather than a caret, so it is taken away even
+	// where a document's own block would have kept it.
+	screen.Do(func() {
+		axCaretBlockReportsFocus = true
+		field := NewField()
+		wnd.Content().AddChild(field)
+		wnd.Content().MarkForLayoutAndRedraw()
+		wnd.SetFocus(field)
+	})
+	tree := screen.AccessibilityTree(wnd)
+	c.NotNil(tree)
+	caretNode := screen.AccessibilityNodeFor(caretBlock)
+	c.NotNil(caretNode)
+	if tree != nil && caretNode != nil {
+		c.False(caretNode.Focused, "a block outside the panel that holds the focus does not get to claim it")
+		c.NotEqual(caretNode.ID, tree.Focus)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axVirtualRefPanel stands in for a document that records which node occupies each part of its content: while it is
+// being described it asks for the id of a virtual child of a panel that has not been described yet, which is what a
+// document holding a table does for the table's rows.
+type axVirtualRefPanel struct {
+	target *axVirtualRowTable
+	Panel
+	recorded accessibility.NodeID
+}
+
+// newAXVirtualRefPanel creates a panel that will ask for the id of the given table's first row.
+func newAXVirtualRefPanel(target *axVirtualRowTable) *axVirtualRefPanel {
+	p := &axVirtualRefPanel{target: target}
+	p.Self = p
+	p.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+		size := geom.NewSize(100, 20)
+		return size, size, size
+	})
+	return p
+}
+
+func (p *axVirtualRefPanel) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	node.Role = role.Document
+	node.Name = "Doc"
+	p.recorded = b.virtualIDOf(p.target.AsPanel(), axVirtualRowKey{row: 0})
+}
+
+// TestAccessibilityVirtualIDOfSurvivesTheOwnerBeingDescribed covers pointing at a virtual child of a panel that has not
+// been described yet, which is how a document says which node occupies a stretch of its stream when that node is a row
+// a table has yet to invent. The id handed out then has to be the id the table itself hands out afterwards: a span
+// naming anything else names a node that is not in the tree, so everything an assistive technology would do with it —
+// reading the row the caret is in, moving to it, reporting where it is — finds nothing.
+//
+// The panel doing the asking is described first, so the table really has no identity of its own at that point. Since
+// establishing one throws away whatever map of virtual keys the panel was carrying, asking has to establish it rather
+// than write into a map about to be discarded.
+func TestAccessibilityVirtualIDOfSurvivesTheOwnerBeingDescribed(t *testing.T) {
+	c := check.New(t)
+	var table *axVirtualRowTable
+	var ref *axVirtualRefPanel
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			table = newAXVirtualRowTable("One", "Two")
+			ref = newAXVirtualRefPanel(table)
+			wnd = axNewTestWindow(t, "virtual ids", geom.NewRect(10, 10, 300, 200), ref)
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	c.NotNil(screen.AccessibilityTree(wnd), "a first tree, which the table is not part of")
+
+	// The table is added and the window described within one visit to the UI thread, so nothing can describe the window
+	// in between: this really is the first description the table is part of, and it has no identity of its own at the
+	// moment the panel before it asks about one of its keys. Both are read here too, since a later description would
+	// find the table already identified and so could not tell the two apart.
+	var tree *accessibility.Tree
+	var recorded accessibility.NodeID
+	screen.Do(func() {
+		wnd.Content().AddChild(table)
+		wnd.Content().ValidateLayout()
+		wnd.publishAccessibility()
+		recorded = ref.recorded
+		if hw := headlessWindowFor(wnd); hw != nil {
+			tree = hw.axTree
+		}
+	})
+	c.NotNil(tree)
+	if tree == nil {
+		return
+	}
+	tableNode := tree.Node(table.Accessibility.id)
+	c.NotNil(tableNode)
+	if tableNode == nil {
+		return
+	}
+	c.NotEqual(accessibility.NodeID(0), recorded, "the panel was given an id to point at")
+	c.Equal(1, len(tableNode.Children), "the table described its one row")
+	c.Equal(tableNode.Children[0], recorded, "the row the table handed out is the node that was pointed at")
+	c.NotNil(tree.Node(recorded), "and it is a node that is actually in the tree")
+
+	// The same holds on the next description, where the table does have an identity to begin with, so nothing about the
+	// first one's answer was accidental.
+	tree = screen.AccessibilityTree(wnd)
+	tableNode = screen.AccessibilityNodeFor(table)
+	c.NotNil(tree)
+	c.NotNil(tableNode)
+	if tree == nil || tableNode == nil {
+		return
+	}
+	c.Equal(recorded, ref.recorded, "a row keeps its identity from one description to the next")
+	c.Equal(tableNode.Children[0], ref.recorded)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityCaretBlockLosesFocusToAnOpenMenu covers what becomes of a document block's claim on the focus while
+// an open menu has taken the focus over. Exactly one node of a window may report the focus, and while a menu is open
+// that node is what the person is choosing from: a caret block still claiming it would be the second focused object
+// that axSnapshot.clearDisplacedFocus exists to prevent, which is what Orca would announce instead of the menu. Nothing
+// is lost by dropping it, since the caret has not moved and the claim comes back with the focus.
+func TestAccessibilityCaretBlockLosesFocusToAnOpenMenu(t *testing.T) {
+	c := check.New(t)
+	var doc *axCaretDoc
+	var caretBlock *axCaretBlock
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 400},
+		StartupFinishedCallback(func() {
+			doc, caretBlock, _ = newAXCaretDoc()
+			wnd = axNewTestWindow(t, "caret focus and menus", geom.NewRect(10, 10, 300, 300), doc)
+			if wnd != nil {
+				wnd.ToFront()
+				wnd.SetFocus(doc)
+			}
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	saved := axCaretBlockReportsFocus
+	defer screen.Do(func() { axCaretBlockReportsFocus = saved })
+	// The claim only exists on the platforms whose screen readers need it, so it is turned on here whichever platform
+	// this runs on: what is being pinned is that an open menu takes it away even there.
+	screen.Do(func() { axCaretBlockReportsFocus = true })
+
+	tree := screen.AccessibilityTree(wnd)
+	docNode := screen.AccessibilityNodeFor(doc)
+	caretNode := screen.AccessibilityNodeFor(caretBlock)
+	c.NotNil(tree)
+	c.NotNil(docNode)
+	c.NotNil(caretNode)
+	if tree == nil || docNode == nil || caretNode == nil {
+		return
+	}
+	c.True(docNode.Focused, "with no menu open the document holds the focus")
+	c.True(caretNode.Focused, "and the block holding the caret reports it as well")
+
+	var mp *menuPanel
+	screen.Do(func() {
+		mp = newTestMenuPanel(20, 20, 120, 80)
+		mp.Accessibility.Role = role.Menu
+		mp.Accessibility.Name = "Edit"
+		wnd.root.insertMenu(mp)
+		wnd.MarkForRedraw()
+	})
+	tree = screen.AccessibilityTree(wnd)
+	menuNode := screen.AccessibilityNodeFor(mp)
+	c.NotNil(tree)
+	c.NotNil(menuNode)
+	if tree == nil || menuNode == nil {
+		return
+	}
+	c.Equal(menuNode.ID, tree.Focus, "the open menu is where the person is, so that is where the focus is reported")
+	c.False(tree.Node(docNode.ID).Focused, "the document the menu displaced no longer reports the focus")
+	c.False(tree.Node(caretNode.ID).Focused, "nor does the block inside it")
+	var focused []string
+	tree.Walk(func(n *accessibility.Node) bool {
+		if n.Focused && n.ID != tree.Root {
+			focused = append(focused, n.Name)
+		}
+		return true
+	})
+	c.Equal(1, len(focused), "exactly one node in the window may report being focused: %v", focused)
+
+	// Closing the menu hands the focus back, and the caret — which never moved — is reported again.
+	screen.Do(func() {
+		wnd.root.removeMenu(mp)
+		wnd.MarkForRedraw()
+	})
+	tree = screen.AccessibilityTree(wnd)
+	c.NotNil(tree)
+	if tree == nil {
+		return
+	}
+	c.Equal(docNode.ID, tree.Focus)
+	c.True(tree.Node(docNode.ID).Focused)
+	c.True(tree.Node(caretNode.ID).Focused, "the claim comes back with the focus")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axVirtualFocusClaim is a widget whose one virtual child claims the keyboard focus, which is what a widget publishing
+// a second focused node looks like: the child has no panel of its own, so it cannot be the thing the window's focus is
+// on.
+type axVirtualFocusClaim struct {
+	Panel
+}
+
+// newAXVirtualFocusClaim creates a focusable widget describing one virtual child that says it holds the focus.
+func newAXVirtualFocusClaim() *axVirtualFocusClaim {
+	t := &axVirtualFocusClaim{}
+	t.Self = t
+	t.SetFocusable(true)
+	t.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+		size := geom.NewSize(100, 40)
+		return size, size, size
+	})
+	return t
+}
+
+func (t *axVirtualFocusClaim) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	node.Role = role.Table
+	node.Name = "Grid"
+	node.RowCount = 1
+	b.AddVirtualChild(axVirtualRowKey{row: 0}, func(n *accessibility.Node) {
+		n.Role = role.Row
+		n.RowIndex = 0
+		n.Bounds = t.ContentRect(true)
+		// Claimed whatever the platform does with it, so that what the builder makes of the claim is what this pins.
+		n.Focused = true
+	})
+}
+
+// TestAccessibilityVirtualChildFocusClaim covers a claim on the focus made by a node a widget invented. It is decided
+// by the same rule a claim from a real panel is: it is a companion to the focus rather than the focus itself, so it
+// stands only where a screen reader needs a second focused object and only while the panel that described it is the one
+// the window reports the focus on. Without that a widget could publish a second focused node on every platform,
+// whatever that platform's assistive technology makes of one.
+func TestAccessibilityVirtualChildFocusClaim(t *testing.T) {
+	c := check.New(t)
+	var claimer *axVirtualFocusClaim
+	var field *Field
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			claimer = newAXVirtualFocusClaim()
+			field = NewField()
+			wnd = axNewTestWindow(t, "virtual focus claims", geom.NewRect(10, 10, 300, 200), claimer)
+			if wnd != nil {
+				wnd.Content().AddChild(field)
+				wnd.Content().MarkForLayoutAndRedraw()
+				wnd.ToFront()
+				wnd.SetFocus(claimer)
+			}
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	saved := axCaretBlockReportsFocus
+	defer screen.Do(func() { axCaretBlockReportsFocus = saved })
+
+	for _, reports := range []bool{true, false} {
+		screen.Do(func() { axCaretBlockReportsFocus = reports })
+		tree := screen.AccessibilityTree(wnd)
+		node := screen.AccessibilityNodeFor(claimer)
+		c.NotNil(tree)
+		c.NotNil(node)
+		if tree == nil || node == nil {
+			return
+		}
+		c.Equal(1, len(node.Children), "the widget described its one row")
+		if len(node.Children) != 1 {
+			return
+		}
+		row := tree.Node(node.Children[0])
+		c.NotNil(row)
+		if row == nil {
+			return
+		}
+		c.True(node.Focused, "the widget holds the keyboard focus whatever its rows say")
+		c.Equal(node.ID, tree.Focus, "and is what the tree reports the focus on")
+		c.Equal(reports, row.Focused,
+			"a virtual child inside the focus panel reports the focus only where one is needed (%v)", reports)
+	}
+
+	// A claim from a widget that does not hold the focus is a mistake rather than a caret, so it goes even where a
+	// second focused object is what the platform wants.
+	screen.Do(func() {
+		axCaretBlockReportsFocus = true
+		wnd.SetFocus(field)
+	})
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(claimer)
+	c.NotNil(tree)
+	c.NotNil(node)
+	if tree == nil || node == nil || len(node.Children) != 1 {
+		return
+	}
+	row := tree.Node(node.Children[0])
+	c.NotNil(row)
+	if row != nil {
+		c.False(row.Focused, "a virtual child outside the panel that holds the focus does not get to claim it")
+		c.NotEqual(row.ID, tree.Focus)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axVirtualRowKey identifies the one row axVirtualRowTable invents, standing in for the key a document's table uses.
+type axVirtualRowKey struct {
+	row int
+}
+
+// axVirtualRowTable is a widget shaped like a document's table: the cells are real panels it holds as children, and the
+// row between them and itself exists only because it described one. See AccessibilityBuilder.describeChildrenUnder.
+type axVirtualRowTable struct {
+	cells []*Label
+	Panel
+}
+
+// newAXVirtualRowTable creates a table of one row holding the given cell titles.
+func newAXVirtualRowTable(titles ...string) *axVirtualRowTable {
+	t := &axVirtualRowTable{}
+	t.Self = t
+	t.SetLayout(&FlexLayout{Columns: len(titles)})
+	for _, title := range titles {
+		cell := NewLabel()
+		cell.SetTitle(title)
+		t.cells = append(t.cells, cell)
+		t.AddChild(cell)
+	}
+	return t
+}
+
+// ProvideAccessibility describes the table, the one virtual row it invents, and the real cell panels beneath that row.
+func (t *axVirtualRowTable) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	node.Role = role.Table
+	node.Name = "Grid"
+	node.RowCount = 1
+	node.ColumnCount = len(t.cells)
+	rowID := b.AddVirtualChild(axVirtualRowKey{row: 0}, func(n *accessibility.Node) {
+		n.Role = role.Row
+		n.RowIndex = 0
+		n.Bounds = t.ContentRect(true)
+	})
+	children := make([]axChildAt, 0, len(t.cells)+3)
+	for i, cell := range t.cells {
+		children = append(children, axChildAt{panel: cell.AsPanel(), index: i})
+	}
+	// A nil in the list is skipped rather than describing anything, since a widget building this list from its own
+	// content may well have a hole in it, and so is an entry whose index says the panel is not one the widget holds:
+	// pushing a negative index onto a cell's path would make a key no request could resolve.
+	children = append(children,
+		axChildAt{index: 0},
+		axChildAt{panel: t.cells[0].AsPanel(), index: -1},
+		// The first cell again, which is already in this tree: describing it a second time would list its id beneath the
+		// row twice and leave every position counted out of that list wrong.
+		axChildAt{panel: t.cells[0].AsPanel(), index: 0},
+	)
+	b.describeChildrenUnder(rowID, children)
+	// Nothing must describe the cells a second time as children of the table itself, which is what this says.
+	b.snapshot.markChildrenDescribed(node.ID)
+	// A parent that is not in this tree describes nothing at all.
+	b.describeChildrenUnder(0, children)
+}
+
+// TestAccessibilityDescribeChildrenUnder covers the shape a document's table is described in: the widget invents a row
+// that has no panel of its own, and the real panels holding the cells are described beneath that row rather than
+// beneath the widget. Each cell keeps its own identity, so what an assistive technology is told about is the panel a
+// request about it will reach.
+func TestAccessibilityDescribeChildrenUnder(t *testing.T) {
+	c := check.New(t)
+	var table *axVirtualRowTable
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			table = newAXVirtualRowTable("One", "Two")
+			wnd = axNewTestWindow(t, "virtual rows", geom.NewRect(10, 10, 300, 200), table)
+		}))
+	c.NotNil(wnd)
+	tree := screen.AccessibilityTree(wnd)
+	c.NotNil(tree)
+	tableNode := screen.AccessibilityNodeFor(table)
+	c.NotNil(tableNode)
+	if tree == nil || tableNode == nil {
+		return
+	}
+	c.Equal(1, len(tableNode.Children), "the row is the table's only child")
+	row := tree.Node(tableNode.Children[0])
+	c.NotNil(row)
+	if row == nil {
+		return
+	}
+	c.Equal(role.Row, row.Role)
+	c.Equal(len(table.cells), len(row.Children),
+		"every cell panel is described beneath the row, and none of them twice: %v", row.Children)
+	for i, id := range row.Children {
+		cellNode := tree.Node(id)
+		c.NotNil(cellNode)
+		if cellNode == nil {
+			continue
+		}
+		c.Equal(row.ID, cellNode.Parent)
+		c.Equal(role.Label, cellNode.Role)
+		c.Equal(table.cells[i].String(), cellNode.Name)
+		c.Equal(screen.AccessibilityNodeFor(table.cells[i]).ID, id, "a cell keeps its own identity")
+	}
+	// The repeated cell, the entry with no panel and the one with a negative index were all refused, so the cell that was
+	// handed over twice is listed once.
+	first := screen.AccessibilityNodeFor(table.cells[0])
+	c.NotNil(first)
+	if first != nil {
+		listed := 0
+		for _, id := range row.Children {
+			if id == first.ID {
+				listed++
+			}
+		}
+		c.Equal(1, listed, "a cell already described in this tree is not described a second time")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

@@ -236,6 +236,14 @@ type uiaSetPosition struct {
 //   - Where a node sits in its set, which takes a walk up to the container that holds the count plus a scan of the
 //     node's siblings. PositionInSet and SizeOfSet are two properties carrying the two halves of that one answer, and a
 //     client reading an element reads both.
+//   - How a document's stream divides into the units a screen reader reads it in. Working the divisions out costs
+//     several passes over the whole stream, and a client reading a document asks for them once per line, word or
+//     character it moves the caret over — a say-all over a long document is thousands of calls, every one of which
+//     would otherwise re-divide the text. See uiaMemoizedTextDocument.
+//   - Which stretch of which document's stream each element occupies. UIAProvidedPatterns asks it of every element a
+//     client so much as looks at, in both of the snapshots a publish compares, and answering it by scanning a
+//     document's span list costs a pass over as many spans as the document has blocks and inline elements — which over
+//     a whole tree is quadratic. See uiaMemoizedTextSpans.
 //
 // Remembering them is correct only because a published snapshot is immutable: a publish swaps a whole new tree in
 // rather than editing the one providers are answering from, so an answer worked out from a tree cannot go out of date
@@ -252,12 +260,15 @@ type uiaSetPosition struct {
 // UI Automation calls providers on whichever thread it likes, so every access is under the lock, the computation
 // included: it is short, and several threads working the same answer out at once is the thing being avoided.
 var uiaSnapshotMemo struct {
-	tree      *accessibility.Tree
-	headers   map[accessibility.NodeID]accessibility.NodeID
-	named     map[accessibility.NodeID]bool
-	positions map[accessibility.NodeID]uiaSetPosition
-	namedDone bool
-	lock      sync.Mutex
+	tree          *accessibility.Tree
+	headers       map[accessibility.NodeID]accessibility.NodeID
+	named         map[accessibility.NodeID]bool
+	positions     map[accessibility.NodeID]uiaSetPosition
+	documents     map[accessibility.NodeID]*uiaTextDocument
+	textSpans     map[accessibility.NodeID]uiaDocumentSpan
+	namedDone     bool
+	textSpansDone bool
+	lock          sync.Mutex
 }
 
 // uiaForgetSnapshotMemo drops whatever uiaSnapshotMemo is holding, so that a snapshot nothing is answering from any
@@ -298,6 +309,9 @@ func uiaMemoSwitchTo(t *accessibility.Tree) bool {
 	uiaSnapshotMemo.named = nil
 	uiaSnapshotMemo.namedDone = false
 	uiaSnapshotMemo.positions = nil
+	uiaSnapshotMemo.documents = nil
+	uiaSnapshotMemo.textSpans = nil
+	uiaSnapshotMemo.textSpansDone = false
 	return t != nil
 }
 
@@ -511,9 +525,17 @@ func UIAColumnHeaderItem(t *accessibility.Tree, id accessibility.NodeID) accessi
 // everything else with a value reports it in textual form already. A password field reports nothing at all, which is
 // the whole point of the Protected flag: the snapshot never fills in its value or its text either, and this is the
 // second line of that defense.
+//
+// A link's value is where it leads. UI Automation has no property for a hyperlink's destination, so the Value pattern
+// is where every client looks for one, and the pattern is handed out precisely when there is a URL to report; see
+// uiaRolePatterns. It wins over Value for that one role, since the URL is what the pattern was granted for — a link's
+// text is its name, and reporting the text twice would tell a client nothing about where following it would go.
 func UIAValueString(n *accessibility.Node) string {
 	if n == nil || n.Protected {
 		return ""
+	}
+	if n.Role == role.Link && n.URL != "" {
+		return n.URL
 	}
 	if n.Value != "" {
 		return n.Value
@@ -528,7 +550,8 @@ func UIAValueString(n *accessibility.Node) string {
 // it read-only:
 //
 //   - the role. A color well and a popup button report a value so that a client can say what is currently chosen, but
-//     neither takes a new one through it, and a document is there to be read.
+//     neither takes a new one through it, a link reports where it leads and nothing retargets a link through
+//     accessibility, and a document is there to be read.
 //   - the node saying so, through ReadOnly.
 //   - the node not offering the SetValue action, which is the snapshot's own statement that nothing will happen if a
 //     client tries. Declaring a value writable and then refusing every attempt is worse than saying so up front.
@@ -542,7 +565,7 @@ func UIAIsValueReadOnly(n *accessibility.Node) bool {
 		return true
 	}
 	switch n.Role {
-	case role.ColorWell, role.PopupButton, role.Document:
+	case role.ColorWell, role.PopupButton, role.Document, role.Link:
 		return true
 	default:
 		return n.ReadOnly || !n.Actions.Has(accessibility.SetValue)

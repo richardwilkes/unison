@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/internal/textunit"
 )
 
 // textUnit is the piece of a control's content that the four methods of org.a11y.atspi.Text answering with a range work
@@ -243,34 +244,25 @@ func endEdges(starts, contentEnds []int, count int) []int {
 	return append(edges, count)
 }
 
-// wordDivisions returns where the words begin and end. A word is a run of characters that are not spaces: Unison does
-// not carry the language its text is written in, so that is the one division that holds everywhere, and punctuation
-// belongs to the word it is written against.
+// wordDivisions returns where the words begin and end. Where they begin is [textunit.WordStarts]'s answer, which is the
+// one the UI Automation adapter divides a document's words at as well, so that the same screen reader asking each
+// platform for the word at an offset is told about the same characters.
 //
-// The first unit always begins at the start of the content, whether or not a word does, since every offset has to
-// belong to one.
+// Where a word's own characters stop is the next space or the next word, whichever comes first. The second bound
+// matters only for the object-replacement character that stands in for an image, which is a word of its own however
+// tightly it is written against the text around it.
 func (c *textContent) wordDivisions() *divisions {
-	d := &divisions{starts: []int{0}}
-	for i := 1; i < len(c.runes); i++ {
-		if isWordStart(c.runes, i) {
-			d.starts = append(d.starts, i)
-		}
-	}
+	d := &divisions{starts: textunit.WordStarts(c.runes)}
 	d.contentEnds = make([]int, 0, len(d.starts))
 	for _, start := range d.starts {
 		end := start
-		for end < len(c.runes) && !unicode.IsSpace(c.runes[end]) {
+		for end < len(c.runes) && !unicode.IsSpace(c.runes[end]) &&
+			(end == start || !textunit.IsWordStart(c.runes, end)) {
 			end++
 		}
 		d.contentEnds = append(d.contentEnds, end)
 	}
 	return d
-}
-
-// isWordStart reports whether the rune at an index begins a word, which is when it is not a space and what comes before
-// it is, or there is nothing before it.
-func isWordStart(runes []rune, i int) bool {
-	return !unicode.IsSpace(runes[i]) && (i == 0 || unicode.IsSpace(runes[i-1]))
 }
 
 // sentenceDivisions returns where the sentences begin and end.
@@ -326,14 +318,13 @@ func isSentenceTerminator(r rune) bool {
 
 // paragraphDivisions returns where the paragraphs begin and end. A paragraph is what the text itself is divided into,
 // as distinct from a line, which is what the layout divided it into and which changes every time the control is
-// resized.
+// resized. Where they begin is [textunit.ParagraphStarts]'s answer, which is what the UI Automation adapter divides a
+// document's paragraphs at as well, and each one's own characters stop just before the line feed that begins the next.
 func (c *textContent) paragraphDivisions() *divisions {
-	d := &divisions{starts: []int{0}}
-	for i, r := range c.runes {
-		if r == '\n' {
-			d.contentEnds = append(d.contentEnds, i)
-			d.starts = append(d.starts, i+1)
-		}
+	d := &divisions{starts: textunit.ParagraphStarts(c.runes)}
+	d.contentEnds = make([]int, 0, len(d.starts))
+	for _, start := range d.starts[1:] {
+		d.contentEnds = append(d.contentEnds, start-1)
 	}
 	d.contentEnds = append(d.contentEnds, len(c.runes))
 	return d

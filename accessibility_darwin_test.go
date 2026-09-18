@@ -111,8 +111,9 @@ func TestMacAxActionRunsInline(t *testing.T) {
 		Root: buttonID,
 	}}}
 	for _, action := range []accessibility.Action{
-		accessibility.Focus, accessibility.ScrollIntoView, accessibility.Select, accessibility.AddToSelection,
-		accessibility.RemoveFromSelection, accessibility.Expand, accessibility.Collapse, accessibility.SetTextSelection,
+		accessibility.Focus, accessibility.ScrollIntoView, accessibility.ScrollRangeIntoView, accessibility.Select,
+		accessibility.AddToSelection, accessibility.RemoveFromSelection, accessibility.Expand, accessibility.Collapse,
+		accessibility.SetTextSelection,
 	} {
 		c.True(axActionIsNavigation(action), action)
 		c.True(w.axActionRunsInline(accessibility.ActionRequest{Node: buttonID, Action: action}), action)

@@ -520,6 +520,12 @@ func registerMacContentViewClass() {
 			// off the activation path — AppKit asks every view in a window for its role while merely deciding what to
 			// ask next, and turning snapshot building on because of that would defeat the whole point of activating
 			// lazily.
+			//
+			// AppKit takes this at its word rather than merely hiding the view: an AXUIElement client in another
+			// process is handed the root node's children as the window's own children, with no element standing for
+			// this view anywhere in the hierarchy (verified at runtime on macOS 27). So anything only this view
+			// answered would be answered to nobody, which is why the search predicate is answered by the elements
+			// alone; see axElementSearchMethods.
 			Cmd: Sel("isAccessibilityElement"),
 			Fn:  func(_ objc.ID, _ objc.SEL) bool { return false },
 		},

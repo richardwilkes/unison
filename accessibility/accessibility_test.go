@@ -108,6 +108,7 @@ var axActionNames = []struct {
 	{"show-context-menu", accessibility.ShowContextMenu},
 	{"set-text-selection", accessibility.SetTextSelection},
 	{"replace-text", accessibility.ReplaceText},
+	{"scroll-range-into-view", accessibility.ScrollRangeIntoView},
 }
 
 // axEventKindNames names every EventKind, in declaration order, for the same reason axActionNames names the actions.

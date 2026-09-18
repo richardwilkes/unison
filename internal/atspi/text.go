@@ -28,11 +28,15 @@ import (
 // caret or the selection is handed to the user interface thread and answered optimistically, exactly as the other
 // interfaces do.
 //
-// Four of the interface's methods are left out, since nothing Unison reports could answer them with more than a
-// refusal: GetBoundedRanges, which asks which ranges of text lie within a rectangle; GetDefaultAttributeSet, which is
-// GetDefaultAttributes under an older name that libatspi no longer calls; and ScrollSubstringTo and
-// ScrollSubstringToPoint, which ask for part of the text to be brought into view. A caller that asks for one of them is
+// Two of the interface's methods are left out, since nothing Unison reports could answer them with more than a refusal:
+// GetBoundedRanges, which asks which ranges of text lie within a rectangle, and GetDefaultAttributeSet, which is
+// GetDefaultAttributes under an older name that libatspi no longer calls. A caller that asks for one of them is
 // answered with an unknown method, which is what libatspi expects of an interface it has to treat as optional anyway.
+//
+// ScrollSubstringToPoint, which asks for part of the text to be moved to a particular place on the screen, reports that
+// it did nothing: a toolkit that lays its own widgets out has nowhere to put an externally imposed position, exactly as
+// org.a11y.atspi.Component.ScrollToPoint has. ScrollSubstringTo, which only asks for part of the text to be brought
+// into view, is carried out; see [nodeObject.scrollSubstringTo].
 func (o *nodeObject) textInterface() *dbus.Interface {
 	return &dbus.Interface{
 		Name: InterfaceText,
@@ -59,6 +63,8 @@ func (o *nodeObject) textInterface() *dbus.Interface {
 			{Name: "GetAttributeRun", In: "ib", Out: textAttributesSignature, Handle: o.getAttributeRun},
 			{Name: "GetAttributeValue", In: "is", Out: "s", Handle: o.getAttributeValue},
 			{Name: "GetDefaultAttributes", Out: stringDictSignature, Handle: o.getDefaultAttributes},
+			{Name: "ScrollSubstringTo", In: "iiu", Out: "b", Handle: o.scrollSubstringTo},
+			{Name: "ScrollSubstringToPoint", In: "iiuii", Out: "b", Handle: replyFalse},
 		},
 		Properties: []*dbus.Property{
 			{Name: "CharacterCount", Sig: "i", Get: func() (any, error) { return int32(len(o.textRunes())), nil }},
@@ -487,42 +493,70 @@ func offsetOnLine(line *accessibility.Line, x float32, count int) int {
 	}
 }
 
-// getTextAttributes implements org.a11y.atspi.Text.GetAttributes. Unison reports no text attributes in V1, so the whole
-// content is one run that has none — but only for an offset the content actually has: ATK answers an offset outside the
-// text with an empty run, and a client that walks a control by asking for the run at the end of the last one would
-// otherwise be handed the whole content again and walk it forever.
+// getTextAttributes implements org.a11y.atspi.Text.GetAttributes, which hands back the attributes of the text at an
+// offset along with the range over which they hold; see [textRunAt]. A control that draws the whole of its content in
+// one style publishes no runs, so the whole of it is one range with no attributes, which is what every text control but
+// a document's blocks reports.
 func (o *nodeObject) getTextAttributes(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
 		return
 	}
-	count := len(o.textRunes())
-	if offset := int(int32Arg(args, 0)); offset < 0 || offset >= count {
-		call.Reply(dbus.Dict{}, int32(0), int32(0))
-		return
-	}
-	call.Reply(dbus.Dict{}, int32(0), int32(count))
+	attributes, start, end := textRunAt(o.node.Text, int(int32Arg(args, 0)), len(o.textRunes()))
+	call.Reply(attributes, int32(start), int32(end))
 }
 
 // getAttributeRun implements org.a11y.atspi.Text.GetAttributeRun, which differs from GetAttributes only in offering to
-// fold in the defaults. There are no attributes either way.
+// fold the defaults in. There is nothing to fold: a run reports every attribute this package has to say about it, and
+// [defaultTextAttributes] answers with the attributes of the first run, so the defaults never carry anything a run has
+// left out.
 func (o *nodeObject) getAttributeRun(call *dbus.Call) {
 	o.getTextAttributes(call)
 }
 
-// getAttributeValue implements org.a11y.atspi.Text.GetAttributeValue. No attribute has a value, which AT-SPI spells as
-// an empty string.
+// getAttributeValue implements org.a11y.atspi.Text.GetAttributeValue, which asks for one attribute of the text at an
+// offset by name. An attribute the text does not carry has no value, which AT-SPI spells as an empty string.
 func (o *nodeObject) getAttributeValue(call *dbus.Call) {
-	if _, ok := callArgs(call); !ok {
+	args, ok := callArgs(call)
+	if !ok {
 		return
 	}
-	call.Reply("")
+	attributes, _, _ := textRunAt(o.node.Text, int(int32Arg(args, 0)), len(o.textRunes()))
+	call.Reply(attributeValue(attributes, stringArg(args, 1)))
 }
 
-// getDefaultAttributes implements org.a11y.atspi.Text.GetDefaultAttributes. A Unison text control has one font and one
-// color throughout, and neither is anything an assistive technology needs, so there are none to report.
+// getDefaultAttributes implements org.a11y.atspi.Text.GetDefaultAttributes, which are the attributes that hold
+// throughout the content unless a run says otherwise; see [defaultTextAttributes].
 func (o *nodeObject) getDefaultAttributes(call *dbus.Call) {
-	call.Reply(dbus.Dict{})
+	call.Reply(defaultTextAttributes(o.node.Text))
+}
+
+// scrollSubstringTo implements org.a11y.atspi.Text.ScrollSubstringTo, which asks for part of the text to be brought
+// into view. Orca calls it after every caret move it makes, so a document whose reader has arrowed past the bottom of
+// the view port scrolls along with them; without it the caret moves and the window stays where it was.
+//
+// Where in the view the range ends up is up to the widget: the schema has one request for this and it means "make it
+// visible", so the AtspiScrollType the caller asked for — top left, bottom right, anywhere — is not carried. A range
+// reaching outside the content is brought within it rather than refused, as [nodeObject.selectRange] refuses one: a
+// scroll leaves nothing behind for the client to be misled about, and refusing would leave a caret at the end of a
+// document off the bottom of the screen.
+func (o *nodeObject) scrollSubstringTo(call *dbus.Call) {
+	args, ok := callArgs(call)
+	if !ok {
+		return
+	}
+	if !o.node.Actions.Has(accessibility.ScrollRangeIntoView) {
+		call.Reply(false)
+		return
+	}
+	count := len(o.textRunes())
+	start := clamp(int(int32Arg(args, 0)), 0, count)
+	call.Reply(o.a.dispatch(accessibility.ActionRequest{
+		Node:   o.node.ID,
+		Action: accessibility.ScrollRangeIntoView,
+		Start:  start,
+		End:    clamp(int(int32Arg(args, 1)), start, count),
+	}))
 }
 
 // rectExtents converts a rectangle in the same window-local logical space as a node's Bounds into the physical pixels

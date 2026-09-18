@@ -36,11 +36,11 @@ import (
 //     followed by TextSelectionChanged. RoleChanged comes first because a node's role decides how an adapter interprets
 //     everything else about it, so the adapter must know the new role before it applies the rest. At most one
 //     AttributesChanged is produced per node, and it covers the secondary facts no kind of its own reports: Actions,
-//     Placeholder, Shortcut, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Step, Orientation, the Multiline flag
-//     of Text and the LabeledBy, DescribedBy and Controls relations. Every platform carries those as attributes,
-//     relations or the set of requests an element answers rather than as its value, and an assistive technology
-//     re-reads the ones it cares about when it is told the element's attributes changed, so naming which of them moved
-//     would buy nothing.
+//     Placeholder, Shortcut, URL, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Step, Orientation, the Multiline
+//     flag of the node's text, whether the node carries a Document at all, and the LabeledBy, DescribedBy and Controls
+//     relations. Every platform carries those as attributes, relations or the set of requests an element answers rather
+//     than as its value, and an assistive technology re-reads the ones it cares about when it is told the element's
+//     attributes changed, so naming which of them moved would buy nothing.
 //  6. WindowActivated or WindowDeactivated when the root's Focused flipped.
 //  7. FocusChanged last, whenever the focus moved, so an adapter has already applied every structural and value change
 //     before it tells its assistive technology where to look.
@@ -48,6 +48,13 @@ import (
 // Additions and per-node changes are found by walking cur from its root, so a node that is in the Nodes map but not
 // reachable from Root is not reported. Removals, by contrast, are found from the Nodes maps alone, so nothing an
 // adapter was told about can be left behind.
+//
+// The text events are produced from whatever text a node presents, which for a node carrying a DocumentInfo is the
+// stream it composed out of the nodes beneath it. Whether that stream is presented to an assistive technology at all is
+// the adapter's decision — one platform reads a document through the same text interface it reads a field through,
+// another shows it as a container of elements and gives it no text interface — so an adapter that does not present a
+// Document's stream must ignore the text events for that node rather than report a caret or an edit on an element it
+// has told its client holds no text.
 func Diff(old, cur *Tree) []Event {
 	if cur == nil {
 		return nil
@@ -178,6 +185,21 @@ func appendChangesForNode(events []Event, prev, cur *Node) []Event {
 // now refused, or never offer one that has appeared. Which action moved is not named for the same reason none of the
 // others are: an assistive technology re-reads what it cares about once it has been told to look again.
 //
+// URL is here because where a link leads is live state as well: a link is a Label whose target the application supplies
+// when it is built, and nothing stops an application replacing one. Every adapter carries it as a property of the
+// element that a client reads once and caches — AT-SPI answers GetURI from it, macOS accessibilityURL, UI Automation
+// the link's value — so a link that had been re-pointed would go on telling the person where it used to go. Nothing
+// else would report it: a link's target is not the node's Value, so no ValueChanged is produced for one, and the UI
+// Automation adapter raises the value property from this event for a node that hands out the value pattern rather than
+// leaving a client to notice on its own.
+//
+// Whether the node carries a Document is here because it decides what an adapter offers on the element rather than what
+// the element currently says: a node that has composed its content into one stream is presented as a document, with the
+// text interfaces that go with one, and a node that has not is presented as a plain container. Both are things a client
+// asks about once and caches, so a document that has only just composed its stream — or one that has stopped, because
+// its content was emptied — has to be re-read. What the stream says is not reported here: that is what the text events
+// are for.
+//
 // TextInfo.Multiline is here because how many lines a control lays its content out over is live state too, and it is
 // the one fact about a wrapping field that moves with nothing else about the field moving at all: a single-line field
 // reports it from the number of lines it actually drew, so it flips as the field is resized around text that already
@@ -187,10 +209,11 @@ func appendChangesForNode(events []Event, prev, cur *Node) []Event {
 // line-by-line navigation through it, for the life of the window.
 func appendAttributeChanges(events []Event, prev, cur *Node) []Event {
 	if prev.Actions != cur.Actions ||
-		prev.Placeholder != cur.Placeholder || prev.Shortcut != cur.Shortcut || prev.Level != cur.Level ||
-		prev.RowIndex != cur.RowIndex || prev.ColumnIndex != cur.ColumnIndex || prev.RowCount != cur.RowCount ||
-		prev.ColumnCount != cur.ColumnCount || numbersDiffer(prev.Step, cur.Step) ||
-		prev.Orientation != cur.Orientation || multiline(prev) != multiline(cur) ||
+		prev.Placeholder != cur.Placeholder || prev.Shortcut != cur.Shortcut || prev.URL != cur.URL ||
+		prev.Level != cur.Level || prev.RowIndex != cur.RowIndex || prev.ColumnIndex != cur.ColumnIndex ||
+		prev.RowCount != cur.RowCount || prev.ColumnCount != cur.ColumnCount ||
+		numbersDiffer(prev.Step, cur.Step) || prev.Orientation != cur.Orientation ||
+		multiline(prev) != multiline(cur) || (prev.Document == nil) != (cur.Document == nil) ||
 		!slices.Equal(prev.LabeledBy, cur.LabeledBy) ||
 		!slices.Equal(prev.DescribedBy, cur.DescribedBy) || !slices.Equal(prev.Controls, cur.Controls) {
 		events = append(events, Event{Kind: AttributesChanged, Node: cur.ID})
@@ -202,7 +225,23 @@ func appendAttributeChanges(events []Event, prev, cur *Node) []Event {
 // A node that gains or loses its text altogether is a bigger change than this, and the text events that go with it are
 // what report that.
 func multiline(n *Node) bool {
-	return n.Text != nil && n.Text.Multiline
+	info := textInfoOf(n)
+	return info != nil && info.Multiline
+}
+
+// textInfoOf returns the text a node presents: its own, or, for a Document, the stream it has composed from the nodes
+// beneath it. A Document carries the one and never the other — see [Node.Text] — so there is no ambiguity about which
+// is answered, and everything that compares one snapshot of a node's text with the next goes through here rather than
+// reading the fields, since a document's text changes and moves its caret exactly as a field's does and an assistive
+// technology has to be told about both the same way.
+func textInfoOf(n *Node) *TextInfo {
+	if n.Text != nil {
+		return n.Text
+	}
+	if n.Document != nil {
+		return &n.Document.Text
+	}
+	return nil
 }
 
 // appendStateChanges appends one StateChanged per flag that differs between the two snapshots of a node. The order here
@@ -251,16 +290,18 @@ func appendStateChange(events []Event, id NodeID, state State, prev, cur bool) [
 	return events
 }
 
-// appendTextChanges appends the text events for a node, which are produced only when both snapshots carry text. The
-// edit is reduced to the single run of runes that differs by stripping the common prefix and suffix, which turns
-// ordinary typing and deleting into the one insertion or deletion an assistive technology expects to hear about rather
-// than a wholesale replacement.
+// appendTextChanges appends the text events for a node, which are produced only when both snapshots carry text — its
+// own or, for a Document, the stream it has composed; see [textInfoOf]. The edit is reduced to the single run of runes
+// that differs by stripping the common prefix and suffix, which turns ordinary typing and deleting into the one
+// insertion or deletion an assistive technology expects to hear about rather than a wholesale replacement.
 func appendTextChanges(events []Event, prev, cur *Node) []Event {
-	if prev.Text == nil || cur.Text == nil {
+	prevText := textInfoOf(prev)
+	curText := textInfoOf(cur)
+	if prevText == nil || curText == nil {
 		return events
 	}
-	oldRunes := []rune(prev.Text.Text)
-	curRunes := []rune(cur.Text.Text)
+	oldRunes := []rune(prevText.Text)
+	curRunes := []rune(curText.Text)
 	prefix := 0
 	for prefix < len(oldRunes) && prefix < len(curRunes) && oldRunes[prefix] == curRunes[prefix] {
 		prefix++
@@ -288,18 +329,18 @@ func appendTextChanges(events []Event, prev, cur *Node) []Event {
 			New:    string(curRunes[prefix : prefix+inserted]),
 		})
 	}
-	if prev.Text.SelStart != cur.Text.SelStart || prev.Text.SelEnd != cur.Text.SelEnd ||
-		prev.Text.Caret != cur.Text.Caret {
+	if prevText.SelStart != curText.SelStart || prevText.SelEnd != curText.SelEnd ||
+		prevText.Caret != curText.Caret {
 		// TextInfo requires SelStart <= SelEnd, and the pair is ordered again here so that a widget which fills the two
 		// in from an anchor and a caret without ordering them cannot produce a negative Length. Length is a count of
 		// runes, which adapters turn into a platform range, and there is nothing such a range could make of a negative
 		// one.
-		start := min(cur.Text.SelStart, cur.Text.SelEnd)
+		start := min(curText.SelStart, curText.SelEnd)
 		events = append(events, Event{
 			Kind:   TextSelectionChanged,
 			Node:   cur.ID,
 			Start:  start,
-			Length: max(cur.Text.SelStart, cur.Text.SelEnd) - start,
+			Length: max(curText.SelStart, curText.SelEnd) - start,
 		})
 	}
 	return events

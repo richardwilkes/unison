@@ -58,6 +58,10 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 	// title is underlined has nothing else to tell them the two apart. Pressing it is already handled by the default
 	// behavior for the Press action, which synthesizes the click the mouse callbacks below are waiting for.
 	link.Accessibility.Role = role.Link
+	// Where the link leads is carried as the link's own property rather than only as words to read out: an assistive
+	// technology offers it as something to follow or to copy, and a document holding the link reports the same target
+	// for the run of text it occupies.
+	link.Accessibility.URL = target
 	if target != "" && tooltip == "" {
 		// Only when there is nothing better to say. A description is what an assistive technology reads after the name,
 		// and the snapshot falls back to the tooltip's text for it while it is empty, so naming the target here for a

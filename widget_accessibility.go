@@ -71,6 +71,51 @@ func (b *AccessibilityBuilder) DescribeChildren() {
 	b.snapshot.visitChildren(b.panel, b.node.ID, b.clip)
 }
 
+// axChildAt is one panel a widget is describing beneath a node it invented, together with the index that panel occupies
+// within its own parent. See AccessibilityBuilder.describeChildrenUnder.
+type axChildAt struct {
+	panel *Panel
+	index int
+}
+
+// describeChildrenUnder describes real panels beneath a node the widget invented, which is how a virtual row of a
+// document's table gains the cells a person reads it by: the cells are ordinary panels the widget holds as children,
+// but the row between them and the widget exists only because the widget described it, so nothing else would put the
+// two together. The panels must be the widget's own descendants, and each keeps its own identity, so a request about
+// one reaches it exactly as it would have if it had been described where it actually sits.
+//
+// The caller records that it has described its children — see AccessibilityBuilder.DescribeChildren and
+// axSnapshot.markChildrenDescribed — since otherwise the builder describes them a second time as children of the
+// widget itself, and every position counted out of the widget's list of children would then be wrong.
+//
+// Each panel is visited at the index its entry names, which must be the index it occupies within its own parent rather
+// than its position in the list handed here, so that a widget doing this from inside a table cell — where panels are
+// keyed by where they sit, since they may not exist a moment later — is described under ids a request can find its way
+// back through. See axCellContext. The caller states that index rather than leaving it to be derived, since a widget
+// walks its own children in order anyway and searching its child list for each of them again is what would make
+// describing a table of n cells cost n² rather than n.
+//
+// An entry with no panel, or one whose index is negative — which is what a panel the widget does not actually hold
+// amounts to — is skipped, as is a panel that already has a node in this tree. Describing one twice would replace what
+// it said the first time and list its id beneath two parents, which is what every position counted out of those lists —
+// the index within the parent, what Tree.PositionInSet answers, and the ChildrenChanged events the next diff produces —
+// would then be wrong about. It is the failure AddVirtualChildOf refuses a repeated key for, refused here the same way.
+func (b *AccessibilityBuilder) describeChildrenUnder(parent accessibility.NodeID, children []axChildAt) {
+	if b.snapshot.tree.Nodes[parent] == nil {
+		return
+	}
+	for _, child := range children {
+		p := child.panel
+		if p == nil || child.index < 0 {
+			continue
+		}
+		if p.Accessibility.owner == p && b.snapshot.tree.Nodes[p.Accessibility.id] != nil {
+			continue
+		}
+		b.snapshot.visitChild(p, child.index, parent, b.clip)
+	}
+}
+
 // addColumnHeaderPanel describes the panel a table header shows for one of its columns, and everything inside it,
 // beneath the node for that column. The panel must be installed at the column's frame for the duration of the call, as
 // it is for drawing.

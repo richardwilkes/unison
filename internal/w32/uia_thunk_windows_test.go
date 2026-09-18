@@ -26,9 +26,14 @@ type uiaThunkCall struct {
 	out   uintptr
 }
 
-// TestUIAThunkSlots verifies that the two vtable slots that take doubles hold the thunks rather than a callback, and
-// that each thunk has a callback to jump to. A slot holding a plain callback would read the coordinates out of
-// whichever integer registers happened to be in use.
+// TestUIAThunkSlots verifies that the two vtable slots that take doubles on both architectures hold the thunks rather
+// than a callback, and that each thunk has a callback to jump to. A slot holding a plain callback would read the
+// coordinates out of whichever integer registers happened to be in use.
+//
+// The third slot that arrives with a double, ITextProvider::RangeFromPoint, is thunked on arm64 alone — a UiaPoint is
+// passed in two floating-point registers there and by reference on amd64 — so which of the two shapes it holds is
+// pinned per architecture, by TestUIATextFromPointThunk and TestUIATextRangeFromPointSlotIsACallback. What both have in
+// common is checked here: the slot is filled at all.
 func TestUIAThunkSlots(t *testing.T) {
 	c := check.New(t)
 	uiaEnsureVtbls()
@@ -42,6 +47,7 @@ func TestUIAThunkSlots(t *testing.T) {
 	c.True(uiaRangeValueSetValueThunkAddr() != 0)
 	c.True(uiaFromPointShimAddr() != 0)
 	c.True(uiaRangeValueSetValueShimAddr() != 0)
+	c.True(uiaTextVtbl[uiaUnknownSlots+3] != 0, "the RangeFromPoint slot is filled on either architecture")
 }
 
 // TestFromPointThunk verifies the thunk in front of IRawElementProviderFragmentRoot::ElementProviderFromPoint: the two

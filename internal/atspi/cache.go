@@ -96,7 +96,7 @@ func (o *nodeObject) cacheItem(index int) dbus.Struct {
 		o.parentReference(),
 		int32(index),
 		int32(len(o.children())),
-		Interfaces(o.node),
+		Interfaces(o.node, o.isSpanTarget()),
 		o.node.Name,
 		uint32(MapRole(o.node)),
 		o.node.Description,

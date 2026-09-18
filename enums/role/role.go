@@ -9,16 +9,21 @@
 
 package role
 
-// IsText returns true if this role presents a body of text that assistive technologies may navigate through rather
-// than just a single value: TextField, TextArea, SpinButton, ComboBox and Document. These are the only roles whose
-// nodes ever carry text information — content, caret, selection and line boundaries — so asking this question is the
-// cheapest way to decide whether that information is worth looking for. It is not a promise that the information is
-// there: a Document never carries it, since its content is described by the nodes beneath it, and neither does a
-// Protected field, so accessibility.Node.Text still has to be checked for nil. Label and Heading are deliberately
-// excluded: their text is static and is reported as the node's name instead.
+// IsText returns true if this role presents a body of text that assistive technologies may navigate through rather than
+// just a single value: the editable controls TextField, TextArea, SpinButton and ComboBox, and the pieces a document is
+// read as — Document itself, Paragraph, Heading, Code, Cell and ColumnHeader. These are the only roles whose nodes ever
+// carry text information — content, caret, selection, line boundaries, styled runs and the spans other nodes occupy —
+// so asking this question is the cheapest way to decide whether that information is worth looking for.
+//
+// It is not a promise that the information is there: a Document carries its content as one composed stream in
+// accessibility.Node.Document rather than as its own text, a block that was never measured carries nothing, and a
+// Protected field carries neither, so accessibility.Node.Text still has to be checked for nil. Heading is in the set
+// because a heading within a document carries both — the name an assistive technology announces it by, and the same
+// words as text, so that a reading caret can move through them line by line like any other block. Label stays out:
+// static text outside a document is one element with a name and nothing to navigate through.
 func (e Enum) IsText() bool {
 	switch e {
-	case TextField, TextArea, SpinButton, ComboBox, Document:
+	case TextField, TextArea, SpinButton, ComboBox, Document, Paragraph, Heading, Code, Cell, ColumnHeader:
 		return true
 	default:
 		return false

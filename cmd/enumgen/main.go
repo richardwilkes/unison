@@ -303,6 +303,13 @@ func main() {
 			{Key: "link", Comment: "A control that navigates somewhere else"},
 			{Key: "label", Comment: "Static text that cannot be edited"},
 			{Key: "heading", Comment: "Static text that introduces a section; Level holds its depth"},
+			{Key: "paragraph", Comment: "A block of static text within a document"},
+			{
+				Key:     "block-quote",
+				String:  "Block Quote",
+				Comment: "A quoted passage within a document; Name holds an alert's title",
+			},
+			{Key: "code", Comment: "A block of preformatted source code"},
 			{Key: "text-field", String: "Text Field", Comment: "A single-line editable text control"},
 			{Key: "text-area", String: "Text Area", Comment: "A multi-line editable text control"},
 			{Key: "spin-button", String: "Spin Button", Comment: "An editable numeric control with increment and decrement"},

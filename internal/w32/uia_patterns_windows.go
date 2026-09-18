@@ -20,10 +20,14 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// This file holds the twelve control-pattern interfaces a provider implements: their virtual method tables, the order
-// of their slots, and the method bodies. A pattern interface is handed out only when UIAPatterns says the element
-// supports that pattern, so a method here can rely on having been reached through an interface the element wanted —
-// but only at the moment it was handed out, which is why every method checks again.
+// This file holds the twelve control-pattern interfaces a provider implements through simple answers about one node:
+// their virtual method tables, the order of their slots, and the method bodies. The Text, Text2 and TextChild patterns
+// are the ones it does not hold — reading a document as text takes a view over its whole composed stream and objects of
+// its own for the ranges — and live in uia_text_windows.go and uia_textrange_windows.go instead.
+//
+// A pattern interface is handed out only when UIAPatterns says the element supports that pattern, so a method here can
+// rely on having been reached through an interface the element wanted — but only at the moment it was handed out, which
+// is why every method checks again.
 //
 // Every answer comes from the window's immutable snapshot and every request to change something goes back to the root
 // package as an action, to be run on the UI thread; see the comments at the top of uia_provider_windows.go. The

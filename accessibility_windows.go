@@ -23,6 +23,14 @@ import (
 // move through the rest of it freely.
 const axReadersFollowFocus = true
 
+// axCaretBlockReportsFocus reports whether the block of a document that holds the reading caret publishes the focus as
+// well as the document itself. UI Automation has one focused element per desktop and raises
+// UIA_AutomationFocusChangedEventId for it, and Narrator and NVDA both follow that element, so a second element inside
+// the document claiming the focus would move the screen reader's cursor off the document and away from the caret it is
+// following. The caret itself is what they read there, through the Text pattern. It is a var rather than a const so
+// that a test can pin both answers on whichever platform it runs on.
+var axCaretBlockReportsFocus = false
+
 // The Windows side of accessibility support: this file connects the snapshots the root package publishes to the UI
 // Automation provider in internal/w32, and connects the requests that come back from an assistive technology to the UI
 // thread.

@@ -266,3 +266,69 @@ func TestGoBytesFromNSData(t *testing.T) {
 		}
 	})
 }
+
+// TestAttributedStringHelpersStayInBounds proves the two attributed-string helpers refuse or clamp a range AppKit would
+// raise NSRangeException for. Both are package-exported with no precondition on their range, and an Objective-C
+// exception raised inside a Go callback — which is where the accessibility adapter calls them from — cannot be caught
+// and takes the process with it, so the check has to be on this side.
+func TestAttributedStringHelpersStayInBounds(t *testing.T) {
+	WithPool(func() {
+		str := NewNSMutableAttributedString("hello")
+		attributes := NSDictionaryFromPairs(NSStringFromGo("AXUnderline"), NSNumberFromInt64(1))
+		// A range reaching past the end is clamped to what is there, and one beginning past the end sets nothing.
+		NSMutableAttributedStringSetAttributes(str, attributes, NSRange{Location: 3, Length: 99})
+		NSMutableAttributedStringSetAttributes(str, attributes, NSRange{Location: 5, Length: 2})
+		NSMutableAttributedStringSetAttributes(str, attributes, NSRange{Location: 99, Length: 1})
+		if got := GoStringFromNSString(str.Send(Sel("string"))); got != "hello" {
+			t.Errorf("the string now holds %q, want %q", got, "hello")
+		}
+		if NSDictionaryObjectForKey(NSAttributedStringAttributesAtIndex(str, 4),
+			NSStringFromGo("AXUnderline")) == 0 {
+			t.Error("the clamped range wrote nothing at the last character")
+		}
+		// An index at or past the end has no attributes to report rather than raising, and neither has a nil string.
+		for _, index := range []uint64{5, 99} {
+			if got := NSAttributedStringAttributesAtIndex(str, index); got != 0 {
+				t.Errorf("the attributes at index %d = %#x, want nothing", index, got)
+			}
+		}
+		if got := NSAttributedStringAttributesAtIndex(0, 0); got != 0 {
+			t.Errorf("the attributes of a nil string = %#x, want nothing", got)
+		}
+		NSMutableAttributedStringSetAttributes(0, attributes, NSRange{Length: 1})
+		NSMutableAttributedStringSetAttributes(str, 0, NSRange{Length: 1})
+	})
+}
+
+// TestNSRangeFromNSValue proves a range is read out of an NSValue only when that is what it holds. The values the
+// accessibility search predicate reads come from another process, and an NSNumber is an NSValue too: asking one for its
+// range raises, which inside a Go callback cannot be caught.
+func TestNSRangeFromNSValue(t *testing.T) {
+	WithPool(func() {
+		want := NSRange{Location: 4, Length: 9}
+		if got, ok := NSRangeFromNSValue(objc.ID(Cls("NSValue")).Send(Sel("valueWithRange:"), want)); !ok ||
+			got != want {
+			t.Errorf("the range of an NSValue holding one = %+v, %v, want %+v, true", got, ok, want)
+		}
+		for _, c := range []struct {
+			what  string
+			value objc.ID
+		}{
+			{what: "nothing at all", value: 0},
+			{what: "an NSNumber", value: NSNumberFromInt64(3)},
+			{what: "an NSString", value: NSStringFromGo("{4, 9}")},
+			{
+				what:  "an NSValue holding a point",
+				value: objc.ID(Cls("NSValue")).Send(Sel("valueWithPoint:"), NSPoint{X: 4, Y: 9}),
+			},
+			{
+				what:  "an NSValue holding a rect",
+				value: objc.ID(Cls("NSValue")).Send(Sel("valueWithRect:"), NSRect{Size: NSSize{Width: 4, Height: 9}}),
+			},
+		} {
+			if got, ok := NSRangeFromNSValue(c.value); ok {
+				t.Errorf("%s answered the range %+v, want nothing", c.what, got)
+			}
+		}
+	})
+}

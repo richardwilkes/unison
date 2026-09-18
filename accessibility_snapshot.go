@@ -35,9 +35,11 @@ import (
 //
 // Text controls fill in accessibility.Node.Text from their own ProvideAccessibility implementation, since only the
 // widget knows what its content and selection are. The laid-out lines within that — accessibility.TextInfo.Lines — are
-// measured only for the control that holds the focus, which is what AccessibilityBuilder.Focused is for: measuring
-// every line of every text control in a window on every snapshot would cost far more than anything an assistive
-// technology would do with the result.
+// measured by an editable control only while it holds the focus, which is what AccessibilityBuilder.Focused is for:
+// measuring every line of every text control in a window on every snapshot would cost far more than anything an
+// assistive technology would do with the result. The blocks of a document are the exception, and fill them in whether
+// the document holds the focus or not — laying the text out is what drew them, so the advances have already been
+// measured and there is nothing left to spend. See accessibility.TextInfo.Lines.
 
 // axPublishThrottle bounds how often a window's tree is rebuilt. A window that redraws continuously — a blinking caret
 // is enough — would otherwise rebuild its tree on every frame, and an assistive technology gains nothing from being
@@ -97,8 +99,13 @@ type axSnapshot struct {
 	// until something asks, and the only widgets that do are the pieces of static text holding something an assistive
 	// technology has to reach in its own right — a markdown heading with a link in it.
 	childrenDescribed map[accessibility.NodeID]bool
-	focus             accessibility.NodeID
-	generation        uint64
+	// companionFocus holds the nodes that reported the focus while another node had already claimed it. A document's
+	// block does that for the reading caret it holds, and only on the platforms whose screen readers need it; see
+	// axCaretBlockReportsFocus and axSnapshot.resolveCompanionFocus, which is what decides whether each of them keeps
+	// the claim. It stays nil in every window where nothing claims the focus twice, which is nearly all of them.
+	companionFocus []accessibility.NodeID
+	focus          accessibility.NodeID
+	generation     uint64
 }
 
 // axCellContext is in force while the panel a table row handed back for one of its cells, and everything inside it,
@@ -228,6 +235,7 @@ func (s *axSnapshot) buildRoot() {
 	s.visit(root.contentPanel, node.ID, clip)
 	s.markOpenMenuItems()
 	s.resolveFocus()
+	s.resolveCompanionFocus()
 }
 
 // markOpenMenuItems publishes every item of every open menu as something the focus can be moved onto, which for a menu
@@ -306,6 +314,65 @@ func (s *axSnapshot) resolveFocus() {
 	}
 }
 
+// resolveCompanionFocus decides what becomes of a second node reporting the focus while another node already holds it,
+// which is what a document's block does while it holds the reading caret: the document is the focus, and the block says
+// it is focused too so that a screen reader following the caret is told where the caret went. It runs once
+// axSnapshot.resolveFocus has settled where the focus actually is.
+//
+// The claim stands only where the platform's screen reader needs it and only for a node inside the panel that really
+// holds the keyboard focus, and only while that panel's own node is what the window reports the focus on. AT-SPI
+// carries the state per object, so Orca finding the block focused is how it presents an application-driven caret move
+// at all — see axCaretBlockReportsFocus — while UI Automation and AppKit have one focused element apiece and would
+// follow the wrong one. A claim from anywhere else in the window is a mistake, since the node an assistive technology
+// is told to look at is not the node the person is actually in.
+//
+// This runs after the open-menu cases have had their say, and a window whose focus a menu has taken over loses the
+// companion claim with it: axSnapshot.clearDisplacedFocus takes Focused away from the panel that holds the keyboard
+// focus so that exactly one node in the window reports it — the item the person is choosing from — and a caret block
+// left claiming the focus inside a document the menu displaced would be the second focused object that clearing exists
+// to prevent, which on AT-SPI is what Orca would announce instead of the item. Nothing is lost by dropping it: the
+// caret has not moved while the menu is up, so the claim comes back with the focus when the menu closes. A focus that
+// fell back to an ancestor of the focus panel — because the panel is disabled or was never described — clears it for
+// the same reason.
+//
+// Tree.Focus is never moved here. It names the node the focus is reported on, which is the document rather than the
+// block inside it, and the first claim is what set it.
+func (s *axSnapshot) resolveCompanionFocus() {
+	if len(s.companionFocus) == 0 {
+		return
+	}
+	var within accessibility.NodeID
+	if s.focusPanel != nil && s.focusPanel.Accessibility.owner == s.focusPanel {
+		within = s.focusPanel.Accessibility.id
+	}
+	// The focus panel's own node is what a companion claim sits beneath, so a window reporting the focus anywhere else
+	// has nothing for one to be a companion to.
+	reported := within != 0 && s.focus == within
+	for _, id := range s.companionFocus {
+		node := s.tree.Nodes[id]
+		if node == nil || node.ID == s.focus {
+			continue
+		}
+		if !axCaretBlockReportsFocus || !reported || !s.isWithin(node, within) {
+			node.Focused = false
+		}
+	}
+}
+
+// isWithin reports whether a node is a descendant of the given one. Zero is nothing's ancestor, which is the answer for
+// a focus panel that was never described.
+func (s *axSnapshot) isWithin(node *accessibility.Node, ancestor accessibility.NodeID) bool {
+	if ancestor == 0 {
+		return false
+	}
+	for n := node; n != nil && n.Parent != 0; n = s.tree.Nodes[n.Parent] {
+		if n.Parent == ancestor {
+			return true
+		}
+	}
+	return false
+}
+
 // openMenuNode returns the node id of the newest in-window menu that is open, or zero if none is open or none of them
 // is in the tree. It is what the focus is reported on while a menu is open with nothing in it highlighted.
 //
@@ -382,6 +449,10 @@ func (s *axSnapshot) fallbackFocus() {
 // whichever it came across, and only one of them is what the person is actually choosing from. The keyboard focus does
 // stay where it was while a menu is open — the menu simply handles keys ahead of it — but that is an implementation
 // detail of how menus work, not something to describe.
+//
+// Only the panel that holds the keyboard focus is cleared. A node inside it that reports the focus for a reading caret
+// it holds is not something a menu displaced, and what becomes of that claim is decided by
+// axSnapshot.resolveCompanionFocus.
 func (s *axSnapshot) clearDisplacedFocus(keep accessibility.NodeID) {
 	if s.focusPanel == nil {
 		return
@@ -486,6 +557,7 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		Parent:      parent,
 		Name:        p.Accessibility.Name,
 		Description: p.Accessibility.Description,
+		URL:         p.Accessibility.URL,
 		Bounds:      raw,
 		Role:        p.Accessibility.Role,
 		Disabled:    !p.Enabled(),
@@ -577,8 +649,19 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	if node.Ignored == widgetIgnored {
 		node.Ignored = widgetIgnored || axIsScaffolding(node)
 	}
-	if node.Focused && s.focus == 0 {
-		s.focus = node.ID
+	switch {
+	case !node.Focused:
+	case p.Is(s.focusPanel):
+		// The panel really does hold the keyboard focus, so this is the node the window reports it on.
+		if s.focus == 0 {
+			s.focus = node.ID
+		}
+	default:
+		// The panel does not hold the keyboard focus and the node says it is focused anyway, which only the widget or
+		// the Accessibility.Callback can have said. It is a second claim on top of wherever the focus actually is, and
+		// what becomes of it is decided once the whole window has been described; see
+		// axSnapshot.resolveCompanionFocus.
+		s.companionFocus = append(s.companionFocus, node.ID)
 	}
 	if s.childrenDescribed[node.ID] || staticText {
 		// Either the widget described the children itself, from ProvideAccessibility — a heading holding a link asks for
@@ -596,10 +679,10 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 //
 // A menu does not open where the widget that opened it is: menu.createPopup inserts the popup into ActiveWindow()'s
 // root, so every request that would open one from a background window is refused — see axMayPopupMenu, which
-// PopupMenu.PerformAccessibilityAction, Field.PerformAccessibilityAction, the action callback NewComboField installs
-// and Panel.axSynthesizeClick all ask. A node that went on advertising them would offer a screen-reader user an expand
-// or a contextual menu that silently does nothing, which is the same drift the narrowing of a disabled node's actions
-// exists to prevent.
+// PopupMenu.PerformAccessibilityAction, Field.PerformAccessibilityAction, Markdown.PerformAccessibilityAction, the
+// action callback NewComboField installs and Panel.axSynthesizeClick all ask. A node that went on advertising them
+// would offer a screen-reader user an expand or a contextual menu that silently does nothing, which is the same drift
+// the narrowing of a disabled node's actions exists to prevent.
 //
 // It is done here rather than in each of those widgets so that the rule is stated once, and after the widget and the
 // Accessibility.Callback have had their say, since a combo box is a Field that is given its Expand by the callback

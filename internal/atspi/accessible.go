@@ -108,11 +108,11 @@ func (o *nodeObject) getState(call *dbus.Call) {
 	call.Reply(o.states().Words())
 }
 
-// getAttributes implements org.a11y.atspi.Accessible.GetAttributes. The tree and the reported parent go along with the
-// node, since where a node sits within a set is known to neither: how big the set a row belongs to is known only to the
-// container it sits in, and how long a run of tabs or menu items is only to the tree that holds them.
+// getAttributes implements org.a11y.atspi.Accessible.GetAttributes. The snapshot answers alongside the node, since
+// where a node sits within a set is known to neither: how big the set a row belongs to is known only to the container
+// it sits in, and how long a run of tabs or menu items is only to the hierarchy that holds them.
 func (o *nodeObject) getAttributes(call *dbus.Call) {
-	call.Reply(Attributes(o.data.tree, o.node, o.data.node(o.data.parent(o.node.ID))))
+	call.Reply(o.data.attributesOf(o.node))
 }
 
 // getApplication implements org.a11y.atspi.Accessible.GetApplication.
@@ -122,7 +122,7 @@ func (o *nodeObject) getApplication(call *dbus.Call) {
 
 // getInterfaces implements org.a11y.atspi.Accessible.GetInterfaces.
 func (o *nodeObject) getInterfaces(call *dbus.Call) {
-	call.Reply(Interfaces(o.node))
+	call.Reply(Interfaces(o.node, o.isSpanTarget()))
 }
 
 // selectedChildren returns the ids of the reported children of this node that are selected.

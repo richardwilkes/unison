@@ -48,7 +48,9 @@ func TestUIAIfaceOrder(t *testing.T) {
 	c.Equal(uiaIface(14), uiaIfaceGridItem)
 	c.Equal(uiaIface(15), uiaIfaceTable)
 	c.Equal(uiaIface(16), uiaIfaceTableItem)
-	c.Equal(uiaIface(17), uiaIfaceCount)
+	c.Equal(uiaIface(17), uiaIfaceText)
+	c.Equal(uiaIface(18), uiaIfaceTextChild)
+	c.Equal(uiaIface(19), uiaIfaceCount)
 }
 
 // TestUIAIfaceSlots verifies each interface's table size against its method count, and that every interface has one.
@@ -61,10 +63,16 @@ func TestUIAIfaceSlots(t *testing.T) {
 	// Spot-checks of the interfaces whose method counts are easiest to get wrong: the widest one, and the two that
 	// consist of nothing but a handful of getters.
 	c.Equal(12, uiaIfaceSlots[uiaIfaceWindow])
+	c.Equal(11, uiaIfaceSlots[uiaIfaceText])
 	c.Equal(10, uiaIfaceSlots[uiaIfaceRangeValue])
 	c.Equal(8, uiaIfaceSlots[uiaIfaceGridItem])
+	c.Equal(5, uiaIfaceSlots[uiaIfaceTextChild])
 	c.Equal(4, uiaIfaceSlots[uiaIfaceInvoke])
 	c.Equal(4, uiaIfaceSlots[uiaIfaceScrollItem])
+
+	// The text range is not one of a provider's interfaces but an object of its own, so its table is not in the list
+	// above. It is ITextRangeProvider2's nineteen methods, the last of which is ShowContextMenu.
+	c.Equal(22, uiaTextRangeSlots)
 }
 
 // TestUIAIfaceOffset verifies the arithmetic every COM method of a provider depends on: the pointer a client holds for
@@ -86,14 +94,25 @@ func TestUIAIfaceOffset(t *testing.T) {
 }
 
 // TestUIAPatternIfaces verifies that every pattern this package implements has an interface behind it, that no two
-// share one, and that no non-pattern interface claims a pattern. QueryInterface and GetPatternProvider both answer from
-// this mapping, so a gap in it would mean a client could reach a pattern one way and not the other.
+// share one except the documented pair that must, and that no non-pattern interface claims a pattern. QueryInterface
+// and GetPatternProvider both answer from this mapping, so a gap in it would mean a client could reach a pattern one
+// way and not the other.
+//
+// Text and Text2 are that pair: ITextProvider2 derives from ITextProvider, so one table answers both and a second would
+// be the same six methods twice. The interface reports the Text pattern, which is the one an element is checked
+// against, and the two are granted together — uiaRolePatterns hands out both or neither — which is what makes the
+// sharing safe. Nothing else may share, so every other pattern is still required to have an interface of its own.
 func TestUIAPatternIfaces(t *testing.T) {
 	c := check.New(t)
 	seen := make(map[uiaIface]bool)
 	for _, info := range uiaPatternInfos {
 		iface, ok := uiaIfaceForPattern(info.pattern)
 		c.True(ok, "pattern %s has no interface", info.name)
+		if info.pattern == PatternText2 {
+			c.Equal(uiaIfaceText, iface, "Text2 must share the Text interface")
+			c.Equal(PatternText, uiaPatternForIface(iface), "the shared interface reports the Text pattern")
+			continue
+		}
 		c.False(seen[iface], "pattern %s shares an interface", info.name)
 		seen[iface] = true
 		c.Equal(info.pattern, uiaPatternForIface(iface))

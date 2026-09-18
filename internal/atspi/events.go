@@ -336,6 +336,9 @@ func (a *Adapter) emitEvents(ws *windowState, prior, data *windowData, events []
 		// events could say: the only event a first snapshot produces is the focus it already has.
 		a.emitWindowAdded(ws, pub)
 	} else {
+		// The companion focus is not one of the events: nothing in the schema reports it, so it is worked out from the
+		// two snapshots the adapter is holding; see [Adapter.emitCompanionFocusChanges].
+		a.emitCompanionFocusChanges(pub)
 		for i := range events {
 			a.emitEvent(pub, &events[i])
 		}
@@ -376,8 +379,15 @@ func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 		a.emitNodeRemoved(pub, ev.Node)
 	case accessibility.BoundsChanged:
 		a.emitBoundsChanged(pub, data, ev.Node)
-	case accessibility.SortChanged, accessibility.AttributesChanged:
+	case accessibility.SortChanged:
 		a.emitAttributesChanged(pub, ev.Node)
+	case accessibility.AttributesChanged:
+		a.emitAttributesChanged(pub, ev.Node)
+		// How many rows a container holds is one of the facts this event covers and one of the facts the reported role
+		// is worked out from: a list with no rows of its own is a list of items to read, while one that has gained rows
+		// is a control to pick from. A client that is not told goes on presenting the old one for the life of the
+		// window.
+		a.emitRoleIfChanged(pub, ev.Node)
 	case accessibility.WindowActivated:
 		a.emitWindowActivated(pub)
 	case accessibility.WindowDeactivated:
@@ -813,6 +823,53 @@ func (a *Adapter) emitFocusLost(data *windowData, id accessibility.NodeID) {
 	a.emit(NodePath(id), InterfaceEventObject, signalStateChanged, stateNameFocused, 0, 0, variantInt32(0))
 }
 
+// emitCompanionFocusChanges announces the FOCUSED state of every node that reports it without the tree reporting the
+// focus on it, which is what a document's block does while it holds the reading caret: the document is the focus, and
+// the block says it is focused too so that Orca presents a caret move that came from something other than its own locus
+// of focus. See the root package's resolveCompanionFocus for where such a claim comes from and when it is allowed.
+//
+// Nothing else ever says a word about one. [accessibility.Diff] derives its focus events from Tree.Focus alone, so the
+// state goes out with a node's cache item when the window is published and is never moved again — and libatspi seeds
+// its cached state sets from exactly those items and updates them only from object:state-changed. A block that took the
+// caret after its window was published would therefore be found without FOCUSED and its caret move dropped by Orca's
+// _on_caret_moved, which is the whole of what the companion state is there for.
+//
+// The legacy focus: event is deliberately not sent. Orca reads that one as a claim that the person has been moved to
+// the object, which would have it announce the block as a new focus; the state on its own is what its caret handling
+// reads.
+//
+// What is compared is the state each snapshot's object would answer GetState with rather than the flag on its own,
+// which is what keeps the client's cached set and the object's own answer in step: AT-SPI carries FOCUSED for the
+// objects of the active window alone, so a window that has just become active, or has just stopped being, moves the
+// state on the blocks within it as well; see [States]. The node the tree reports the focus on is left out, since
+// [Adapter.emitFocusMoved] and its pair have already said everything about it, and a node the client has yet to be told
+// about is left out too: its cache item carries whatever state it arrives with.
+//
+// This runs before the publish's own events so that a client applying the signals in order holds the state by the time
+// the caret move that relies on it arrives.
+func (a *Adapter) emitCompanionFocusChanges(pub *publication) {
+	pub.data.walkReported(pub.data.tree.Root, func(n *accessibility.Node) bool {
+		if n.ID == pub.data.tree.Focus || n.ID == pub.priorFocus() {
+			return true
+		}
+		prior := reportedNode(pub.prior, n.ID)
+		if prior == nil {
+			return true
+		}
+		if was, now := focusedState(pub.prior, prior), focusedState(pub.data, n); was != now {
+			a.emitStateChange(pub, n.ID, stateChange{name: stateNameFocused, on: now})
+		}
+		return true
+	})
+}
+
+// focusedState reports whether a node's object in a snapshot answers GetState with ATSPI_STATE_FOCUSED, which is the
+// flag, in the active window, on anything but the window's own root; see [States], where the same three things decide
+// it.
+func focusedState(d *windowData, n *accessibility.Node) bool {
+	return n.Focused && d.active() && n.ID != d.tree.Root
+}
+
 // emitPropertyChange announces that one of the pieces of information an object reports through a property has changed.
 func (a *Adapter) emitPropertyChange(pub *publication, id accessibility.NodeID, property string, value dbus.Variant) {
 	if reportedNode(pub.data, id) == nil {
@@ -1164,8 +1221,10 @@ func checkedStateChanges(prior, n *accessibility.Node, ev *accessibility.Event) 
 
 // emitTextChanged announces that runes have been inserted into or deleted from a node's text. The offsets are rune
 // indexes, which is what AT-SPI means by characters.
+//
+// A node this package hands out no text on says nothing; see [textBearing].
 func (a *Adapter) emitTextChanged(pub *publication, ev *accessibility.Event, detail, text string) {
-	if reportedNode(pub.data, ev.Node) == nil {
+	if !textBearing(reportedNode(pub.data, ev.Node)) {
 		return
 	}
 	a.emitOwnChange(pub, ev.Node, InterfaceEventObject, signalTextChanged, detail, int32(ev.Start), int32(ev.Length),
@@ -1183,9 +1242,11 @@ func (a *Adapter) emitTextChanged(pub *publication, ev *accessibility.Event, det
 // Clearing a selection is announced as well as making one. Orca keeps the last range it was told about and only
 // replaces it when this signal arrives, so a collapse that says nothing leaves it reading a selection the control no
 // longer has.
+//
+// A node this package hands out no text on says nothing; see [textBearing].
 func (a *Adapter) emitTextSelectionChanged(pub *publication, ev *accessibility.Event) {
 	n := reportedNode(pub.data, ev.Node)
-	if n == nil {
+	if !textBearing(n) {
 		return
 	}
 	caret := ev.Start + ev.Length
@@ -1196,6 +1257,21 @@ func (a *Adapter) emitTextSelectionChanged(pub *publication, ev *accessibility.E
 	if ev.Length != 0 || hadSelection(reportedNode(pub.prior, ev.Node)) {
 		a.emit(NodePath(ev.Node), InterfaceEventObject, signalTextSelectionChanged, "", 0, 0, variantString(""))
 	}
+}
+
+// textBearing reports whether a node has an object that hands out text at all, which is what the three text events are
+// only worth sending from. A node this window no longer reports has none, and neither has one that [supportsText]
+// refuses.
+//
+// A document is the case that reaches this. [accessibility.Diff] reads a document's composed stream as the text of the
+// document node itself, so an application that moves the caret about a Markdown or changes its content produces a
+// TextSelectionChanged or a TextInserted on the document — and that is the one node whose stream this package never
+// exposes, since Orca reads a document by walking the blocks within it. Sending the signals anyway would have Orca
+// asking an object with no org.a11y.atspi.Text where its caret now is, with an offset into a stream it has never been
+// shown; the blocks send their own events, which is what a client actually follows. Only the UI Automation adapter
+// presents that stream as text, and it is the only one that translates these events.
+func textBearing(n *accessibility.Node) bool {
+	return n != nil && supportsText(n)
 }
 
 // hadSelection reports whether a node held a range of text rather than a bare caret, which is what makes collapsing

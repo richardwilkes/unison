@@ -91,6 +91,13 @@ type AccessibilityInfo struct {
 	LabeledBy Paneler
 	// Callback runs last, after everything else about the node has been decided, and may adjust anything on it. Use it
 	// for the occasional fact that has no field of its own, such as a heading's level.
+	//
+	// One thing it cannot decide on its own is the keyboard focus. A window reports the focus on the node of the panel
+	// that actually holds it, and a callback that sets accessibility.Node.Focused on any other node — or on a virtual
+	// child — is making a second claim on top of that, which is kept only where a screen reader needs a second focused
+	// object, and only for a node inside the panel that really holds the focus while that panel's own node is what the
+	// focus is reported on. Everywhere else it is taken away again before the tree is published. See
+	// accessibility.Node.Focused.
 	Callback func(node *accessibility.Node)
 	// ActionCallback is consulted before the panel's AccessibilityActor implementation, if it has one, and lets a plain
 	// panel handle requests without a type of its own. Return true if the request was handled.
@@ -107,6 +114,11 @@ type AccessibilityInfo struct {
 	Name string
 	// Description elaborates on Name. When it is empty, the panel's tooltip text is used instead.
 	Description string
+	// URL is where this panel leads, for a panel that is a link. NewLink fills it in from the target it was given, and
+	// an application that builds a link of its own sets it so that an assistive technology can say where the link goes
+	// and offer it among a document's links. It is copied onto the node as accessibility.Node.URL and means nothing for
+	// any other kind of panel.
+	URL string
 	// id is this panel's node id, assigned lazily the first time the panel is described or referred to.
 	id accessibility.NodeID
 	// Role is what kind of element this panel is. role.Auto, the zero value, derives it from the widget, and role.None
@@ -267,6 +279,14 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 	if node.Disabled {
 		node.Actions &= axDisabledActions
 	}
+	if node.Focused {
+		// A virtual child has no panel of its own, so it can never be the panel that holds the keyboard focus: a claim
+		// on the focus from one is a second claim on top of wherever the focus actually is, exactly as a claim from a
+		// real panel that does not hold it is, and it is decided the same way once the whole window has been described.
+		// Without this a widget could publish a second focused node on every platform, whatever the platform's screen
+		// reader makes of one. See axSnapshot.resolveCompanionFocus.
+		b.snapshot.companionFocus = append(b.snapshot.companionFocus, id)
+	}
 	raw := b.panel.RectToRoot(node.Bounds)
 	node.Bounds = raw
 	node.Offscreen = !raw.Intersects(b.clip) && !raw.Empty()
@@ -310,18 +330,42 @@ func (b *AccessibilityBuilder) existingVirtualID(key any) accessibility.NodeID {
 }
 
 // virtualID returns the stable node id this panel uses for key, allocating one the first time key is seen, and records
-// the key as one this snapshot is using.
+// the key as one this snapshot is using, along with counting it among the virtual children this description has added.
 func (b *AccessibilityBuilder) virtualID(key any) accessibility.NodeID {
-	if b.panel.Accessibility.virtual == nil {
-		b.panel.Accessibility.virtual = make(map[any]axVirtualEntry)
+	id := b.virtualIDOf(b.panel, key)
+	b.virtualUsed++
+	return id
+}
+
+// virtualIDOf returns the stable node id another panel uses for one of its virtual-child keys, allocating one if that
+// panel has not handed one out yet. It is how a widget refers to a virtual child of a panel that has not been described
+// yet: a document composing its content into one stream records the node occupying each part of it, and the rows of a
+// table inside it exist only as virtual children the table will invent when its own turn comes.
+//
+// The id is recorded as one this snapshot is using, so a key a document has pointed at is not swept away as abandoned
+// before the panel that owns it has been asked about it. What is not counted is the panel's own tally of virtual
+// children: that tally is what the sweep measures the map against, and it belongs to the panel being described rather
+// than to whoever asked about one of its keys.
+//
+// The panel's own identity is established first, because that is what its map of virtual keys hangs from: axIDFor
+// throws the map away whenever it hands a panel a new id — a panel that has never been described, or one whose id was
+// handed out while it belonged to something else — so a key recorded before the panel had an id would be discarded the
+// moment the panel was visited, after which the same key would be allocated a second, different id. Everything that
+// pointed at the first one — the spans of a document's stream, say — would then name a node that is not in the tree.
+func (b *AccessibilityBuilder) virtualIDOf(p *Panel, key any) accessibility.NodeID {
+	if p == nil {
+		return 0
 	}
-	entry := b.panel.Accessibility.virtual[key]
+	axIDFor(p)
+	if p.Accessibility.virtual == nil {
+		p.Accessibility.virtual = make(map[any]axVirtualEntry)
+	}
+	entry := p.Accessibility.virtual[key]
 	if entry.id == 0 {
 		entry.id = axAllocID()
 	}
 	entry.used = b.snapshot.generation
-	b.panel.Accessibility.virtual[key] = entry
-	b.virtualUsed++
+	p.Accessibility.virtual[key] = entry
 	return entry.id
 }
 

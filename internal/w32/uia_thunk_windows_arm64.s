@@ -7,8 +7,8 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-// The arm64 halves of the two UI Automation vtable slots that take doubles. See uia_thunk_windows.go for the whole
-// story; the register plan for this file is:
+// The arm64 halves of the three UI Automation vtable slots that arrive with a double in a floating-point register. See
+// uia_thunk_windows.go for the whole story; the register plan for this file is:
 //
 //	ElementProviderFromPoint(this, double x, double y, out) arrives as X0=this, D0=x, D1=y, X1=out, because the ARM64
 //	convention numbers integer and floating-point arguments separately: a double takes the next D register and no
@@ -17,6 +17,12 @@
 //	this thunk is three instructions rather than two.
 //
 //	SetValue(this, double value) arrives as X0=this, D0=value, so the value's bits have to move to X1.
+//
+//	RangeFromPoint(this, UiaPoint point, out) arrives as X0=this, D0=point.X, D1=point.Y, X1=out: a UiaPoint is two
+//	doubles and nothing else, which makes it a homogeneous floating-point aggregate, and the ARM64 convention
+//	passes one in consecutive D registers rather than by reference. That is ElementProviderFromPoint's plan exactly,
+//	so the thunk is the same three instructions in the same order. This slot needs no assembly on amd64, where the
+//	same structure is passed by reference; see uia_text_point_windows_amd64.go.
 //
 // R16 is the only other register touched. It is volatile in the ARM64 convention, unlike R27, the Go assembler's own
 // scratch register, which is callee-saved there — which is why the address of each callback variable is materialized in
@@ -82,5 +88,38 @@ TEXT ·uiaFromPointShimAddr(SB), NOSPLIT|NOFRAME, $0-8
 // func uiaRangeValueSetValueShimAddr() uintptr
 TEXT ·uiaRangeValueSetValueShimAddr(SB), NOSPLIT|NOFRAME, $0-8
 	MOVD $uiaRangeValueSetValueShim<>(SB), R0
+	MOVD R0, ret+0(FP)
+	RET
+
+// uiaTextFromPointThunk is the ITextProvider::RangeFromPoint vtable slot. A UiaPoint is a homogeneous floating-point
+// aggregate, so it arrives in D0 and D1 rather than by reference, which leaves the out pointer as the second integer
+// argument in X1: the same register plan as uiaFromPointThunk above, and the same three instructions in the same order.
+TEXT uiaTextFromPointThunk<>(SB), NOSPLIT|NOFRAME, $0
+	MOVD  R1, R3
+	FMOVD F0, R1
+	FMOVD F1, R2
+	MOVD  $·uiaTextFromPointCallback(SB), R16
+	MOVD  (R16), R16
+	B     (R16)
+
+// uiaTextFromPointShim calls uiaTextFromPointThunk the way UI Automation does, entered with X0=this, X1=the bits of x,
+// X2=the bits of y and X3=out. It works exactly as uiaFromPointShim does.
+TEXT uiaTextFromPointShim<>(SB), NOSPLIT|NOFRAME, $0
+	FMOVD R1, F0
+	FMOVD R2, F1
+	MOVD  R3, R1
+	MOVD  $-1, R2
+	MOVD  $-1, R3
+	B     uiaTextFromPointThunk<>(SB)
+
+// func uiaTextFromPointThunkAddr() uintptr
+TEXT ·uiaTextFromPointThunkAddr(SB), NOSPLIT|NOFRAME, $0-8
+	MOVD $uiaTextFromPointThunk<>(SB), R0
+	MOVD R0, ret+0(FP)
+	RET
+
+// func uiaTextFromPointShimAddr() uintptr
+TEXT ·uiaTextFromPointShimAddr(SB), NOSPLIT|NOFRAME, $0-8
+	MOVD $uiaTextFromPointShim<>(SB), R0
 	MOVD R0, ret+0(FP)
 	RET

@@ -145,16 +145,43 @@ const (
 	axKeyUIElements   = "NSAccessibilityUIElementsKey"
 )
 
-// The attribute names a menu item's accelerator and a busy node are reported through. They are spelled out rather than
-// resolved through AppKitString because they are constants of ApplicationServices rather than of AppKit —
-// kAXMenuItemCmdCharAttribute, kAXMenuItemCmdModifiersAttribute and kAXElementBusyAttribute, which are CFStrings with
-// no exported NSString counterpart — and each is spelled the same way in every version of AXAttributeConstants.h that
-// has it.
+// The attribute names a menu item's accelerator, a busy node, a heading's level and a block quote's nesting depth are
+// reported through. They are spelled out rather than resolved through AppKitString because they are constants of
+// ApplicationServices rather than of AppKit — kAXMenuItemCmdCharAttribute, kAXMenuItemCmdModifiersAttribute and
+// kAXElementBusyAttribute, which are CFStrings with no exported NSString counterpart — and each is spelled the same way
+// in every version of AXAttributeConstants.h that has it. AXHeadingLevel and AXBlockQuoteLevel have no constant of
+// their own anywhere: they belong to the web content vocabulary WebKit publishes and VoiceOver reads, and the macOS 26
+// SDK's NSAccessibilityAttributeName additions for them are of no use to a binary that has to run on earlier releases.
 const (
 	axAttrMenuItemCmdChar      = "AXMenuItemCmdChar"
 	axAttrMenuItemCmdModifiers = "AXMenuItemCmdModifiers"
 	axAttrElementBusy          = "AXElementBusy"
+	axAttrHeadingLevel         = "AXHeadingLevel"
+	axAttrBlockQuoteLevel      = "AXBlockQuoteLevel"
 )
+
+// The attributed-string attributes a run of a document's text is reported with, and the keys of the font attribute's
+// own dictionary. They are the documented values of kAXFontTextAttribute and the rest of AXTextAttributedString.h's
+// CFStrings, spelled out for the same reason the attribute names above are, and verified at runtime on macOS 27.
+const (
+	axAttrFont          = "AXFont"
+	axAttrFontFamily    = "AXFontFamily"
+	axAttrFontName      = "AXFontName"
+	axAttrFontSize      = "AXFontSize"
+	axAttrUnderline     = "AXUnderline"
+	axAttrStrikethrough = "AXStrikethrough"
+	axAttrLink          = "AXLink"
+	axAttrAttachment    = "AXAttachment"
+)
+
+// axUnderlineStyleSingle is kAXUnderlineStyleSingle, the AXUnderlineStyle an underlined run reports. The snapshot
+// records only that a run is underlined, so a single line is the whole of what there is to say.
+const axUnderlineStyleSingle int64 = 1
+
+// axBoldWeight is the weight at which a run counts as bold, on the 100-to-900 scale accessibility.TextRun records. It
+// is the threshold CSS and every text engine draw the line at — semibold and above read as bold — and it decides both
+// the font name a run is reported with and whether the bold-text search key matches it.
+const axBoldWeight = 600
 
 // The bits of AXMenuItemCmdModifiers (AXMenuItemModifiers in ApplicationServices' AXAttributeConstants.h). Zero means
 // the command key by itself, which is why a shortcut that does not use it has to say so with the no-command bit.
@@ -227,9 +254,11 @@ var (
 	axActionNameIDs         []objc.ID
 	axActionDescriptionFunc func(name objc.ID) objc.ID
 
-	axLegacyAttrsOnce sync.Once
-	axShortcutAttrIDs []objc.ID
-	axBusyAttrID      objc.ID
+	axLegacyAttrsOnce       sync.Once
+	axShortcutAttrIDs       []objc.ID
+	axBusyAttrID            objc.ID
+	axHeadingLevelAttrID    objc.ID
+	axBlockQuoteLevelAttrID objc.ID
 
 	axSelectorRulesOnce sync.Once
 	axSelectorRuleMap   map[objc.SEL]func(t *accessibility.Tree, n *accessibility.Node) bool
@@ -506,11 +535,21 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			// AXDescription with the same string is spoken twice — so what this notification is worth is the prompt to
 			// read the element again.
 			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyTitleChanged})
-		case accessibility.ValueChanged, accessibility.NumberChanged, accessibility.TextInserted,
-			accessibility.TextDeleted, accessibility.SortChanged:
+		case accessibility.ValueChanged, accessibility.NumberChanged, accessibility.SortChanged:
 			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
+		case accessibility.TextInserted, accessibility.TextDeleted:
+			// Only a node whose text this platform presents has anything to say about an edit to it; see
+			// axPresentsText. Otherwise the notification names an element that reports no value at all.
+			if axPresentsText(a.tree, e.Node) {
+				notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
+			}
 		case accessibility.TextSelectionChanged:
-			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifySelectedTextChanged})
+			if axPresentsText(a.tree, e.Node) {
+				notices = axAppendNotice(notices, axNotice{
+					node:         e.Node,
+					notification: axNotifySelectedTextChanged,
+				})
+			}
 		case accessibility.StateChanged:
 			switch e.State {
 			case accessibility.StateChecked, accessibility.StatePressed:
@@ -568,6 +607,21 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 		}
 	}
 	flush()
+}
+
+// axPresentsText reports whether the element serving a node answers the text protocol at all, which is what decides
+// whether a text event about that node means anything on this platform.
+//
+// The adapter presents Node.Text and deliberately never presents Node.Document: a document's blocks are what VoiceOver
+// reads, so an element that also reported the composed stream would have everything in it heard twice (see
+// TestAXDocumentExposesNoStream). accessibility.Diff derives TextInserted, TextDeleted and TextSelectionChanged from
+// that stream as well, though, so every caret move inside a Markdown document produces one of them against a node whose
+// Text is nil — an element with no value, no selected text and no character count. Posting AXValueChanged or
+// AXSelectedTextChanged for it tells an assistive technology to read back something that is not there, and the UIA
+// translation is left as the one consumer of a document's stream.
+func axPresentsText(t *accessibility.Tree, id accessibility.NodeID) bool {
+	n := t.Node(id)
+	return n != nil && n.Text != nil
 }
 
 // axNotice is one notification a publish calls for, and the node it is posted against. See postNotices.
@@ -829,12 +883,19 @@ func axReportable(n *accessibility.Node) bool {
 // axHasLabel reports whether a node's name should be given to the accessibility system as the element's label, which is
 // the AXDescription an assistive technology speaks alongside the value.
 //
-// Two roles say their name elsewhere and would otherwise be heard twice. Static text has no name of its own — the
+// The roles that say their name elsewhere would otherwise be heard twice. Static text has no name of its own — the
 // snapshot puts its content in Name, since that is the accessible name every other platform wants — and reports that
-// content as its value instead (see axNodeValue), matching what an NSTextField set to display text does. A disclosure
-// triangle is named by its role on this platform, so a label as well would be said after it.
+// content as its value instead (see axNodeValue), matching what an NSTextField set to display text does. A document's
+// paragraphs and code blocks are static text as well: their content is their value, and a name a widget happens to have
+// put on one would be spoken ahead of every line of it. A disclosure triangle is named by its role on this platform, so
+// a label as well would be said after it.
 func axHasLabel(n *accessibility.Node) bool {
-	return n.Role != role.Label && n.Role != role.DisclosureTriangle
+	switch n.Role {
+	case role.Label, role.Paragraph, role.Code, role.DisclosureTriangle:
+		return false
+	default:
+		return true
+	}
 }
 
 // axHelpFor returns what an element answers as its help, the AXHelp an assistive technology speaks after the label and
@@ -931,13 +992,22 @@ func axHeadingRole() (roleID objc.ID, needsDescription bool) {
 	return axHeadingRoleValue, axHeadingNeedsDescription
 }
 
+// axHeadingIsStaticText reports whether a heading is reported as AXStaticText on this system, which is what
+// axHeadingRole falls back to where the AXHeading role is not honored. The answer is settled once per process by
+// axHeadingRole itself, so asking it costs nothing after the first time; it is what the static-text search keys consult
+// so that what they match cannot disagree with the role a client is shown (see axIsStaticText).
+func axHeadingIsStaticText() bool {
+	_, fallback := axHeadingRole()
+	return fallback
+}
+
 // axRoleFor returns the NSAccessibility role and subrole for a node. An empty subrole is reported as nil, which is what
 // an element with no subrole answers.
 func axRoleFor(t *accessibility.Tree, n *accessibility.Node) (roleID, subroleID objc.ID) { //nolint:gocognit // a table
 	switch n.Role {
 	case role.Window, role.Dialog:
 		return AppKitString(axRoleWindow), 0
-	case role.Group, role.TabPanel, role.TableHeader, role.Document:
+	case role.Group, role.TabPanel, role.TableHeader, role.Document, role.BlockQuote:
 		return AppKitString(axRoleGroup), 0
 	case role.Button:
 		return AppKitString(axRoleButton), 0
@@ -951,7 +1021,9 @@ func axRoleFor(t *accessibility.Tree, n *accessibility.Node) (roleID, subroleID 
 		return AppKitString(axRoleRadioButton), 0
 	case role.Link:
 		return AppKitString(axRoleLink), 0
-	case role.Label:
+	case role.Label, role.Paragraph, role.Code:
+		// A paragraph and a code block are static text: VoiceOver reads such an element by line and by word, which is
+		// what a document's blocks are there to be read as.
 		return AppKitString(axRoleStaticText), 0
 	case role.Heading:
 		roleID, _ = axHeadingRole()
@@ -1124,7 +1196,7 @@ func axNodeValue(n *accessibility.Node) objc.ID {
 		return NSNumberFromInt64(axBoolValue(n.Pressed))
 	case n.Role == role.Tab:
 		return NSNumberFromInt64(axBoolValue(n.Selected))
-	case n.Role == role.Heading:
+	case n.Role == role.Heading && n.Level > 0:
 		return NSNumberFromInt64(int64(n.Level))
 	case axValueIsFraction(n):
 		return NSNumberFromFloat64(axFractionOf(n))
@@ -1134,9 +1206,14 @@ func axNodeValue(n *accessibility.Node) objc.ID {
 		return NSNumberFromFloat64(n.Number)
 	case n.Value != "":
 		return NSStringFromGo(n.Value)
-	case n.Role == role.Label:
-		// Static text reports its content as its value, not as its label, and the snapshot builder puts a label's text
-		// in its name, since that is what every other platform wants.
+	case !axHasLabel(n):
+		// The roles whose name is withheld from the label report it here instead: static text, and a document's
+		// paragraphs and code blocks. The snapshot builder puts a label's text in its name, since that is what every
+		// other platform wants, and a widget may put a name on a block of a document as well. Keyed off axHasLabel so
+		// that the two can never disagree: a node whose name is reported as neither a label nor a value would be
+		// announced as nothing at all, while the same node says its name on both other platforms. A disclosure
+		// triangle is withheld a label too, but it never reaches this case — its Pressed flag is its value, decided
+		// above.
 		return NSStringFromGo(n.Name)
 	default:
 		return 0
@@ -1868,15 +1945,16 @@ func registerAXElementClass() {
 	axElementClass = cls
 }
 
-// axElementMethods returns UnisonAXElement's method table, in five groups: the attributes that describe a node, the
+// axElementMethods returns UnisonAXElement's method table, in six groups: the attributes that describe a node, the
 // states and actions, the text protocol, the attributes only the informal protocol has — the accelerator a node may
-// name and whether it is busy — and the two methods that say which of all of them apply to the node an element is
-// standing for.
+// name, whether it is busy, a heading's level and a block quote's depth — the search predicate, and the two methods
+// that say which of all of them apply to the node an element is standing for.
 func axElementMethods() []objc.MethodDef {
 	methods := axElementAttributeMethods()
 	methods = append(methods, axElementStateMethods()...)
 	methods = append(methods, axElementTextMethods()...)
 	methods = append(methods, axElementLegacyAttributeMethods()...)
+	methods = append(methods, axElementSearchMethods()...)
 	return append(methods, axElementAllowedMethods()...)
 }
 
@@ -2029,6 +2107,8 @@ func axSelectorRules() map[objc.SEL]func(t *accessibility.Tree, n *accessibility
 			Sel("accessibilityPerformIncrement"): can(accessibility.Increment),
 			Sel("accessibilityPerformDecrement"): can(accessibility.Decrement),
 			Sel("accessibilityPerformShowMenu"):  can(accessibility.ShowContextMenu),
+			// Where a link leads, which belongs to the nodes that name a URL and to no others.
+			Sel("accessibilityURL"): func(_ *accessibility.Tree, n *accessibility.Node) bool { return n.URL != "" },
 			// The text protocol, which belongs to the nodes that hold text and to no others.
 			Sel("accessibilityNumberOfCharacters"):        hasText,
 			Sel("accessibilitySelectedText"):              hasText,
@@ -2087,7 +2167,8 @@ func axHoldsRows(t *accessibility.Tree, n *accessibility.Node) bool {
 }
 
 // axElementLegacyAttributeMethods returns the two overrides that publish the attributes the NSAccessibility protocol
-// has no property for, which on this platform means a node's Shortcut and its Busy flag:
+// has no property for, which on this platform means a node's Shortcut, its Busy flag, a heading's level and how deeply
+// a node sits inside block quotes:
 //
 //   - AXMenuItemCmdChar and AXMenuItemCmdModifiers carry the accelerator that activates a node — the attributes
 //     VoiceOver speaks after a menu item's name, and the counterparts of the key binding AT-SPI reports through
@@ -2098,21 +2179,39 @@ func axHoldsRows(t *accessibility.Tree, n *accessibility.Node) bool {
 //     indeterminate progress bar has to say (see ProgressBar.ProvideAccessibility) and the counterpart of the BUSY
 //     state AT-SPI reports. It is answered only by a node that is actually busy, exactly as the accelerator is answered
 //     only by a node that names one.
+//   - AXHeadingLevel is how deep a heading sits, the 1-to-6 VoiceOver speaks as "heading level 2" and the rotor groups
+//     its list of headings by. A heading also reports its level as its value (see axNodeValue), which is what the
+//     accessibility system itself derives a web heading's level from, but VoiceOver asks for the attribute by name as
+//     well and a heading that does not answer it is announced without a level at all. Only a heading whose snapshot
+//     says how deep it sits answers it, and only such a heading lists it: a level of zero is no level, and an element
+//     answering the attribute with it is announced as "heading level 0".
+//   - AXBlockQuoteLevel is how many block quotes a node sits inside, counting itself, which is what VoiceOver speaks as
+//     "quote level 1" on entering one and "end of quote" on leaving. It is answered by everything inside a quote rather
+//     than only by the quote itself, since VoiceOver asks the element it has landed on.
 //
-// All three are published through the informal protocol these two methods belong to because there is nowhere else to
+// All of them are published through the informal protocol these two methods belong to because there is nowhere else to
 // put them: NSAccessibilityProtocols.h has no property for any of them, they predate it, and AppKit's own NSMenuItem
 // still answers the accelerator this way — one lists both attributes among its accessibilityAttributeNames and answers
 // each from accessibilityAttributeValue:. Everything else is handed to the superclass untouched, which is what goes on
 // answering every other attribute of every other element, and mixing the two protocols this way draws no complaint from
 // AppKit: NSAccessibilityElement implements both of these methods itself.
+//
+// Both selectors belong to a deprecated informal protocol, though, so every send to the superclass is guarded by
+// axSuperRespondsTo the way the search overrides guard theirs: an unrecognized selector raises an Objective-C
+// exception, and one raised inside a Go callback cannot be caught and takes the process with it. The two are
+// implemented on every macOS this has been tried on — verified at runtime — but not every method of that protocol is
+// (accessibilityActionNames is not), so nothing here relies on a release going on implementing them.
 func axElementLegacyAttributeMethods() []objc.MethodDef {
 	return []objc.MethodDef{
 		{
 			Cmd: Sel("accessibilityAttributeNames"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
-				names := SendSuper(self, axElementClass, Sel("accessibilityAttributeNames"))
-				_, n := axElementTarget(self, cmd)
-				if n == nil {
+				var names objc.ID
+				if axSuperRespondsTo(axElementClass, cmd) {
+					names = SendSuper(self, axElementClass, cmd)
+				}
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
 					return names
 				}
 				var added []objc.ID
@@ -2122,34 +2221,51 @@ func axElementLegacyAttributeMethods() []objc.MethodDef {
 				if n.Busy {
 					added = append(added, axBusyAttributeString())
 				}
-				if len(added) == 0 {
-					return names
+				if axHasHeadingLevel(n) {
+					added = append(added, axHeadingLevelAttributeString())
 				}
-				extra := NSArrayFromIDs(added...)
-				if names == 0 {
-					return extra
+				if axNestingLevelOf(a.tree, n, role.BlockQuote) > 0 {
+					added = append(added, axBlockQuoteLevelAttributeString())
 				}
-				return names.Send(Sel("arrayByAddingObjectsFromArray:"), extra)
+				return axArrayByAdding(names, added)
 			},
 		},
 		{
 			Cmd: Sel("accessibilityAttributeValue:"),
 			Fn: func(self objc.ID, cmd objc.SEL, attribute objc.ID) objc.ID {
 				name := GoStringFromNSString(attribute)
-				if name != axAttrMenuItemCmdChar && name != axAttrMenuItemCmdModifiers && name != axAttrElementBusy {
-					return SendSuper(self, axElementClass, Sel("accessibilityAttributeValue:"), attribute)
-				}
-				_, n := axElementTarget(self, cmd)
-				if n == nil {
+				switch name {
+				case axAttrMenuItemCmdChar, axAttrMenuItemCmdModifiers, axAttrElementBusy, axAttrHeadingLevel,
+					axAttrBlockQuoteLevel:
+				default:
+					if axSuperRespondsTo(axElementClass, cmd) {
+						return SendSuper(self, axElementClass, cmd, attribute)
+					}
 					return 0
 				}
-				if name == axAttrElementBusy {
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
+					return 0
+				}
+				switch name {
+				case axAttrElementBusy:
 					if !n.Busy {
 						return 0
 					}
 					// A CFBoolean rather than a number, which is what the attribute is documented to hold and what
 					// NSNumberFromBool produces; see AXAttributeConstants.h.
 					return NSNumberFromBool(true)
+				case axAttrHeadingLevel:
+					if !axHasHeadingLevel(n) {
+						return 0
+					}
+					return NSNumberFromInt64(int64(n.Level))
+				case axAttrBlockQuoteLevel:
+					level := axNestingLevelOf(a.tree, n, role.BlockQuote)
+					if level == 0 {
+						return 0
+					}
+					return NSNumberFromInt64(int64(level))
 				}
 				char, modifiers, ok := axShortcutOf(n)
 				if !ok {
@@ -2162,6 +2278,13 @@ func axElementLegacyAttributeMethods() []objc.MethodDef {
 			},
 		},
 	}
+}
+
+// axHasHeadingLevel reports whether a node says how deep a heading it is, which is what decides whether it lists
+// AXHeadingLevel and answers it. A heading whose snapshot carries no level says nothing rather than zero: VoiceOver
+// speaks the number it is given, so a zero is heard as "heading level 0" — see axElementLegacyAttributeMethods.
+func axHasHeadingLevel(n *accessibility.Node) bool {
+	return n.Role == role.Heading && n.Level > 0
 }
 
 // axShortcutAttributeStrings returns the NSString for each of the two accelerator attribute names, in the order an
@@ -2177,13 +2300,44 @@ func axBusyAttributeString() objc.ID {
 	return axBusyAttrID
 }
 
+// axHeadingLevelAttributeString returns the NSString for the heading level attribute's name. See
+// axLegacyAttributeStrings.
+func axHeadingLevelAttributeString() objc.ID {
+	axLegacyAttributeStrings()
+	return axHeadingLevelAttrID
+}
+
+// axBlockQuoteLevelAttributeString returns the NSString for the block quote level attribute's name. See
+// axLegacyAttributeStrings.
+func axBlockQuoteLevelAttributeString() objc.ID {
+	axLegacyAttributeStrings()
+	return axBlockQuoteLevelAttrID
+}
+
 // axLegacyAttributeStrings creates the NSString for each attribute name the informal protocol overrides deal in. They
 // are created once and never released, since they are handed out on every attribute-name query.
 func axLegacyAttributeStrings() {
 	axLegacyAttrsOnce.Do(func() {
 		axShortcutAttrIDs = []objc.ID{NewNSString(axAttrMenuItemCmdChar), NewNSString(axAttrMenuItemCmdModifiers)}
 		axBusyAttrID = NewNSString(axAttrElementBusy)
+		axHeadingLevelAttrID = NewNSString(axAttrHeadingLevel)
+		axBlockQuoteLevelAttrID = NewNSString(axAttrBlockQuoteLevel)
 	})
+}
+
+// axNestingLevelOf returns how many ancestors-or-self of a node carry a role, which is how deeply the node is nested
+// inside that kind of container: 1 for something directly inside one, 2 inside a quote within a quote, and 0 for a node
+// outside them all. The walk climbs through ignored ancestors, since a node's presented depth is what a client is
+// shown, and is bounded by axMaxTreeDepth so that a malformed tree cannot make it loop.
+func axNestingLevelOf(t *accessibility.Tree, n *accessibility.Node, want role.Enum) int {
+	level := 0
+	for i := 0; n != nil && i < axMaxTreeDepth; i++ {
+		if n.Role == want {
+			level++
+		}
+		n = t.Node(t.UnignoredParent(n.ID))
+	}
+	return level
 }
 
 // axElementAttributeMethods returns the overrides that describe what a node is, what it is called, what it contains and
@@ -2221,10 +2375,17 @@ func axElementAttributeMethods() []objc.MethodDef {
 				if a == nil || n == nil {
 					return 0
 				}
-				if n.Role == role.Heading {
+				switch n.Role {
+				case role.Heading:
 					if _, needsDescription := axHeadingRole(); needsDescription {
 						return NSStringFromGo("heading")
 					}
+				case role.Code:
+					// A code block is reported as static text, which AppKit describes as "text" — true of every
+					// paragraph in the document as well, and so no help in telling one apart from the other. macOS has
+					// no role for preformatted code, and the role description is the only place there is to say it;
+					// AT-SPI carries the same fact as the xml-roles attribute and UIA as the Code style name.
+					return NSStringFromGo("code")
 				}
 				roleID, subroleID := axRoleFor(a.tree, n)
 				return axRoleDescriptionFor(roleID, subroleID)
@@ -2235,6 +2396,19 @@ func axElementAttributeMethods() []objc.MethodDef {
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
 				if _, n := axElementTarget(self, cmd); n != nil && n.Name != "" && axHasLabel(n) {
 					return NSStringFromGo(n.Name)
+				}
+				return 0
+			},
+		},
+		{
+			// Where a link leads, which is the AXURL VoiceOver speaks and what its "same page" and "open in a new tab"
+			// commands work from. It is answered by the nodes that name one and by no others (see axSelectorRules), so
+			// an element with nothing to point at does not advertise the attribute at all — NSAccessibilityElement
+			// answers nil for it otherwise, which reads as a link that leads nowhere.
+			Cmd: Sel("accessibilityURL"),
+			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
+				if _, n := axElementTarget(self, cmd); n != nil {
+					return NSURLFromString(n.URL)
 				}
 				return 0
 			},
@@ -2961,20 +3135,14 @@ func axElementTextMethods() []objc.MethodDef {
 			},
 		},
 		{
-			// The same content, wrapped in an NSAttributedString. NSAccessibilityElement responds to this selector and
-			// answers nil, so a text element advertises AXAttributedStringForRange and then never answers it, while
-			// AXStringForRange above is answered properly — a client that asks for the attributed form, as VoiceOver
-			// does when it wants to know about misspellings or links, is told the range holds nothing. The snapshot
-			// carries no attributes to report, so the plain string carrying none is the whole of the right answer, and
-			// the two questions agree.
+			// The same content, wrapped in an NSAttributedString carrying the style of every run it covers and the
+			// element of every link and image within it. NSAccessibilityElement responds to this selector and answers
+			// nil, so without the override a text element advertises AXAttributedStringForRange and then never answers
+			// it, while AXStringForRange above is answered properly — a client that asks for the attributed form, as
+			// VoiceOver does when it wants to know about bold text, links and images, is told the range holds nothing.
 			Cmd: Sel("accessibilityAttributedStringForRange:"),
 			Fn: func(self objc.ID, _ objc.SEL, r NSRange) objc.ID {
-				text, ok := axTextForRange(self, r)
-				if !ok {
-					return 0
-				}
-				return Autorelease(objc.ID(Cls("NSAttributedString")).Send(Sel("alloc")).Send(Sel("initWithString:"),
-					NSStringFromGo(text)))
+				return axAttributedString(self, r)
 			},
 		},
 		{
@@ -3046,16 +3214,210 @@ func axElementTextMethods() []objc.MethodDef {
 	}
 }
 
+// axRuneBoundsOf returns the rune bounds the UTF-16 range an assistive technology asked about covers in a text, in
+// order. Both accessibilityStringForRange: and its attributed counterpart turn a range into rune bounds through it, so
+// the content the two report can never drift apart. The bounds are put in order before they are handed back: an
+// NSRange's length is unsigned, so the only way one can name its end before its start is a location and length whose
+// sum wraps, and a range that arrived from another process cannot be taken on trust.
+func axRuneBoundsOf(text string, r NSRange) (start, end int) {
+	start = axRuneFromUTF16(text, int(r.Location))
+	end = axRuneFromUTF16(text, int(r.Location+r.Length))
+	if end < start {
+		start, end = end, start
+	}
+	return start, end
+}
+
 // axTextForRange returns the content of the UTF-16 range an assistive technology asked about, along with whether the
-// element holds any text at all. Both accessibilityStringForRange: and its attributed counterpart answer from it, so
-// what the two report can never drift apart.
+// element holds any text at all.
 func axTextForRange(self objc.ID, r NSRange) (text string, ok bool) {
 	_, _, info := axTextTarget(self)
 	if info == nil {
 		return "", false
 	}
-	return axRuneSlice(info.Text, axRuneFromUTF16(info.Text, int(r.Location)),
-		axRuneFromUTF16(info.Text, int(r.Location+r.Length))), true
+	start, end := axRuneBoundsOf(info.Text, r)
+	return axRuneSlice(info.Text, start, end), true
+}
+
+// axAttributedString returns the attributed form of the UTF-16 range an assistive technology asked about: the content
+// accessibilityStringForRange: answers — the same rune bounds, worked out by the same axRuneBoundsOf — with each
+// stretch of it carrying the font, underline and strikethrough of the run it belongs to and the element of any link or
+// image occupying it. An element holding no text answers nil, exactly as it does for the plain form.
+//
+// The range is partitioned at every run and span boundary it crosses (see axTextIntervals) and each piece is given its
+// attributes in one message. That is deliberately setAttributes:range: rather than an addAttribute:value:range: per
+// attribute: the pieces are disjoint and each is written once, so replacing a piece's attributes wholesale loses
+// nothing, and the alternative would place a 16-byte NSRange after four integer-register arguments, which is the purego
+// amd64 hazard documented at the top of objc_darwin.go.
+func axAttributedString(self objc.ID, r NSRange) objc.ID {
+	a, _, info := axTextTarget(self)
+	if info == nil {
+		return 0
+	}
+	start, end := axRuneBoundsOf(info.Text, r)
+	str := NewNSMutableAttributedString(axRuneSlice(info.Text, start, end))
+	base := axUTF16FromRune(info.Text, start)
+	for _, interval := range axTextIntervals(info, start, end) {
+		attributes := a.attributesFor(interval)
+		if attributes == 0 {
+			continue
+		}
+		from := axUTF16FromRune(info.Text, interval.start) - base
+		to := axUTF16FromRune(info.Text, interval.end) - base
+		NSMutableAttributedStringSetAttributes(str, attributes,
+			NSRange{Location: uint64(from), Length: uint64(to - from)})
+	}
+	return str
+}
+
+// axTextInterval is one stretch of a TextInfo's text over which everything an assistive technology is told about the
+// text holds still: the run it belongs to and the nodes occupying it do not change within it.
+type axTextInterval struct {
+	// run is the run covering the whole interval, or nil where the text carries none.
+	run *accessibility.TextRun
+	// spans holds the nodes whose span covers the whole interval, outermost first, which is the order the snapshot
+	// records them in.
+	spans []accessibility.NodeID
+	// start and end are rune indexes into TextInfo.Text.
+	start int
+	end   int
+}
+
+// axTextIntervals partitions a rune range into the stretches over which the attributes an assistive technology is told
+// about hold still, which is at every run boundary and every span boundary the range crosses. It is pure Go: what each
+// interval is reported as is attributesFor's business.
+//
+// A text carrying no runs yields a single interval with no run, which is the whole of what a label has to say about
+// itself, and a range the runs do not cover yields intervals with no run over the gaps rather than dropping them: the
+// content of a gap is still part of the answer, and only its style is unknown.
+func axTextIntervals(info *accessibility.TextInfo, start, end int) []axTextInterval {
+	if end <= start {
+		return nil
+	}
+	bounds := []int{start, end}
+	for i := range info.Runs {
+		bounds = axAppendBoundary(bounds, info.Runs[i].Start, start, end)
+		bounds = axAppendBoundary(bounds, info.Runs[i].End, start, end)
+	}
+	for _, span := range info.Spans {
+		bounds = axAppendBoundary(bounds, span.Start, start, end)
+		bounds = axAppendBoundary(bounds, span.End, start, end)
+	}
+	slices.Sort(bounds)
+	bounds = slices.Compact(bounds)
+	intervals := make([]axTextInterval, 0, len(bounds)-1)
+	for i := 0; i+1 < len(bounds); i++ {
+		interval := axTextInterval{start: bounds[i], end: bounds[i+1]}
+		for j := range info.Runs {
+			if info.Runs[j].Start <= interval.start && interval.end <= info.Runs[j].End {
+				interval.run = &info.Runs[j]
+				break
+			}
+		}
+		for _, span := range info.Spans {
+			if span.Start <= interval.start && interval.end <= span.End {
+				interval.spans = append(interval.spans, span.Node)
+			}
+		}
+		intervals = append(intervals, interval)
+	}
+	return intervals
+}
+
+// axAppendBoundary appends an offset to a partition's boundaries when it falls strictly inside the range being
+// partitioned. The two ends are there already, and a boundary outside the range says nothing about it.
+func axAppendBoundary(bounds []int, at, start, end int) []int {
+	if at > start && at < end {
+		return append(bounds, at)
+	}
+	return bounds
+}
+
+// attributesFor returns the attribute dictionary one interval of a text is reported with, or 0 when the interval has
+// nothing to say: the run's font, underline and strikethrough, the element of the innermost link occupying it and the
+// element of the image it stands in for.
+//
+// A link is reported as AXLink and an image as AXAttachment, each holding the element serving that node — which is what
+// VoiceOver follows when it is asked to open the link under its cursor, and how it knows a U+FFFC is an image rather
+// than an unreadable character. Spans are recorded outermost first, so the innermost of each kind is the one the loop
+// ends up holding.
+func (a *AXAdapter) attributesFor(interval axTextInterval) objc.ID {
+	var pairs []objc.ID
+	if interval.run != nil {
+		if font := axFontDictionaryFor(interval.run); font != 0 {
+			pairs = append(pairs, NSStringFromGo(axAttrFont), font)
+		}
+		if interval.run.Underline {
+			pairs = append(pairs, NSStringFromGo(axAttrUnderline), NSNumberFromInt64(axUnderlineStyleSingle))
+		}
+		if interval.run.Strikethrough {
+			pairs = append(pairs, NSStringFromGo(axAttrStrikethrough), NSNumberFromBool(true))
+		}
+	}
+	var link, attachment accessibility.NodeID
+	for _, id := range interval.spans {
+		n := a.tree.Node(id)
+		if n == nil {
+			continue
+		}
+		switch n.Role {
+		case role.Link:
+			link = id
+		case role.Image:
+			attachment = id
+		default:
+		}
+	}
+	if element := a.elementFor(link); element != 0 {
+		pairs = append(pairs, NSStringFromGo(axAttrLink), element)
+	}
+	if element := a.elementFor(attachment); element != 0 {
+		pairs = append(pairs, NSStringFromGo(axAttrAttachment), element)
+	}
+	if len(pairs) == 0 {
+		return 0
+	}
+	return NSDictionaryFromPairs(pairs...)
+}
+
+// axFontDictionaryFor returns the AXFont dictionary describing a run, or 0 for a run that says nothing about its font,
+// which is what a run naming no family is: the dictionary's required keys are a name and a size, and the name is
+// derived from the family, so a size on its own would be an AXFont missing one of the two things it is defined to hold.
+// A run measured without a family is what a snapshot that describes text without measuring its style records, and
+// saying nothing about the font is the truthful answer for it — VoiceOver then reads the stretch in whatever font it
+// was already reading, rather than being told of a font with no name.
+//
+// The font name is the one part that has to be invented. AXFont's required keys are a name and a size, and the name is
+// expected to be the one a font is known by, which the snapshot does not carry: it records the family, the weight on
+// the usual 100-to-900 scale and whether the face is italic. So the name is built the way the system's own families
+// spell their faces — "Helvetica-Bold", "Helvetica-Italic", "Helvetica-BoldItalic", and the family by itself for a
+// regular face. VoiceOver reads the family and the size out of the dictionary and compares one run's name with the next
+// to notice a change of font; it does not resolve the name against the installed faces, so a family that spells its own
+// faces otherwise still has its style reported faithfully.
+func axFontDictionaryFor(run *accessibility.TextRun) objc.ID {
+	if run.Family == "" {
+		return 0
+	}
+	return NSDictionaryFromPairs(
+		NSStringFromGo(axAttrFontSize), NSNumberFromFloat64(float64(run.Size)),
+		NSStringFromGo(axAttrFontFamily), NSStringFromGo(run.Family),
+		NSStringFromGo(axAttrFontName), NSStringFromGo(axFontNameFor(run)),
+	)
+}
+
+// axFontNameFor returns the font name a run is reported with; see axFontDictionaryFor for why it is composed rather
+// than carried.
+func axFontNameFor(run *accessibility.TextRun) string {
+	switch {
+	case run.Weight >= axBoldWeight && run.Italic:
+		return run.Family + "-BoldItalic"
+	case run.Weight >= axBoldWeight:
+		return run.Family + "-Bold"
+	case run.Italic:
+		return run.Family + "-Italic"
+	default:
+		return run.Family
+	}
 }
 
 // axTextTarget returns the adapter, node and text information one element speaks for, with a nil text information for

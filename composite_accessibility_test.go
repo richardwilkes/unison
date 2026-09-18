@@ -11,6 +11,7 @@ package unison_test
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -1162,7 +1163,20 @@ func TestMarkdownAccessibility(t *testing.T) {
 		c.False(image.Ignored, "an image something has described is worth reporting")
 	}
 
-	c.True(axNamed(tree, "Body text with a ") != nil, "the text of a paragraph is still described")
+	// The body is one paragraph that reports the whole of its text, rather than a label per run of words, which is what
+	// lets a screen reader read it as the line it was written as. See markdownBlock in markdown_accessibility.go.
+	var body *accessibility.Node
+	for _, paragraph := range axNodesWithRole(tree, role.Paragraph) {
+		if paragraph.Text != nil && strings.Contains(paragraph.Text.Text, "Body") {
+			body = paragraph
+		}
+	}
+	c.True(body != nil, "the text of a paragraph is still described")
+	if body != nil {
+		c.Equal("Body text with a Docs link.", body.Text.Text)
+		c.True(body.ReadOnly, "a document is read rather than written")
+	}
+	c.True(node.Document != nil, "and the document composes it all into the one stream it is read as")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -1195,6 +1209,12 @@ func TestMarkdownHeadingWithLinkAccessibility(t *testing.T) {
 	c.Equal("A linked heading", headings[0].Name,
 		"the heading reads as the whole of its text, with the link's words in their place and no seam where the "+
 			"labels it is built from meet")
+	c.True(headings[0].Text != nil,
+		"a heading within a document is text as well, so that a reading caret can move through it like any other block")
+	if headings[0].Text != nil {
+		c.Equal("A linked heading", headings[0].Text.Text)
+	}
+	c.Equal(1, len(headings[0].Children), "the link it holds is the only thing described beneath it")
 	c.Equal(0, len(headings[1].Children), "a heading of nothing but text is still one element")
 
 	link := axNamed(tree, "linked")

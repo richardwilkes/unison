@@ -317,7 +317,7 @@ func TestNodeAccessible(t *testing.T) {
 	c.Equal("entry", ta.one(NodePath(4), InterfaceAccessible, "GetRoleName", ""))
 	c.Equal(uint32(RoleFrame), ta.one(NodePath(1), InterfaceAccessible, "GetRole", ""))
 	c.Equal(rootRef(), ta.one(NodePath(6), InterfaceAccessible, "GetApplication", ""))
-	c.Equal([]string{InterfaceAccessible, InterfaceAction, InterfaceComponent, InterfaceValue},
+	c.Equal([]string{InterfaceAccessible, InterfaceAction, InterfaceCollection, InterfaceComponent, InterfaceValue},
 		ta.one(NodePath(8), InterfaceAccessible, "GetInterfaces", ""))
 	c.Equal(dbus.Dict{
 		{Key: toolkitAttribute, Value: toolkitName},
@@ -622,7 +622,7 @@ func TestCacheGetItems(t *testing.T) {
 	}, items[0])
 	c.Equal(dbus.Struct{
 		nodeRef(1), rootRef(), rootRef(), int32(0), int32(5),
-		[]string{InterfaceAccessible, InterfaceComponent},
+		[]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		"Test Window", uint32(RoleFrame), "",
 		States(mainTree().Node(1), true, true).Words(),
 	}, items[1], "the window itself comes first, and its parent is the application")
@@ -630,7 +630,7 @@ func TestCacheGetItems(t *testing.T) {
 		nodeRef(4), rootRef(), nodeRef(1), int32(1), int32(0),
 		// The field carries no text of its own yet, but its value is textual, so what it hands over is the read-only
 		// text synthesized from that value.
-		[]string{InterfaceAccessible, InterfaceComponent, InterfaceText},
+		[]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
 		"", uint32(RoleEntry), "",
 		States(mainTree().Node(4), true, false).Words(),
 	}, items[3], "the text field's parent is the window, since the group between them is ignored")
@@ -698,7 +698,8 @@ func TestTheObjectsAgreeWithWhatIsAdvertised(t *testing.T) {
 	c := ta.c
 	ta.Publish(tableWindow, tableTree(), nil, sampleGeometry())
 	ta.Publish(textWindow, textTree(), nil, sampleGeometry())
-	for _, tree := range []*accessibility.Tree{mainTree(), tableTree(), textTree()} {
+	ta.Publish(documentWindow, documentTree(), nil, sampleGeometry())
+	for _, tree := range []*accessibility.Tree{mainTree(), tableTree(), textTree(), documentTree()} {
 		tree.Walk(func(n *accessibility.Node) bool {
 			if n.Ignored {
 				return true
@@ -1141,4 +1142,13 @@ func TestStopIsNotReportedAsALoss(t *testing.T) {
 		t.Fatalf("a connection closed by Stop must not be reported as lost, but %v was", reason)
 	default:
 	}
+}
+
+// statesOf returns the state set one of the adapter's objects reports.
+func (ta *testAdapter) statesOf(id accessibility.NodeID) StateSet {
+	ta.c.Helper()
+	words, ok := ta.one(NodePath(id), InterfaceAccessible, "GetState", "").([]uint32)
+	ta.c.True(ok, "a state set is an array of words")
+	ta.c.Equal(stateWords, len(words))
+	return StateSet{words[0], words[1]}
 }

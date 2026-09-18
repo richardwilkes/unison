@@ -51,6 +51,31 @@ func fieldTree(text string, selStart, selEnd int) *accessibility.Tree {
 	)
 }
 
+// documentTree builds a window holding a Markdown-shaped document: the Document node carries the composed stream rather
+// than text of its own, and the paragraph beneath it carries the block-local copy of the same words.
+func documentTree(text string, selStart, selEnd int) *accessibility.Tree {
+	return newTree(2,
+		&axNode{ID: 1, Role: role.Window, Name: windowName, Focused: true, Children: []axID{2}},
+		&axNode{
+			ID: 2, Parent: 1, Role: role.Document, Focusable: true, Focused: true, Children: []axID{3},
+			Document: &accessibility.DocumentInfo{
+				Text: accessibility.TextInfo{
+					Text:      text,
+					SelStart:  selStart,
+					SelEnd:    selEnd,
+					Caret:     selEnd,
+					Multiline: true,
+					Spans:     []accessibility.TextSpan{{Node: 3, Start: 0, End: len([]rune(text))}},
+				},
+			},
+		},
+		&axNode{
+			ID: 3, Parent: 2, Role: role.Paragraph, ReadOnly: true,
+			Text: &accessibility.TextInfo{Text: text, SelStart: selStart, SelEnd: selEnd, Caret: selEnd},
+		},
+	)
+}
+
 func TestDiffIdenticalTreesProduceNothing(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -710,4 +735,89 @@ func TestDiffIsDeterministic(t *testing.T) {
 	// Diffing must not disturb either tree, since both are shared with whatever is reading them.
 	again := accessibility.Diff(firstOld, firstCur)
 	c.Equal(first, again)
+}
+
+// TestDiffDocumentTextEvents pins that a Document's composed stream is diffed exactly as a field's own text is. The
+// stream is where a document's text lives — Node.Text stays nil on one, so that only the adapters presenting a document
+// as text ever see it — and an assistive technology reading a document with its caret is told what changed and where
+// the caret went in the same events it is told for a field.
+func TestDiffDocumentTextEvents(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	c.Equal([]axEvent{
+		{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
+		{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
+		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 4},
+		{Kind: accessibility.TextDeleted, Node: 3, Start: 3, Length: 2, Old: "lo"},
+		{Kind: accessibility.TextInserted, Node: 3, Start: 3, Length: 1, New: "p"},
+		{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 4},
+	}, accessibility.Diff(documentTree("hello", 5, 5), documentTree("help", 4, 4)),
+		"the document and the block beneath it each report their own edit")
+}
+
+// TestDiffDocumentSelectionOnly covers the reading caret moving with the content standing still, which is every arrow
+// key a person reading a document presses.
+func TestDiffDocumentSelectionOnly(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	c.Equal([]axEvent{
+		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2},
+		{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 1, Length: 2},
+	}, accessibility.Diff(documentTree("hello", 0, 0), documentTree("hello", 1, 3)))
+
+	// The caret moving from one end of an unchanged selection to the other is a change on the stream as much as on a
+	// field, since it is the end a screen reader goes on reading from.
+	atEnd := documentTree("hello", 1, 3)
+	atStart := documentTree("hello", 1, 3)
+	atStart.Node(2).Document.Text.Caret = 1
+	atStart.Node(3).Text.Caret = 1
+	c.Equal([]axEvent{
+		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2},
+		{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 1, Length: 2},
+	}, accessibility.Diff(atEnd, atStart))
+}
+
+// TestDiffDocumentGainedOrLost pins the AttributesChanged a node gets when it starts, or stops, carrying a composed
+// stream. Which patterns and interfaces an adapter offers on the element is decided by that — the UI Automation Text
+// pattern among them — and a client reads what an element offers once and caches it, so the arrival of the stream has
+// to be announced as well as its content.
+func TestDiffDocumentGainedOrLost(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	with := documentTree("hello", 0, 0)
+	without := documentTree("hello", 0, 0)
+	without.Node(2).Document = nil
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(without, with),
+		"a document that has only just composed its content")
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(with, without),
+		"and one whose content has gone")
+
+	// No text events either way: there is nothing to diff the stream against, exactly as for a field that has only just
+	// gained its text.
+	for _, events := range [][]axEvent{accessibility.Diff(without, with), accessibility.Diff(with, without)} {
+		for _, event := range events {
+			c.NotEqual(accessibility.TextInserted, event.Kind)
+			c.NotEqual(accessibility.TextDeleted, event.Kind)
+			c.NotEqual(accessibility.TextSelectionChanged, event.Kind)
+		}
+	}
+}
+
+// TestDiffURLChange pins that re-pointing a link is reported. Every adapter carries the target as a property of the
+// element that a client reads once and caches, so a link that had been given a new target would otherwise go on telling
+// the person where it used to go.
+func TestDiffURLChange(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	link := func(url string) *accessibility.Tree {
+		tree := diffTree()
+		tree.Node(3).Role = role.Link
+		tree.Node(3).URL = url
+		return tree
+	}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
+		accessibility.Diff(link("https://example.com/one"), link("https://example.com/two")))
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
+		accessibility.Diff(link(""), link("https://example.com/one")), "gaining a target is a change too")
+	c.Nil(accessibility.Diff(link("https://example.com/one"), link("https://example.com/one")))
 }

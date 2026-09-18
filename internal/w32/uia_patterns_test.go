@@ -786,6 +786,16 @@ func TestUIAValueString(t *testing.T) {
 	// An explicit value wins over the text, since a widget that fills in both means the value.
 	tree.Nodes[8].Value = "Mithrandir"
 	c.Equal("Mithrandir", UIAValueString(tree.Node(8)))
+
+	// A link's value is where it leads, which is the only way a client can be told a hyperlink's destination: UI
+	// Automation has no property of its own for one. It wins over an explicit value for that role, since the URL is
+	// what the pattern was granted for.
+	link := &accessibility.Node{ID: 1, Role: role.Link, Name: "docs", URL: "https://example.com"}
+	c.Equal("https://example.com", UIAValueString(link))
+	link.Value = "something else"
+	c.Equal("https://example.com", UIAValueString(link))
+	c.Equal("", UIAValueString(&accessibility.Node{ID: 1, Role: role.Link, Name: "docs"}),
+		"a link with no target has nothing to report, which is why it is given no Value pattern either")
 }
 
 // TestUIAValueReadOnly verifies when the Value pattern says the value cannot be changed.
@@ -810,6 +820,12 @@ func TestUIAValueReadOnly(t *testing.T) {
 		ID: 1, Role: role.Document, Actions: accessibility.ActionSet(0).With(accessibility.SetValue),
 	}
 	c.True(UIAIsValueReadOnly(document), "a document is there to be read")
+
+	link := &accessibility.Node{
+		ID: 1, Role: role.Link, URL: "https://example.com",
+		Actions: accessibility.ActionSet(0).With(accessibility.SetValue),
+	}
+	c.True(UIAIsValueReadOnly(link), "a link reports where it leads, and nothing retargets one through accessibility")
 }
 
 // TestUIARangeValueReadOnly verifies when the RangeValue pattern says the value cannot be changed.

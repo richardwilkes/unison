@@ -293,7 +293,7 @@ func TestFirstPublishAnnouncesTheWholeWindow(t *testing.T) {
 	}
 	c.Equal([]any{dbus.Struct{
 		nodeRef(1), rootRef(), rootRef(), int32(0), int32(5),
-		[]string{InterfaceAccessible, InterfaceComponent},
+		[]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
 		"Test Window", uint32(RoleFrame), "",
 		States(mainTree().Node(1), true, true).Words(),
 	}}, signals[0].args, "the window's cache item says everything the cache would")
@@ -2131,4 +2131,306 @@ func answerUntilEmbedded(peerSide net.Conn, stalled chan struct{}) {
 			return
 		}
 	}
+}
+
+// documentWindowSignals is how many signals the first publish of the document window sends: one cache item for each of
+// its reported nodes, which are the window, the document and every reported object within it, the window's Create, the
+// application root gaining a child, and then the four signals that say the window is active and where its focus is.
+const documentWindowSignals = documentDescendants + 2 + 2 + 4
+
+// newDocumentEventAdapter starts an adapter, publishes the Markdown document as a second window, and takes the signals
+// that announced both windows out of the way, so that what follows is only what the test is about.
+func newDocumentEventAdapter(t *testing.T) *testAdapter {
+	t.Helper()
+	ta := newEventAdapter(t)
+	ta.Publish(documentWindow, documentTree(), nil, sampleGeometry())
+	ta.peer.nextSignals(documentWindowSignals)
+	return ta
+}
+
+// TestCaretMovingBetweenBlocks covers what Orca's caret navigation produces as a reader arrows down a document: the
+// block the caret has arrived in announces where it now is, and the block it has left says nothing at all, since a
+// block the caret has gone from keeps the offset it last held rather than snapping back to its start.
+func TestCaretMovingBetweenBlocks(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentEventAdapter(t)
+	c := ta.c
+	within := documentTree()
+	within.Generation++
+	putCaretIn(within.Node(103), 3)
+	events := accessibility.Diff(documentTree(), within)
+	c.Equal([]accessibility.Event{{Kind: accessibility.TextSelectionChanged, Node: 103, Start: 3}}, events)
+	ta.Publish(documentWindow, within, events, sampleGeometry())
+	c.Equal(objectEvent(103, signalTextCaretMoved, "", 3, 0, variantInt32(0)), ta.peer.nextSignal())
+
+	// Crossing into the paragraph inside the block quote, with the paragraph that was left holding the offset it had.
+	crossed := documentTree()
+	crossed.Generation += 2
+	putCaretIn(crossed.Node(103), 3)
+	putCaretIn(crossed.Node(110), 5)
+	events = accessibility.Diff(within, crossed)
+	c.Equal([]accessibility.Event{{Kind: accessibility.TextSelectionChanged, Node: 110, Start: 5}}, events)
+	ta.Publish(documentWindow, crossed, events, sampleGeometry())
+	c.Equal(objectEvent(110, signalTextCaretMoved, "", 5, 0, variantInt32(0)), ta.peer.nextSignal())
+	ta.Announce("nothing about the block the caret left")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+	c.Equal(int32(5), ta.peer.getProperty(NodePath(110), InterfaceText, "CaretOffset"))
+	c.Equal(int32(3), ta.peer.getProperty(NodePath(103), InterfaceText, "CaretOffset"))
+}
+
+// TestDocumentStreamTextEventsSayNothing covers the text events a document's own composed stream produces.
+// [accessibility.Diff] reads that stream as the text of the document node itself, so moving the reading caret about a
+// Markdown or changing its content reports an edit and a caret move on the document — the one node whose text this
+// package never hands out, since Orca reads a document by walking the blocks within it.
+//
+// Sending them anyway would have Orca ask an object with no org.a11y.atspi.Text where its caret is, at an offset into a
+// stream it has never been shown, and answer a content change with a value it cannot read. The blocks send their own
+// events, which is what a client actually follows.
+func TestDocumentStreamTextEventsSayNothing(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentEventAdapter(t)
+	c := ta.c
+	edited := documentTree()
+	edited.Generation++
+	stream := &edited.Node(101).Document.Text
+	appended := "\nOne more."
+	inserted := len([]rune(appended))
+	at := len([]rune(stream.Text))
+	stream.Text += appended
+	stream.SelStart, stream.SelEnd, stream.Caret = 3, 3, 3
+	// The paragraph's own caret moves in the same publish, so that what the document is silent about is told apart from
+	// a publish in which nothing was said at all.
+	putCaretIn(edited.Node(103), 3)
+	events := accessibility.Diff(documentTree(), edited)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.TextInserted, Node: 101, Start: at, Length: inserted, New: appended},
+		{Kind: accessibility.TextSelectionChanged, Node: 101, Start: 3},
+		{Kind: accessibility.TextSelectionChanged, Node: 103, Start: 3},
+	}, events, "the stream's edit and its caret are reported on the document itself")
+	ta.Publish(documentWindow, edited, events, sampleGeometry())
+	c.Equal(objectEvent(103, signalTextCaretMoved, "", 3, 0, variantInt32(0)), ta.peer.nextSignal(),
+		"the block the caret is in says where it now is")
+	ta.Announce("nothing from the document itself")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member,
+		"no caret move and no text change on an object that hands out no text")
+}
+
+// TestCaretBlockCarriesFocusedState covers the companion focus that Orca's focus mode needs. Orca presents a caret move
+// from something other than its own locus of focus only when the object the move came from reports being focused, so
+// while the document holds the keyboard focus the block that holds the caret reports FOCUSED as well.
+//
+// The state is announced. libatspi seeds its cached state sets from the cache items a window was published with and
+// updates them only from object:state-changed, so a block that took the caret afterwards would be found without FOCUSED
+// and its caret move dropped; the state change goes out before the caret move that relies on it. The legacy focus event
+// is deliberately not sent, since Orca reads that one as a claim that the person has been moved to the block, and
+// [accessibility.Diff] says nothing about either: the claim is worked out from the two snapshots.
+func TestCaretBlockCarriesFocusedState(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentEventAdapter(t)
+	c := ta.c
+	companion := documentTree()
+	companion.Generation++
+	putCaretIn(companion.Node(110), 5)
+	companion.Node(110).Focused = true
+	companion.Focus = 101
+	events := accessibility.Diff(documentTree(), companion)
+	c.Equal([]accessibility.Event{{Kind: accessibility.TextSelectionChanged, Node: 110, Start: 5}}, events,
+		"a block that has taken the companion focus is not a focus change")
+	ta.Publish(documentWindow, companion, events, sampleGeometry())
+	c.Equal(stateEvent(110, stateNameFocused, true), ta.peer.nextSignal(),
+		"the block that has taken the caret says it is focused before the caret move that needs the state")
+	c.Equal(objectEvent(110, signalTextCaretMoved, "", 5, 0, variantInt32(0)), ta.peer.nextSignal())
+	ta.Announce("nothing else about the focus")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member,
+		"no focus event and nothing about the document, which still holds the focus it held before")
+
+	// The state is there for the client that reads it as well, on the block and on the document both. Two objects
+	// claiming the focus is harmless on AT-SPI, which is why only this adapter is given the companion flag.
+	c.True(ta.statesOf(110).Has(StateFocused), "the block that holds the caret reports being focused")
+	c.True(ta.statesOf(101).Has(StateFocused), "and so does the document that really holds the focus")
+	c.False(ta.statesOf(103).Has(StateFocused), "no other block does")
+
+	// Moving the caret on into another block moves the companion focus with it: the block it left retracts the state
+	// before the block it arrived in claims it, so that a client is never holding two focused blocks at once.
+	onwards := documentTree()
+	onwards.Generation += 2
+	putCaretIn(onwards.Node(110), 5)
+	putCaretIn(onwards.Node(113), 2)
+	onwards.Node(113).Focused = true
+	onwards.Focus = 101
+	ta.Publish(documentWindow, onwards, accessibility.Diff(companion, onwards), sampleGeometry())
+	c.Equal(stateEvent(110, stateNameFocused, false), ta.peer.nextSignal(),
+		"the block the caret has left stops reporting the focus")
+	c.Equal(stateEvent(113, stateNameFocused, true), ta.peer.nextSignal(),
+		"and the one it has arrived in reports it")
+	c.Equal(objectEvent(113, signalTextCaretMoved, "", 2, 0, variantInt32(0)), ta.peer.nextSignal())
+	ta.Announce("nothing about the focus itself moving")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member, "still no focus event: the focus has not moved")
+	c.True(ta.statesOf(113).Has(StateFocused))
+	c.False(ta.statesOf(110).Has(StateFocused))
+}
+
+// TestCompanionFocusIsRetractedWhenTheFocusLeavesTheDocument covers the other way a block stops holding the companion
+// focus: the keyboard focus moves out of the document altogether, which is what tabbing to another control does. The
+// root package clears the claim, and nothing in the schema reports it, so the block would otherwise keep a FOCUSED a
+// client caches for the life of the window and go on having its caret moves presented as though the person were in it.
+func TestCompanionFocusIsRetractedWhenTheFocusLeavesTheDocument(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentEventAdapter(t)
+	c := ta.c
+	companion := documentTree()
+	companion.Generation++
+	putCaretIn(companion.Node(110), 5)
+	companion.Node(110).Focused = true
+	companion.Focus = 101
+	ta.Publish(documentWindow, companion, accessibility.Diff(documentTree(), companion), sampleGeometry())
+	ta.peer.nextSignals(2)
+
+	// The focus moves to the link that stands on its own, which is a panel of its own rather than part of any block's
+	// text, and resolveCompanionFocus takes the claim away from the block the caret is still in.
+	elsewhere := documentTree()
+	elsewhere.Generation += 2
+	putCaretIn(elsewhere.Node(110), 5)
+	elsewhere.Node(101).Focused = false
+	elsewhere.Node(125).Focused = true
+	elsewhere.Focus = 125
+	ta.Publish(documentWindow, elsewhere, accessibility.Diff(companion, elsewhere), sampleGeometry())
+	c.Equal(stateEvent(110, stateNameFocused, false), ta.peer.nextSignal(),
+		"the block the caret sits in stops reporting the focus as the focus leaves the document")
+	c.Equal(stateEvent(101, stateNameFocused, false), ta.peer.nextSignal(), "the document loses the real focus")
+	c.Equal(stateEvent(125, stateNameFocused, true), ta.peer.nextSignal(), "and the link takes it")
+	c.Equal(focusEvent(125), ta.peer.nextSignal(), "the legacy focus event names the link alone")
+	ta.Announce("nothing more about the block")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+	c.False(ta.statesOf(110).Has(StateFocused))
+}
+
+// TestCompanionFocusFollowsTheWindowsActivity covers the companion state as the window it is in stops being the active
+// one and becomes it again. AT-SPI carries FOCUSED for the objects of the active window alone, which is what [States]
+// answers with and what a client caches, so a window that has been deactivated retracts the state on the block holding
+// the caret as well as on the document holding the focus, and claims it again on the way back.
+func TestCompanionFocusFollowsTheWindowsActivity(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentEventAdapter(t)
+	c := ta.c
+	caretIn110 := func(tree *accessibility.Tree) {
+		putCaretIn(tree.Node(110), 5)
+		tree.Node(110).Focused = true
+		tree.Focus = 101
+	}
+	companion := documentTree()
+	companion.Generation++
+	caretIn110(companion)
+	ta.Publish(documentWindow, companion, accessibility.Diff(documentTree(), companion), sampleGeometry())
+	ta.peer.nextSignals(2)
+
+	inactive := documentTree()
+	inactive.Generation += 2
+	caretIn110(inactive)
+	inactive.Node(100).Focused = false
+	events := accessibility.Diff(companion, inactive)
+	c.Equal([]accessibility.Event{{Kind: accessibility.WindowDeactivated, Node: 100}}, events)
+	ta.Publish(documentWindow, inactive, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(110, stateNameFocused, false),
+		windowEvent(100, signalDeactivate, "Guide"),
+		stateEvent(100, stateNameActive, false),
+		stateEvent(101, stateNameFocused, false),
+	}, ta.peer.nextSignals(4), "the block gives the state up with the window it is in")
+	c.False(ta.statesOf(110).Has(StateFocused), "which is what the object itself now answers")
+	c.False(ta.statesOf(101).Has(StateFocused))
+
+	reactivated := documentTree()
+	reactivated.Generation += 3
+	caretIn110(reactivated)
+	events = accessibility.Diff(inactive, reactivated)
+	c.Equal([]accessibility.Event{{Kind: accessibility.WindowActivated, Node: 100}}, events)
+	ta.Publish(documentWindow, reactivated, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(110, stateNameFocused, true),
+		windowEvent(100, signalActivate, "Guide"),
+		stateEvent(100, stateNameActive, true),
+		stateEvent(101, stateNameFocused, true),
+		focusEvent(101),
+	}, ta.peer.nextSignals(5), "and takes it back with the window, without a focus event of its own")
+	ta.Announce("nothing more about the block")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+	c.True(ta.statesOf(110).Has(StateFocused))
+}
+
+// TestReMeasuredLinesSayNothing covers the one part of a document's text that changes without anything having happened:
+// a window that has been resized re-wraps and re-measures every block, and the lines and their advances are how a
+// client is told where the characters are rather than what they say. An event per block would have a screen reader
+// announce a document that nobody touched.
+func TestReMeasuredLinesSayNothing(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentEventAdapter(t)
+	c := ta.c
+	remeasured := documentTree()
+	remeasured.Generation++
+	for _, block := range documentBlocks {
+		lines := remeasured.Node(block.node).Text.Lines
+		for i := range lines {
+			lines[i].Bounds.Y += 4
+			for j := range lines[i].Advances {
+				lines[i].Advances[j] *= 2
+			}
+		}
+	}
+	events := accessibility.Diff(documentTree(), remeasured)
+	c.Equal(0, len(events), "re-measuring the lines of a document is nothing an assistive technology is told about")
+	ta.Publish(documentWindow, remeasured, events, sampleGeometry())
+	ta.Announce("nothing about the measurements")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+	// The new measurements are what the object answers with from now on, so the silence is about what was announced
+	// rather than about the snapshot having been ignored.
+	c.Equal([]any{int32(140), int32(58), int32(40), int32(40)},
+		ta.values(NodePath(102), InterfaceText, "GetCharacterExtents", "iu", int32(1), uint32(CoordScreen)),
+		"the second character of the heading is twice as wide and four units further down than it was")
+}
+
+// TestAListGainingRowsBecomesAListBox covers the role that is decided by how many rows a container holds. A list with
+// no rows of its own is a list of items to read, which is what Orca's list navigation looks for; one that samples its
+// rows is a control to pick from. A client caches the role it was told, so the change has to be announced — and the
+// event that carries a row count is an attribute change, which is why that is where the role is looked at again.
+func TestAListGainingRowsBecomesAListBox(t *testing.T) {
+	t.Parallel()
+	ta := newDocumentEventAdapter(t)
+	c := ta.c
+	c.Equal(uint32(RoleList), ta.one(NodePath(111), InterfaceAccessible, "GetRole", ""))
+	filled := documentTree()
+	filled.Generation++
+	filled.Node(111).RowCount = 3
+	events := accessibility.Diff(documentTree(), filled)
+	c.Equal([]accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 111}}, events)
+	ta.Publish(documentWindow, filled, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(111, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+		objectEvent(111, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleListBox))),
+	}, ta.peer.nextSignals(2))
+	c.Equal(uint32(RoleListBox), ta.one(NodePath(111), InterfaceAccessible, "GetRole", ""))
+
+	// And back again when the rows go away, so that a client is never left holding the role the container has stopped
+	// reporting.
+	emptied := documentTree()
+	emptied.Generation += 2
+	ta.Publish(documentWindow, emptied, accessibility.Diff(filled, emptied), sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(111, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+		objectEvent(111, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleList))),
+	}, ta.peer.nextSignals(2))
+	// A list that takes the focus is a control as well, which arrives as a state change rather than as an attribute one.
+	focusable := documentTree()
+	focusable.Generation += 3
+	focusable.Node(111).Focusable = true
+	events = accessibility.Diff(emptied, focusable)
+	c.Equal([]accessibility.Event{{
+		Kind: accessibility.StateChanged, Node: 111, State: accessibility.StateFocusable,
+		Old: falseValue, New: trueValue,
+	}}, events)
+	ta.Publish(documentWindow, focusable, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(111, stateNameFocusable, true),
+		objectEvent(111, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleListBox))),
+	}, ta.peer.nextSignals(2))
 }

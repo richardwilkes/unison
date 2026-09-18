@@ -251,8 +251,9 @@ func axMayPopupMenu(p *Panel) bool {
 }
 
 // axMenuActions is implemented by a widget that advertises actions which would open a menu somewhere other than within
-// its own window. The snapshot builder asks each such widget which of the actions it has just been described with are
-// those, and takes them away when a menu opened on the widget's behalf would not land where the widget is. See
+// its own window: a Field and a Markdown, both of which offer a contextual menu, and a PopupMenu, whose list of choices
+// is one. The snapshot builder asks each such widget which of the actions it has just been described with are those,
+// and takes them away when a menu opened on the widget's behalf would not land where the widget is. See
 // axSnapshot.narrowMenuActions and axMayPopupMenu.
 type axMenuActions interface {
 	// axMenuOpeningActions returns the subset of the node's actions that would open a menu, given what the widget has

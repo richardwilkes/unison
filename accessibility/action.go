@@ -35,11 +35,12 @@ const (
 	ShowContextMenu                   // Show the contextual menu for this node
 	SetTextSelection                  // Move the caret or selection to ActionRequest.Start and End
 	ReplaceText                       // Replace the runes from ActionRequest.Start to End with Value
+	ScrollRangeIntoView               // Scroll ancestors so the runes from ActionRequest.Start to End become visible
 )
 
 // lastAction is the highest valid Action. Since an ActionSet holds one bit per Action, this is also the highest bit an
 // ActionSet can use, and the bound every ActionSet method range-checks against.
-const lastAction = ReplaceText
+const lastAction = ScrollRangeIntoView
 
 // An ActionSet is a uint32, so the highest action must fit in bits 0 through 31. Go evaluates a shift wider than the
 // value being shifted to zero rather than refusing it, so an action added past that bound would not fail to compile:
@@ -80,6 +81,8 @@ func (a Action) String() string {
 		return "set-text-selection"
 	case ReplaceText:
 		return "replace-text"
+	case ScrollRangeIntoView:
+		return "scroll-range-into-view"
 	default:
 		return "Action(" + strconv.FormatUint(uint64(a), 10) + ")"
 	}
@@ -145,8 +148,8 @@ type ActionRequest struct {
 	Node NodeID
 	// Action is what the node is being asked to do.
 	Action Action
-	// Start is the first rune index of the range SetTextSelection or ReplaceText applies to.
+	// Start is the first rune index of the range SetTextSelection, ReplaceText or ScrollRangeIntoView applies to.
 	Start int
-	// End is the rune index just past the range SetTextSelection or ReplaceText applies to.
+	// End is the rune index just past the range SetTextSelection, ReplaceText or ScrollRangeIntoView applies to.
 	End int
 }

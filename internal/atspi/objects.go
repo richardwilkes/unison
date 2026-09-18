@@ -49,14 +49,20 @@ func (a *Adapter) resolve(path dbus.ObjectPath) dbus.Object {
 // Interfaces implements [dbus.Object]. Both the membership of the list and its order match what
 // org.a11y.atspi.Accessible.GetInterfaces reports, which [Interfaces] decides.
 func (o *nodeObject) Interfaces() []*dbus.Interface {
-	list := make([]*dbus.Interface, 0, 8)
+	list := make([]*dbus.Interface, 0, 12)
 	list = append(list, o.accessibleInterface())
 	if actions := nodeActions(o.node); len(actions) != 0 {
 		list = append(list, o.actionInterface(actions))
 	}
-	list = append(list, o.componentInterface())
+	list = append(list, o.collectionInterface(), o.componentInterface())
 	if supportsEditableText(o.node) {
 		list = append(list, o.editableTextInterface())
+	}
+	if supportsHyperlink(o.node, o.isSpanTarget()) {
+		list = append(list, o.hyperlinkInterface())
+	}
+	if supportsHypertext(o.node) {
+		list = append(list, o.hypertextInterface())
 	}
 	if supportsSelection(o.node.Role) {
 		list = append(list, o.selectionInterface())
@@ -121,6 +127,12 @@ func (o *nodeObject) isRoot() bool {
 	return o.node.ID == o.data.tree.Root
 }
 
+// isSpanTarget reports whether another node's text says that this node occupies part of it, which is what makes a link
+// or an image within a paragraph a hyperlink; see [windowData.isSpanTarget].
+func (o *nodeObject) isSpanTarget() bool {
+	return o.data.isSpanTarget(o.node.ID)
+}
+
 // callArgs unmarshals the arguments of a call, answering it with an InvalidArgs error and returning false if they
 // cannot be read. The arguments have already been checked against the method's declared signature, so this only fails
 // if a message claimed a signature its body does not hold.
@@ -159,8 +171,49 @@ func uint32Arg(args []any, i int) uint32 {
 	return value
 }
 
+// boolArg returns one argument of a call as a boolean. False stands in for an argument that is not there or is not the
+// type the method's signature promised, neither of which the connection lets through.
+func boolArg(args []any, i int) bool {
+	if i >= len(args) {
+		return false
+	}
+	value, ok := args[i].(bool)
+	if !ok {
+		return false
+	}
+	return value
+}
+
 // coordArg returns one argument of a call as a coordinate type. An argument that is not there is read as CoordScreen,
 // which is zero.
 func coordArg(args []any, i int) CoordType {
 	return CoordType(uint32Arg(args, i))
+}
+
+// argAt returns one argument of a call whatever its type, which is what the arguments that are structures rather than
+// numbers are read from, or nil when there is no such argument.
+func argAt(args []any, i int) any {
+	if i >= len(args) {
+		return nil
+	}
+	return args[i]
+}
+
+// nodeArg returns the id of the node that one argument of a call refers to, or zero when the reference names nothing
+// this window reports: a path that is not a node's, or a node that has left the tree since the client last looked. The
+// bus name the reference carries is not checked, since a client that is talking to this connection has no other one to
+// mean and some of them leave it empty.
+func (o *nodeObject) nodeArg(args []any, i int) accessibility.NodeID {
+	ref, ok := argAt(args, i).(dbus.ObjectRef)
+	if !ok {
+		return 0
+	}
+	id, ok := ParseNodePath(ref.Path)
+	if !ok {
+		return 0
+	}
+	if n := o.data.node(id); n == nil || n.Ignored {
+		return 0
+	}
+	return id
 }

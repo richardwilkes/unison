@@ -123,6 +123,52 @@ func buildRelations(t *accessibility.Tree) map[accessibility.NodeID][]relation {
 	return result
 }
 
+// spanRef says that one node occupies a range of another node's text: which node's text it is, and where within it the
+// range sits. It is what org.a11y.atspi.Hyperlink's StartIndex and EndIndex report, and the text a link sits in is the
+// only place those offsets mean anything, so both ends of the relationship are held together.
+type spanRef struct {
+	container accessibility.NodeID
+	start     int
+	end       int
+}
+
+// buildSpanIndex returns, for every node that another node's text says occupies part of it, where that range is. It is
+// built once per published snapshot, since answering it from the tree would otherwise mean walking every text-bearing
+// node's spans to find out whether one names this object.
+//
+// Only a node's own text is read. A document composes the text of everything beneath it into one stream with a span per
+// node, and that stream is never exposed on AT-SPI — the document object is given no org.a11y.atspi.Text at all, since
+// Orca reads a document by walking the objects within it and would otherwise read the whole of it twice — so the
+// offsets that mean anything here are the block-local ones. [accessibility.Node] keeps a document's own Text nil, so a
+// document contributes nothing without anything having to check.
+func buildSpanIndex(t *accessibility.Tree) map[accessibility.NodeID]spanRef {
+	var spans map[accessibility.NodeID]spanRef
+	t.Walk(func(n *accessibility.Node) bool {
+		if n.Ignored || n.Text == nil {
+			return true
+		}
+		for _, span := range n.Text.Spans {
+			target := t.Node(span.Node)
+			if target == nil || target.Ignored || span.Node == n.ID {
+				// A span naming a node that has no object of its own, or naming the very node whose text it is, has
+				// nothing an assistive technology could be pointed at.
+				continue
+			}
+			if _, exists := spans[span.Node]; exists {
+				// The first text to claim a node keeps it. Nothing a snapshot builder produces puts one node into two
+				// texts, and answering with either of them would be arbitrary.
+				continue
+			}
+			if spans == nil {
+				spans = make(map[accessibility.NodeID]spanRef)
+			}
+			spans[span.Node] = spanRef{container: n.ID, start: span.Start, end: span.End}
+		}
+		return true
+	})
+	return spans
+}
+
 // windowData is everything that answering a query about one window needs: the published tree, the indexes built over
 // it, and the geometry that turns its logical coordinates into the physical pixels AT-SPI works in. It is replaced as a
 // whole and never modified, so a handler that has loaded the pointer to it may use it without any further locking, even
@@ -133,6 +179,7 @@ type windowData struct {
 	indexes   map[accessibility.NodeID]int
 	relations map[accessibility.NodeID][]relation
 	headers   map[accessibility.NodeID][]accessibility.NodeID
+	spans     map[accessibility.NodeID]spanRef
 	geometry  Geometry
 }
 
@@ -146,6 +193,7 @@ func newWindowData(t *accessibility.Tree, g Geometry) *windowData {
 		indexes:   make(map[accessibility.NodeID]int),
 		relations: buildRelations(t),
 		headers:   buildTableHeaders(t),
+		spans:     buildSpanIndex(t),
 		geometry:  g,
 	}
 	t.Walk(func(n *accessibility.Node) bool {
@@ -198,6 +246,40 @@ func (d *windowData) unignoredChildren(id accessibility.NodeID) []accessibility.
 	return d.children[id]
 }
 
+// positionInSet returns where a node sits among the reported siblings that share its role and how many such siblings
+// there are, which is what [appendPositionAttributes] writes the posinset and setsize attributes of a tab, a menu item
+// or a radio button from. Both are zero for a node that is not reported, or that has no reported parent.
+//
+// It answers exactly what [accessibility.Tree.PositionInSet] does, from the sibling list this snapshot indexed rather
+// than by deriving one from the tree. That matters where a set is asked about once per member: an
+// org.a11y.atspi.Collection search whose rule names an attribute reads the attributes of every candidate it considers,
+// and over a menu or a radio group the tree-derived answer rebuilds and reallocates the whole sibling list for each of
+// them, which is one D-Bus call doing quadratic work.
+func (d *windowData) positionInSet(id accessibility.NodeID) (pos, size int) {
+	n := d.node(id)
+	if n == nil || n.Ignored {
+		return 0, 0
+	}
+	for _, siblingID := range d.unignoredChildren(d.parent(id)) {
+		if sibling := d.node(siblingID); sibling != nil && sibling.Role == n.Role {
+			size++
+			if siblingID == id {
+				pos = size
+			}
+		}
+	}
+	if pos == 0 {
+		return 0, 0
+	}
+	return pos, size
+}
+
+// attributesOf returns a node's AT-SPI object attributes, counting any set it belongs to from this snapshot's own
+// indexes; see [Attributes], which is the same answer worked out from a tree alone.
+func (d *windowData) attributesOf(n *accessibility.Node) dbus.Dict {
+	return nodeAttributes(n, d.node(d.parent(n.ID)), d.positionInSet)
+}
+
 // indexInParent returns the position of a node among the reported children of its reported parent, or -1 when it has no
 // parent, which is the case for the window's root.
 func (d *windowData) indexInParent(id accessibility.NodeID) int {
@@ -222,6 +304,57 @@ func (d *windowData) relationsOf(id accessibility.NodeID) []relation {
 // them publishes them, or nil when the snapshot holds no header for it. See [buildTableHeaders].
 func (d *windowData) columnHeaders(id accessibility.NodeID) []accessibility.NodeID {
 	return d.headers[id]
+}
+
+// spanOf returns the range of another node's text that a node occupies, and whether any node's text says it occupies
+// one. See [buildSpanIndex].
+func (d *windowData) spanOf(id accessibility.NodeID) (span spanRef, ok bool) {
+	span, ok = d.spans[id]
+	return span, ok
+}
+
+// isSpanTarget reports whether another node's text says that this node occupies part of it, which is what gives a link
+// or an image within a paragraph org.a11y.atspi.Hyperlink.
+func (d *windowData) isSpanTarget(id accessibility.NodeID) bool {
+	_, ok := d.spans[id]
+	return ok
+}
+
+// walkReported calls fn for every reported descendant of a node, in pre-order: a node is visited before its own
+// children, and the children in the order their parent reports them, which is the order an assistive technology reads
+// them in. The node the walk starts at is not visited, and neither is an ignored node: its children stand in for it,
+// exactly as they do everywhere else. Returning false from fn stops the walk, so a search that has found what it needs
+// can leave.
+//
+// Each node is visited at most once, however many places in the tree point at it, which is what keeps a malformed tree
+// — one whose children links form a cycle — from being walked forever. The node the walk starts at is one of those: a
+// cycle that leads back to it must not hand it to a caller that asked for what is inside it.
+func (d *windowData) walkReported(id accessibility.NodeID, fn func(n *accessibility.Node) bool) {
+	d.walkReportedChildren(id, map[accessibility.NodeID]bool{id: true}, fn)
+}
+
+// walkReportedChildren implements [windowData.walkReported] from one node, reporting whether the walk should go on.
+// visited holds the ids already reached.
+func (d *windowData) walkReportedChildren(id accessibility.NodeID, visited map[accessibility.NodeID]bool,
+	fn func(n *accessibility.Node) bool,
+) bool {
+	for _, child := range d.unignoredChildren(id) {
+		if visited[child] {
+			continue
+		}
+		visited[child] = true
+		n := d.node(child)
+		if n == nil {
+			continue
+		}
+		if !fn(n) {
+			return false
+		}
+		if !d.walkReportedChildren(child, visited, fn) {
+			return false
+		}
+	}
+	return true
 }
 
 // reachableBounds returns the part of a node that can actually be pointed at: its own Bounds confined to those of every

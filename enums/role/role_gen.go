@@ -32,6 +32,9 @@ const (
 	Link                           // A control that navigates somewhere else
 	Label                          // Static text that cannot be edited
 	Heading                        // Static text that introduces a section; Level holds its depth
+	Paragraph                      // A block of static text within a document
+	BlockQuote                     // A quoted passage within a document; Name holds an alert's title
+	Code                           // A block of preformatted source code
 	TextField                      // A single-line editable text control
 	TextArea                       // A multi-line editable text control
 	SpinButton                     // An editable numeric control with increment and decrement
@@ -79,6 +82,9 @@ var All = []Enum{
 	Link,
 	Label,
 	Heading,
+	Paragraph,
+	BlockQuote,
+	Code,
 	TextField,
 	TextArea,
 	SpinButton,
@@ -151,6 +157,12 @@ func (e Enum) Key() string {
 		return "label"
 	case Heading:
 		return "heading"
+	case Paragraph:
+		return "paragraph"
+	case BlockQuote:
+		return "block-quote"
+	case Code:
+		return "code"
 	case TextField:
 		return "text-field"
 	case TextArea:
@@ -245,6 +257,12 @@ func (e Enum) String() string {
 		return i18n.Text("Label")
 	case Heading:
 		return i18n.Text("Heading")
+	case Paragraph:
+		return i18n.Text("Paragraph")
+	case BlockQuote:
+		return i18n.Text("Block Quote")
+	case Code:
+		return i18n.Text("Code")
 	case TextField:
 		return i18n.Text("Text Field")
 	case TextArea:

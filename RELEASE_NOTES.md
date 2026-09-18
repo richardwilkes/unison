@@ -26,6 +26,23 @@
   the keyboard focus to it, so the screen reader announces the control in its new state. Screen readers only speak
   changes to the control that holds the focus, so a click that left the focus elsewhere went unannounced. Nothing
   changes when no screen reader is running: these controls still leave the focus where it was when clicked.
+- `Markdown` now reads as a document to screen readers. Each heading, paragraph, code block and table cell carries its
+  text, with the lines it was laid out into and the styles it was drawn in; lists, list items, tables, rows, cells and
+  block quotes report what they are. On Windows the document offers the UI Automation Text pattern, so Narrator's scan
+  mode reads and navigates it and NVDA reads along the caret; on Linux, Orca enters browse mode when the document takes
+  the focus, with caret navigation, heading/link/list/table jumps (through the AT-SPI Collection interface) and say-all;
+  on macOS, VoiceOver reads each block as navigable text with links inline, and on macOS 26 and later its rotor and
+  Quick Nav jump by heading, link, list, table and bold text.
+- `Markdown` has a reading caret while it is focusable, which it is whenever a screen reader is running on Windows or
+  Linux and whenever an application asks with `SetFocusable(true)`. The arrow, Home, End and Page keys move it by
+  character, word, line and page, Shift extends a selection, Return or Space follows the link under it, and clicking,
+  dragging, double- and triple-clicking place and select with the mouse. The caret and selection are drawn while the
+  document holds the focus. Added `Markdown.CanCopy()`, `Copy()`, `CanSelectAll()`, `SelectAll()` and
+  `ShowContextMenu()`, wired to the Copy and Select All commands and to a context menu on right-click, along with the
+  `DefaultKeyDown`, `DefaultMouseDown`, `DefaultMouseDrag`, `DefaultMouseUp` and `DefaultDrawOver` callbacks.
+- Added the `Paragraph`, `BlockQuote` and `Code` roles, `AccessibilityInfo.URL` for links, and, for custom widgets that
+  present text, `accessibility.TextInfo.Runs` and `Spans`, `accessibility.Node.Document` for a widget that composes its
+  content into one stream, `accessibility.Node.URL`, and the `accessibility.ScrollRangeIntoView` action.
 
 ## Bug Fixes
 

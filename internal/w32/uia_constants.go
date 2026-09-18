@@ -130,9 +130,12 @@ const (
 	UIA_IsSelectionPatternAvailablePropertyId      PropertyID = 30037
 	UIA_IsTablePatternAvailablePropertyId          PropertyID = 30038
 	UIA_IsTableItemPatternAvailablePropertyId      PropertyID = 30039
+	UIA_IsTextPatternAvailablePropertyId           PropertyID = 30040
 	UIA_IsTogglePatternAvailablePropertyId         PropertyID = 30041
 	UIA_IsValuePatternAvailablePropertyId          PropertyID = 30043
 	UIA_IsWindowPatternAvailablePropertyId         PropertyID = 30044
+	UIA_IsTextPattern2AvailablePropertyId          PropertyID = 30119
+	UIA_IsTextChildPatternAvailablePropertyId      PropertyID = 30136
 )
 
 // ControlTypeID identifies what kind of control an element is. It is the value of UIA_ControlTypePropertyId and is the
@@ -204,6 +207,7 @@ const (
 	UIA_TogglePatternId         PatternID = 10015
 	UIA_ScrollItemPatternId     PatternID = 10017
 	UIA_TextPattern2Id          PatternID = 10024
+	UIA_TextChildPatternId      PatternID = 10029
 )
 
 // EventID identifies one UI Automation event. A provider announces one with UiaRaiseAutomationEvent, except for the
@@ -420,6 +424,127 @@ const (
 	HeadingLevel7     HeadingLevelID = 80057
 	HeadingLevel8     HeadingLevelID = 80058
 	HeadingLevel9     HeadingLevelID = 80059
+)
+
+// TextUnit is the granularity a Text pattern range is expanded or moved by. It is what a screen reader reading a
+// document by character, word or line asks for, so the boundaries each one names are the whole of how a document reads;
+// see uiaTextDocument in uia_text.go, which defines them.
+type TextUnit int32
+
+// Possible TextUnit values. Page is not a unit any document here divides into — nothing paginates — so it answers as
+// Document does, which is the documented fallback for a provider that does not support a unit: report the next larger
+// one it does.
+//
+// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcore/ne-uiautomationcore-textunit
+const (
+	TextUnit_Character TextUnit = iota
+	TextUnit_Format
+	TextUnit_Word
+	TextUnit_Line
+	TextUnit_Paragraph
+	TextUnit_Page
+	TextUnit_Document
+)
+
+// TextPatternRangeEndpoint names one end of a text range, for the methods that move or compare a single endpoint.
+type TextPatternRangeEndpoint int32
+
+// Possible TextPatternRangeEndpoint values.
+//
+// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcore/ne-uiautomationcore-textpatternrangeendpoint
+const (
+	TextPatternRangeEndpoint_Start TextPatternRangeEndpoint = iota
+	TextPatternRangeEndpoint_End
+)
+
+// SupportedTextSelection says what kind of selection a text container allows, and is the value of
+// ITextProvider::get_SupportedTextSelection.
+type SupportedTextSelection int32
+
+// Possible SupportedTextSelection values. A document here reports Single while it accepts a selection at all and None
+// otherwise: a Markdown view that is not focusable has no caret to move, so a client must not be told it can place one.
+//
+// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcore/ne-uiautomationcore-supportedtextselection
+const (
+	SupportedTextSelection_None SupportedTextSelection = iota
+	SupportedTextSelection_Single
+	SupportedTextSelection_Multiple
+)
+
+// TextAttributeID identifies one attribute of a run of text, which a client reads with
+// ITextRangeProvider::GetAttributeValue and searches by with ITextRangeProvider::FindAttribute.
+type TextAttributeID int32
+
+// The text attributes this package answers, plus the two it recognizes and deliberately refuses.
+//
+// Culture and AnnotationTypes are listed because a screen reader asks for them of every run and the answer has to be
+// the reserved not-supported value rather than a made-up one: a snapshot records neither the language a run is written
+// in nor any annotation over it, and reporting a culture of zero would have a client read the text in the wrong voice.
+//
+// StyleName is answered only for a code block, whose style has no identifier of its own — StyleId_Custom says exactly
+// that, and the name is what tells a client which custom style it is.
+//
+// https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-textattribute-ids
+const (
+	UIA_CultureAttributeId            TextAttributeID = 40004
+	UIA_FontNameAttributeId           TextAttributeID = 40005
+	UIA_FontSizeAttributeId           TextAttributeID = 40006
+	UIA_FontWeightAttributeId         TextAttributeID = 40007
+	UIA_IsHiddenAttributeId           TextAttributeID = 40013
+	UIA_IsItalicAttributeId           TextAttributeID = 40014
+	UIA_IsReadOnlyAttributeId         TextAttributeID = 40015
+	UIA_StrikethroughStyleAttributeId TextAttributeID = 40026
+	UIA_UnderlineStyleAttributeId     TextAttributeID = 40030
+	UIA_AnnotationTypesAttributeId    TextAttributeID = 40031
+	UIA_StyleNameAttributeId          TextAttributeID = 40033
+	UIA_StyleIdAttributeId            TextAttributeID = 40034
+	UIA_LinkAttributeId               TextAttributeID = 40035
+	UIA_IsActiveAttributeId           TextAttributeID = 40036
+)
+
+// TextDecorationLineStyle is the value of the UnderlineStyle and StrikethroughStyle attributes. Only the two states a
+// snapshot records are defined: a run is underlined or struck through, or it is not, and UI Automation's other dozen
+// styles say how the line is drawn, which nothing here knows.
+type TextDecorationLineStyle int32
+
+// Possible TextDecorationLineStyle values.
+//
+// https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcore/ne-uiautomationcore-textdecorationlinestyle
+const (
+	TextDecorationLineStyle_None   TextDecorationLineStyle = 0
+	TextDecorationLineStyle_Single TextDecorationLineStyle = 1
+)
+
+// StyleID is the value of the StyleId text attribute: which of the styles a word processor names a passage is drawn in.
+// It is how a client walking a document by heading finds one — a heading's runs report Heading1 through Heading9 — and
+// how a quotation, a list item and a code block are told apart from body text.
+type StyleID int32
+
+// The StyleId values UI Automation defines. The whole enumeration is listed rather than only the styles a document here
+// answers with — styleAt produces Custom, Heading1 through Heading9, Quote, BulletedList and Normal — because these are
+// a client's vocabulary as much as this provider's: FindAttribute takes a StyleId to search for, and a client is
+// entitled to ask for Title or NumberedList and be told that no stretch of the document has it. A name for a value a
+// client may pass in is not the claim about behavior that an unimplemented pattern name would be.
+//
+// https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-style-ids
+const (
+	StyleId_Custom       StyleID = 70000
+	StyleId_Heading1     StyleID = 70001
+	StyleId_Heading2     StyleID = 70002
+	StyleId_Heading3     StyleID = 70003
+	StyleId_Heading4     StyleID = 70004
+	StyleId_Heading5     StyleID = 70005
+	StyleId_Heading6     StyleID = 70006
+	StyleId_Heading7     StyleID = 70007
+	StyleId_Heading8     StyleID = 70008
+	StyleId_Heading9     StyleID = 70009
+	StyleId_Title        StyleID = 70010
+	StyleId_Subtitle     StyleID = 70011
+	StyleId_Normal       StyleID = 70012
+	StyleId_Emphasis     StyleID = 70013
+	StyleId_Quote        StyleID = 70014
+	StyleId_BulletedList StyleID = 70015
+	StyleId_NumberedList StyleID = 70016
 )
 
 const (

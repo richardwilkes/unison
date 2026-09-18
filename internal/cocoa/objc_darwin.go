@@ -463,6 +463,117 @@ func Float64FromNSNumber(num objc.ID) float64 {
 	return objc.Send[float64](num, Sel("doubleValue"))
 }
 
+// NSDictionaryObjectForKey returns the object an NSDictionary holds for a key, or 0 when it holds none. A nil
+// dictionary or key yields 0, so a caller reading an optional entry out of a dictionary an assistive technology handed
+// it does not have to check either first.
+func NSDictionaryObjectForKey(dict, key objc.ID) objc.ID {
+	if dict == 0 || key == 0 {
+		return 0
+	}
+	return dict.Send(Sel("objectForKey:"), key)
+}
+
+// GoStringsFromNSArray returns the elements of an NSArray of NSStrings as Go strings. A nil or empty array yields nil,
+// and an element that is not a string is skipped rather than turned into an empty entry, since an array handed over by
+// another process may hold anything at all.
+func GoStringsFromNSArray(array objc.ID) []string {
+	count := NSArrayCount(array)
+	if count == 0 {
+		return nil
+	}
+	strs := make([]string, 0, count)
+	for i := range count {
+		obj := NSArrayObjectAt(array, i)
+		if obj == 0 || !objc.Send[bool](obj, Sel("isKindOfClass:"), Cls("NSString")) {
+			continue
+		}
+		strs = append(strs, GoStringFromNSString(obj))
+	}
+	return strs
+}
+
+// NewNSMutableAttributedString returns an autoreleased NSMutableAttributedString holding the contents of s and no
+// attributes.
+func NewNSMutableAttributedString(s string) objc.ID {
+	return Autorelease(objc.ID(Cls("NSMutableAttributedString")).Send(Sel("alloc")).Send(Sel("initWithString:"),
+		NSStringFromGo(s)))
+}
+
+// NSMutableAttributedStringSetAttributes gives a range of an NSMutableAttributedString the attributes of a dictionary,
+// replacing whatever attributes that range carried. The range is clamped to the string, and one beginning past its end
+// sets nothing at all: setAttributes:range: raises NSRangeException for a range reaching past the content, and an
+// Objective-C exception raised inside a Go callback cannot be caught and takes the process with it.
+//
+// It is deliberately this whole-dictionary setter rather than addAttribute:value:range:, which would place the 16-byte
+// NSRange after four integer-register arguments and run into the purego amd64 struct-straddle bug documented at the top
+// of this file. Here the range follows only three — self, the selector and the dictionary — so it is passed in
+// registers the ABI agrees on. A caller wanting several attributes over one range builds the dictionary and sets them
+// together, which is a single message rather than one per attribute anyway.
+func NSMutableAttributedStringSetAttributes(str, attributes objc.ID, r NSRange) {
+	if str == 0 || attributes == 0 {
+		return
+	}
+	length := objc.Send[uint64](str, Sel("length"))
+	if r.Location > length {
+		return
+	}
+	if r.Length > length-r.Location {
+		r.Length = length - r.Location
+	}
+	str.Send(Sel("setAttributes:range:"), attributes, r)
+}
+
+// NSAttributedStringAttributesAtIndex returns the attributes in force at a UTF-16 index of an NSAttributedString, or 0
+// for a nil string or an index at or past its end — attributesAtIndex:effectiveRange: raises NSRangeException for one,
+// and an exception raised inside a Go callback cannot be caught. It exists for the tests, which read back what the
+// adapter wrote.
+func NSAttributedStringAttributesAtIndex(str objc.ID, index uint64) objc.ID {
+	if str == 0 || index >= objc.Send[uint64](str, Sel("length")) {
+		return 0
+	}
+	var effective NSRange
+	return str.Send(Sel("attributesAtIndex:effectiveRange:"), index, unsafe.Pointer(&effective))
+}
+
+// nsRangeEncoding is the Objective-C type encoding an NSValue holding an NSRange answers with, which is how one is told
+// apart from an NSValue holding something else — an NSNumber, notably, which is an NSValue too and whose rangeValue
+// raises. Only the prefix is compared, since the two fields are spelled by whichever integer type the range was made
+// from.
+const nsRangeEncoding = "{_NSRange="
+
+// NSRangeFromNSValue returns the range an NSValue holds, and false for a nil object, an object that is not an NSValue,
+// or an NSValue holding anything but a range. The type is checked through objCType, which every NSValue answers with
+// the encoding of what it holds: asking one of another type for its range raises an Objective-C exception, which inside
+// a Go callback cannot be caught and takes the process with it, and a value that arrived from another process cannot be
+// taken on trust.
+func NSRangeFromNSValue(value objc.ID) (r NSRange, ok bool) {
+	if value == 0 || !objc.Send[bool](value, Sel("isKindOfClass:"), Cls("NSValue")) {
+		return NSRange{}, false
+	}
+	if !strings.HasPrefix(GoStringFromCString(objc.Send[*byte](value, Sel("objCType"))), nsRangeEncoding) {
+		return NSRange{}, false
+	}
+	return objc.Send[NSRange](value, Sel("rangeValue")), true
+}
+
+// BoolFromNSNumber returns the value of an NSNumber as a bool. A nil NSNumber yields false, which is what an absent
+// flag in a dictionary an assistive technology handed over means.
+func BoolFromNSNumber(num objc.ID) bool {
+	if num == 0 {
+		return false
+	}
+	return objc.Send[bool](num, Sel("boolValue"))
+}
+
+// NSURLFromString returns an autoreleased NSURL for the given string, or 0 when NSURL cannot parse it as one — which is
+// the answer for an empty string and for anything else that is not a URL.
+func NSURLFromString(url string) objc.ID {
+	if url == "" {
+		return 0
+	}
+	return objc.ID(Cls("NSURL")).Send(Sel("URLWithString:"), NSStringFromGo(url))
+}
+
 // NSURLFromFilePath returns an autoreleased file NSURL for the given path.
 func NSURLFromFilePath(path string) objc.ID {
 	return objc.ID(Cls("NSURL")).Send(Sel("fileURLWithPath:"), NSStringFromGo(path))

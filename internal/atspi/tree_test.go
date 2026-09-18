@@ -280,3 +280,85 @@ func TestWindowDataWithGeometry(t *testing.T) {
 	original, _, _, _ := d.extents(d.node(4), CoordScreen)
 	c.Equal(int32(220), original, "the original is untouched")
 }
+
+// TestWindowDataWalksTheReportedHierarchy covers the walk an org.a11y.atspi.Collection search is made over, which has
+// to be the hierarchy an assistive technology is shown rather than the tree's own shape: an ignored group is not in it
+// and its children stand in for it.
+func TestWindowDataWalksTheReportedHierarchy(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	data := newWindowData(sampleTree(), sampleGeometry())
+	c.Equal([]accessibility.NodeID{3, 4, 5, 6, 7}, reportedWalk(data, 1),
+		"the ignored group is passed over and its children are spliced in where it sat")
+	c.Equal([]accessibility.NodeID{6, 7}, reportedWalk(data, 5))
+	c.Equal([]accessibility.NodeID(nil), reportedWalk(data, 6), "a leaf holds nothing")
+	c.Equal([]accessibility.NodeID(nil), reportedWalk(data, 99), "and neither does a node that is not there")
+	// A walk can be stopped part way through, which is what a search that has found all the matches it was asked for
+	// does.
+	var visited []accessibility.NodeID
+	data.walkReported(1, func(n *accessibility.Node) bool {
+		visited = append(visited, n.ID)
+		return n.ID != 4
+	})
+	c.Equal([]accessibility.NodeID{3, 4}, visited)
+}
+
+// TestWindowDataWalkCannotLoop covers a malformed tree, whose children links form a cycle. Every node is visited once
+// however tangled the links are, since a walk that followed them would not return.
+func TestWindowDataWalkCannotLoop(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	tangled := sampleTree()
+	tangled.Node(7).Children = []accessibility.NodeID{5}
+	data := newWindowData(tangled, sampleGeometry())
+	c.Equal([]accessibility.NodeID{3, 4, 5, 6, 7}, reportedWalk(data, 1))
+	c.Equal([]accessibility.NodeID{6, 7}, reportedWalk(data, 5))
+}
+
+// reportedWalk returns the ids a walk of the reported descendants of a node reaches, in the order it reaches them.
+func reportedWalk(d *windowData, id accessibility.NodeID) []accessibility.NodeID {
+	var visited []accessibility.NodeID
+	d.walkReported(id, func(n *accessibility.Node) bool {
+		visited = append(visited, n.ID)
+		return true
+	})
+	return visited
+}
+
+// TestWindowDataIndexesTextSpans covers the index that says which objects sit within which text, which is what
+// org.a11y.atspi.Hyperlink's StartIndex and EndIndex are answered from. Only a span that names an object an assistive
+// technology can be pointed at is in it.
+func TestWindowDataIndexesTextSpans(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	tree := treeOf(1,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Spans", Bounds: geom.NewRect(0, 0, 200, 100),
+			Children: []accessibility.NodeID{2},
+		},
+		&accessibility.Node{
+			ID: 2, Parent: 1, Role: role.Paragraph, ReadOnly: true, Bounds: geom.NewRect(0, 0, 200, 20),
+			Children: []accessibility.NodeID{3, 4},
+			Text: &accessibility.TextInfo{
+				Text: "one two three",
+				Spans: []accessibility.TextSpan{
+					{Node: 3, Start: 0, End: 3},
+					{Node: 4, Start: 4, End: 7},
+					{Node: 2, Start: 0, End: 13},
+					{Node: 99, Start: 8, End: 13},
+				},
+			},
+		},
+		&accessibility.Node{ID: 3, Parent: 2, Role: role.Link, URL: "https://example.com/", Ignored: true},
+		&accessibility.Node{ID: 4, Parent: 2, Role: role.Image, Name: "Logo"},
+	)
+	data := newWindowData(tree, sampleGeometry())
+	c.False(data.isSpanTarget(3), "a span naming an ignored node has no object to point at")
+	c.False(data.isSpanTarget(2), "and neither has one naming the very text it is in")
+	c.False(data.isSpanTarget(99), "or one naming a node this window does not hold")
+	span, ok := data.spanOf(4)
+	c.True(ok)
+	c.Equal(spanRef{container: 2, start: 4, end: 7}, span)
+	// A window whose text holds nothing builds no index at all.
+	c.Equal(0, len(newWindowData(sampleTree(), sampleGeometry()).spans))
+}

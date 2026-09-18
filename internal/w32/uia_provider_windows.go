@@ -61,6 +61,20 @@ var uiaIfaceIIDs = [uiaIfaceCount]windows.GUID{
 	uiaIfaceGridItem:       xos.Must(windows.GUIDFromString("{d02541f1-fb81-4d64-ae32-f520f8a6dbd1}")),
 	uiaIfaceTable:          xos.Must(windows.GUIDFromString("{9c860395-97b3-490a-b52a-858cc22af166}")),
 	uiaIfaceTableItem:      xos.Must(windows.GUIDFromString("{b9734fa6-771f-4d78-9c90-2517999349cd}")),
+	uiaIfaceText:           xos.Must(windows.GUIDFromString("{0dc5e6ed-3e16-4bf1-8f9a-a979878bc195}")),
+	uiaIfaceTextChild:      xos.Must(windows.GUIDFromString("{4c2de2b9-c88f-4f88-a111-f1d336b7d1a9}")),
+}
+
+// uiaIfaceIIDAliases holds the interface identifiers that are answered with a table listed in uiaIfaceIIDs rather than
+// with one of their own. There is one: ITextProvider, whose six methods are the first six of ITextProvider2's, so an
+// element that implements the later interface implements the earlier one by construction and a client asking for either
+// must be handed the same table. It is the same trick IID_IUnknown is answered with, and the reason the Text and Text2
+// patterns share an interface; see uiaPatternIfaces.
+var uiaIfaceIIDAliases = []struct {
+	guid  windows.GUID
+	iface uiaIface
+}{
+	{guid: xos.Must(windows.GUIDFromString("{3589c92c-63f3-4367-99bb-ada653b77cf2}")), iface: uiaIfaceText},
 }
 
 // The virtual method tables, one per interface, shared by every provider in the process. They are built on first use
@@ -86,6 +100,9 @@ var (
 	uiaGridItemVtbl       [uiaGridItemSlots]uintptr
 	uiaTableVtbl          [uiaTableSlots]uintptr
 	uiaTableItemVtbl      [uiaTableItemSlots]uintptr
+	uiaTextVtbl           [uiaTextSlots]uintptr
+	uiaTextChildVtbl      [uiaTextChildSlots]uintptr
+	uiaTextRangeVtbl      [uiaTextRangeSlots]uintptr
 )
 
 // uiaEnsureVtbls builds every virtual method table, once per process.
@@ -135,6 +152,7 @@ func uiaBuildVtbls() {
 		uiaWindowIsTopmost,
 	)
 	uiaBuildPatternVtbls()
+	uiaBuildTextVtbls()
 }
 
 // uiaBuildVtbl fills in one interface's virtual method table. The three IUnknown slots come first and are built here
@@ -198,6 +216,38 @@ func uiaLiveProviderCount() int {
 	uiaLiveProviders.lock.Lock()
 	defer uiaLiveProviders.lock.Unlock()
 	return len(uiaLiveProviders.set)
+}
+
+// uiaLookupProvider returns the provider an interface pointer a client handed over belongs to, or nil when no provider
+// of this process is at that address.
+//
+// It exists because one of the Text pattern's methods is given an element rather than asked about one —
+// ITextProvider::RangeFromChild — and a pointer from a client is not to be trusted: dereferencing whatever it points at
+// would be a crash at best, and a client is perfectly entitled to hand over an element from another provider, which is
+// an invalid argument rather than a fault. The answer comes from comparing addresses against the providers this process
+// has handed out, never from following the pointer.
+//
+// ITextProvider2::RangeFromAnnotation is given an element too and does not come here, because it never looks at it:
+// nothing in a document here is annotated, so every annotation element there could be is one this provider cannot
+// place, and the answer is the same NULL range whichever element a client names.
+//
+// Any of a provider's interface pointers is recognized, not only the one the method's signature names: a client that
+// obtained an element as IRawElementProviderFragment and passes it where IRawElementProviderSimple is asked for is
+// passing the same object, and refusing it would be refusing a legitimate call.
+func uiaLookupProvider(this uintptr) *UIAProvider {
+	if this == 0 {
+		return nil
+	}
+	uiaLiveProviders.lock.Lock()
+	defer uiaLiveProviders.lock.Unlock()
+	for p := range uiaLiveProviders.set {
+		for iface := uiaIfaceSimple; iface < uiaIfaceCount; iface++ {
+			if p.ifacePtr(iface) == this {
+				return p
+			}
+		}
+	}
+	return nil
 }
 
 // UIAProvider is the UI Automation provider for one node of one window's accessibility snapshot. It is a COM object
@@ -397,7 +447,8 @@ func uiaQueryInterface(iface uiaIface, this, riid, out uintptr) uint64 {
 }
 
 // uiaIfaceForIID returns the interface a client is asking for, and whether this package implements it. IID_IUnknown is
-// answered with the IRawElementProviderSimple table, whose first three slots are the IUnknown methods.
+// answered with the IRawElementProviderSimple table, whose first three slots are the IUnknown methods, and the one
+// interface that is another's base is answered with the derived interface's table; see uiaIfaceIIDAliases.
 func uiaIfaceForIID(guid *windows.GUID) (iface uiaIface, ok bool) {
 	if *guid == iidUnknown {
 		return uiaIfaceSimple, true
@@ -405,6 +456,11 @@ func uiaIfaceForIID(guid *windows.GUID) (iface uiaIface, ok bool) {
 	for i := range uiaIfaceIIDs {
 		if uiaIfaceIIDs[i] == *guid {
 			return uiaIface(i), true
+		}
+	}
+	for _, alias := range uiaIfaceIIDAliases {
+		if alias.guid == *guid {
+			return alias.iface, true
 		}
 	}
 	return 0, false
@@ -478,7 +534,10 @@ func (p *UIAProvider) propertyValue(tree *accessibility.Tree, node *accessibilit
 ) {
 	switch propertyID {
 	case UIA_NamePropertyId:
-		uiaSetString(value, node.Name)
+		// UIANameString rather than the field, so that the blocks a document is made of are named by their own content
+		// when the widget gave them none: Narrator's item navigation speaks the name of each element it steps onto, and
+		// a paragraph with no name at all is announced as a bare "text".
+		uiaSetString(value, UIANameString(node))
 	case UIA_HelpTextPropertyId:
 		// HelpText carries the watermark of a field that has no description of its own, which is the conventional place
 		// for it and the only way an unnamed search field is announced as anything but a bare "edit". Description wins
