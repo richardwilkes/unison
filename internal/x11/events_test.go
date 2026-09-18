@@ -52,3 +52,41 @@ func TestNewColormapNotifyEvent(t *testing.T) {
 	c.False(e.New)
 	c.Equal(byte(0), e.State)
 }
+
+// TestSynthetic verifies that an event another client sent with SendEvent is told apart from one the X server generated
+// itself, and that the bit which says so does not disturb the decoding. The two differ in what they mean: a window
+// manager sends a synthetic ConfigureNotify when it has moved a window without resizing it, and that one carries the
+// window's position relative to the root rather than relative to its parent.
+func TestSynthetic(t *testing.T) {
+	c := check.New(t)
+	c.False(Synthetic(nil), "there is nothing synthetic about no event at all")
+
+	// A complete 32-byte ConfigureNotify event, first as the server sends one and then as a window manager sends one.
+	data := make([]byte, 32)
+	data[0] = eventCodeConfigureNotify
+	binary.LittleEndian.PutUint16(data[2:4], 0x1234)
+	binary.LittleEndian.PutUint32(data[4:8], 0x00445566)  // event window
+	binary.LittleEndian.PutUint32(data[8:12], 0x00445566) // window
+	binary.LittleEndian.PutUint16(data[16:18], uint16(0xFFC0))
+	binary.LittleEndian.PutUint16(data[18:20], 100)
+	binary.LittleEndian.PutUint16(data[20:22], 800)
+	binary.LittleEndian.PutUint16(data[22:24], 600)
+
+	f, ok := newEventMap()[eventCodeConfigureNotify]
+	c.True(ok, "ConfigureNotify must have a registered decoder")
+	e, ok := f(NewReader(data)).(*ConfigureNotifyEvent)
+	c.True(ok)
+	c.False(Synthetic(e))
+	c.Equal(int16(-64), e.X)
+	c.Equal(int16(100), e.Y)
+
+	data[0] |= eventSyntheticFlag
+	e, ok = f(NewReader(data)).(*ConfigureNotifyEvent)
+	c.True(ok, "the event must still be decoded as the ConfigureNotify it is")
+	c.True(Synthetic(e))
+	c.Equal(int16(-64), e.X, "and must be decoded from the same offsets")
+	c.Equal(int16(100), e.Y)
+	c.Equal(uint16(800), e.Width)
+	c.Equal(uint16(600), e.Height)
+	c.Equal(WindowID(0x00445566), e.Window)
+}

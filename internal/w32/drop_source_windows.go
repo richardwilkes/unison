@@ -59,11 +59,11 @@ func (src *DropSource) Release() {
 }
 
 func (src *DropSource) addRef() uintptr {
-	return comAddRef(&src.refCount)
+	return ComAddRef(&src.refCount)
 }
 
 func (src *DropSource) release() uintptr {
-	remaining, final := comRelease(&src.refCount)
+	remaining, final := ComRelease(&src.refCount)
 	if final {
 		src.pinner.Unpin()
 	}
@@ -72,7 +72,7 @@ func (src *DropSource) release() uintptr {
 
 func dropSrcQueryInterface(this, riid, ppvObject uintptr) uint64 {
 	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
-	if *guid == iidUnknown || *guid == iidIDropSource {
+	if *guid == IIDUnknown || *guid == iidIDropSource {
 		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		dropSrcAddRef(this)
 		return COM_S_OK

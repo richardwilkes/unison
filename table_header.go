@@ -16,8 +16,10 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultTableHeaderTheme holds the default TableHeaderTheme values for TableHeaders. Modifying this data will not
@@ -207,7 +209,24 @@ func (h *TableHeader[T]) installCell(cell *Panel, frame geom.Rect) {
 	cell.parent = h.AsPanel()
 }
 
+// uninstallCell detaches a column header that installCell() attached, with one exception. A widget inside a custom
+// column header may have taken the keyboard focus while handling whatever the header was installed for — a click, or
+// an assistive technology's Focus or Press request, which axPerformInColumnHeader carries out the same way — and a
+// panel with no parent cannot find its window, so Window.CurrentFocus() would answer nil, the description published
+// next would report nothing focused, and the person's focus would be silently gone until they pressed Tab. A header
+// holding the focus is therefore left attached, exactly as Table.uninstallCell leaves the focused cell attached.
+//
+// Unlike a table cell, a column header is a panel the header owns for as long as it lives rather than one built afresh
+// on each call, so there is nothing to adopt and no bookkeeping to keep: leaving it attached is the whole of it, and
+// the next install and uninstall, once the focus has gone elsewhere, detaches it.
+//
+// The window's raw focus pointer is consulted rather than Window.CurrentFocus() for the reason given in
+// Table.adoptCellIfFocused: CurrentFocus() reports nil whenever the focused panel cannot find its window, which is
+// exactly the state this exists to avoid creating.
 func (h *TableHeader[T]) uninstallCell(cell *Panel) {
+	if wnd := h.Window(); wnd != nil && wnd.focus != nil && panelContains(cell, wnd.focus) {
+		return
+	}
 	cell.parent = nil
 }
 
@@ -234,7 +253,11 @@ func (h *TableHeader[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 	return nil
 }
 
-// DefaultUpdateTooltipCallback provides the default tooltip update handling.
+// DefaultUpdateTooltipCallback provides the default tooltip update handling. The tooltip of the column header the
+// pointer is over is handed to the window through Panel.borrowedTooltip rather than through the header's own Tooltip:
+// a column header is not a child of the header — it is installed only long enough to be drawn or handed an event —
+// so what it has to say is not the header's to keep, and a description of the header built while the borrowed tooltip
+// sat in Tooltip would be a description of one of its columns.
 func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.Rect) geom.Rect {
 	if col := h.table.OverColumn(where.X); col != -1 && col < len(h.ColumnHeaders) {
 		cell := h.ColumnHeaders[col].AsPanel()
@@ -243,16 +266,16 @@ func (h *TableHeader[T]) DefaultUpdateTooltipCallback(where geom.Point, _ geom.R
 			h.installCell(cell, rect)
 			var avoid geom.Rect
 			SafeCall(func() { avoid = cell.UpdateTooltipCallback(where.Sub(rect.Point), h.RectToRoot(rect).Align()) })
-			h.Tooltip = cell.Tooltip
+			h.borrowedTooltip = cell.Tooltip
 			h.uninstallCell(cell)
 			return avoid
 		}
 		if cell.Tooltip != nil {
-			h.Tooltip = cell.Tooltip
+			h.borrowedTooltip = cell.Tooltip
 			return h.RectToRoot(h.ColumnFrame(col)).Align()
 		}
 	}
-	h.Tooltip = nil
+	h.borrowedTooltip = nil
 	return geom.Rect{}
 }
 
@@ -500,4 +523,187 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 			}
 		}
 	}
+}
+
+// ProvideAccessibility describes the header to assistive technologies. The column headers are described directly, as
+// virtual children keyed by their column index: they are panels, but the header does not hold them as children — it
+// installs one just long enough to draw it or to forward an event to it and then detaches it again — so nothing would
+// otherwise place them in the hierarchy or know where they sit.
+//
+// A column header that is nothing but a label has nothing within it to describe: what it has to say is its text, which
+// is the name of the column. Anything else — a header built around a button, or one holding a filter control beside its
+// title — is described with its content beneath it, since an assistive technology has to be able to reach whatever is
+// in there and act on it. Such a header takes its name from that content when it has none of its own.
+func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.TableHeader
+	}
+	node.ColumnCount = len(h.table.Columns)
+	// Pressing the header is not activating it; the default behavior would synthesize a click at the center of the
+	// header, which DefaultMouseDown and DefaultMouseUp would forward to whichever column header happens to sit there,
+	// re-sorting the table on an arbitrary column — or, if that point falls within ColumnResizeSlop of a divider,
+	// starting a column resize.
+	node.Actions = node.Actions.Without(accessibility.Press)
+	for col, header := range h.ColumnHeaders {
+		if col >= len(h.table.Columns) {
+			// A header may have fewer column headers than the table has columns, exactly as drawing tolerates.
+			break
+		}
+		panel := header.AsPanel()
+		// A column header built around a label — the library's own is, and so is a custom one written the way the
+		// documentation describes, by embedding a *Label and pointing Self at itself — is named by that label's text.
+		// Asking a label for its text is not the same as asking a panel for it: every panel answers String() with the
+		// name of its own type, so a header built around anything else with a title of its own would be announced as
+		// the name of the Go type it was written as. Anything that is not a label is read from the labels it is built
+		// out of, and then, failing that, from whatever its content turns out to be called.
+		label := axLabelOf(panel)
+		name := panel.Accessibility.Name
+		if name == "" {
+			if label != nil {
+				name = label.String()
+			} else {
+				name = axLabelText(panel)
+			}
+		}
+		description := axTooltipText(panel)
+		if description == name {
+			description = ""
+		}
+		state := header.SortState()
+		frame := h.ColumnFrame(col)
+		colID := b.AddVirtualChild(col, func(n *accessibility.Node) {
+			n.Role = role.ColumnHeader
+			n.Name = name
+			n.Description = description
+			n.Bounds = frame
+			n.ColumnIndex = col
+			n.Sort = axSortDirection(state)
+			n.Actions = n.Actions.With(accessibility.ScrollIntoView)
+			if state.Sortable {
+				n.Actions = n.Actions.With(accessibility.Press)
+			}
+		})
+		if colID == 0 || !axColumnHeaderContentIsReachable(panel, label) {
+			continue
+		}
+		h.installCell(panel, frame)
+		b.addColumnHeaderPanel(colID, col, panel)
+		h.uninstallCell(panel)
+		if name == "" {
+			if content := b.snapshot.tree.UnignoredChildren(colID); len(content) == 1 {
+				// The header holds one thing, and whatever that is called is what the column is called. A header
+				// holding more than one has nothing to single out, so it stays unnamed rather than being named after
+				// an arbitrary piece of itself.
+				if only := b.snapshot.tree.Node(content[0]); only != nil {
+					if colNode := b.snapshot.tree.Node(colID); colNode != nil {
+						colNode.Name = only.Name
+					}
+				}
+			}
+		}
+	}
+}
+
+// axColumnHeaderContentIsReachable reports whether describing a column header's own panel beneath the node for the
+// column would reach anything. Only content that will actually be visited is worth describing: the panel is added to
+// the snapshot solely so that what is inside a header holding more than a title — a filter control beside it, say — can
+// be got at, and a panel that adds nothing beyond that leaves a second node carrying the column's own name under the
+// column header, which is the title announced twice.
+//
+// A header that is not built around a label is described, whatever it holds, since what it is described as and what it
+// hands on to its children are its own business. One that is built around a label — the library's own is, and so is a
+// custom one written the documented way, by embedding a *Label and pointing Self at itself — is described only when it
+// has children that will be visited. A label with nothing beneath it has nothing to reach; a label described as static
+// text has nothing reachable either, however much it holds, since static text is one element however many panels it is
+// built from and the snapshot returns without visiting what is beneath it.
+func axColumnHeaderContentIsReachable(panel *Panel, label *Label) bool {
+	if label == nil {
+		return true
+	}
+	if len(panel.Children()) == 0 {
+		return false
+	}
+	// What the label resolves to, as axDescribeStaticContent resolves it: an explicitly set role is left alone — which
+	// is how a header could be made a group whose content is visited — and one that has not been set becomes an image
+	// when a drawable is all the label holds and static text otherwise.
+	resolved := panel.Accessibility.Role
+	if resolved == role.Auto {
+		if label.String() == "" && label.Drawable != nil {
+			resolved = role.Image
+		} else {
+			resolved = role.Label
+		}
+	}
+	return resolved != role.Label && resolved != role.Heading
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing a column header sorts the
+// table on that column, which is what clicking it does, flipping the direction when it is already the primary sort key.
+// A request aimed at something within a column header is passed on to it.
+func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if key, isPanel := req.Key.(axCellPanelKey); isPanel {
+		return h.axPerformInColumnHeader(key, req)
+	}
+	// Bounded by the columns as well as by the column headers, which is what decides the set of column headers that are
+	// described: a header holding more column headers than the table has columns would otherwise be asked to sort on a
+	// column that does not exist, and CellDataForSort would be handed an out-of-range index.
+	col, ok := req.Key.(int)
+	if !ok || col < 0 || col >= len(h.ColumnHeaders) || col >= len(h.table.Columns) {
+		return false
+	}
+	switch req.Action {
+	case accessibility.Press:
+		header := h.ColumnHeaders[col]
+		if !header.SortState().Sortable {
+			return false
+		}
+		h.SortOn(header)
+		h.ApplySort()
+		return true
+	case accessibility.ScrollIntoView:
+		h.ScrollRectIntoView(h.ColumnFrame(col))
+		return true
+	default:
+		return false
+	}
+}
+
+// axPerformInColumnHeader carries out a request aimed at a panel inside one of the column headers. The header is
+// installed at its column's frame, exactly as it is to hand it a mouse event, so that the panel the request is for
+// exists where it was described and can reach its window; the panel is then found at the position within the header it
+// was described at. A widget that takes the keyboard focus while handling the request — which Focus does outright, and
+// Press does on its way to the click it synthesizes — leaves the header attached, as one that took it from a click
+// would; see uninstallCell.
+func (h *TableHeader[T]) axPerformInColumnHeader(key axCellPanelKey, req accessibility.ActionRequest) bool {
+	col := key.Cell.Col
+	if col < 0 || col >= len(h.ColumnHeaders) || col >= len(h.table.Columns) {
+		return false
+	}
+	// The key that brought the request here named one of the header's virtual children. What it is being handed to is a
+	// real panel, for which ActionRequest.Key is nil: a panel within a column header would otherwise be given a key it
+	// never handed out, and one that keys virtual children of its own would take this one for one of them.
+	req.Key = nil
+	panel := h.ColumnHeaders[col].AsPanel()
+	h.installCell(panel, h.ColumnFrame(col))
+	handled := false
+	if target := axPanelAtPath(panel, key.Path); target != nil {
+		handled = target.axDispatchAction(req, false)
+	}
+	h.uninstallCell(panel)
+	h.MarkForRedraw()
+	return handled
+}
+
+// axSortDirection returns the direction to report for a column header's sort state. Only the primary sort column is
+// reported as sorted, since that is the one whose order the rows visibly follow and the one the header draws an
+// indicator for.
+func axSortDirection(state SortState) accessibility.SortDirection {
+	if !state.Sortable || state.Order != 0 {
+		return accessibility.SortNone
+	}
+	if state.Ascending {
+		return accessibility.SortAscending
+	}
+	return accessibility.SortDescending
 }

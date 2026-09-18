@@ -13,8 +13,11 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -78,6 +81,51 @@ func (r *RadioButton) Group() *Group {
 // SetGroup sets the group that this button is a part of. Should only be called by the Group.
 func (r *RadioButton) SetGroup(group *Group) {
 	r.group = group
+}
+
+// ProvideAccessibility describes the radio button to assistive technologies. A radio button is checked when it is the
+// one selected within its group, so a button that belongs to no group is never checked, however often it is clicked.
+//
+// A button that has a group to be the selection of offers to be made that selection, which is what a sticky Button
+// reported under this same role offers, so that the two describe themselves alike. One with no group has no selection
+// to be and offers only the press.
+func (r *RadioButton) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.RadioButton
+	}
+	node.HasCheck = true
+	if r.group.Selected(r) {
+		node.Checked = check.On
+	} else {
+		node.Checked = check.Off
+	}
+	node.Name = r.axName(node.Name)
+	node.Actions = node.Actions.With(accessibility.Press)
+	if r.group != nil {
+		node.Actions = node.Actions.With(accessibility.Select)
+	}
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Selecting a radio button makes it the
+// selection of its group and then runs ClickCallback, exactly as selecting the sticky Button reported under the same
+// role does; a button that belongs to no group has no selection to be. Everything else is left to the shared handling,
+// which clicks the button.
+//
+// The click animation is skipped, since nothing was clicked and the wait it spends showing the button pressed would
+// only hold up the answer to the request, but the callback is not: a person who moves the dot with an assistive
+// technology has made exactly the change a click makes, and an application never told of it would go on acting on a
+// value that no longer matches what is on the screen.
+func (r *RadioButton) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if req.Action == accessibility.Select {
+		if r.group == nil {
+			return false
+		}
+		r.group.Select(r)
+		SafeCall(r.ClickCallback)
+		return true
+	}
+	return r.checkRadioBase.PerformAccessibilityAction(req)
 }
 
 func (r *RadioButton) drawRadio(canvas *Canvas, rect geom.Rect, thickness float32, fg, bg, edge Ink) {

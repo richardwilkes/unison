@@ -76,6 +76,10 @@ func NewColorEditor(color Color) *ColorEditor {
 	return e
 }
 
+// The editor itself needs no description of its own: it is a group of controls, which is what a panel with children
+// and nothing to say for itself is already taken for, and each slider and field within it says what it is by pointing
+// at the label beside it, so none of them depends on where it happens to sit in the layout.
+
 // Color returns the currently selected color.
 func (e *ColorEditor) Color() Color {
 	return e.color
@@ -101,6 +105,7 @@ func (e *ColorEditor) addChannelField(title string, value int, adjuster func(val
 	e.AddChild(l)
 
 	slider := NewSlider(0, 255, float32(value))
+	slider.Accessibility.LabeledBy = l
 	slider.ValueSnapCallback = func(v float32) float32 { return float32(int(v + 0.5)) }
 	slider.ValueChangedCallback = func() {
 		if !e.syncing {
@@ -117,6 +122,7 @@ func (e *ColorEditor) addChannelField(title string, value int, adjuster func(val
 	e.AddChild(slider)
 
 	field := NewField()
+	field.Accessibility.LabeledBy = l
 	field.SetText(strconv.Itoa(value))
 	field.Watermark = "0"
 	field.SetMinimumTextWidthUsing("255", "100%")
@@ -171,6 +177,7 @@ func (e *ColorEditor) addHueField() (*Slider, *Field) {
 	e.AddChild(l)
 
 	slider := NewSlider(0, 359, e.color.Hue())
+	slider.Accessibility.LabeledBy = l
 	slider.ValueChangedCallback = func() {
 		if !e.syncing {
 			e.color = e.color.SetHue(slider.Value() / 360)
@@ -186,6 +193,7 @@ func (e *ColorEditor) addHueField() (*Slider, *Field) {
 	e.AddChild(slider)
 
 	field := NewField()
+	field.Accessibility.LabeledBy = l
 	field.SetText(strconv.Itoa(hueDegrees(e.color)))
 	field.Watermark = "0"
 	field.SetMinimumTextWidthUsing("359")
@@ -231,6 +239,7 @@ func (e *ColorEditor) addPercentageField(title string, value float32, adjuster f
 	e.AddChild(l)
 
 	slider := NewSlider(0, 1, value)
+	slider.Accessibility.LabeledBy = l
 	slider.ValueChangedCallback = func() {
 		if !e.syncing {
 			adjuster(slider.Value())
@@ -246,6 +255,7 @@ func (e *ColorEditor) addPercentageField(title string, value float32, adjuster f
 	e.AddChild(slider)
 
 	field := NewField()
+	field.Accessibility.LabeledBy = l
 	field.SetText(strconv.Itoa(int(value*100+0.5)) + "%")
 	field.Watermark = "0%"
 	field.SetMinimumTextWidthUsing("100%")
@@ -294,6 +304,7 @@ func (e *ColorEditor) addCSSField() *Field {
 	e.AddChild(l)
 
 	field := NewField()
+	field.Accessibility.LabeledBy = l
 	field.SetText(e.color.String())
 	field.Watermark = "CSS"
 	field.SetLayoutData(&FlexLayoutData{

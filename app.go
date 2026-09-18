@@ -27,6 +27,7 @@ var (
 	initializing                      bool
 	terminating                       bool
 	redrawSet                         = make(map[*Window]struct{})
+	redrawWakePending                 bool
 	startupFinishedCallback           func()
 	openFilesCallback                 func([]string) //nolint:unused // Not all platforms use this
 	themeChangedCallback              func()
@@ -199,6 +200,7 @@ func start() error {
 		initTermLock.Unlock()
 	}()
 	applyCPURenderingEnvRequest()
+	applyAccessibilityEnvRequest()
 	err = apiBeginStartup()
 	return err
 }
@@ -216,6 +218,11 @@ func processEvents() {
 // them.
 func finishProcessingEvents() {
 	apiWithAutoreleasePool(func() {
+		// Cleared before anything below can mark a window for redraw, and unconditionally, so that a pass which finds
+		// nothing to do still re-arms the wake-up: from here on, the next MarkForRedraw posts an empty event, whether
+		// it comes from the task run below, from a draw or accessibility callback further down, or from a platform
+		// event handled after this pass. See Window.MarkForRedraw.
+		redrawWakePending = false
 		processNextTask()
 		if len(redrawSet) > 0 {
 			set := redrawSet
@@ -223,8 +230,21 @@ func finishProcessingEvents() {
 			for wnd := range set {
 				switch {
 				case wnd.IsVisible():
+					// The window describes itself to an assistive technology as part of being drawn, so that every
+					// path that paints a window — this one, Window.FlushDrawing and each platform's own paint
+					// callback — reports what it put on the screen. See Window.draw.
 					wnd.draw()
 				case wnd.IsValid():
+					// One atomic load per window drawn or withdrawn per pass — this one, and the matching load in
+					// Window.draw for the branch above — is the whole cost of accessibility support to an application
+					// no assistive technology is watching.
+					if accessibilityActive.Load() {
+						// A window that has been hidden or minimized is described no more, so where the platform lists
+						// the application's windows from what it is told, what was said about the window last has to
+						// be withdrawn rather than left standing as the state of a window that is not on the screen.
+						// The redraw stays pending, so showing the window again draws it and publishes it afresh.
+						wnd.axWindowHidden()
+					}
 					// Hidden, but not disposed, so keep the request pending until the window becomes visible. Disposed
 					// windows are dropped, since they can never be drawn again.
 					redrawSet[wnd] = struct{}{}
@@ -241,6 +261,12 @@ func finishStartup() {
 	codecs.Register()
 	RebuildDynamicColors()
 	apiLateInit()
+	if accessibilityEnv.Load() > 0 {
+		// The environment has asked for accessibility support whatever the platform reports, so turn it on here rather
+		// than waiting for an assistive technology that may never query us. Anything the platform adapters needed in
+		// order to be asked at all has been set up by apiLateInit above.
+		activateAccessibility()
+	}
 	SafeCall(startupFinishedCallback)
 	apiFinalFinishStartup()
 }

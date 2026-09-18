@@ -89,6 +89,7 @@ const (
 
 // Atoms holds the Atom values for commonly used X11 Atoms that don't have predefined constants.
 type Atoms struct {
+	ATSPIBus                Atom
 	Clipboard               Atom
 	ClipboardIncremental    Atom
 	ClipboardManager        Atom
@@ -146,6 +147,7 @@ func (a *Atoms) init(c *Conn) error {
 		atom *Atom
 		name string
 	}{
+		{&a.ATSPIBus, "AT_SPI_BUS"}, // Where the accessibility bus launcher may publish its address
 		{&a.Clipboard, "CLIPBOARD"},
 		{&a.ClipboardIncremental, "INCR"},
 		{&a.ClipboardManager, "CLIPBOARD_MANAGER"},

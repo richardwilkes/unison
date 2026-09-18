@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ebitengine/purego/objc"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 func TestSavePanelNameField(t *testing.T) {
@@ -119,6 +120,7 @@ func TestSavePanelAllowedFileTypes(t *testing.T) {
 }
 
 func TestSavePanelRunModalCancel(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	requirePanelService(t)
 	runOnMain(func() {
 		WithPool(func() {

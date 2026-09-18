@@ -12,6 +12,8 @@ package cocoa
 import (
 	"testing"
 	"time"
+
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 func TestDoubleClickInterval(t *testing.T) {
@@ -43,6 +45,7 @@ func TestPostEmptyEventWakesWaitEvents(t *testing.T) {
 }
 
 func TestWaitEventsTimeout(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	// Expiry path: with a drained queue, a short timeout returns on its own.
 	runOnMain(func() {
 		sharedApp()

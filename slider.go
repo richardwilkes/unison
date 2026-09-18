@@ -10,9 +10,13 @@
 package unison
 
 import (
+	"math"
+
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultSliderTheme holds the default SliderTheme values for Sliders. Modifying this data will not alter existing
@@ -20,16 +24,19 @@ import (
 var DefaultSliderTheme = SliderTheme{
 	FillInk:       ThemeSurface,
 	EdgeInk:       ThemeSurfaceEdge,
+	SelectionInk:  ThemeFocus,
 	MarkerColor:   ThemeFocus,
 	CornerRadius:  geom.NewUniformSize(8),
 	MarkerSize:    12,
 	EdgeThickness: 1,
 }
 
-// SliderTheme holds theming data for a Slider.
+// SliderTheme holds theming data for a Slider. SelectionInk, which the edge is drawn with while the slider holds the
+// keyboard focus, may be left nil by a theme built before it existed; EdgeInk is then used for the focused edge too.
 type SliderTheme struct {
 	FillInk       Ink
 	EdgeInk       Ink
+	SelectionInk  Ink
 	MarkerColor   ColorProvider
 	CornerRadius  geom.Size
 	MarkerSize    float32
@@ -65,12 +72,22 @@ func NewSlider(minimum, maximum, value float32) *Slider {
 		value:       value,
 	}
 	s.Self = s
+	s.SetFocusable(true)
 	s.SetSizer(s.DefaultSizes)
 	s.DrawCallback = s.DefaultDraw
+	s.GainedFocusCallback = s.DefaultFocusGained
+	s.LostFocusCallback = s.MarkForRedraw
 	s.MouseDownCallback = s.DefaultMouseDown
 	s.MouseDragCallback = s.DefaultMouseDrag
 	s.MouseUpCallback = s.DefaultMouseUp
+	s.KeyDownCallback = s.DefaultKeyDown
 	return s
+}
+
+// DefaultFocusGained provides the default focus gained handling.
+func (s *Slider) DefaultFocusGained() {
+	s.ScrollIntoView()
+	s.MarkForRedraw()
 }
 
 // Value returns the current value of the slider.
@@ -132,11 +149,11 @@ func (s *Slider) SetMaximum(value float32) {
 // DefaultSizes provides the default sizing.
 func (s *Slider) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
 	minSize.Width = s.MarkerSize
-	minSize.Height = s.MarkerSize
+	minSize.Height = s.MarkerSize + s.EdgeThickness*2
 	prefSize.Width = s.MarkerSize + 100 + s.EdgeThickness*2
-	prefSize.Height = s.MarkerSize
+	prefSize.Height = minSize.Height
 	maxSize.Width = DefaultMaxSize
-	maxSize.Height = s.MarkerSize
+	maxSize.Height = minSize.Height
 	if border := s.Border(); border != nil {
 		insets := border.Insets().Size()
 		minSize = minSize.Add(insets)
@@ -171,7 +188,14 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	}
 	fillPaint := s.FillInk.Paint(canvas, bounds, paintstyle.Fill)
 	canvas.DrawRoundedRect(bounds, s.CornerRadius, fillPaint)
-	edgePaint := s.EdgeInk.Paint(canvas, bounds, paintstyle.Stroke)
+	edgeInk := s.EdgeInk
+	if s.Focused() && s.SelectionInk != nil {
+		// SelectionInk was added to the theme after applications had already been writing SliderThemes of their own, so
+		// a theme that predates it has nothing there; the edge is simply left as it is rather than the draw being lost
+		// to a nil ink the first time the slider takes the focus.
+		edgeInk = s.SelectionInk
+	}
+	edgePaint := edgeInk.Paint(canvas, bounds, paintstyle.Stroke)
 	edgePaint.SetStrokeWidth(s.EdgeThickness)
 	canvas.DrawRoundedRect(bounds, s.CornerRadius, edgePaint)
 	center := bounds.Center()
@@ -200,6 +224,7 @@ func (s *Slider) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 
 // DefaultMouseDown provides the default mouse down handling.
 func (s *Slider) DefaultMouseDown(where geom.Point, button, _ int, mods mod.Modifiers) bool {
+	s.RequestFocus()
 	s.pressed = true
 	s.DefaultMouseDrag(where, button, mods)
 	s.MarkForRedraw()
@@ -238,4 +263,107 @@ func (s *Slider) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers
 	s.pressed = false
 	s.MarkForRedraw()
 	return true
+}
+
+// DefaultKeyDown provides the default key down handling. The left arrow lowers the value by one step and the right
+// arrow raises it, Home and End jump to the ends of the range, and the up and down arrows follow the axis the slider is
+// actually drawn along: a horizontal slider is raised by the up arrow, as every platform's horizontal slider is, while
+// a vertical one — which draws its maximum at the bottom and whose thumb a drag downwards raises — is raised by the
+// down arrow, so that the thumb always moves the way the key points.
+func (s *Slider) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _ bool) bool {
+	if mods.OSMenuCommandDown() {
+		return false
+	}
+	switch keyCode {
+	case KeyLeft:
+		s.SetValue(s.value - s.step())
+	case KeyRight:
+		s.SetValue(s.value + s.step())
+	case KeyUp:
+		if s.vertical() {
+			s.SetValue(s.value - s.step())
+		} else {
+			s.SetValue(s.value + s.step())
+		}
+	case KeyDown:
+		if s.vertical() {
+			s.SetValue(s.value + s.step())
+		} else {
+			s.SetValue(s.value - s.step())
+		}
+	case KeyHome:
+		s.SetValue(s.minimum)
+	case KeyEnd:
+		s.SetValue(s.maximum)
+	default:
+		return false
+	}
+	return true
+}
+
+// vertical returns true if the slider runs from top to bottom rather than from left to right. Which way round it is
+// laid out is decided by its shape rather than by a setting, exactly as the drawing decides it.
+func (s *Slider) vertical() bool {
+	r := s.ContentRect(false)
+	return r.Width < r.Height
+}
+
+// step returns how far one key press, or one increment or decrement asked for by an assistive technology, moves the
+// value. A range of twenty units or more is almost always a range of whole numbers — 0 to 255 for a color channel, 0 to
+// 359 for a hue — where one unit is the increment a person expects, so that is what is used. A smaller range needs a
+// fractional step instead, and a twentieth of it gives the same twenty-odd stops along the track. A range of nothing at
+// all still reports a step, since a step of zero would be advertised as a slider that cannot be moved.
+func (s *Slider) step() float32 {
+	valueRange := s.maximum - s.minimum
+	if valueRange >= 20 || valueRange <= 0 {
+		return 1
+	}
+	return valueRange / 20
+}
+
+// ProvideAccessibility describes the slider to assistive technologies.
+func (s *Slider) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.Slider
+	}
+	node.HasNumber = true
+	node.Number = float64(s.value)
+	node.Min = float64(s.minimum)
+	node.Max = float64(s.maximum)
+	node.Step = float64(s.step())
+	if s.vertical() {
+		node.Orientation = accessibility.OrientationVertical
+	} else {
+		node.Orientation = accessibility.OrientationHorizontal
+	}
+	// Pressing a slider is not activating it; the default behavior would synthesize a click at the center of the track,
+	// which would throw the value to the middle of its range.
+	node.Actions = node.Actions.Without(accessibility.Press).
+		With(accessibility.Increment, accessibility.Decrement, accessibility.SetValue)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology, which may step the value in either
+// direction or set it outright.
+func (s *Slider) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Increment:
+		s.SetValue(s.value + s.step())
+		return true
+	case accessibility.Decrement:
+		s.SetValue(s.value - s.step())
+		return true
+	case accessibility.SetValue:
+		if math.IsNaN(req.Number) || math.IsInf(req.Number, 0) {
+			// Nothing else stops these: SetValue's range clamps are both false for a NaN, so one would become the
+			// value for good — every later comparison against it differing, and the marker drawn at a position that is
+			// nowhere — and an infinity is refused with it rather than being narrowed to a float32 that the language
+			// does not define.
+			return false
+		}
+		s.SetValue(float32(req.Number))
+		return true
+	default:
+		return false
+	}
 }

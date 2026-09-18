@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -110,11 +111,13 @@ func (c *checkRadioBase) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifie
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling.
+// DefaultMouseUp provides the default mouse up handling. A click that lands takes the keyboard focus while an assistive
+// technology is being served, so that the change it makes is announced; see Panel.axFocusOnClick.
 func (c *checkRadioBase) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	c.Pressed = false
 	c.MarkForRedraw()
 	if where.In(c.ContentRect(false)) {
+		c.axFocusOnClick()
 		c.updateState()
 		SafeCall(c.ClickCallback)
 	}
@@ -128,6 +131,36 @@ func (c *checkRadioBase) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _re
 		return true
 	}
 	return false
+}
+
+// axName returns the name a check box or a radio button reports to an assistive technology, which is the title beside
+// its mark unless something has already supplied a better one. current is the name resolved so far.
+//
+// One built out of a drawable with no title at all has only its tooltip to say what it is, exactly as an icon button
+// does, so that is what it falls back to. It has to be consulted here rather than being left to the description the
+// snapshot would otherwise take from it, since a control with no name is announced as an unlabeled check box however
+// much its description says.
+func (c *checkRadioBase) axName(current string) string {
+	if current != "" {
+		return current
+	}
+	if text := c.Text.String(); text != "" {
+		return text
+	}
+	return axTooltipText(c.AsPanel())
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing or toggling a check box or a
+// radio button clicks it, which is what moves it to its next state, and runs the same animation and callback a person's
+// click would have.
+func (c *checkRadioBase) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press, accessibility.Toggle:
+		c.Click()
+		return true
+	default:
+		return false
+	}
 }
 
 // DefaultUpdateCursor provides the default cursor for check boxes.

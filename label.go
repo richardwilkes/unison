@@ -13,6 +13,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/pathop"
@@ -65,6 +66,13 @@ func (l *Label) String() string {
 	return l.Text.String()
 }
 
+// axLabel returns the label itself. It is what axLabelOf recognizes a label by, and it is unexported so that only a
+// widget built by embedding a Label — which promotes this along with everything else the label offers — can be taken
+// for one. A widget that merely has a title of its own cannot claim to be a label by accident.
+func (l *Label) axLabel() *Label {
+	return l
+}
+
 // SetTitle sets the text of the label to the specified text. The theme's TextDecoration will be used, so any
 // changes you want to make to it should be done before calling this method. Alternatively, you can directly set the
 // .Text field.
@@ -88,14 +96,62 @@ func (l *Label) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		l.Drawable, l.Side, l.Gap, !l.Enabled())
 }
 
+// ProvideAccessibility describes the label to assistive technologies. A label is static text, or an image when a
+// drawable is all it holds, and one that nothing describes is skipped: see axDescribeStaticContent, which Tag and
+// DrawablePanel share. An explicitly set role is left alone, which is how NewLink turns a label into a link and how
+// Markdown turns one into a heading.
+func (l *Label) ProvideAccessibility(b *AccessibilityBuilder) {
+	axDescribeStaticContent(b, l.String(), l.Drawable != nil)
+}
+
+// axTextOrigin returns the top-left corner of the text this label draws, in the label's own coordinates. It is where
+// the label actually put the text — the same answer DrawLabel placed it with, see labelPlacement — so that a document
+// composing its content out of labels can say where each run of it sits on the screen.
+func (l *Label) axTextOrigin() geom.Point {
+	_, _, textPt, _ := labelPlacement(l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.Drawable, l.Side,
+		l.Gap)
+	return textPt
+}
+
+// axTextLine returns what this label contributes to a document's text: its runes, the decoration each of them is drawn
+// with, and the one line they occupy, with the line's bounds in the label's own coordinates and one advance per rune
+// boundary. The decorations are what the styled runs of that text are worked out from, and they are the label's own
+// slices, so neither they nor the runes may be modified.
+//
+// A label holding no text still occupies a line, since it is still as tall as one and a caret can sit in it: the line
+// carries the single advance that says where that caret goes and covers no runes at all.
+func (l *Label) axTextLine() (runes []rune, decorations []*TextDecoration, line accessibility.Line) {
+	_, _, textPt, txtSize := labelPlacement(l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.Drawable,
+		l.Side, l.Gap)
+	var widths []float32
+	if l.Text != nil {
+		runes = l.Text.runes
+		decorations = l.Text.decorations
+		widths = l.Text.widths
+	}
+	line.Advances = make([]float32, 0, len(widths)+1)
+	line.Advances = append(line.Advances, 0)
+	var x float32
+	for _, w := range widths {
+		x += w
+		line.Advances = append(line.Advances, x)
+	}
+	line.End = len(runes)
+	line.Bounds = geom.NewRect(textPt.X, textPt.Y, txtSize.Width, txtSize.Height)
+	return runes, decorations, line
+}
+
 // LabelContentSizes returns the preferred size of a label, as well as the preferred size of the text within the label.
 // When no drawable is present, the two values will be the same. Provided as a standalone function so that other types
 // of panels can make use of it.
 func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide side.Enum, gap float32) (size, txtSize geom.Size) {
 	empty := text.Empty()
-	if empty && drawable == nil {
+	if empty {
 		// Use the text's own single-line height so that an empty line is exactly as tall as one containing text.
-		// Only fall back to the passed-in font when there is no text object to consult.
+		// Only fall back to the passed-in font when there is no text object to consult. This is worked out whether or
+		// not there is a drawable, since the text of a label showing only an image is still a line as tall as one — a
+		// caret can sit in it, and an assistive technology is told where and how tall it is; see Label.axTextLine. What
+		// the drawable decides is the size of the label, not the size of the text within it.
 		if text != nil {
 			txtSize.Height = text.Height()
 		} else {
@@ -103,37 +159,36 @@ func LabelContentSizes(text *Text, drawable Drawable, font Font, drawableSide si
 		}
 		size = txtSize
 	} else {
-		if !empty {
-			txtSize = text.Extents()
-			size = txtSize
-		}
-		if drawable != nil {
-			logicalSize := drawable.LogicalSize()
-			switch {
-			case empty:
-				size = logicalSize
-			case drawableSide.Horizontal():
-				size.Width += logicalSize.Width + gap
-				size.Height = max(size.Height, logicalSize.Height)
-			default:
-				size.Height += logicalSize.Height + gap
-				size.Width = max(size.Width, logicalSize.Width)
-			}
+		txtSize = text.Extents()
+		size = txtSize
+	}
+	if drawable != nil {
+		logicalSize := drawable.LogicalSize()
+		switch {
+		case empty:
+			size = logicalSize
+		case drawableSide.Horizontal():
+			size.Width += logicalSize.Width + gap
+			size.Height = max(size.Height, logicalSize.Height)
+		default:
+			size.Height += logicalSize.Height + gap
+			size.Width = max(size.Width, logicalSize.Width)
 		}
 	}
 	return size.Ceil(), txtSize
 }
 
-// DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
-func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font Font, text *Text, onBackgroundInk, backgroundInk Ink, drawable Drawable, drawableSide side.Enum, imgGap float32, applyDisabledFilter bool) {
-	if !xreflect.IsNil(backgroundInk) {
-		paint := backgroundInk.Paint(canvas, rect, paintstyle.Fill)
-		canvas.DrawRect(rect, paint)
-	}
+// labelPlacement works out where a label's content goes within rect: the area the content actually occupies once the
+// alignments have been applied, and the top-left corner of the drawable and of the text within it. txtSize is the size
+// of the text alone, which is what the line an assistive technology is told about is as tall and as wide as.
+//
+// It is what DrawLabel places its content with, and it is called rather than repeated wherever else the same answer is
+// needed — see Label.axTextOrigin — since an assistive technology told the text sits somewhere it was not drawn puts
+// its highlight, and a person's reading caret, in the wrong place.
+func labelPlacement(rect geom.Rect, hAlign, vAlign align.Enum, font Font, text *Text, drawable Drawable,
+	drawableSide side.Enum, imgGap float32,
+) (content geom.Rect, drawablePt, textPt geom.Point, txtSize geom.Size) {
 	empty := text.Empty()
-	if drawable == nil && empty {
-		return
-	}
 
 	// Determine overall size of content
 	size, txtSize := LabelContentSizes(text, drawable, font, drawableSide, imgGap)
@@ -193,6 +248,20 @@ func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font F
 			}
 		}
 	}
+	return rect, imgPt, txtPt, txtSize
+}
+
+// DrawLabel draws a label. Provided as a standalone function so that other types of panels can make use of it.
+func DrawLabel(canvas *Canvas, rect geom.Rect, hAlign, vAlign align.Enum, font Font, text *Text, onBackgroundInk, backgroundInk Ink, drawable Drawable, drawableSide side.Enum, imgGap float32, applyDisabledFilter bool) {
+	if !xreflect.IsNil(backgroundInk) {
+		paint := backgroundInk.Paint(canvas, rect, paintstyle.Fill)
+		canvas.DrawRect(rect, paint)
+	}
+	empty := text.Empty()
+	if drawable == nil && empty {
+		return
+	}
+	rect, imgPt, txtPt, _ := labelPlacement(rect, hAlign, vAlign, font, text, drawable, drawableSide, imgGap)
 
 	canvas.Save()
 	canvas.ClipRect(rect, pathop.Intersect, false)

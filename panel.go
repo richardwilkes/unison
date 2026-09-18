@@ -49,19 +49,36 @@ type Panel struct {
 	ParentChangedCallback               func()
 	FocusChangeInHierarchyCallback      func(from, to *Panel)
 	Tooltip                             *Panel
-	parent                              *Panel
-	canPerformMap                       map[int]func(any) bool
-	performMap                          map[int]func(any)
-	data                                map[string]any
-	RefKey                              string
-	children                            []*Panel
-	frame                               geom.Rect
-	scale                               geom.Point
-	NeedsLayout                         bool
-	focusable                           bool
-	disabled                            bool
-	Hidden                              bool
-	TooltipImmediate                    bool
+	// borrowedTooltip holds a tooltip that belongs to something other than this panel. A container whose parts are not
+	// panels of their own — the cell of a table, the header of a column: each one is built, used and handed back again
+	// — borrows the tooltip of whatever the pointer is over and offers it to the window through here, rather than
+	// parking it in Tooltip. Window.updateTooltip prefers it over Tooltip when it is set, and nothing else may look at
+	// it. That is not merely tidiness: what a node is described as falls back to the panel's own tooltip (see
+	// axTooltipText), so a borrowed one left in Tooltip would describe the whole table to an assistive technology as
+	// whichever cell the pointer last crossed, and go on changing that description as the pointer moved from cell to
+	// cell — long after the pointer had left the table entirely. A borrowed tooltip is transient and belongs to no
+	// node, so the description must never see it.
+	borrowedTooltip *Panel
+	parent          *Panel
+	canPerformMap   map[int]func(any) bool
+	performMap      map[int]func(any)
+	data            map[string]any
+	RefKey          string
+	children        []*Panel
+	// Accessibility is what this panel exposes to assistive technologies. Every field of it is optional, and nothing
+	// reads it unless an assistive technology is actually being served, so a panel that ignores it costs nothing beyond
+	// the space it occupies. Set its fields in place: p.Accessibility.Name = "Search".
+	Accessibility    AccessibilityInfo
+	frame            geom.Rect
+	scale            geom.Point
+	NeedsLayout      bool
+	focusable        bool
+	disabled         bool
+	Hidden           bool
+	TooltipImmediate bool
+	// axFocusable marks a panel that takes the keyboard focus only while an assistive technology is being served, and
+	// only on the platforms whose screen readers need it to. See Panel.axTakesFocus.
+	axFocusable bool
 }
 
 // NewPanel creates a new panel.
@@ -475,7 +492,7 @@ func (p *Panel) SetEnabled(enabled bool) {
 
 // Focusable returns true if this panel can have the keyboard focus.
 func (p *Panel) Focusable() bool {
-	return p.focusable && p.Enabled()
+	return (p.focusable || p.axTakesFocus()) && p.Enabled()
 }
 
 // SetFocusable sets whether this panel can have the keyboard focus.

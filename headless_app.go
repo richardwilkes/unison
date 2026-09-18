@@ -82,6 +82,9 @@ func (s *headlessState) beginStartup() error {
 	modalStack = nil
 	pendingFrontWindow = nil
 	redrawSet = make(map[*Window]struct{})
+	// The flag saying a wake-up has already been asked for goes with the set it belongs to, so the session's first
+	// MarkForRedraw posts one rather than trusting an empty event queued for whatever ran before it.
+	redrawWakePending = false
 	wndWithCurrentCtx = nil
 	// Take any cursors that predate the session out of the way, so that it neither adopts nor destroys them. Those are
 	// native cursors, holding operating system resources that belong to whatever built them, while everything a session

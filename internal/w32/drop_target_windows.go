@@ -102,11 +102,11 @@ func (dt *DropTarget) Revoke() {
 }
 
 func (dt *DropTarget) addRef() uintptr {
-	return comAddRef(&dt.refCount)
+	return ComAddRef(&dt.refCount)
 }
 
 func (dt *DropTarget) release() uintptr {
-	remaining, final := comRelease(&dt.refCount)
+	remaining, final := ComRelease(&dt.refCount)
 	if final {
 		dt.pinner.Unpin()
 	}
@@ -125,7 +125,7 @@ func (dt *DropTarget) HWND() windows.HWND {
 
 func dropTargetQueryInterface(this, riid, ppvObject uintptr) uint64 {
 	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
-	if *guid == iidUnknown || *guid == iidIDropTarget {
+	if *guid == IIDUnknown || *guid == iidIDropTarget {
 		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		dropTargetAddRef(this)
 		return COM_S_OK

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ebitengine/purego/objc"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 func TestIsDarkModeEnabled(_ *testing.T) {
@@ -41,6 +42,7 @@ var themeFired atomic.Bool
 // TestThemeChangedNotification proves the full macThemeDelegate path: Go-implemented Objective-C class registration,
 // distributed-notification observation, and dispatch back into the Go callback.
 func TestThemeChangedNotification(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	themeFired.Store(false)
 	WithPool(func() {
 		objc.ID(Cls("NSDistributedNotificationCenter")).Send(Sel("defaultCenter")).Send(

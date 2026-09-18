@@ -49,6 +49,7 @@ func nativeBeginStartup() error {
 
 func nativeLateInit() {
 	cocoa.InstallSystemThemeChangedCallback(ThemeChanged)
+	macInitAccessibilityCallbacks()
 }
 
 // macOpenFilesRequested is installed as cocoa.OpenFilesCallback. Until nativeFinalFinishStartup marks startup as

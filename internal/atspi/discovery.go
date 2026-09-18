@@ -1,0 +1,470 @@
+// Copyright (c) 2021-2026 by Richard A. Wilkes. All rights reserved.
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, version 2.0. If a copy of the MPL was not distributed with
+// this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+//
+// This Source Code Form is "Incompatible With Secondary Licenses", as
+// defined by the Mozilla Public License, version 2.0.
+
+package atspi
+
+import (
+	"os"
+	"slices"
+	"strings"
+	"sync"
+
+	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/unison/internal/dbus"
+)
+
+const (
+	// noBridgeEnvKey is the environment variable that has meant "do not talk to the accessibility bus" since the GTK
+	// AT-SPI bridge introduced it. Its value is read as a number, and any non-zero one disables accessibility, which is
+	// how every toolkit reads it; see [DisabledByEnvironment].
+	noBridgeEnvKey = "NO_AT_BRIDGE"
+	// busAddressEnvKey names the environment variable that, when set, is the address of the accessibility bus and ends
+	// the search for one.
+	busAddressEnvKey = "AT_SPI_BUS_ADDRESS"
+	// isEnabledProperty is the property of [StatusInterface] that says whether an assistive technology is running.
+	isEnabledProperty = "IsEnabled"
+	// nameOwnerChanged is the signal the session bus emits when a name gains or loses its owner.
+	nameOwnerChanged = "NameOwnerChanged"
+	// getNameOwner is the method of the session bus that answers which connection owns a well-known name.
+	getNameOwner = "GetNameOwner"
+	// propertiesChanged is the signal an object emits when one of its properties changes.
+	propertiesChanged = "PropertiesChanged"
+)
+
+// The match rules that [WatchEnabled] asks the session bus for. A signal broadcast by another connection is only
+// delivered to one that has asked for it, and both rules name the sender they will accept, so nothing broadcast by any
+// other process on the user's session bus is delivered here at all.
+//
+// A match rule is not the whole of the defense, because it is not consulted for a signal addressed to this connection:
+// a peer that unicasts one has it delivered whatever the rules say. That matters, since a forged PropertiesChanged from
+// /org/a11y/bus saying IsEnabled=false would have the root package tear the bridge down and leave a screen-reader user
+// with no way into the application, while one saying true would have it connect to a bus nothing asked for. Each
+// subscription therefore checks the sender of what arrives as well:
+//
+//   - NameOwnerChanged is checked against the bus's own name by the subscription's filter. The bus fills the sender of
+//     every message it routes in with the unique name of the connection that sent it, so no other peer can send under
+//     that name.
+//   - PropertiesChanged is checked against the connection that owns the launcher's well-known name, which
+//     [WatchEnabled] resolves for itself and keeps current from NameOwnerChanged. That cannot be a filter: the sender
+//     the launcher's signals carry is its unique name, which is not something the application can know in advance.
+const (
+	statusMatchRule = "type='signal',sender='" + BusDestination + "',interface='" + dbusPropertiesInterface +
+		"',member='" + propertiesChanged + "',path='" + string(BusPath) + "'"
+	ownerMatchRule = "type='signal',sender='" + dbusDestination + "',interface='" + dbusInterface +
+		"',member='" + nameOwnerChanged + "',arg0='" + BusDestination + "'"
+)
+
+// DisabledByEnvironment returns true if the environment forbids talking to the accessibility bus at all. Nothing else
+// in this package, and nothing in the root package, should reach the bus when it does.
+//
+// The value is read the way at-spi2-atk and GTK read it, which is with atoi: the leading integer, whatever follows it
+// ignored, and zero for anything that does not begin with one. NO_AT_BRIDGE=00, NO_AT_BRIDGE=false and any other value
+// a C library turns into zero therefore leave accessibility enabled here too, rather than being taken for instructions
+// to stay away that no other toolkit on the desktop would obey.
+func DisabledByEnvironment() bool {
+	return leadingIntIsNonZero(strings.TrimSpace(os.Getenv(noBridgeEnvKey)))
+}
+
+// leadingIntIsNonZero reports whether C's atoi would make anything other than zero of a string: an optional sign
+// followed by decimal digits, with anything else — an empty string included — counting as zero. Only whether the answer
+// is zero matters, so the digits are looked at rather than accumulated, and no value can overflow.
+func leadingIntIsNonZero(value string) bool {
+	if value != "" && (value[0] == '+' || value[0] == '-') {
+		value = value[1:]
+	}
+	nonZero := false
+	for _, ch := range []byte(value) {
+		if ch < '0' || ch > '9' {
+			break
+		}
+		if ch != '0' {
+			nonZero = true
+		}
+	}
+	return nonZero
+}
+
+// Enabled reports whether an assistive technology is running, which is what the accessibility bus launcher's IsEnabled
+// property says. session is the connection to the desktop session bus, which the launcher lives on. A machine with no
+// launcher answers with a ServiceUnknown error, and every failure, that one included, means "no": there is nothing for
+// Unison to talk to.
+//
+// The call asks the bus not to start the launcher if it is not already running, since starting it would be a decision
+// the user never made.
+func Enabled(session *dbus.Conn) bool {
+	if session == nil || DisabledByEnvironment() {
+		return false
+	}
+	msg := dbus.NewMethodCall(BusDestination, BusPath, dbusPropertiesInterface, "Get")
+	if err := msg.SetBody(StatusInterface, isEnabledProperty); err != nil {
+		return false
+	}
+	reply, err := session.CallWithFlags(msg, dbus.FlagNoAutoStart)
+	if err != nil {
+		return false
+	}
+	args, err := reply.Args()
+	if err != nil || len(args) == 0 {
+		return false
+	}
+	enabled, _ := boolValue(args[0])
+	return enabled
+}
+
+// WatchEnabled reports the answer [Enabled] would give and calls onChange again whenever it changes, returning a
+// function that stops watching. onChange runs on one of the session connection's goroutines, so it must not block; the
+// root package hands the answer to the user interface thread.
+//
+// The first answer is read here, as soon as the bus has accepted the match rules below, rather than by the caller.
+// Asking for those rules is a call of its own, made on a goroutine of this function's own so that the caller is not
+// held up by it, which means the bus is not yet delivering anything when this function returns: a screen reader that
+// started in the gap between the two would produce no signal, and a property read taken before the rules landed would
+// not see it either. Reading it once the rules are in place is what closes that gap, and is why a caller must not read
+// the property itself.
+//
+// Two things are then watched. The launcher's own PropertiesChanged signal reports IsEnabled being switched on or off
+// while it runs, which is what happens when the user starts or stops a screen reader. NameOwnerChanged for the
+// launcher's name reports the launcher itself coming or going, which is what happens on the desktops that only start it
+// once something needs it; a launcher that has just appeared is asked again, since its signal came too early for anyone
+// to hear.
+//
+// An answer that had to be read rather than being carried by a signal is dropped if anything more recent has been
+// reported while it was on its way back. Reading it is a round trip, and the launcher can exit while one is in flight:
+// the read would then come back saying yes after the signal that said the launcher is gone, leaving the root package
+// trying to start a bridge against a launcher that no longer exists.
+func WatchEnabled(session *dbus.Conn, onChange func(enabled bool)) (cancel func()) {
+	if session == nil || onChange == nil || DisabledByEnvironment() {
+		return func() {}
+	}
+	done := make(chan struct{})
+	// latest counts the answers that have been settled on, and reporting is what it guards: every answer takes the
+	// lock, bumps or checks the count and calls onChange without letting go, so that a read whose answer is on its way
+	// back cannot slip an older value in between a newer one being counted and being reported. Checking the count and
+	// then calling would leave exactly that gap, which is the whole of what the count is for.
+	var reportLock sync.Mutex
+	var latest uint64
+	report := func(enabled bool) {
+		reportLock.Lock()
+		defer reportLock.Unlock()
+		latest++
+		onChange(enabled)
+	}
+	// reportRead reports an answer that had to be read, unless something more recent has been reported while it was on
+	// its way back or the watch has been canceled since.
+	reportRead := func(enabled bool, wanted uint64) {
+		reportLock.Lock()
+		defer reportLock.Unlock()
+		if !canceled(done) && latest == wanted {
+			onChange(enabled)
+		}
+	}
+	// claimRead counts a read that is about to be made and returns what it has to still be for its answer to be worth
+	// reporting.
+	claimRead := func() uint64 {
+		reportLock.Lock()
+		defer reportLock.Unlock()
+		latest++
+		return latest
+	}
+	// busOwner is the unique name of the connection that owns the launcher's well-known name, and is the only sender
+	// whose word about the status is taken; see the match rules above. It is empty until the answer to the GetNameOwner
+	// call below arrives and whenever nobody owns the name at all, and a signal claiming to be the launcher while there
+	// is no launcher is exactly what this is here to refuse. ownerReported says a NameOwnerChanged has reported an owner,
+	// which is the newer answer of the two: reading who owns the name is a round trip, and the name can move while one is
+	// in flight, so what a signal says is never overwritten by what a read that was already on its way back says.
+	var ownerLock sync.Mutex
+	var busOwner string
+	var ownerReported bool
+	noteOwner := func(owner string, fromSignal bool) {
+		ownerLock.Lock()
+		defer ownerLock.Unlock()
+		if fromSignal {
+			ownerReported = true
+		} else if ownerReported {
+			return
+		}
+		busOwner = owner
+	}
+	// fromLauncher reports whether a signal came from the connection that owns the launcher's name.
+	fromLauncher := func(sender string) bool {
+		ownerLock.Lock()
+		defer ownerLock.Unlock()
+		return sender != "" && sender == busOwner
+	}
+	recheck := func() {
+		// Enabled makes a call, and this runs on the dispatcher goroutine, which must not be held up, so the answer is
+		// fetched from a goroutine of its own. Cancellation is checked on both sides of the round trip, as it is for
+		// the first read below: a signal that arrives just before the watch is canceled would otherwise leave a call in
+		// flight whose answer is delivered to a caller that has stopped listening, which for the root package means a
+		// fresh bridge built after the one it had was torn down.
+		if canceled(done) {
+			return
+		}
+		wanted := claimRead()
+		go func() { reportRead(Enabled(session), wanted) }()
+	}
+	cancelStatus := session.Subscribe(dbus.SignalFilter{
+		Path:      BusPath,
+		Interface: dbusPropertiesInterface,
+		Member:    propertiesChanged,
+	}, func(msg *dbus.Message) {
+		if !fromLauncher(msg.Sender) {
+			// Anyone can address a signal straight to this connection, so the launcher's own name is what says this one
+			// really came from it; see the match rules above.
+			return
+		}
+		switch state := enabledFromPropertiesChanged(msg); state {
+		case enabledTrue:
+			report(true)
+		case enabledFalse:
+			report(false)
+		case enabledUnknown:
+			if mentionsIsEnabled(msg) {
+				recheck()
+			}
+		}
+	})
+	cancelOwner := session.Subscribe(dbus.SignalFilter{
+		Sender:    dbusDestination,
+		Path:      dbusObjectPath,
+		Interface: dbusInterface,
+		Member:    nameOwnerChanged,
+	}, func(msg *dbus.Message) {
+		owner, ok := newOwnerOfBus(msg)
+		if !ok {
+			return
+		}
+		// The name moving takes the trust with it: from here on it is the connection that owns it now whose word about
+		// the status is taken, and the one that used to own it is just another peer on the session bus.
+		noteOwner(owner, true)
+		if owner == "" {
+			report(false)
+			return
+		}
+		recheck()
+	})
+	// One goroutine owns the match rules for the life of the watch, so a rule for a watch that is canceled while it is
+	// still being set up cannot be left behind on the bus.
+	go func() {
+		rules := make([]string, 0, 2)
+		for _, rule := range []string{statusMatchRule, ownerMatchRule} {
+			if err := session.AddMatch(rule); err != nil {
+				errs.Log(errs.NewWithCause("atspi: unable to watch for accessibility status changes", err),
+					"rule", rule)
+				continue
+			}
+			rules = append(rules, rule)
+		}
+		// Who owns the launcher's name is asked for now rather than before the rules were in place, so that a name that
+		// moves while the question is in flight is reported by the signal instead of being missed between the two. Until
+		// the answer arrives nothing is taken for the launcher's, which costs nothing: the read below reports the state
+		// that was in effect all along, whatever a signal that was refused in the meantime had to say.
+		noteOwner(nameOwner(session, BusDestination), false)
+		// The bus is delivering now, so nothing that happens from here on can be missed, and the state that was in
+		// effect all along can safely be reported. A watch that has already been canceled reports nothing: the caller
+		// has stopped listening, and for the root package that means accessibility support has been refused outright.
+		// Cancellation is checked on both sides of the read, since [Enabled] makes a round trip to the session bus and
+		// the watch can be canceled while it is in flight.
+		if !canceled(done) {
+			wanted := claimRead()
+			reportRead(Enabled(session), wanted)
+		}
+		<-done
+		for _, rule := range rules {
+			if err := session.RemoveMatch(rule); err != nil {
+				errs.Log(errs.NewWithCause("atspi: unable to stop watching for accessibility status changes", err),
+					"rule", rule)
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cancelStatus()
+			cancelOwner()
+			close(done)
+		})
+	}
+}
+
+// canceled reports whether the watch whose done channel this is has been canceled, without ever waiting for it.
+func canceled(done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+		return false
+	}
+}
+
+// enabledState is what a PropertiesChanged signal had to say about IsEnabled.
+type enabledState uint8
+
+// The possible answers.
+const (
+	enabledUnknown enabledState = iota // The signal did not carry a new value
+	enabledTrue
+	enabledFalse
+)
+
+// enabledFromPropertiesChanged returns the new value of IsEnabled that a PropertiesChanged signal carries, if it
+// carries one. The signal's arguments are the interface name, the properties that changed, and the names of the ones
+// that have changed without a value being sent.
+func enabledFromPropertiesChanged(msg *dbus.Message) enabledState {
+	args, err := msg.Args()
+	if err != nil || len(args) < 2 {
+		return enabledUnknown
+	}
+	if name, ok := args[0].(string); !ok || name != StatusInterface {
+		return enabledUnknown
+	}
+	changed, ok := args[1].(dbus.Dict)
+	if !ok {
+		return enabledUnknown
+	}
+	for _, entry := range changed {
+		if key, isString := entry.Key.(string); !isString || key != isEnabledProperty {
+			continue
+		}
+		if enabled, valid := boolValue(entry.Value); valid {
+			if enabled {
+				return enabledTrue
+			}
+			return enabledFalse
+		}
+	}
+	return enabledUnknown
+}
+
+// mentionsIsEnabled returns true if a PropertiesChanged signal for the status interface says that IsEnabled has changed
+// without saying what to, which is an invitation to ask.
+func mentionsIsEnabled(msg *dbus.Message) bool {
+	args, err := msg.Args()
+	if err != nil || len(args) < 3 {
+		return false
+	}
+	if name, ok := args[0].(string); !ok || name != StatusInterface {
+		return false
+	}
+	invalidated, ok := args[2].([]string)
+	if !ok {
+		return false
+	}
+	return slices.Contains(invalidated, isEnabledProperty)
+}
+
+// nameOwner returns the unique name of the connection that owns a well-known name on the session bus, or an empty
+// string when nobody does — which is what the bus answers with a NameHasNoOwner error — or when the bus cannot say.
+//
+// The question is put to the bus itself rather than to the name's owner, so nothing is started to answer it: a name
+// with no owner is a launcher that is not running, and there is nothing for a signal claiming to be from it to be
+// checked against until it takes the name and NameOwnerChanged says so.
+func nameOwner(session *dbus.Conn, name string) string {
+	msg := dbus.NewMethodCall(dbusDestination, dbusObjectPath, dbusInterface, getNameOwner)
+	if err := msg.SetBody(name); err != nil {
+		return ""
+	}
+	reply, err := session.Call(msg)
+	if err != nil {
+		return ""
+	}
+	args, err := reply.Args()
+	if err != nil || len(args) == 0 {
+		return ""
+	}
+	owner, _ := args[0].(string) //nolint:errcheck // An owner that is not a string is no owner
+	return owner
+}
+
+// newOwnerOfBus returns the new owner of the accessibility bus launcher's name that a NameOwnerChanged signal reports.
+// ok is false for a signal about any other name.
+func newOwnerOfBus(msg *dbus.Message) (owner string, ok bool) {
+	args, err := msg.Args()
+	if err != nil || len(args) < 3 {
+		return "", false
+	}
+	name, isString := args[0].(string)
+	if !isString || name != BusDestination {
+		return "", false
+	}
+	owner, isString = args[2].(string)
+	if !isString {
+		return "", false
+	}
+	return owner, true
+}
+
+// BusAddress returns the address of the accessibility bus. The environment is asked first, since a session that has one
+// set means it; then the launcher on the session bus, which is where it comes from on a normal desktop; and finally the
+// caller's fallback, which the root package fills in by reading the AT_SPI_BUS property of the X11 root window. Unison
+// never sets that property itself.
+func BusAddress(session *dbus.Conn, x11Address func() string) (string, error) {
+	if address := strings.TrimSpace(os.Getenv(busAddressEnvKey)); address != "" {
+		return address, nil
+	}
+	if session != nil {
+		if address := addressFromLauncher(session); address != "" {
+			return address, nil
+		}
+	}
+	if x11Address != nil {
+		if address := strings.TrimSpace(x11Address()); address != "" {
+			return address, nil
+		}
+	}
+	return "", errs.New("atspi: unable to determine the address of the accessibility bus")
+}
+
+// addressFromLauncher asks the accessibility bus launcher where its bus is, returning an empty string if it cannot say.
+//
+// The call is addressed to the connection that owns the launcher's well-known name, which is asked for first. The
+// reply to a call addressed to a well-known name carries the unique name of whichever connection owns it, which the
+// caller cannot know in advance, so a reply to such a call is accepted from any sender; see
+// dbus.pending.acceptsReplyFrom. A peer on the session bus that guesses the serial could therefore answer in the
+// launcher's place with the address of a bus of its own, and everything the application says to an assistive
+// technology, every keystroke one sends back, and the whole of the tree would go there instead. Addressing the call to
+// the unique name closes that, since the bus fills the sender in itself and a reply from anyone else is discarded.
+//
+// The well-known name is used only when nobody owns it, which is the one case the stronger form cannot serve: the
+// launcher is bus-activatable, and a call to its well-known name is what starts it on a desktop that only runs it on
+// demand. Such a reply can still be forged, exactly as every one of them could be before, but refusing to make the
+// call at all would mean no accessibility wherever the launcher is not already running.
+func addressFromLauncher(session *dbus.Conn) string {
+	destination := BusDestination
+	if owner := nameOwner(session, BusDestination); owner != "" {
+		destination = owner
+	}
+	reply, err := session.Call(dbus.NewMethodCall(destination, BusPath, BusInterface, "GetAddress"))
+	if err != nil {
+		return ""
+	}
+	args, err := reply.Args()
+	if err != nil || len(args) == 0 {
+		return ""
+	}
+	address, ok := args[0].(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(address)
+}
+
+// boolValue extracts a boolean from a value that may be wrapped in any number of variants, which is how a property
+// arrives.
+func boolValue(v any) (value, ok bool) {
+	for {
+		variant, isVariant := v.(dbus.Variant)
+		if !isVariant {
+			break
+		}
+		v = variant.Value
+	}
+	value, ok = v.(bool)
+	return value, ok
+}

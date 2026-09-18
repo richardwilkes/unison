@@ -9,11 +9,11 @@
 
 package w32
 
-// hresultSucceeded reports whether an HRESULT indicates success, mirroring the Windows SUCCEEDED() macro: success codes
+// HResultSucceeded reports whether an HRESULT indicates success, mirroring the Windows SUCCEEDED() macro: success codes
 // (S_OK, S_FALSE, etc.) have the high bit clear, while failure codes (E_FAIL, etc.) have it set. This must be used for
 // functions returning HRESULT rather than the BOOL idiom (ret&0xff != 0), which inverts the meaning: S_OK (0) would
 // read as failure and most failure codes would read as success.
-func hresultSucceeded(hr uintptr) bool {
+func HResultSucceeded(hr uintptr) bool {
 	return int32(hr) >= 0
 }
 
