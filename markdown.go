@@ -269,7 +269,7 @@ func NewMarkdown(autoSizingFromParent bool) *Markdown {
 // away everything worked out from where the panels drawing the content were placed. A layout moves hundreds of frames
 // and this is called for each of them, so it does no more than mark what was worked out as no longer current; it is
 // worked out again the next time something asks. See Markdown.axInvalidate.
-func (m *Markdown) DefaultFrameChangeInChildHierarchy(panel *Panel) {
+func (m *Markdown) DefaultFrameChangeInChildHierarchy(_ *Panel) {
 	m.axInvalidate()
 }
 
