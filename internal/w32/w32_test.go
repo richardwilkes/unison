@@ -14,6 +14,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path"
 	"strings"
 	"testing"
 
@@ -26,12 +27,12 @@ import (
 // success.
 func TestHResultSucceeded(t *testing.T) {
 	c := check.New(t)
-	c.True(hresultSucceeded(0))                            // S_OK
-	c.True(hresultSucceeded(1))                            // S_FALSE
-	c.True(hresultSucceeded(0x00040100))                   // DRAGDROP_S_DROP
-	c.False(hresultSucceeded(uintptr(uint32(0x80004005)))) // E_FAIL
-	c.False(hresultSucceeded(uintptr(uint32(0x80070057)))) // E_INVALIDARG
-	c.False(hresultSucceeded(uintptr(uint32(0x80263001)))) // DWM_E_COMPOSITIONDISABLED
+	c.True(HResultSucceeded(0))                            // S_OK
+	c.True(HResultSucceeded(1))                            // S_FALSE
+	c.True(HResultSucceeded(0x00040100))                   // DRAGDROP_S_DROP
+	c.False(HResultSucceeded(uintptr(uint32(0x80004005)))) // E_FAIL
+	c.False(HResultSucceeded(uintptr(uint32(0x80070057)))) // E_INVALIDARG
+	c.False(HResultSucceeded(uintptr(uint32(0x80263001)))) // DWM_E_COMPOSITIONDISABLED
 }
 
 // TestWglProcAddressValid verifies that all of wglGetProcAddress's documented failure sentinels (NULL, 1, 2, 3, and -1)
@@ -70,13 +71,37 @@ func TestDropResultEffect(t *testing.T) {
 	c.Equal(DropEffectNone, dropResultEffect(false, drag.Copy))
 }
 
+// hygieneDirs are the directories the source-hygiene tests below scan, relative to internal/w32: this package and the
+// uia subpackage split out of it. The same rules apply to both, since uia holds the code that was moved out, so the
+// tests walk them together and report every path relative to internal/w32 so a message names its file unambiguously.
+var hygieneDirs = []string{".", "uia"}
+
 // bstrAllocatorFile is the one file allowed to allocate a BSTR. Concentrating the allocator there is what makes the
 // callee-allocates contract auditable: the comment on SysAllocStringLen states who owns the result, and a reader can
-// see every place a BSTR is born without searching the package.
-const bstrAllocatorFile = "uia_variant_windows.go"
+// see every place a BSTR is born without searching the packages in hygieneDirs.
+const bstrAllocatorFile = "uia/variant_windows.go"
 
-// forbiddenSourcePatterns maps a source pattern this package must not contain to the set of files allowed to contain
-// it, which is empty for the patterns that are banned outright.
+// hygieneSourceFiles returns the path, relative to internal/w32, of every non-test .go file in hygieneDirs.
+func hygieneSourceFiles(t *testing.T) []string {
+	t.Helper()
+	c := check.New(t)
+	var paths []string
+	for _, dir := range hygieneDirs {
+		entries, err := os.ReadDir(dir)
+		c.NoError(err)
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			paths = append(paths, path.Join(dir, name))
+		}
+	}
+	return paths
+}
+
+// forbiddenSourcePatterns maps a source pattern the files in hygieneDirs must not contain to the set of files allowed
+// to contain it, which is empty for the patterns that are banned outright.
 //
 // syscall.NewLazyDLL searches the application directory before the system directory (a DLL-planting vector —
 // opengl32.dll is not a KnownDLL). CoInitializeEx with COINIT_MULTITHREADED on the STA UI thread only ever "worked"
@@ -96,13 +121,7 @@ var forbiddenSourcePatterns = map[string]map[string]bool{
 // files are allowed to use them.
 func TestSourceHygiene(t *testing.T) {
 	c := check.New(t)
-	entries, err := os.ReadDir(".")
-	c.NoError(err)
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
+	for _, name := range hygieneSourceFiles(t) {
 		data, readErr := os.ReadFile(name)
 		c.NoError(readErr)
 		content := string(data)
@@ -147,13 +166,7 @@ func TestBSTRAllocatorsAreConfined(t *testing.T) {
 // the unsafe.Slice contract; windows.UTF16PtrToString is the correct tool.
 func TestPointerLifetimeAndDeadCodeHygiene(t *testing.T) {
 	c := check.New(t)
-	entries, err := os.ReadDir(".")
-	c.NoError(err)
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
+	for _, name := range hygieneSourceFiles(t) {
 		data, readErr := os.ReadFile(name)
 		c.NoError(readErr)
 		content := string(data)
@@ -165,20 +178,15 @@ func TestPointerLifetimeAndDeadCodeHygiene(t *testing.T) {
 	}
 }
 
-// parsePackageSources parses every non-test .go file in this directory, regardless of build constraints, so hygiene
-// checks cover the platform-specific files no matter where the tests run.
+// parsePackageSources parses every non-test .go file in hygieneDirs, regardless of build constraints, so hygiene
+// checks cover the platform-specific files no matter where the tests run. The keys are paths relative to
+// internal/w32.
 func parsePackageSources(t *testing.T) (*token.FileSet, map[string]*ast.File) {
 	t.Helper()
 	c := check.New(t)
-	entries, err := os.ReadDir(".")
-	c.NoError(err)
 	fset := token.NewFileSet()
 	files := make(map[string]*ast.File)
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
-		}
+	for _, name := range hygieneSourceFiles(t) {
 		file, parseErr := parser.ParseFile(fset, name, nil, 0)
 		c.NoError(parseErr)
 		files[name] = file
@@ -243,7 +251,7 @@ func TestNoHoistedUnsafePointerConversions(t *testing.T) {
 }
 
 // TestUnpinRequiresFinalComRelease guards against unpinning a Go-implemented COM object anywhere but the spot where
-// comRelease reports the final reference dropped. An unconditional Unpin (as DropTarget.Revoke once did) removes the
+// ComRelease reports the final reference dropped. An unconditional Unpin (as DropTarget.Revoke once did) removes the
 // sole thing keeping the object alive while OLE may still hold AddRef'd pointers to it, so a later callback
 // dereferences freed memory.
 func TestUnpinRequiresFinalComRelease(t *testing.T) {
@@ -263,11 +271,15 @@ func TestUnpinRequiresFinalComRelease(t *testing.T) {
 				}
 				switch fun := call.Fun.(type) {
 				case *ast.SelectorExpr:
-					if fun.Sel.Name == "Unpin" {
+					switch fun.Sel.Name {
+					case "Unpin":
 						unpins = append(unpins, call.Pos())
+					case "ComRelease":
+						// The uia subpackage calls it as w32.ComRelease.
+						releasesCount = true
 					}
 				case *ast.Ident:
-					if fun.Name == "comRelease" {
+					if fun.Name == "ComRelease" {
 						releasesCount = true
 					}
 				}
@@ -275,7 +287,7 @@ func TestUnpinRequiresFinalComRelease(t *testing.T) {
 			})
 			if len(unpins) != 0 && !releasesCount {
 				for _, pos := range unpins {
-					t.Errorf("%s: %s: Unpin called in %s, which never consults comRelease; unpin only when the final COM reference is released",
+					t.Errorf("%s: %s: Unpin called in %s, which never consults ComRelease; unpin only when the final COM reference is released",
 						name, fset.Position(pos), fn.Name.Name)
 				}
 			}

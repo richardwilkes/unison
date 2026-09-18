@@ -25,7 +25,7 @@ var (
 	registerDragDropProc = ole32.NewProc("RegisterDragDrop")
 	releaseStgMediumProc = ole32.NewProc("ReleaseStgMedium")
 	revokeDragDropProc   = ole32.NewProc("RevokeDragDrop")
-	iidUnknown           = xos.Must(windows.GUIDFromString("{00000000-0000-0000-C000-000000000046}"))
+	IIDUnknown           = xos.Must(windows.GUIDFromString("{00000000-0000-0000-C000-000000000046}"))
 	nullGUID             windows.GUID
 )
 
@@ -68,7 +68,7 @@ type STGMEDIUM struct {
 // CoCreateInstance https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-cocreateinstance
 func CoCreateInstance(classID, instanceID windows.GUID) *Unknown {
 	if instanceID == nullGUID {
-		instanceID = iidUnknown
+		instanceID = IIDUnknown
 	}
 	var unknown *Unknown
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.

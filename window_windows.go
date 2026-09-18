@@ -23,6 +23,7 @@ import (
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/internal/pixconv"
 	"github.com/richardwilkes/unison/internal/w32"
+	"github.com/richardwilkes/unison/internal/w32/uia"
 	"golang.org/x/image/draw"
 	"golang.org/x/sys/windows"
 )
@@ -38,7 +39,7 @@ var (
 type nativeWindow struct {
 	dropTarget *w32.DropTarget
 	// uia is the UI Automation adapter serving this window, or nil until an assistive technology has asked about it.
-	uia *w32.UIAWindow
+	uia *uia.Window
 	// The surface nativePresentCPUPixels draws through: a DIB section selected into a memory DC, whose pixels are
 	// written directly and then blitted to the window. See w32EnsurePresentSurface for why it works this way.
 	presentPixels []uint32
@@ -499,14 +500,14 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 // window's first snapshot and creates its adapter, all of it before this returns, since the request has nothing else to
 // be answered from.
 func (w *Window) w32HandleGetObject(wParam w32.WPARAM, lParam w32.LPARAM) (result uintptr, handled bool) {
-	if int32(lParam) != w32.UiaRootObjectId {
+	if int32(lParam) != uia.RootObjectId {
 		return 0, false
 	}
-	uia := w.w32AccessibilityAdapter()
-	if uia == nil {
+	adapter := w.w32AccessibilityAdapter()
+	if adapter == nil {
 		return 0, false
 	}
-	return uintptr(w32.UiaReturnRawElementProvider(w.wnd.wnd, wParam, lParam, uia.RootUnknown())), true
+	return uintptr(uia.ReturnRawElementProvider(w.wnd.wnd, wParam, lParam, adapter.RootUnknown())), true
 }
 
 // w32RefreshAccessibilityGeometry tells the window's assistive-technology adapter, if it has one, that the screen

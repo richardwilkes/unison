@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/w32"
+	"github.com/richardwilkes/unison/internal/w32/uia"
 )
 
 // These tests cover the two pieces of the Windows accessibility wiring that can be exercised without a real window and
@@ -41,8 +42,8 @@ func TestW32HandleGetObjectIgnoresOtherObjectIDs(t *testing.T) {
 		-5, // OBJID_MENU
 		-8, // OBJID_CARET
 		1,  // a child id from an MSAA client
-		w32.UiaRootObjectId + 1,
-		w32.UiaRootObjectId - 1,
+		uia.RootObjectId + 1,
+		uia.RootObjectId - 1,
 	} {
 		result, handled := w.w32HandleGetObject(0, w32.LPARAM(objectID))
 		c.False(handled, "case %d: object id %d is not UI Automation's and must be left to DefWindowProc", i, objectID)
@@ -51,7 +52,7 @@ func TestW32HandleGetObjectIgnoresOtherObjectIDs(t *testing.T) {
 	// A UI Automation request for a window with nothing to describe is also unhandled, and must not have turned
 	// anything on while deciding that. The object id goes through a variable because a negative constant cannot be
 	// converted to the unsigned type an lParam is.
-	uiaObjectID := w32.UiaRootObjectId
+	uiaObjectID := uia.RootObjectId
 	result, handled := w.w32HandleGetObject(0, w32.LPARAM(uiaObjectID))
 	c.False(handled, "a window with no root panel has nothing to describe")
 	c.Equal(uintptr(0), result)

@@ -17,18 +17,18 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 )
 
-// TestComRefCountLifecycle verifies comAddRef/comRelease implement IUnknown semantics and that exactly one release
+// TestComRefCountLifecycle verifies ComAddRef/ComRelease implement IUnknown semantics and that exactly one release
 // observes the final-reference signal, even under concurrency. That signal is what unpins the DataObject and frees
 // its mediums, so it must fire exactly once, and only after every holder has released — the previous scheme unpinned
 // as soon as DoDragDrop returned, leaving a drop target that retained the IDataObject pointing at freed memory.
 func TestComRefCountLifecycle(t *testing.T) {
 	c := check.New(t)
 	count := int32(1)
-	c.Equal(uintptr(2), comAddRef(&count))
-	remaining, final := comRelease(&count)
+	c.Equal(uintptr(2), ComAddRef(&count))
+	remaining, final := ComRelease(&count)
 	c.Equal(uintptr(1), remaining)
 	c.False(final)
-	remaining, final = comRelease(&count)
+	remaining, final = ComRelease(&count)
 	c.Equal(uintptr(0), remaining)
 	c.True(final)
 
@@ -41,14 +41,14 @@ func TestComRefCountLifecycle(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			comAddRef(&count)
-			if _, f := comRelease(&count); f {
+			ComAddRef(&count)
+			if _, f := ComRelease(&count); f {
 				atomic.AddInt32(&finals, 1)
 			}
 		}()
 	}
 	wg.Wait()
-	if _, f := comRelease(&count); f {
+	if _, f := ComRelease(&count); f {
 		atomic.AddInt32(&finals, 1)
 	}
 	c.Equal(int32(1), atomic.LoadInt32(&finals))

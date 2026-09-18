@@ -13,6 +13,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/internal/w32"
+	"github.com/richardwilkes/unison/internal/w32/uia"
 )
 
 // axReadersFollowFocus reports that this platform's screen readers start from the keyboard focus, so that a panel which
@@ -25,7 +26,7 @@ const axReadersFollowFocus = true
 
 // axCaretBlockReportsFocus reports whether the block of a document that holds the reading caret publishes the focus as
 // well as the document itself. UI Automation has one focused element per desktop and raises
-// UIA_AutomationFocusChangedEventId for it, and Narrator and NVDA both follow that element, so a second element inside
+// uia.AutomationFocusChangedEventId for it, and Narrator and NVDA both follow that element, so a second element inside
 // the document claiming the focus would move the screen reader's cursor off the document and away from the caret it is
 // following. The caret itself is what they read there, through the Text pattern. It is a var rather than a const so
 // that a test can pin both answers on whichever platform it runs on.
@@ -35,14 +36,14 @@ var axCaretBlockReportsFocus = false
 // Automation provider in internal/w32, and connects the requests that come back from an assistive technology to the UI
 // thread.
 //
-// Nothing here ordinarily runs until something sends a window a WM_GETOBJECT asking for UiaRootObjectId, which nothing
+// Nothing here ordinarily runs until something sends a window a WM_GETOBJECT asking for uia.RootObjectId, which nothing
 // but UI Automation does. That message reaches w32HandleGetObject in window_windows.go, and until it arrives no window
 // has an adapter and no tree has been built. The one other way in is AccessibilityEnvKey: an application it forced
 // support on for has activateAccessibility called during finishStartup, so every window's first draw reaches
 // nativeAccessibilityPublish and builds an adapter with no WM_GETOBJECT ever sent, which is the path
 // nativeAccessibilityEnabledChanged below and uiautomationcore_windows.go's lazy provider registration both count on.
 // Once a window has an adapter it stays described for the rest of its life: UI Automation gives no notification that
-// the last client has gone away, so there is nothing to deactivate on. What it does give is UiaClientsAreListening,
+// the last client has gone away, so there is nothing to deactivate on. What it does give is uia.ClientsAreListening,
 // which the adapter consults before raising anything, so a window that goes on being described after every client has
 // gone costs the snapshots and nothing more.
 //
@@ -59,7 +60,7 @@ var axCaretBlockReportsFocus = false
 // the snapshot it answers from. Both paths that reach it — a WM_GETOBJECT arriving for a window that has no adapter,
 // and the ordinary after-draw publish of a window that gained one when some other window was asked about — therefore
 // end up in nativeAccessibilityPublish with the first tree in hand.
-func (w *Window) w32AccessibilityAdapter() *w32.UIAWindow {
+func (w *Window) w32AccessibilityAdapter() *uia.Window {
 	// The flag makes this re-entrant safe. Creating the adapter raises the events a window appearing for the first time
 	// raises, and UI Automation answers an event by asking about what it names, so a second request for this window can
 	// arrive before the first has finished being answered. Such a request is told there is no provider yet, which costs
@@ -99,7 +100,7 @@ func (w *Window) nativeAccessibilityPublish(tree *accessibility.Tree, events []a
 		// Creating the adapter is itself the window's first publish: it is handed the snapshot and raises what a window
 		// being described for the first time raises, so the events that describe the step from no tree at all to this
 		// one have nowhere to go and are not passed on.
-		w.wnd.uia = w32.NewUIAWindow(w32.UIAConfig{
+		w.wnd.uia = uia.NewWindow(uia.Config{
 			Action: w.w32AccessibilityAction,
 			HWND:   w.wnd.wnd,
 		}, tree, w.w32AccessibilityGeometry())
@@ -197,7 +198,7 @@ func (w *Window) w32AccessibilityAction(request accessibility.ActionRequest) {
 // space (see w32ApplyFrameInsets), so scaling it again would place a window on a 2x display at twice its actual
 // distance from the top-left of the virtual screen. ClientToScreen gives the client area's origin in exactly the space
 // UI Automation works in.
-func (w *Window) w32AccessibilityGeometry() w32.UIAGeometry {
+func (w *Window) w32AccessibilityGeometry() uia.Geometry {
 	var origin w32.POINT
 	w32.ClientToScreen(w.wnd.wnd, &origin)
 	return w32AccessibilityGeometryFor(origin, w.nativeBackingScale())
@@ -206,8 +207,8 @@ func (w *Window) w32AccessibilityGeometry() w32.UIAGeometry {
 // w32AccessibilityGeometryFor turns the screen position of a window's client origin and the window's backing scale into
 // the geometry the adapter converts node bounds with. It is separate from w32AccessibilityGeometry so that the
 // conversion can be exercised without a window.
-func w32AccessibilityGeometryFor(origin w32.POINT, scale geom.Point) w32.UIAGeometry {
-	return w32.UIAGeometry{
+func w32AccessibilityGeometryFor(origin w32.POINT, scale geom.Point) uia.Geometry {
+	return uia.Geometry{
 		Origin: geom.NewPoint(float32(origin.X), float32(origin.Y)),
 		Scale:  scale,
 	}

@@ -11,15 +11,15 @@ package w32
 
 import "sync/atomic"
 
-// comAddRef increments a COM reference count and returns the new count, matching IUnknown::AddRef semantics.
-func comAddRef(count *int32) uintptr {
+// ComAddRef increments a COM reference count and returns the new count, matching IUnknown::AddRef semantics.
+func ComAddRef(count *int32) uintptr {
 	return uintptr(atomic.AddInt32(count, 1))
 }
 
-// comRelease decrements a COM reference count, matching IUnknown::Release semantics. It returns the remaining count
+// ComRelease decrements a COM reference count, matching IUnknown::Release semantics. It returns the remaining count
 // and whether this call dropped the final reference, in which case the caller must perform its cleanup — exactly one
 // concurrent releaser observes final == true, so cleanup cannot run twice even with a misbehaving client.
-func comRelease(count *int32) (remaining uintptr, final bool) {
+func ComRelease(count *int32) (remaining uintptr, final bool) {
 	n := atomic.AddInt32(count, -1)
 	return uintptr(n), n == 0
 }
