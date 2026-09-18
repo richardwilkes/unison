@@ -748,6 +748,7 @@ type panickingObject struct{}
 func (panickingObject) Interfaces() []*Interface { panic("Interfaces blew up") }
 
 func TestPanicsInExportedCodeCostOnlyTheOneCall(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	t.Parallel()
 	c := check.New(t)
 	b := newFakeBus(t)

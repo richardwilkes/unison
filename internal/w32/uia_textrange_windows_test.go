@@ -132,10 +132,16 @@ func TestUIATextRangeVtblSlotOrder(t *testing.T) {
 	out := uiaSlotScratch(&pin)
 	w, r := uiaTextRangeWindow(t, 12, 16)
 
-	// 0: Clone.
+	// 0: Clone. The clone is handed back to Compare and CompareEndpoints below, and a range only answers for one it
+	// can find among those something still holds a reference to, so the reference the clone came with is given back
+	// after those two calls rather than here.
 	c.Equal(COM_S_OK, uiaCallRangeSlot(r, 0, out.fresh()))
-	clone := uiaRangeFromOut(c, out.ptr())
-	c.NotNil(clone)
+	clone := uiaLookupRange(out.ptr())
+	c.NotNil(clone, "the out-parameter must hold a range this process created")
+	if clone == nil {
+		return
+	}
+	defer clone.release()
 	start, end := clone.offsets()
 	c.Equal(12, start, "Clone")
 	c.Equal(16, end)
