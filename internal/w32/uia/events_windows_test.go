@@ -331,11 +331,15 @@ func TestRaiseToggleState(t *testing.T) {
 	c.Equal(int32(ToggleState_Off), r.at(0).New.Int32())
 }
 
-// TestRaiseTextEdit verifies what an edit to a text field says: the value it changed to, reported as the Value
-// pattern's property, since that is where a client reads the text from, and nothing else. Neither of UI Automation's
-// text events is raised — they belong to the Text pattern, which a field answers NULL for, so a client that responded
-// to one would have nothing to read — and the caret moving reports nothing at all. TestTextEventsRaised covers the
-// element that does hand out the pattern: a document.
+// TestRaiseTextEdit verifies what an edit to a text field says, which is every channel the field has and each of them
+// once, all raised on the field's own provider: the value it changed to, reported as the Value pattern's property,
+// since that is where a client reading the field whole looks for the text; UI Automation's TextChanged event, which
+// tells a client reading it through ITextProvider to read again; and TextSelectionChanged for the caret that followed
+// the edit, which is what NVDA moves its own cursor by. A field hands out both the Value and the Text pattern over the
+// same content, so a client watching either has to be told. The diff describes the one edit as a value change plus
+// the deletion and insertion that made it plus the caret move, and all of that collapses to these three.
+// TestDecideRaisesText covers the decision itself; this verifies what reaches the client, with the variants a property
+// change carries. TestTextEventsRaised covers a document, which has the text events and no value.
 func TestRaiseTextEdit(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
@@ -348,13 +352,20 @@ func TestRaiseTextEdit(t *testing.T) {
 	w.Publish(cur, accessibility.Diff(old, cur))
 
 	field := w.providerFor(2).Unknown()
-	c.Equal(1, r.count())
+	c.Equal(3, r.count())
 	c.Equal(RaiseProperty, r.at(0).Kind)
 	c.Equal(field, r.at(0).Provider)
 	c.Equal(PropertyID(30045), r.at(0).Property)
 	c.Equal(VT_BSTR, r.at(0).Old.VT)
 	c.Equal("hello", r.at(0).Old.Str)
+	c.Equal(VT_BSTR, r.at(0).New.VT)
 	c.Equal("help", r.at(0).New.Str)
+	c.Equal(RaiseEvent, r.at(1).Kind)
+	c.Equal(field, r.at(1).Provider)
+	c.Equal(Text_TextChangedEventId, r.at(1).Event)
+	c.Equal(RaiseEvent, r.at(2).Kind)
+	c.Equal(field, r.at(2).Provider)
+	c.Equal(Text_TextSelectionChangedEventId, r.at(2).Event)
 }
 
 // TestRaiseFocus verifies that the focus moving inside a window is reported on the element that took it, and only
