@@ -100,8 +100,34 @@ func (l *Label) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 // drawable is all it holds, and one that nothing describes is skipped: see axDescribeStaticContent, which Tag and
 // DrawablePanel share. An explicitly set role is left alone, which is how NewLink turns a label into a link and how
 // Markdown turns one into a heading.
+//
+// Static text also carries the text itself, along with the one line it was drawn on, so that a screen reader can read
+// it by line, by word and by character and put its review cursor where each character actually is. That is the text
+// that was drawn, even when the application has given the label a name of its own: the lines and the styled runs index
+// the drawn runes, and reporting them against words that were never on the screen would put every highlight and every
+// review cursor in the wrong place. Both the runes and the line are asked for through Self, so a widget built by
+// embedding a *Label and drawing words of its own publishes those words rather than the ones the label beneath it
+// holds; see axTextLiner. A label showing only an image, and one nothing describes, have no text to carry.
+// See role.Enum.IsText, which is what decides that a role reads as a body of text — a link does not, since it is
+// announced by its name and followed.
 func (l *Label) ProvideAccessibility(b *AccessibilityBuilder) {
 	axDescribeStaticContent(b, l.String(), l.Drawable != nil)
+	node := b.Node()
+	if !node.Ignored && node.Role.IsText() {
+		// Asked for through Self, since a widget built by embedding a *Label may draw other words, or draw them
+		// somewhere other than where a plain label would, and shadow axTextLine to say so — a column header shrunk by
+		// its sort indicator does. Calling the label's own method here would publish what the label would have drawn
+		// rather than what is on the screen, which is where every highlight and review cursor would then be put. The
+		// runes that come back are what the text is built from as well, since the line boundaries, the advances and
+		// the styled runs all index them, and taking the text from the label instead would leave every offset an
+		// adapter derives addressing a different string. See axTextLiner.
+		liner, ok := l.Self.(axTextLiner)
+		if !ok {
+			liner = l
+		}
+		runes, decorations, line := liner.axTextLine()
+		node.Text = axStaticTextInfo(string(runes), decorations, line)
+	}
 }
 
 // axTextOrigin returns the top-left corner of the text this label draws, in the label's own coordinates. It is where
@@ -121,24 +147,7 @@ func (l *Label) axTextOrigin() geom.Point {
 // A label holding no text still occupies a line, since it is still as tall as one and a caret can sit in it: the line
 // carries the single advance that says where that caret goes and covers no runes at all.
 func (l *Label) axTextLine() (runes []rune, decorations []*TextDecoration, line accessibility.Line) {
-	_, _, textPt, txtSize := labelPlacement(l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.Drawable,
-		l.Side, l.Gap)
-	var widths []float32
-	if l.Text != nil {
-		runes = l.Text.runes
-		decorations = l.Text.decorations
-		widths = l.Text.widths
-	}
-	line.Advances = make([]float32, 0, len(widths)+1)
-	line.Advances = append(line.Advances, 0)
-	var x float32
-	for _, w := range widths {
-		x += w
-		line.Advances = append(line.Advances, x)
-	}
-	line.End = len(runes)
-	line.Bounds = geom.NewRect(textPt.X, textPt.Y, txtSize.Width, txtSize.Height)
-	return runes, decorations, line
+	return axStaticTextLine(l.ContentRect(false), l.HAlign, l.VAlign, l.Font, l.Text, l.Drawable, l.Side, l.Gap)
 }
 
 // LabelContentSizes returns the preferred size of a label, as well as the preferred size of the text within the label.

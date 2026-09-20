@@ -562,7 +562,7 @@ func (p *Provider) propertyValue(tree *accessibility.Tree, node *accessibility.N
 		// The Value pattern's property, answered here as well so that a client reading it through GetPropertyValue —
 		// which is how a cell's content is read while walking a row — is told what IValueProvider::get_Value would say.
 		// An element without the pattern answers nothing, since the property is not its to report.
-		if Patterns(node).Has(PatternValue) {
+		if ProvidesPattern(tree, node, PatternValue) {
 			// Always a BSTR, even for an empty value, which is what the pattern's getter answers with.
 			value.SetBSTR(ValueString(node))
 		}

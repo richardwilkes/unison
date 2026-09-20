@@ -540,12 +540,24 @@ func (o *nodeObject) getDefaultAttributes(call *dbus.Call) {
 // reaching outside the content is brought within it rather than refused, as [nodeObject.selectRange] refuses one: a
 // scroll leaves nothing behind for the client to be misled about, and refusing would leave a caret at the end of a
 // document off the bottom of the screen.
+//
+// A widget that cannot scroll to a range but can bring itself into view is asked to do that instead. A label is the
+// case this is for: its text is the one thing it draws, so bringing the whole of it into view puts the range the
+// caller asked about on the screen, and Orca — which makes this call after every caret move of its flat review —
+// would otherwise read a label that is scrolled off the bottom of the window without ever showing it.
 func (o *nodeObject) scrollSubstringTo(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
 		return
 	}
 	if !o.node.Actions.Has(accessibility.ScrollRangeIntoView) {
+		if o.node.Actions.Has(accessibility.ScrollIntoView) {
+			call.Reply(o.a.dispatch(accessibility.ActionRequest{
+				Node:   o.node.ID,
+				Action: accessibility.ScrollIntoView,
+			}))
+			return
+		}
 		call.Reply(false)
 		return
 	}

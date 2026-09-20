@@ -76,8 +76,9 @@ type Panel struct {
 	disabled         bool
 	Hidden           bool
 	TooltipImmediate bool
-	// axFocusable marks a panel that takes the keyboard focus only while an assistive technology is being served, and
-	// only on the platforms whose screen readers need it to. See Panel.axTakesFocus.
+	// axFocusable marks a panel that asked to take the keyboard focus only while an assistive technology is being
+	// served, and only on the platforms whose screen readers need it to. A heading does the same without the flag,
+	// since being one is enough to say so. See Panel.axTakesFocus.
 	axFocusable bool
 }
 
@@ -514,36 +515,104 @@ func (p *Panel) RequestFocus() {
 }
 
 // FirstFocusableChild returns the first focusable child or nil. Hidden subtrees are skipped.
+//
+// Three tiers are tried in turn, the same three seedFocus chooses a window's initial focus by. A panel that is a tab
+// stop in its own right comes first, since that is where the keyboard belongs. Next comes one that asked for the focus
+// for an assistive technology's sake through Panel.axFocusable — a document, which is where a screen reader has to
+// begin reading, but which swallows typing that was meant for a field. Last comes anything else that can take the
+// focus, which on the platforms where axHeadingsTakeFocus is true means a heading; it is returned only when nothing
+// else in the subtree can take the focus at all, so that landing on it is a last resort rather than the first stop.
+// Window.SetFocus comes through here for a container, and DockContainer.AcquireFocus takes that path on every dock tab
+// switch, so the subtree is walked once and the best match of each tier is recorded as it goes.
 func (p *Panel) FirstFocusableChild() *Panel {
+	tabStop, reader, other := p.firstFocusableChild()
+	switch {
+	case tabStop != nil:
+		return tabStop
+	case reader != nil:
+		return reader
+	default:
+		return other
+	}
+}
+
+// firstFocusableChild walks the subtree in order, returning the first descendant of each tier FirstFocusableChild
+// chooses between: a real tab stop, one focusable only for an assistive technology, and any focusable panel at all.
+// The walk stops as soon as a tab stop is found, since nothing later can beat it.
+func (p *Panel) firstFocusableChild() (tabStop, reader, other *Panel) {
 	for _, child := range p.children {
 		if child.Hidden {
 			continue
 		}
 		if child.Focusable() {
-			return child
+			if child.focusable {
+				return child, reader, other
+			}
+			if reader == nil && child.axFocusable {
+				reader = child
+			}
+			if other == nil {
+				other = child
+			}
 		}
-		if found := child.FirstFocusableChild(); found != nil {
-			return found
+		foundTabStop, foundReader, foundOther := child.firstFocusableChild()
+		if foundTabStop != nil {
+			return foundTabStop, reader, other
+		}
+		if reader == nil {
+			reader = foundReader
+		}
+		if other == nil {
+			other = foundOther
 		}
 	}
-	return nil
+	return nil, reader, other
 }
 
-// LastFocusableChild returns the last focusable child or nil. Hidden subtrees are skipped.
+// LastFocusableChild returns the last focusable child or nil. Hidden subtrees are skipped. The same three tiers
+// FirstFocusableChild chooses between are applied, scanned from the other end.
 func (p *Panel) LastFocusableChild() *Panel {
+	tabStop, reader, other := p.lastFocusableChild()
+	switch {
+	case tabStop != nil:
+		return tabStop
+	case reader != nil:
+		return reader
+	default:
+		return other
+	}
+}
+
+// lastFocusableChild is firstFocusableChild scanned from the other end.
+func (p *Panel) lastFocusableChild() (tabStop, reader, other *Panel) {
 	for i := len(p.children) - 1; i >= 0; i-- {
 		child := p.children[i]
 		if child.Hidden {
 			continue
 		}
 		if child.Focusable() {
-			return child
+			if child.focusable {
+				return child, reader, other
+			}
+			if reader == nil && child.axFocusable {
+				reader = child
+			}
+			if other == nil {
+				other = child
+			}
 		}
-		if found := child.LastFocusableChild(); found != nil {
-			return found
+		foundTabStop, foundReader, foundOther := child.lastFocusableChild()
+		if foundTabStop != nil {
+			return foundTabStop, reader, other
+		}
+		if reader == nil {
+			reader = foundReader
+		}
+		if other == nil {
+			other = foundOther
 		}
 	}
-	return nil
+	return nil, reader, other
 }
 
 // PanelAt returns the leaf-most child panel containing the point, or this panel if no child is found.

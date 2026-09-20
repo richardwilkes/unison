@@ -19,12 +19,16 @@ import (
 	"github.com/richardwilkes/unison/internal/textunit"
 )
 
-// This file is the whole of the Text pattern's arithmetic: how a document's composed stream divides into the
-// characters, words, lines, paragraphs and formatting runs an assistive technology reads it in, what a range of it says
-// about itself, and where on screen it is. Like map.go and patterns.go it is a pure function of the snapshot —
-// nothing here touches the OS, allocates COM memory or depends on which thread it runs on — so the file carries no
-// build constraint and its tests run on any platform. text_windows.go and textrange_windows.go do nothing but
-// turn these answers into COM out-parameters.
+// This file is the whole of the Text pattern's arithmetic: how the text an element hands the pattern out over divides
+// into the characters, words, lines, paragraphs and formatting runs an assistive technology reads it in, what a range
+// of it says about itself, and where on screen it is. UI Automation calls whatever a Text pattern is answered from
+// that pattern's document, which is the sense "document" is used in throughout this file and the two Windows files
+// beside it: it is a Markdown view's composed stream in one case and a field's or a label's own text in another, and
+// none of the arithmetic here can tell the difference.
+//
+// Like map.go and patterns.go it is a pure function of the snapshot — nothing here touches the OS, allocates COM
+// memory or depends on which thread it runs on — so the file carries no build constraint and its tests run on any
+// platform. text_windows.go and textrange_windows.go do nothing but turn these answers into COM out-parameters.
 //
 // Every offset here is a rune index into the stream, which is what accessibility.TextInfo measures in and what both
 // other adapters use. UI Automation counts in UTF-16 code units in one place only — the maximum length GetText is given
@@ -34,8 +38,10 @@ import (
 // the unit they divide it into.
 const textUnitCount = int(TextUnit_Document) + 1
 
-// textDocument is the view of one Document node's composed stream that the Text pattern answers from: the stream's
-// runes, the offsets every unit begins at, the elements that occupy parts of it, and where its lines are on screen.
+// textDocument is the view of one element's text that the Text pattern answers from: the stream's runes, the offsets
+// every unit begins at, the elements that occupy parts of it, and where its lines are on screen. The element is a
+// Markdown view answering from its composed stream, or a field, a label, a heading or a cell answering from its own
+// text; textInfoOf is what picks between the two, and nothing below this line depends on which it was.
 //
 // It is immutable once built, which is what lets one be shared by the arbitrary threads UI Automation calls in on and
 // remembered for the snapshot it was built from; see memoizedTextDocument. Everything it needs is worked out up
@@ -43,8 +49,9 @@ const textUnitCount = int(TextUnit_Document) + 1
 // every answer, and the whole point of remembering one is that a client reading a document asks the same few questions
 // thousands of times.
 //
-// A view is built only for a Document that actually carries a stream. A Document without one hands out no Text pattern
-// at all (see rolePatterns), so nothing here is ever reached for it.
+// A view is built only for an element that actually hands the pattern out. An element that carries no text, and a
+// block whose text a document has already claimed, hand out no Text pattern at all (see rolePatterns and
+// ProvidedPatterns), so nothing here is ever reached for them.
 type textDocument struct {
 	tree       *accessibility.Tree
 	node       *accessibility.Node
@@ -55,6 +62,7 @@ type textDocument struct {
 	visible    geom.Rect
 	length     int
 	focused    bool
+	readOnly   bool
 }
 
 // span is one element's stretch of a document's stream, along with where it sits among the others. It is the
@@ -68,12 +76,90 @@ type span struct {
 	parent int
 }
 
-// newTextDocument builds the view of a Document node's stream, or nil when the node carries none.
-func newTextDocument(t *accessibility.Tree, n *accessibility.Node) *textDocument {
-	if t == nil || n == nil || n.Document == nil {
+// ownsText reports whether a node carries a body of text of its own: one of the roles that is read as text, with the
+// text information actually filled in. It is half of what grants the Text pattern — the other half is that no
+// document has already claimed the text; see textInfoOf — and it is deliberately a question about the node alone, so
+// that the pattern table can be written without a tree.
+//
+// A Document is not answered by this, although role.Document is one of the roles role.IsText names. Its stream lives
+// in Node.Document rather than in Node.Text, and a Document that carries a stream hands the pattern out on that ground
+// alone; see the Document arm of rolePatterns, which never consults textPatterns. Excluding the role here is what
+// keeps a Document that somehow also carried text of its own from being granted the pattern twice over.
+//
+// A Protected node owns no text, whatever it carries. The snapshot normally fills in neither the value nor the text of
+// an obscured field, but AccessibilityInfo.Callback runs last and may set the flag on a node whose text is already
+// there, and a Text pattern over that text would read a password out by line, word and character. Refusing it here is
+// the second line of that defense, exactly as the same test at the head of ValueString is for the Value pattern: the
+// pattern is neither advertised — see textPatterns — nor served, since textInfoOf asks this before answering with the
+// node's own text.
+func ownsText(n *accessibility.Node) bool {
+	return n != nil && n.Text != nil && !n.Protected && n.Role.IsText() && n.Role != role.Document
+}
+
+// textInfoOf returns the text an element hands the Text pattern out over, or nil when it hands out no pattern at all.
+// A Document answers with the stream its blocks were composed into, and everything else with the text it carries
+// itself: a field's content, a label's or a heading's drawn words, the text of a table cell or a column header.
+//
+// Which of the two is answered is decided by the role, exactly as the grant in rolePatterns is, so that the two cannot
+// disagree about a node. A Document is read from its stream and from nothing else — one with no stream hands out no
+// pattern, so it answers with nothing here however its Text field is filled in — and a node of any other role is read
+// from its own text, so a composed stream hung on a role that is not a Document is not answered with either, since
+// nothing would hand a pattern out over it.
+//
+// A block a document has claimed answers with nothing. The words of a paragraph inside a Markdown view are already
+// part of that view's stream, and a second Text pattern over the same words — with its own offsets, its own caret and
+// its own idea of where the text ends — would have a client read them twice and reconcile two answers that cannot be
+// reconciled. Such a block hands out TextChild instead, which points back at the document and at the stretch of it
+// the block occupies; see ProvidedPatterns. A Document is never such a block: textContainerFor answers nothing for a
+// node carrying a stream of its own, since a document's stream is never composed into another document's.
+//
+// It must never be called while snapshotMemo.lock is held: textContainerFor takes that lock to reach the snapshot's
+// index of spans. Both of the paths memoizedTextDocument reaches it by — its two calls to newTextDocument — run
+// outside the lock for exactly this reason, and its own guard asks mayOwnText instead, which walks nothing.
+func textInfoOf(t *accessibility.Tree, n *accessibility.Node) *accessibility.TextInfo {
+	if !mayOwnText(n) {
 		return nil
 	}
-	d := &textDocument{tree: t, node: n, info: &n.Document.Text}
+	if n.Role == role.Document {
+		return &n.Document.Text
+	}
+	if textContainerFor(t, n) != 0 {
+		return nil
+	}
+	return n.Text
+}
+
+// mayOwnText reports whether a node carries text a Text pattern could be handed out over, deciding it from the node
+// alone: a Document with a stream, or anything else that owns text of its own. It is textInfoOf's answer minus the one
+// question that cannot be answered from the node — whether a document has claimed the words, which costs a walk of the
+// node's ancestors — so a node it refuses hands out no Text pattern, while one it accepts may still be refused by
+// textInfoOf.
+//
+// It exists so that the cheap half of that decision can be taken first. A client reading a window by character or by
+// word asks for the text view thousands of times per say-all, and everything that is not a piece of text — a button, a
+// panel, an image — is rejected here in constant time rather than by a walk that can only come out the same way; see
+// memoizedTextDocument, whose guard this is.
+func mayOwnText(n *accessibility.Node) bool {
+	if n == nil {
+		return false
+	}
+	if n.Role == role.Document {
+		return n.Document != nil
+	}
+	return ownsText(n)
+}
+
+// newTextDocument builds the view of one element's text, or nil when the element hands out no Text pattern to answer
+// from. See textInfoOf for which text that is.
+func newTextDocument(t *accessibility.Tree, n *accessibility.Node) *textDocument {
+	if t == nil || n == nil {
+		return nil
+	}
+	info := textInfoOf(t, n)
+	if info == nil {
+		return nil
+	}
+	d := &textDocument{tree: t, node: n, info: info, readOnly: IsValueReadOnly(n)}
 	d.runes = []rune(d.info.Text)
 	d.length = len(d.runes)
 	d.visible = visibleBounds(t, n)
@@ -116,9 +202,18 @@ func reportedSpans(t *accessibility.Tree, spans []accessibility.TextSpan) []span
 	return reported
 }
 
-// memoizedTextDocument returns the view of one Document node's stream, working it out and remembering it whenever
-// snapshotMemo does not already hold one for this snapshot. It answers nil for a node that is not a Document or
-// carries no stream.
+// memoizedTextDocument returns the view of one element's text, working it out and remembering it whenever
+// snapshotMemo does not already hold one for this snapshot. It answers nil for a node that hands out no Text pattern
+// to be answered from; see textInfoOf.
+//
+// Only the node-local half of that question is asked here, and only to reject outright the elements that carry no text
+// at all. The other half — whether a document has claimed the words — costs a walk of the node's ancestors, so it is
+// left to newTextDocument, which asks textInfoOf in full and answers nil for a claimed block, and is reached only when
+// the memo is not already holding this element's view. That keeps a memo hit constant-time, which is the whole point
+// of the memo: a client reading by character or by word asks for the view on every GetText, Move and
+// GetBoundingRectangles, thousands of times per say-all, and a label deep inside a form would otherwise pay a parent
+// chain walk for each of them. The walk is also why the guard cannot simply be textInfoOf: textContainerFor takes the
+// memo's lock, so it must be asked before the lock is taken, which the two calls to newTextDocument are.
 //
 // A snapshot the memo will not serve is answered from itself, outside the lock and remembering nothing, exactly as the
 // memo's other answers are; see memoSwitchTo for which snapshots those are and why.
@@ -133,7 +228,7 @@ func memoizedTextDocument(t *accessibility.Tree, id accessibility.NodeID) *textD
 		return nil
 	}
 	node := t.Node(id)
-	if node == nil || node.Document == nil {
+	if !mayOwnText(node) {
 		return nil
 	}
 	snapshotMemo.lock.Lock()
@@ -150,6 +245,11 @@ func memoizedTextDocument(t *accessibility.Tree, id accessibility.NodeID) *textD
 		return held
 	}
 	doc := newTextDocument(t, node)
+	if doc == nil {
+		// The words belong to a document that has claimed them, so this element hands out no Text pattern after all
+		// and there is nothing to remember; see textInfoOf.
+		return nil
+	}
 	snapshotMemo.lock.Lock()
 	defer snapshotMemo.lock.Unlock()
 	if !memoSwitchTo(t) {
@@ -178,7 +278,8 @@ func memoizedTextDocument(t *accessibility.Tree, id accessibility.NodeID) *textD
 // invent a range.
 //
 // A Document itself never reports the pattern. It is the text container rather than a child of one, and it hands out
-// the Text pattern instead.
+// the Text pattern instead. A claimed element does not hand out the Text pattern either, even when it carries text of
+// its own: the two are exclusive, and the document is the one that answers for the words; see textInfoOf.
 func textContainerFor(t *accessibility.Tree, n *accessibility.Node) accessibility.NodeID {
 	if t == nil || n == nil || n.Document != nil {
 		return 0
@@ -338,7 +439,7 @@ func visibleBounds(t *accessibility.Tree, n *accessibility.Node) geom.Rect {
 	return bounds
 }
 
-// Node returns the Document node this view describes.
+// Node returns the element whose text this view describes.
 func (d *textDocument) Node() *accessibility.Node {
 	return d.node
 }
@@ -392,10 +493,10 @@ func (d *textDocument) Focused() bool {
 	return d.focused
 }
 
-// SupportedSelection returns what kind of selection the document allows, which is the answer to
-// ITextProvider::get_SupportedTextSelection. A document that does not offer the SetTextSelection action has no caret to
-// place — a Markdown view only accepts one while it can take the focus — so a client must be told it cannot select, not
-// left to discover it when Select fails.
+// SupportedSelection returns what kind of selection the element allows, which is the answer to
+// ITextProvider::get_SupportedTextSelection. An element that does not offer the SetTextSelection action has no caret
+// to place — a label never accepts one — so a client must be told it cannot select, not left to discover it when
+// Select fails.
 func (d *textDocument) SupportedSelection() SupportedTextSelection {
 	if d.node.Actions.Has(accessibility.SetTextSelection) {
 		return SupportedTextSelection_Single
@@ -513,12 +614,13 @@ func textEndpointValid(endpoint TextPatternRangeEndpoint) bool {
 //   - Word: the divisions internal/textunit defines, so that a word is the same stretch of text here as it is on AT-SPI
 //     — the same screen readers ask both, and an answer that differed would have one desktop read a document
 //     differently from the next.
-//   - Line: where the layout wrapped, which is what the snapshot's Lines record. A document whose lines were never
+//   - Line: where the layout wrapped, which is what the snapshot's Lines record. Text whose lines were never
 //     measured falls back to its paragraphs, since a line a client cannot be told the extent of is worse than a
-//     paragraph it can.
+//     paragraph it can. A label draws one line and records it, so its line and its paragraph are the same stretch.
 //   - Paragraph: the line feeds the stream joins its blocks with, plus the start of every block and container that
 //     occupies text. The second half is what makes a heading, a code block, a table cell and a list item each their own
-//     paragraph even where the composition put no line feed between them.
+//     paragraph even where the composition put no line feed between them. Text with no spans — everything but a
+//     document's stream — divides on its line feeds alone.
 //   - Format: where the styling changes, which is every run boundary, plus every span boundary — a link, an image or a
 //     block beginning or ending is a change of formatting as far as a client walking the runs of a document is
 //     concerned, and it is where the attributes this file answers can change.
@@ -886,8 +988,9 @@ func (d *textDocument) lineRect(line *accessibility.Line, from, to int) geom.Rec
 }
 
 // EnclosingSpan returns the id of the element ITextRangeProvider::GetEnclosingElement reports for a range: the
-// innermost element whose own stretch of the stream covers the whole range. The document itself is the answer when no
-// element's does, since the document encloses all of its text.
+// innermost element whose own stretch of the stream covers the whole range. The element the view belongs to is the
+// answer when no other one's does, since it encloses all of its own text — which is the only answer there ever is for
+// text that has no spans within it, such as a field's or a label's.
 //
 // A degenerate range is treated as the character that follows it, which is the element a caret sitting there is in.
 // That is what makes GetEnclosingElement useful to a client reading with the caret: it is how the link, image or block
@@ -1109,9 +1212,12 @@ func (d *textDocument) attributeAt(offset int, attr TextAttributeID) attribute {
 	case StrikethroughStyleAttributeId:
 		return attribute{Kind: attributeInteger, Int: int32(lineStyle(run != nil && run.Strikethrough))}
 	case IsReadOnlyAttributeId:
-		// Every document this adapter presents is read-only: a Markdown view lets a person select and read its text,
-		// never edit it, and an editable control reports its content through the Value pattern instead.
-		return attribute{Kind: attributeBoolean, Bool: true}
+		// Whether the text can be typed into, which is the same question IValueProvider::get_IsReadOnly answers and is
+		// answered from the same place: a Markdown view and a label let a person read and select their text but never
+		// edit it, while a field's text is exactly what the user is there to change. A client uses this to decide
+		// whether to announce a stretch of text as editable, so answering "read-only" for a field would have a screen
+		// reader describe the control the user is typing in as one that cannot be typed in.
+		return attribute{Kind: attributeBoolean, Bool: d.readOnly}
 	case IsHiddenAttributeId:
 		// Nothing in a stream is hidden: the composition leaves out what is not drawn, so text that is in the stream at
 		// all is text a person could read.
@@ -1171,35 +1277,49 @@ func (d *textDocument) runAt(offset int) *accessibility.TextRun {
 //
 // It is the innermost element covering the offset that has a style of its own that decides, rather than simply the
 // innermost element: a link inside a heading is still heading text, and a paragraph inside a list item is still part of
-// a list. Text no element claims a style for is body text, which is what Normal means.
+// a list. The element the view belongs to is the last word, which is what makes a heading label answer Heading over
+// the whole of its own text: it has no spans at all, so nothing else would ever say what the text is. Text no element
+// claims a style for is body text, which is what Normal means.
 func (d *textDocument) styleAt(offset int) (style StyleID, name string) {
 	for i := len(d.spans) - 1; i >= 0; i-- {
 		sp := &d.spans[i]
 		if sp.start > offset || sp.end <= offset {
 			continue
 		}
-		n := d.tree.Node(sp.node)
-		if n == nil {
-			continue
-		}
-		switch n.Role {
-		case role.Heading:
-			return headingStyle(n.Level), ""
-		case role.BlockQuote:
-			return StyleId_Quote, ""
-		case role.Code:
-			// UI Automation has no style identifier for preformatted source, so it is a custom style with a name. A
-			// client speaks the name, which is how "Code" is announced at all.
-			return StyleId_Custom, "Code"
-		case role.ListItem:
-			// Every list item reports the bulleted style. A snapshot does not record whether a list is numbered — the
-			// number is drawn into the item's own text, where a person reads it — so reporting NumberedList for some of
-			// them would be a guess.
-			return StyleId_BulletedList, ""
-		default:
+		if s, n, ok := blockStyle(d.tree.Node(sp.node)); ok {
+			return s, n
 		}
 	}
+	if s, n, ok := blockStyle(d.node); ok {
+		return s, n
+	}
 	return StyleId_Normal, ""
+}
+
+// blockStyle returns the style one element's text is in, along with the name of that style when UI Automation has no
+// identifier for it, and whether the element has a style of its own at all. An element that has none leaves the
+// question to whatever encloses it; see styleAt.
+func blockStyle(n *accessibility.Node) (style StyleID, name string, ok bool) {
+	if n == nil {
+		return StyleId_Normal, "", false
+	}
+	switch n.Role {
+	case role.Heading:
+		return headingStyle(n.Level), "", true
+	case role.BlockQuote:
+		return StyleId_Quote, "", true
+	case role.Code:
+		// UI Automation has no style identifier for preformatted source, so it is a custom style with a name. A
+		// client speaks the name, which is how "Code" is announced at all.
+		return StyleId_Custom, "Code", true
+	case role.ListItem:
+		// Every list item reports the bulleted style. A snapshot does not record whether a list is numbered — the
+		// number is drawn into the item's own text, where a person reads it — so reporting NumberedList for some of
+		// them would be a guess.
+		return StyleId_BulletedList, "", true
+	default:
+		return StyleId_Normal, "", false
+	}
 }
 
 // headingStyle returns the style identifier for a heading of the given level. UI Automation defines nine, so a

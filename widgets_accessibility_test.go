@@ -345,11 +345,37 @@ func TestLabelAccessibility(t *testing.T) {
 	c.Equal(role.Label, textNode.Role)
 	c.Equal("Some text", textNode.Name)
 	c.False(textNode.Ignored)
+	c.True(textNode.Text != nil, "static text is read by line, word and character, so it carries its text")
+	if textNode.Text != nil {
+		c.Equal("Some text", textNode.Text.Text)
+		c.False(textNode.Text.Multiline, "a label is one line by definition")
+		c.Equal(1, len(textNode.Text.Lines), "a label was drawn on exactly one line")
+		if len(textNode.Text.Lines) == 1 {
+			line := textNode.Text.Lines[0]
+			c.Equal(0, line.Start)
+			c.Equal(9, line.End)
+			c.Equal(10, len(line.Advances), "one offset per rune boundary")
+			axCheckLine(c, line)
+			c.True(line.Bounds.Height > 0, "the line is as tall as the text drawn on it")
+			c.True(line.Bounds.X >= 0 && line.Bounds.Y >= 0 &&
+				line.Bounds.Right() <= textNode.Bounds.Width && line.Bounds.Bottom() <= textNode.Bounds.Height,
+				"the line is where the label drew it, in the label's own coordinates: %v within %v", line.Bounds,
+				textNode.Bounds)
+		}
+		c.Equal(1, len(textNode.Text.Runs), "the whole of it was drawn in one style")
+		if len(textNode.Text.Runs) == 1 {
+			run := textNode.Text.Runs[0]
+			c.Equal(0, run.Start)
+			c.Equal(9, run.End)
+			c.Equal(unison.LabelFont.Descriptor().Family, run.Family)
+		}
+	}
 
 	imageNode := axMustNode(c, screen.AccessibilityNodeFor(image))
 	c.Equal(role.Image, imageNode.Role, "a label holding only a drawable is an image")
 	c.Equal("A trash can", imageNode.Name)
 	c.False(imageNode.Ignored)
+	c.True(imageNode.Text == nil, "there are no words in a picture to read")
 
 	unnamedNode := axMustNode(c, screen.AccessibilityNodeFor(unnamedImage))
 	c.Equal(role.Image, unnamedNode.Role)
@@ -364,19 +390,128 @@ func TestLabelAccessibility(t *testing.T) {
 
 	emptyNode := axMustNode(c, screen.AccessibilityNodeFor(empty))
 	c.True(emptyNode.Ignored, "a label with nothing in it is not worth announcing")
+	c.True(emptyNode.Text == nil, "an empty label offers a reading cursor nothing to move through")
 
 	tagNode := axMustNode(c, screen.AccessibilityNodeFor(tag))
 	c.Equal(role.Label, tagNode.Role, "a tag is the text inside its bubble")
 	c.Equal("New", tagNode.Name)
+	c.True(tagNode.Text != nil, "the words in a bubble are read like any others")
+	if tagNode.Text != nil {
+		c.Equal("New", tagNode.Text.Text)
+		c.Equal(1, len(tagNode.Text.Lines))
+		if len(tagNode.Text.Lines) == 1 {
+			// The line is measured over the rect DefaultDraw hands to DrawLabel, which is the content rect narrowed
+			// by the inset the bubble keeps on either side, so the words start inside the bubble rather than at its
+			// edge. See Tag.ProvideAccessibility.
+			lineBounds := tagNode.Text.Lines[0].Bounds
+			c.True(lineBounds.X >= tag.SideInset,
+				"the text starts inside the bubble's inset: %v within %v with an inset of %v", lineBounds,
+				tagNode.Bounds, tag.SideInset)
+			c.True(lineBounds.Width <= tagNode.Bounds.Width-tag.SideInset*2,
+				"and is measured over the narrowed rect: %v within %v with an inset of %v", lineBounds,
+				tagNode.Bounds, tag.SideInset)
+		}
+	}
 
 	drawableTagNode := axMustNode(c, screen.AccessibilityNodeFor(drawableTag))
 	c.Equal(role.Image, drawableTagNode.Role, "a tag holding only a drawable is an image, not empty static text")
 	c.True(drawableTagNode.Ignored, "an image nothing has described is skipped")
+	c.True(drawableTagNode.Text == nil)
 
 	tippedTagNode := axMustNode(c, screen.AccessibilityNodeFor(tippedTag))
 	c.Equal(role.Image, tippedTagNode.Role)
 	c.Equal("Deprecated", tippedTagNode.Name, "a tag's tooltip names the drawable it holds")
 	c.False(tippedTagNode.Ignored)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestLabelAccessibilityTextIsWhatWasDrawn verifies that a label an application has renamed still reports the words it
+// actually drew as its text. The lines and runs index those runes, so text that said anything else would put every
+// highlight and review cursor somewhere the words are not.
+func TestLabelAccessibilityTextIsWhatWasDrawn(t *testing.T) {
+	c := check.New(t)
+	var renamed *unison.Label
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			renamed = unison.NewLabel()
+			renamed.SetTitle("3 of 7")
+			renamed.Accessibility.Name = "3 of 7 messages unread"
+			wnd = newHeadlessWindow(t, "renamed label", geom.NewRect(10, 10, 300, 120), axColumn(renamed))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(renamed))
+	c.Equal("3 of 7 messages unread", node.Name, "the application's name is what is announced")
+	c.True(node.Text != nil)
+	if node.Text != nil {
+		c.Equal("3 of 7", node.Text.Text, "the text is what was drawn")
+		c.Equal(1, len(node.Text.Lines))
+		if len(node.Text.Lines) == 1 {
+			c.Equal(6, node.Text.Lines[0].End, "the line covers the drawn runes, not the announced ones")
+			axCheckLine(c, node.Text.Lines[0])
+		}
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestLinkAccessibilityCarriesNoText verifies that a link is announced by its name and acted on rather than being read
+// as a body of text of its own, which on some platforms would have everything about it said twice.
+func TestLinkAccessibilityCarriesNoText(t *testing.T) {
+	c := check.New(t)
+	var link *unison.Label
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			link = unison.NewLink("Documentation", "", "https://example.com/docs", nil, nil)
+			wnd = newHeadlessWindow(t, "link text", geom.NewRect(10, 10, 300, 120), axColumn(link))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(link))
+	c.Equal(role.Link, node.Role)
+	c.True(node.Text == nil, "a link's words are its name, not a body of text to navigate")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestLabelHeadingAccessibility verifies that an application marks a heading by saying so and giving it a depth, that
+// the heading is still read as the text it draws, and that a callback may still have the last word on the depth.
+func TestLabelHeadingAccessibility(t *testing.T) {
+	c := check.New(t)
+	var heading, adjusted *unison.Label
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			heading = unison.NewLabel()
+			heading.SetTitle("Settings")
+			heading.Accessibility.Role = role.Heading
+			heading.Accessibility.Level = 2
+
+			adjusted = unison.NewLabel()
+			adjusted.SetTitle("Network")
+			adjusted.Accessibility.Role = role.Heading
+			adjusted.Accessibility.Level = 2
+			adjusted.Accessibility.Callback = func(node *accessibility.Node) { node.Level = 3 }
+
+			wnd = newHeadlessWindow(t, "headings", geom.NewRect(10, 10, 300, 200), axColumn(heading, adjusted))
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(heading))
+	c.Equal(role.Heading, node.Role)
+	c.Equal(2, node.Level, "the depth the application set is what is published")
+	c.Equal("Settings", node.Name)
+	c.True(node.Text != nil, "a heading is read as text as well as being announced")
+	if node.Text != nil {
+		c.Equal("Settings", node.Text.Text)
+		c.Equal(1, len(node.Text.Lines))
+	}
+
+	adjustedNode := axMustNode(c, screen.AccessibilityNodeFor(adjusted))
+	c.Equal(3, adjustedNode.Level, "a callback runs last and may still adjust the depth")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

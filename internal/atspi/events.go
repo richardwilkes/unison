@@ -92,6 +92,7 @@ const (
 	stateNamePressed            = "pressed"
 	stateNameReadOnly           = "read-only"
 	stateNameSelectable         = "selectable"
+	stateNameSelectableText     = "selectable-text"
 	stateNameSelected           = "selected"
 	stateNameSensitive          = "sensitive"
 	stateNameShowing            = "showing"
@@ -149,6 +150,15 @@ type publication struct {
 	roleAnnounced map[accessibility.NodeID]bool
 	// attributesAnnounced holds the nodes whose attributes have already been announced.
 	attributesAnnounced map[accessibility.NodeID]bool
+	// touched holds, in the order they were first mentioned, the nodes this publish has sent anything about, which is
+	// what [Adapter.emitInterfaceChanges] walks once every other signal has gone out.
+	touched []accessibility.NodeID
+	// touchedSeen holds the nodes already in touched, so a node named by several events is walked once.
+	touchedSeen map[accessibility.NodeID]bool
+	// interfacesAnnounced holds the nodes whose cache item this publish has already sent again because the interfaces
+	// their object implements moved, so that the pass at the end of the publish passes over what the pass at the start
+	// of it has already described.
+	interfacesAnnounced map[accessibility.NodeID]bool
 	// childrenAnnounced holds the parents whose child list has already been worked out, so that two events that both
 	// describe the same list — one per ignored container under a reported ancestor — walk it once.
 	childrenAnnounced map[accessibility.NodeID]bool
@@ -194,6 +204,22 @@ type heldSignal struct {
 	node    accessibility.NodeID
 	detail1 int32
 	detail2 int32
+}
+
+// touch records that this publish has said something about a node, so that [Adapter.emitInterfaceChanges] compares the
+// interfaces its object implements once every other signal has gone out. A window becoming active or losing the focus
+// names the window's own root, so the root is touched as routinely as anything inside the window is. The zero id is
+// not a node and is ignored: the one event that can carry it is the FocusChanged sent when nothing holds the focus at
+// all, which names no object to compare.
+func (p *publication) touch(id accessibility.NodeID) {
+	if id == 0 || p.touchedSeen[id] {
+		return
+	}
+	if p.touchedSeen == nil {
+		p.touchedSeen = make(map[accessibility.NodeID]bool)
+	}
+	p.touchedSeen[id] = true
+	p.touched = append(p.touched, id)
 }
 
 // priorFocus returns the node that held the keyboard focus before this publish, or zero if none did or there is no
@@ -339,10 +365,14 @@ func (a *Adapter) emitEvents(ws *windowState, prior, data *windowData, events []
 		// The companion focus is not one of the events: nothing in the schema reports it, so it is worked out from the
 		// two snapshots the adapter is holding; see [Adapter.emitCompanionFocusChanges].
 		a.emitCompanionFocusChanges(pub)
+		// A list that has gained an interface goes out before the signals that depend on it; see
+		// [Adapter.emitInterfaceGains].
+		a.emitInterfaceGains(pub, events)
 		for i := range events {
 			a.emitEvent(pub, &events[i])
 		}
 		a.emitHeld(pub)
+		a.emitInterfaceChanges(pub)
 	}
 	a.emitSelectionChanges(pub)
 	a.emitActiveDescendants(pub)
@@ -351,6 +381,7 @@ func (a *Adapter) emitEvents(ws *windowState, prior, data *windowData, events []
 // emitEvent sends the signals for one event.
 func (a *Adapter) emitEvent(pub *publication, ev *accessibility.Event) {
 	data := pub.data
+	pub.touch(ev.Node)
 	switch ev.Kind {
 	case accessibility.FocusChanged:
 		a.emitFocusChanged(pub, ev)
@@ -429,16 +460,168 @@ func (a *Adapter) emitAttributesChanged(pub *publication, id accessibility.NodeI
 	}
 }
 
+// emitInterfaceChanges sends a node's cache item again when this publish has moved the interfaces its object
+// implements. The interface list is not a property with a signal of its own: an assistive technology reads it once, out
+// of the cache item it was handed when the node arrived, and never asks again. A node is otherwise only given an item
+// when it joins the hierarchy, so an object that has gained or lost an interface while it stayed where it was would go
+// on being asked for what it can no longer answer, or never be asked for what it has gained, for the life of the
+// window.
+//
+// Any event can move a list, so every node this publish said anything about is compared rather than only the ones whose
+// attributes changed. org.a11y.atspi.Text moves for a label whose title is cleared or a field switched to Protected,
+// which arrives as an attribute change, but it also moves for a node whose textual value appears or disappears — a menu
+// button with nothing chosen yet, a list item or a table cell whose value is filled in, a color well that has been
+// given some ink — which arrives as nothing but a value change, and [Adapter.emitValueChanged] would otherwise send a
+// text-changed signal on an object whose advertised list has no text interface in it at all.
+// org.a11y.atspi.EditableText moves with a control being made read-only, which arrives as a state change.
+//
+// This pass runs after every per-node signal of the publish, and carries the lists that only lost an interface. A list
+// that gained one has already gone out, ahead of those signals; see [Adapter.emitInterfaceGains]. Leaving a loss until
+// the end costs nothing — a client that acts on a signal for an interface the object is about to stop implementing
+// merely does what it would have done a moment earlier — and it keeps the two properties the end of the publish is the
+// right place for: a node named by several events is described once, and the item goes out after the state changes,
+// since it carries the state set as well and a client that applies the retractions and the grants first and then takes
+// the item's own set is left holding what the object itself now reports, whichever of the two it goes by.
+//
+// Nothing is sent for a node whose arrival this publish has already announced, since the item that announced it
+// describes the node as it is now, and nothing for a node that either snapshot does not report, which has no pair of
+// lists to compare.
+func (a *Adapter) emitInterfaceChanges(pub *publication) {
+	a.emitInterfaceItems(pub, pub.touched, false)
+}
+
+// emitInterfaceGains sends the cache item of every node this publish is about to say something about whose object has
+// gained an interface, before any of those signals go out.
+//
+// libatspi answers atspi_accessible_get_interfaces out of the cached item and never asks the object again, so a client
+// processes each signal against the list it holds at that moment. A popup button that has just had an item chosen
+// gains org.a11y.atspi.Text and is announced with object:text-changed:insert in the same publish, and a client handed
+// the two the other way round queries the text interface of an object whose list does not hold it yet: Orca's
+// queryText() raises NotImplementedError and the insertion is dropped, leaving the chosen item unspoken until the next
+// value change. The gain therefore has to be on the wire first.
+//
+// Which nodes to compare is known before anything is emitted: the events name them, and [publication.touch] adds
+// nothing to that set beyond the nodes the per-node signals themselves reach. The pass is deliberately not folded into
+// [Adapter.emitInterfaceChanges], since the losses belong at the end of the publish for the reasons given there.
+func (a *Adapter) emitInterfaceGains(pub *publication, events []accessibility.Event) {
+	ids := make([]accessibility.NodeID, 0, len(events))
+	for i := range events {
+		ids = append(ids, events[i].Node)
+	}
+	a.emitInterfaceItems(pub, ids, true)
+}
+
+// emitInterfaceItems compares the interfaces the objects of the given nodes implement in the two snapshots and sends
+// the cache item again for each list that moved. When gainsOnly is set, only a list that has gained an interface is
+// sent; otherwise every list that moved and has not been sent already is.
+func (a *Adapter) emitInterfaceItems(pub *publication, ids []accessibility.NodeID, gainsOnly bool) {
+	for _, id := range pub.interfaceCandidates(ids) {
+		if pub.added[id] || pub.interfacesAnnounced[id] {
+			continue
+		}
+		prior, n := reportedNode(pub.prior, id), reportedNode(pub.data, id)
+		if prior == nil || n == nil {
+			continue
+		}
+		was := Interfaces(prior, pub.prior.isSpanTarget(id))
+		now := Interfaces(n, pub.data.isSpanTarget(id))
+		if slices.Equal(was, now) || (gainsOnly && !gainedInterface(was, now)) {
+			continue
+		}
+		a.emitInterfaceItem(pub, n)
+	}
+}
+
+// emitInterfaceItem sends a node's cache item again, which is the only way the interface list a client cached when the
+// node arrived can be replaced.
+//
+// The window's own root is described with its place among the application's windows rather than with
+// [windowData.indexInParent], which answers -1 for a node with no parent inside the window. The root is touched by
+// every publish that activates or deactivates the window, moves its bounds or renames it, so an item built the other
+// way would re-describe the window to the client as sitting nowhere. [Adapter.emitWindowAdded] describes it the same
+// way, and [Adapter.announceAdd] refuses a parentless node outright for the same reason.
+func (a *Adapter) emitInterfaceItem(pub *publication, n *accessibility.Node) {
+	if pub.interfacesAnnounced == nil {
+		pub.interfacesAnnounced = make(map[accessibility.NodeID]bool)
+	}
+	pub.interfacesAnnounced[n.ID] = true
+	at := pub.data.indexInParent(n.ID)
+	if pub.data.parent(n.ID) == 0 {
+		at = a.windowIndex(pub.ws)
+	}
+	a.emitCacheAdd((&nodeObject{a: a, data: pub.data, node: n}).cacheItem(at))
+}
+
+// gainedInterface reports whether the second list holds an interface the first did not, which is what makes a move one
+// a client has to be told about before the signals that depend on it rather than after them.
+func gainedInterface(was, now []string) bool {
+	for _, one := range now {
+		if !slices.Contains(was, one) {
+			return true
+		}
+	}
+	return false
+}
+
+// interfaceCandidates returns the nodes whose interface list this publish may have moved, given the nodes it has named.
+// Each named node is there, and so is every node either snapshot's text says occupies part of that node's text.
+//
+// The span targets are there because org.a11y.atspi.Hyperlink is the one interface a node gains or loses without any
+// event naming it: a link or an image within a paragraph is given it because the paragraph's text says where it sits,
+// so a paragraph whose spans moved takes the interface to or from nodes the publish said nothing about. The
+// AttributesChanged that [accessibility.Diff] produces for a container whose spans changed is what names the container
+// here.
+//
+// Zero is not a node and is dropped, and a node named twice is returned once, in the order first named, so that what
+// goes out is the same for the same publish however the events happened to arrive.
+func (p *publication) interfaceCandidates(ids []accessibility.NodeID) []accessibility.NodeID {
+	list := make([]accessibility.NodeID, 0, len(ids))
+	seen := make(map[accessibility.NodeID]bool, len(ids))
+	add := func(id accessibility.NodeID) {
+		if id == 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		list = append(list, id)
+	}
+	for _, id := range ids {
+		add(id)
+		for _, target := range spanTargets(p.prior, id) {
+			add(target)
+		}
+		for _, target := range spanTargets(p.data, id) {
+			add(target)
+		}
+	}
+	return list
+}
+
+// spanTargets returns the nodes a snapshot's text for one node says occupy part of it, which is what gives each of them
+// org.a11y.atspi.Hyperlink; see [windowData.isSpanTarget]. Only the node's own text is read, for the reason
+// [buildSpanIndex] gives.
+func spanTargets(d *windowData, id accessibility.NodeID) []accessibility.NodeID {
+	n := reportedNode(d, id)
+	if n == nil || n.Text == nil || len(n.Text.Spans) == 0 {
+		return nil
+	}
+	targets := make([]accessibility.NodeID, 0, len(n.Text.Spans))
+	for _, span := range n.Text.Spans {
+		targets = append(targets, span.Node)
+	}
+	return targets
+}
+
 // attributeStateChanges returns the AT-SPI states that a change to a node's attributes really is. Three of the things
 // [accessibility.AttributesChanged] covers are not attributes to AT-SPI at all: the orientation is the HORIZONTAL and
 // VERTICAL states that [roleStates] puts in every state set, the number of rows is what [ManagesDescendants] derives
-// MANAGES_DESCENDANTS from, and how many lines a control lays its text out over is the SINGLE_LINE and MULTI_LINE pair
-// that [lineState] decides. A client caches a state set until something retracts it, so leaving them out leaves a
-// scroll bar that has been turned on its side reported the old way for the life of the window, a table filtered down to
-// a handful of rows still claiming to manage descendants — while [Adapter.emitActiveDescendants], which reads the new
-// snapshot, stops sending anything about it, leaving the client with neither route to the current row — and a
-// single-line field that has wrapped onto a second line still read out as one run, with no line-by-line navigation
-// through it.
+// MANAGES_DESCENDANTS from, and the text a node carries is the set of states [textStateNames] answers for: the
+// SINGLE_LINE and MULTI_LINE pair that [lineState] decides, along with the SELECTABLE_TEXT and the EDITABLE that a node
+// holds while it both carries text and offers to have a selection put in it or to be typed into. A client caches a
+// state set until something retracts it, so leaving them out leaves a scroll bar that has been turned on its side
+// reported the old way for the life of the window, a table filtered down to a handful of rows still claiming to manage
+// descendants — while [Adapter.emitActiveDescendants], which reads the new snapshot, stops sending anything about it,
+// leaving the client with neither route to the current row — and a single-line field that has wrapped onto a second
+// line still read out as one run, with no line-by-line navigation through it.
 func attributeStateChanges(prior, n *accessibility.Node) []stateChange {
 	var changes []stateChange
 	if prior.Orientation != n.Orientation {
@@ -450,32 +633,50 @@ func attributeStateChanges(prior, n *accessibility.Node) []stateChange {
 	if was, now := ManagesDescendants(prior), ManagesDescendants(n); was != now {
 		changes = append(changes, stateChange{name: stateNameManagesDescendants, on: now})
 	}
-	// As with the orientation, a node whose text has no line count at all — one carrying no text, or a role that never
-	// has either state — has nothing to retract and nothing to gain, so only the side a snapshot actually reported is
-	// moved.
-	if was, now := lineStateName(prior), lineStateName(n); was != now {
-		if was != "" {
-			changes = append(changes, stateChange{name: was, on: false})
+	// As with the orientation, a node has nothing to retract and nothing to gain on the side a snapshot never reported:
+	// one carrying no text has none of these states at all, and neither has a role that never holds them.
+	was, now := textStateNames(prior), textStateNames(n)
+	for _, name := range was {
+		if !slices.Contains(now, name) {
+			changes = append(changes, stateChange{name: name, on: false})
 		}
-		if now != "" {
-			changes = append(changes, stateChange{name: now, on: true})
+	}
+	for _, name := range now {
+		if !slices.Contains(was, name) {
+			changes = append(changes, stateChange{name: name, on: true})
 		}
 	}
 	return changes
 }
 
-// lineStateName returns the detail string of the state that says how many lines a node lays its text out over, or an
-// empty string when the node's state set holds neither of them.
-func lineStateName(n *accessibility.Node) string {
-	state, ok := lineState(n)
-	switch {
-	case !ok:
-		return ""
-	case state == StateMultiLine:
-		return stateNameMultiLine
-	default:
-		return stateNameSingleLine
+// textStateNames returns the detail strings of the states a node holds because of the text it carries, in the order
+// [textStates] hands them out. They are answered from that one place so that what a client caches from a cache item and
+// what [attributeStateChanges] announces cannot drift apart.
+//
+// All of them come and go with the text, and SELECTABLE_TEXT and EDITABLE with the ability to use it as well: a label
+// whose title is cleared while an application-set name or a LabeledBy keeps it in the tree, and a field switched to
+// Protected, both go from carrying text to carrying none while the object stays exactly where it was, and a field made
+// read-only keeps its text while it stops being one a selection can be put in or a caret typed at. A client caches a
+// state set until something retracts it, so leaving them behind would have it offer a selection to put in text that is
+// gone, or a caret to type at in a field that now hands over nothing, and never offer either on a node that has just
+// gained its text.
+func textStateNames(n *accessibility.Node) []string {
+	states := textStates(n)
+	names := make([]string, 0, len(states))
+	for _, state := range states {
+		switch state {
+		case StateSingleLine:
+			names = append(names, stateNameSingleLine)
+		case StateMultiLine:
+			names = append(names, stateNameMultiLine)
+		case StateSelectableText:
+			names = append(names, stateNameSelectableText)
+		case StateEditable:
+			names = append(names, stateNameEditable)
+		default:
+		}
 	}
+	return names
 }
 
 // appendOrientationChange appends the state change for one side of the orientation pair, if there is one to append: a

@@ -529,12 +529,20 @@ func editableText(n *accessibility.Node) bool {
 //
 // Which of SINGLE_LINE and MULTI_LINE a node gets is [lineState]'s answer, and it can move while the window lives, so
 // [attributeStateChanges] retracts the one a node has left and announces the one it has arrived at.
+//
+// SELECTABLE_TEXT is [selectableText]'s answer: for a control that is typed into it is worked out from the node's role
+// and its text the way EDITABLE is worked out by [supportsEditableText], and for a block that is only read it follows
+// the offer of [accessibility.SetTextSelection], since a label and an unfocused column header both carry text nothing
+// can be selected in, and say so.
 func textStates(n *accessibility.Node) []StateBit {
 	lines, ok := lineState(n)
 	if !ok {
 		return nil
 	}
-	states := []StateBit{lines, StateSelectableText}
+	states := []StateBit{lines}
+	if selectableText(n) {
+		states = append(states, StateSelectableText)
+	}
 	if n.Role == role.Document {
 		// A document is readable but never editable. This is the document presented as its own text rather than as a
 		// composed stream — one carrying [accessibility.Node.Document] has no text interface at all, so [lineState]
@@ -545,6 +553,36 @@ func textStates(n *accessibility.Node) []StateBit {
 		states = append(states, StateEditable)
 	}
 	return states
+}
+
+// selectableText reports whether a node's state set holds ATSPI_STATE_SELECTABLE_TEXT, which says that a caret and a
+// selection can be moved about within the node's own text. Only a node carrying text holds it, and a password field
+// carries none at all.
+//
+// For a control that is typed into — a text field, a spin button, a combo box, a text area — it is worked out from the
+// role and the text rather than from [accessibility.SetTextSelection] being offered, for the same reason
+// [supportsEditableText] ignores the action set: a disabled node has its actions narrowed to axDisabledActions, so
+// keying on the action would have a field that was merely disabled retract SELECTABLE_TEXT while keeping EDITABLE,
+// which is neither what ATK reports for an insensitive GtkEntry nor consistent with the other half of the same state
+// set. Every such control this toolkit builds offers the action whenever it carries text, so nothing is claimed that
+// the enabled control would not answer for.
+//
+// For a block that is only read, the offer is what decides it, the way ATK's label reports the state only when the
+// label was made selectable: a paragraph of a document and a heading built out of a label both carry text and share a
+// role with one another's kind, and only the first has a caret to move — a label, an unfocused column header and a list
+// item all carry text that is read out whole, and none of them claims a selection an assistive technology is then told
+// it cannot make. Whether a request to move the selection is actually carried out stays where it belongs, in
+// [nodeObject.dispatchTextSelection], which refuses one on a node that does not offer the action.
+func selectableText(n *accessibility.Node) bool {
+	if n == nil || n.Text == nil || n.Protected {
+		return false
+	}
+	switch n.Role {
+	case role.TextField, role.SpinButton, role.ComboBox, role.TextArea:
+		return true
+	default:
+		return n.Actions.Has(accessibility.SetTextSelection)
+	}
 }
 
 // lineState returns the state that says whether a node lays its text out over one line or several, and whether the
@@ -567,6 +605,23 @@ func textStates(n *accessibility.Node) []StateBit {
 // block is what Orca's caret navigation moves through, and it moves by line within a block that says it has several, so
 // a wrapped paragraph reported as SINGLE_LINE is read out as one long run with the down arrow stepping straight over
 // it.
+//
+// A label answers from its text as well, since it is read by line, word and character like any other static text:
+// Orca's flat review walks a label's lines, and one that said nothing at all about its lines has that review read the
+// whole of it as one run rather than move through them. A label this toolkit draws lays its title out on a single line
+// and never reports otherwise, so the answer for one is always SINGLE_LINE today; reading it from the text rather than
+// writing it down here is what keeps a label that does wrap, whenever one arrives, from being described as one line. A
+// list item is not here: the words a reader moves through live on the label within it, and the item itself carries no
+// text to lay out over lines.
+//
+// A label is also the one node of these whose text comes and goes while its object stays put: the drawn title of a
+// label that an application-set name or a LabeledBy keeps in the tree can be cleared and filled in again, flipping Text
+// between nil and non-nil, and that takes org.a11y.atspi.Text and SINGLE_LINE with it. Neither the interface list nor
+// the state set is asked for twice by a client that caches them, so both ends of the flip are announced:
+// [accessibility.Diff] reports it as an attribute change, [attributeStateChanges] turns that into the retraction of the
+// states the label has left and the grant of the ones it has arrived at, and [Adapter.emitInterfaceChanges] sends a
+// fresh cache item whenever the interfaces have moved with them. Without them a client would go on offering text an
+// object no longer answers for, or never ask for text it has gained.
 func lineState(n *accessibility.Node) (state StateBit, ok bool) {
 	if n == nil || n.Text == nil || n.Document != nil {
 		return 0, false
@@ -577,7 +632,7 @@ func lineState(n *accessibility.Node) (state StateBit, ok bool) {
 			return StateMultiLine, true
 		}
 		return StateSingleLine, true
-	case role.Paragraph, role.Code, role.Cell, role.ColumnHeader, role.Heading:
+	case role.Paragraph, role.Code, role.Cell, role.ColumnHeader, role.Heading, role.Label:
 		if n.Text.Multiline {
 			return StateMultiLine, true
 		}

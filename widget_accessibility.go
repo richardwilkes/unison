@@ -139,6 +139,11 @@ func (b *AccessibilityBuilder) addColumnHeaderPanel(parent accessibility.NodeID,
 // description the snapshot would otherwise take from the tooltip, since a node marked ignored is never reached to hear
 // it.
 //
+// What it does not decide is the text such a widget carries. Static text is read by line, word and character, so a
+// Label and a Tag hand an assistive technology the runes they drew and the line they drew them on as well as the name;
+// that is measured from where each of them actually placed its text, which is the one thing they do not share. See
+// Label.ProvideAccessibility and axStaticTextLine. A DrawablePanel has no text of its own and carries none.
+//
 // A widget that nothing describes is skipped rather than announced as an image of nothing or as an empty piece of
 // static text, both of which are worse than not being mentioned at all — a label used purely for spacing is the
 // ordinary case. Skipping is only right for the role derived here, though: a widget an application has given a role of

@@ -25,8 +25,9 @@ import (
 // axReadersFollowFocus reports that this platform's screen readers start from the keyboard focus, so that a panel which
 // takes the focus only for an assistive technology's sake takes it here; see Panel.axTakesFocus. Orca, like Narrator
 // on Windows, follows the focused object, and a window in which nothing holds the focus offers it nothing inside the
-// content to start from.
-const axReadersFollowFocus = true
+// content to start from. It is a var rather than a const so that a test can pin either answer on whichever platform
+// it runs on.
+var axReadersFollowFocus = true
 
 // axCaretBlockReportsFocus reports that the block of a document holding the reading caret publishes the focus as well
 // as the document itself, which is what makes Orca's focus mode present a caret the application moved. Orca presents a
@@ -36,6 +37,13 @@ const axReadersFollowFocus = true
 // document — so nothing else is confused by it. It is a var rather than a const so that a test can pin both answers
 // on whichever platform it runs on.
 var axCaretBlockReportsFocus = true
+
+// axHeadingsTakeFocus reports that a heading takes the keyboard focus here while an assistive technology is being
+// served. Orca's structural navigation — the H key and the digits 1 through 6 in its GUI mode — presents the heading
+// it found and then asks the toolkit to give it the focus; when the focus does not land, Orca says "not focused" and
+// the person is left where they were. A heading that can take the focus lets the jump complete. It is a var rather
+// than a const so that a test can pin either answer on whichever platform it runs on.
+var axHeadingsTakeFocus = true
 
 // The Linux side of accessibility support: this file connects the snapshots the root package publishes to the AT-SPI2
 // server in internal/atspi, and connects the requests that come back from an assistive technology to the UI thread.

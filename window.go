@@ -813,41 +813,114 @@ func (w *Window) notifyOfFocusChangeInHierarchy(oldFocus, newFocus *Panel) {
 }
 
 // FocusNext moves the keyboard focus to the next focusable panel.
+//
+// When nothing holds the focus yet, the first real tab stop is preferred over anything that can take the focus only
+// for an assistive technology's sake, rather than simply taking the first panel that can take the focus at all. Those
+// differ only while an assistive technology is being served, when a heading and a document can take the focus as well
+// — see Panel.axTakesFocus. A dialog whose first element is a title heading or an explanatory document should still
+// open with the person in its first field, where what they type goes somewhere. Only when there is no real tab stop
+// does a document win: it is exactly where a screen reader has to begin, since with nothing in the window holding the
+// focus Narrator's cursor stays on the window's own element, from which it will not move into the content. A window
+// holding nothing but headings falls back to the first of them, since something in it has to be where a screen reader
+// starts. See seedFocus, which Panel.FirstFocusableChild matches tier for tier.
 func (w *Window) FocusNext() {
 	if w.root.contentPanel != nil {
 		current := w.focus
-		if current == nil {
+		seeding := current == nil
+		if seeding {
 			current = w.root.contentPanel
 		}
 		i, focusables := collectFocusables(w.root.contentPanel, current, nil)
 		if len(focusables) > 0 {
-			i++
-			if i >= len(focusables) {
-				i = 0
+			if seeding {
+				current = seedFocus(dropSeedingCandidate(focusables, i), false)
+			} else {
+				i++
+				if i >= len(focusables) {
+					i = 0
+				}
+				current = focusables[i]
 			}
-			current = focusables[i]
 		}
 		w.SetFocus(current)
 	}
 }
 
-// FocusPrevious moves the keyboard focus to the previous focusable panel.
+// FocusPrevious moves the keyboard focus to the previous focusable panel. When nothing holds the focus yet, the same
+// rule FocusNext documents decides where the person is put, applied from the other end.
 func (w *Window) FocusPrevious() {
 	if w.root.contentPanel != nil {
 		current := w.focus
-		if current == nil {
+		seeding := current == nil
+		if seeding {
 			current = w.root.contentPanel
 		}
 		i, focusables := collectFocusables(w.root.contentPanel, current, nil)
 		if len(focusables) > 0 {
-			i--
-			if i < 0 {
-				i = len(focusables) - 1
+			if seeding {
+				current = seedFocus(dropSeedingCandidate(focusables, i), true)
+			} else {
+				i--
+				if i < 0 {
+					i = len(focusables) - 1
+				}
+				current = focusables[i]
 			}
-			current = focusables[i]
 		}
 		w.SetFocus(current)
 	}
+}
+
+// dropSeedingCandidate returns the panels a window with nothing focused may seed the focus into, which is everything
+// that can take it except the content panel itself at index i. The content panel is what the traversal started from,
+// and an application that made it focusable meant it as the backstop the keyboard falls through to, not as the place
+// the person is put when the window opens; the walk that a move from a real focus does passes over it for the same
+// reason. It is kept when it is the only thing in the window that can take the focus at all, since the alternative is
+// focusing nothing.
+func dropSeedingCandidate(focusables []*Panel, i int) []*Panel {
+	if i < 0 || len(focusables) < 2 {
+		return focusables
+	}
+	return slices.Delete(focusables, i, i+1)
+}
+
+// seedFocus returns the panel a window with nothing focused hands the focus to, chosen from everything in it that can
+// take the focus and scanned in the direction the move runs, so that FocusNext and FocusPrevious cannot drift apart on
+// the rule. Panel.FirstFocusableChild and Panel.LastFocusableChild, which is how Window.SetFocus resolves a container,
+// choose by the same rule within the subtree they are asked about.
+//
+// Three tiers are tried in turn. A panel that is a tab stop in its own right comes first: the keyboard belongs there,
+// and a dialog whose first element is a Markdown explanation above its fields must still open with the person in the
+// first field rather than in the document, where what they type would go nowhere. Next comes one that asked for the
+// focus for an assistive technology's sake through Panel.axFocusable — a document, which is where a screen reader has
+// to begin reading, and which is the right answer for a window that holds nothing but content. Last comes anything
+// else, which is a heading that can take the focus only through the other arm of Panel.axTakesFocus; when there is
+// nothing but headings, the first one the scan reaches is used anyway, since something in the window has to be where a
+// screen reader starts. The scan records the best of the later tiers as it goes, so the list is walked once.
+func seedFocus(focusables []*Panel, backward bool) *Panel {
+	if len(focusables) == 0 {
+		return nil
+	}
+	var reader *Panel
+	for i := range focusables {
+		p := focusables[i]
+		if backward {
+			p = focusables[len(focusables)-1-i]
+		}
+		if p.focusable {
+			return p
+		}
+		if reader == nil && p.axFocusable {
+			reader = p
+		}
+	}
+	if reader != nil {
+		return reader
+	}
+	if backward {
+		return focusables[len(focusables)-1]
+	}
+	return focusables[0]
 }
 
 func collectFocusables(current, target *Panel, focusables []*Panel) (match int, result []*Panel) {

@@ -37,10 +37,11 @@ import (
 //     everything else about it, so the adapter must know the new role before it applies the rest. At most one
 //     AttributesChanged is produced per node, and it covers the secondary facts no kind of its own reports: Actions,
 //     Placeholder, Shortcut, URL, Level, RowIndex, ColumnIndex, RowCount, ColumnCount, Step, Orientation, the Multiline
-//     flag of the node's text, whether the node carries a Document at all, and the LabeledBy, DescribedBy and Controls
-//     relations. Every platform carries those as attributes, relations or the set of requests an element answers rather
-//     than as its value, and an assistive technology re-reads the ones it cares about when it is told the element's
-//     attributes changed, so naming which of them moved would buy nothing.
+//     flag of the node's text, whether the node presents any text at all, whether it carries a Document, which nodes
+//     occupy spans of the text it presents, and the LabeledBy, DescribedBy and Controls relations. Every platform
+//     carries those as attributes, relations or the set of requests an element answers rather than as its value, and an
+//     assistive technology re-reads the ones it cares about when it is told the element's attributes changed, so naming
+//     which of them moved would buy nothing.
 //  6. WindowActivated or WindowDeactivated when the root's Focused flipped.
 //  7. FocusChanged last, whenever the focus moved, so an adapter has already applied every structural and value change
 //     before it tells its assistive technology where to look.
@@ -193,12 +194,26 @@ func appendChangesForNode(events []Event, prev, cur *Node) []Event {
 // Automation adapter raises the value property from this event for a node that hands out the value pattern rather than
 // leaving a client to notice on its own.
 //
-// Whether the node carries a Document is here because it decides what an adapter offers on the element rather than what
-// the element currently says: a node that has composed its content into one stream is presented as a document, with the
-// text interfaces that go with one, and a node that has not is presented as a plain container. Both are things a client
-// asks about once and caches, so a document that has only just composed its stream — or one that has stopped, because
-// its content was emptied — has to be re-read. What the stream says is not reported here: that is what the text events
-// are for.
+// Whether the node presents any text at all is here because it decides what an adapter offers on the element rather
+// than what the element currently says: a node that presents text is given the text interfaces that go with it, and a
+// node that presents none is presented as a plain container. Both are things a client asks about once and caches, so a
+// node that has only just gained text — or one that has lost it, because its content was emptied — has to be re-read.
+// What that text says is not reported here: that is what the text events are for. The text a node presents is what
+// [textInfoOf] answers with, which is the node's own text when it has any and the stream a Document has composed
+// otherwise.
+//
+// Whether the node carries a Document at all is compared as well, on top of that, because every adapter keys what it
+// offers on a Document's presence independently of whatever Text the node also carries: one refuses the text interface
+// outright to a node carrying a stream, another picks which stream a node hands over from its being a document, and a
+// document is presented as a different kind of element from a group. A node carrying its own Text on both sides
+// presents text either way, so the comparison above says nothing about it, and without this term gaining or losing a
+// Document beside that Text would move what every adapter offers with nothing sent to say so.
+//
+// Which nodes TextInfo.Spans name is here because which other nodes occupy part of a node's text decides what an
+// adapter offers on both ends of the span: the node whose text holds them is the one that can be asked which objects
+// are in it and where, and each node named by one is reachable through that and answers where it sits. A node that has
+// gained its first span while its text stayed exactly as it was moves both, and nothing else would report it, since
+// the text events describe only an edit to the runes. Where a span sits is not compared: see [spanTargets].
 //
 // TextInfo.Multiline is here because how many lines a control lays its content out over is live state too, and it is
 // the one fact about a wrapping field that moves with nothing else about the field moving at all: a single-line field
@@ -213,7 +228,8 @@ func appendAttributeChanges(events []Event, prev, cur *Node) []Event {
 		prev.Level != cur.Level || prev.RowIndex != cur.RowIndex || prev.ColumnIndex != cur.ColumnIndex ||
 		prev.RowCount != cur.RowCount || prev.ColumnCount != cur.ColumnCount ||
 		numbersDiffer(prev.Step, cur.Step) || prev.Orientation != cur.Orientation ||
-		multiline(prev) != multiline(cur) || (prev.Document == nil) != (cur.Document == nil) ||
+		multiline(prev) != multiline(cur) || (textInfoOf(prev) == nil) != (textInfoOf(cur) == nil) ||
+		(prev.Document == nil) != (cur.Document == nil) || !slices.Equal(spanTargets(prev), spanTargets(cur)) ||
 		!slices.Equal(prev.LabeledBy, cur.LabeledBy) ||
 		!slices.Equal(prev.DescribedBy, cur.DescribedBy) || !slices.Equal(prev.Controls, cur.Controls) {
 		events = append(events, Event{Kind: AttributesChanged, Node: cur.ID})
@@ -222,8 +238,14 @@ func appendAttributeChanges(events []Event, prev, cur *Node) []Event {
 }
 
 // multiline reports whether a node lays its text out over more than one line, which a node carrying no text never does.
-// A node that gains or loses its text altogether is a bigger change than this, and the text events that go with it are
-// what report that.
+//
+// Answering false for a node with no text would, on its own, leave text appearing on or disappearing from a node that
+// is not multiline either way looking like no attribute change at all, and an adapter that turns carrying text into a
+// state of its own — AT-SPI's SINGLE_LINE, or UIA's Text pattern being available — would never be told to retract or
+// grant it. That is why appendAttributeChanges also compares whether the two snapshots carry any text at all: a label
+// whose title is cleared while an application-set name or a LabeledBy keeps it in the tree, and a field toggled
+// between plain and Protected, both flip Node.Text between nil and non-nil with nothing else about them moving. The
+// text events say nothing in either case, since they only describe an edit to text present on both sides.
 func multiline(n *Node) bool {
 	info := textInfoOf(n)
 	return info != nil && info.Multiline
@@ -242,6 +264,24 @@ func textInfoOf(n *Node) *TextInfo {
 		return &n.Document.Text
 	}
 	return nil
+}
+
+// spanTargets returns the nodes the spans of the text a node presents name, in span order, which is nothing at all for a
+// node that presents none. It is what [appendAttributeChanges] compares, so that a node gaining or losing the objects
+// sitting within its text is reported even when the runes around them did not move. Where each of them sits is left
+// out on purpose: what an adapter offers on either end of a span depends only on which nodes are named, and offsets
+// shift with every edit made ahead of them, which the text events already report and a client re-reads on demand.
+// Comparing them would send an attribute change alongside nearly every edit to a document for nothing.
+func spanTargets(n *Node) []NodeID {
+	info := textInfoOf(n)
+	if info == nil || len(info.Spans) == 0 {
+		return nil
+	}
+	targets := make([]NodeID, len(info.Spans))
+	for i, span := range info.Spans {
+		targets[i] = span.Node
+	}
+	return targets
 }
 
 // appendStateChanges appends one StateChanged per flag that differs between the two snapshots of a node. The order here

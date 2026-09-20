@@ -21,8 +21,6 @@ import (
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/role"
-	"github.com/richardwilkes/unison/enums/slant"
-	"github.com/richardwilkes/unison/enums/weight"
 	"github.com/richardwilkes/unison/internal/textunit"
 )
 
@@ -404,125 +402,6 @@ func (bb *axBlockTextBuilder) boundary(line *accessibility.Line, at float32) {
 	}
 	last := len(line.Advances) - 1
 	line.Advances[last] = max(line.Advances[last], at)
-}
-
-// axRunsFromDecorations turns what each rune was drawn with into the styled runs an assistive technology is told about,
-// coalescing the runes that were drawn the same way so that a paragraph with one bold word in it is three runs rather
-// than one per character.
-//
-// A rune nothing was drawn for — the placeholder standing in for an image, the line feed ending a line — belongs to the
-// run before it: it has no style of its own to report, and the runs have to tile the text. One that comes before
-// anything else joins the run after it instead, so that an image at the start of a paragraph is reported in the style
-// of the words beside it rather than in no style at all.
-func axRunsFromDecorations(decorations []*TextDecoration) []accessibility.TextRun {
-	if len(decorations) == 0 {
-		return nil
-	}
-	runs := make([]accessibility.TextRun, 0, 8)
-	for i, decoration := range decorations {
-		if decoration == nil {
-			if len(runs) != 0 {
-				runs[len(runs)-1].End = i + 1
-				continue
-			}
-			for _, following := range decorations[i+1:] {
-				if following != nil {
-					decoration = following
-					break
-				}
-			}
-			if decoration == nil {
-				runs = append(runs, accessibility.TextRun{Start: i, End: i + 1})
-				continue
-			}
-		}
-		run := axTextRunStyle(decoration)
-		run.Start = i
-		run.End = i + 1
-		if len(runs) != 0 && axSameStyle(runs[len(runs)-1], run) {
-			runs[len(runs)-1].End = i + 1
-			continue
-		}
-		runs = append(runs, run)
-	}
-	return runs
-}
-
-// axTextRunStyle returns the style a decoration draws text in, as an assistive technology is told it. The range is left
-// at zero, since it is the caller that knows which runes were drawn this way.
-func axTextRunStyle(decoration *TextDecoration) accessibility.TextRun {
-	run := accessibility.TextRun{
-		Underline:     decoration.Underline,
-		Strikethrough: decoration.StrikeThrough,
-	}
-	if xreflect.IsNil(decoration.Font) {
-		return run
-	}
-	fd := decoration.Font.Descriptor()
-	run.Family = fd.Family
-	run.Size = fd.Size
-	run.Weight = axFontWeight(fd.Weight)
-	run.Italic = fd.Slant != slant.Upright
-	if face := decoration.Font.Face(); face != nil {
-		// A fixed-pitch face is what marks code out from prose on every platform, and it is the only way a code span
-		// within a sentence can be told apart from the words around it.
-		run.Monospace = face.Monospaced()
-	}
-	return run
-}
-
-// axFontWeight turns a font's weight into the 100-to-900 scale every platform states weights on, where 400 is regular
-// and 700 is bold. The two extremes unison offers lie outside that scale and are reported as its ends.
-func axFontWeight(w weight.Enum) int {
-	return min(max(int(w.EnsureValid()), 100), 900)
-}
-
-// axSameStyle reports whether two runs were drawn the same way, whatever part of the text each of them covers.
-func axSameStyle(a, b accessibility.TextRun) bool {
-	a.Start, a.End = 0, 0
-	b.Start, b.End = 0, 0
-	return a == b
-}
-
-// axAppendRuns adds runs to a list, shifted by offset and coalesced with the run before them when they were drawn the
-// same way. The runs have to tile the text, so runes nothing said anything about — the line feed joining one block to
-// the next — belong to the run before them.
-func axAppendRuns(runs, add []accessibility.TextRun, offset int) []accessibility.TextRun {
-	for _, run := range add {
-		run.Start += offset
-		run.End += offset
-		if len(runs) != 0 {
-			last := &runs[len(runs)-1]
-			if last.End < run.Start {
-				last.End = run.Start
-			}
-			run.Start = max(run.Start, last.End)
-			if axSameStyle(*last, run) {
-				last.End = max(last.End, run.End)
-				continue
-			}
-		}
-		if run.End <= run.Start {
-			continue
-		}
-		runs = append(runs, run)
-	}
-	return runs
-}
-
-// axCoverRuns extends the last run to end, which is how the runes joining one piece of a document to the next — the
-// line feed between two blocks, the space after a bullet — are covered without a style of their own.
-func axCoverRuns(runs []accessibility.TextRun, end int) []accessibility.TextRun {
-	if len(runs) == 0 {
-		if end <= 0 {
-			return runs
-		}
-		return append(runs, accessibility.TextRun{End: end})
-	}
-	if runs[len(runs)-1].End < end {
-		runs[len(runs)-1].End = end
-	}
-	return runs
 }
 
 // axDocSpan says that a node occupies a range of the document's stream. The node is named by the panel it was described
@@ -907,18 +786,6 @@ func (db *axDocBuilder) mergeLine(bounds geom.Rect, advances []float32, end int)
 	line.End = end
 }
 
-// axLineIndexFor returns the index of the line an offset sits on. A line owns the offsets from its own start up to the
-// start of the next, so an offset just past a line feed is the beginning of the line that follows it rather than the
-// end of the one before.
-func axLineIndexFor(lines []accessibility.Line, offset int) int {
-	for i := len(lines) - 1; i > 0; i-- {
-		if offset >= lines[i].Start {
-			return i
-		}
-	}
-	return 0
-}
-
 // axLineAt returns the index of the line a point falls on, which is the whole of what resolving a point to an offset of
 // the text comes down to once the line is known.
 //
@@ -1009,58 +876,6 @@ func axCaretX(lines []accessibility.Line, offset int) float32 {
 		return line.Bounds.X
 	}
 	return line.Bounds.X + line.Advances[min(max(offset-line.Start, 0), len(line.Advances)-1)]
-}
-
-// axCaretRect returns the one-unit-wide bar the caret at an offset is drawn as, in the coordinates the lines are in.
-func axCaretRect(lines []accessibility.Line, offset int) geom.Rect {
-	if len(lines) == 0 {
-		return geom.Rect{}
-	}
-	line := lines[axLineIndexFor(lines, offset)]
-	x := line.Bounds.X
-	if len(line.Advances) != 0 {
-		x += line.Advances[min(max(offset-line.Start, 0), len(line.Advances)-1)]
-	}
-	return geom.NewRect(x, line.Bounds.Y, 1, line.Bounds.Height)
-}
-
-// axLineRects returns one rectangle per line a range covers, in the coordinates the lines are in. A piece of a line
-// that nothing was drawn for — the line feed that ends it — has no width and contributes nothing.
-func axLineRects(lines []accessibility.Line, start, end int) []geom.Rect {
-	var rects []geom.Rect
-	for _, line := range lines {
-		if line.End <= start || line.Start >= end || len(line.Advances) == 0 {
-			continue
-		}
-		from := min(max(start-line.Start, 0), len(line.Advances)-1)
-		to := min(max(end-line.Start, 0), len(line.Advances)-1)
-		if to <= from {
-			continue
-		}
-		left := line.Bounds.X + line.Advances[from]
-		right := line.Bounds.X + line.Advances[to]
-		if right <= left {
-			continue
-		}
-		rects = append(rects, geom.NewRect(left, line.Bounds.Y, right-left, line.Bounds.Height))
-	}
-	return rects
-}
-
-// axRangeRect returns the whole area a range covers, which is what has to be brought into view to show it.
-func axRangeRect(lines []accessibility.Line, start, end int) geom.Rect {
-	var rect geom.Rect
-	for i, one := range axLineRects(lines, start, end) {
-		if i == 0 {
-			rect = one
-			continue
-		}
-		rect = rect.Union(one)
-	}
-	if rect.Empty() {
-		return axCaretRect(lines, start)
-	}
-	return rect
 }
 
 // axSelection returns the selected range of the stream, in ascending order, clamped to the stream as it now is.

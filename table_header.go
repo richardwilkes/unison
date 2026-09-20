@@ -584,7 +584,11 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 				n.Actions = n.Actions.With(accessibility.Press)
 			}
 		})
-		if colID == 0 || !axColumnHeaderContentIsReachable(panel, label) {
+		if colID == 0 {
+			continue
+		}
+		if !axColumnHeaderContentIsReachable(panel, label) {
+			h.axDescribeColumnHeaderText(b, colID, panel, label, frame)
 			continue
 		}
 		h.installCell(panel, frame)
@@ -603,6 +607,52 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			}
 		}
 	}
+}
+
+// axDescribeColumnHeaderText gives the node standing for a column that is nothing but a title the text of that title,
+// along with the one line it was drawn on. A column header is static text like any other, so a screen reader reads it
+// by line, by word and by character and puts its review cursor where each character actually is, and it can only do
+// that for text it has been given. The header holds no node of its own here — a header built around a label is one
+// element, which is why nothing beneath it was described — so the text goes on the column's node.
+//
+// The panel is installed at the column's frame for the measurement, exactly as it is for drawing, since where the text
+// sits is worked out from the size the panel has been given. What comes back is in the panel's own coordinates, which
+// are the column node's own coordinates too — the node stands for that same frame — so the line needs no rebasing.
+//
+// The line comes from the panel's Self rather than from the label, so that a header drawing its title somewhere else
+// answers for itself: the library's own shrinks the title by the sort indicator. Everything that arrives here is built
+// around a label — that is what it takes for axColumnHeaderContentIsReachable to have answered false — and the only
+// thing that answers axLabel is a *Label, which carries axTextLine too, so Self satisfies axTextLiner through that
+// embedded label. The guard therefore stands only for a *Label-embedding type that shadowed axTextLine with an
+// incompatible signature: such a header is left without text rather than being measured as though its label were the
+// whole of it, and a blind type assertion would panic on it.
+//
+// The text itself comes from that same call rather than from the label, exactly as Label.ProvideAccessibility takes it:
+// the line boundaries, the advances and the styled runs all index the runes that came back, so publishing the label's
+// own string beside them would leave every offset an adapter derives addressing a different set of characters. It is
+// also what decides whether there is any text to publish, so a header drawing words of its own is described by them
+// even when the label it embeds holds nothing.
+func (h *TableHeader[T]) axDescribeColumnHeaderText(b *AccessibilityBuilder, colID accessibility.NodeID, panel *Panel,
+	label *Label, frame geom.Rect,
+) {
+	if label == nil {
+		return
+	}
+	liner, ok := panel.Self.(axTextLiner)
+	if !ok {
+		return
+	}
+	colNode := b.snapshot.tree.Node(colID)
+	if colNode == nil {
+		return
+	}
+	h.installCell(panel, frame)
+	runes, decorations, line := liner.axTextLine()
+	h.uninstallCell(panel)
+	if len(runes) == 0 {
+		return
+	}
+	colNode.Text = axStaticTextInfo(string(runes), decorations, line)
 }
 
 // axColumnHeaderContentIsReachable reports whether describing a column header's own panel beneath the node for the
@@ -675,8 +725,15 @@ func (h *TableHeader[T]) PerformAccessibilityAction(req accessibility.ActionRequ
 // was described at. A widget that takes the keyboard focus while handling the request — which Focus does outright, and
 // Press does on its way to the click it synthesizes — leaves the header attached, as one that took it from a click
 // would; see uninstallCell.
+//
+// A key naming a cell of something other than a column header is refused: the key travels with the request from
+// whatever described the panel, and only the widget that put it there knows how to read it.
 func (h *TableHeader[T]) axPerformInColumnHeader(key axCellPanelKey, req accessibility.ActionRequest) bool {
-	col := key.Cell.Col
+	cellKey, ok := key.Cell.(accessibility.CellKey)
+	if !ok {
+		return false
+	}
+	col := cellKey.Col
 	if col < 0 || col >= len(h.ColumnHeaders) || col >= len(h.table.Columns) {
 		return false
 	}

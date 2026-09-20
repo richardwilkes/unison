@@ -69,11 +69,16 @@ type FieldTheme struct {
 
 // Field provides a text input control.
 type Field struct {
-	ModifiedCallback   func(before, after *FieldState)
-	ValidateCallback   func() bool
-	runes              []rune
-	lines              []*Text
-	endsWithLineFeed   []lineEndingType
+	ModifiedCallback func(before, after *FieldState)
+	ValidateCallback func() bool
+	runes            []rune
+	lines            []*Text
+	endsWithLineFeed []lineEndingType
+	// axLineCache holds what an assistive technology is told about each laid-out line other than where it is on the
+	// screen: the rune range it covers and the offset of every rune boundary within it. Those are what cost something
+	// to work out, and they change only when the lines themselves are rebuilt, so they are worked out once and reused
+	// until prepareLines hands back a different set of lines. See Field.axTextLines.
+	axLineCache        []accessibility.Line
 	Watermark          string
 	linesBuiltWithFont FontDescriptor
 	forceShowUntil     time.Time
@@ -214,7 +219,20 @@ func (f *Field) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Si
 
 func (f *Field) prepareLines(width float32) {
 	width = max(width, 0)
-	f.lines, f.endsWithLineFeed = f.buildLines(width)
+	lines, endsWithLineFeed := f.buildLines(width)
+	// buildLines hands back the very slice it cached when nothing it depends on has changed, and a freshly allocated
+	// one whenever it laid text out again — which is every change of the content, the width, the wrapping, the font
+	// and the obscurement rune. So the identity of the slice is exactly the question "are these the same lines as last
+	// time", and it answers it without having to be told about any of those changes one by one.
+	//
+	// The one case it cannot answer that way is a field holding nothing, where every layout produces the same nil
+	// slice and the cache therefore survives changes of the font, the width, the wrapping and the obscurement rune.
+	// That costs nothing, since what an empty field caches is the single fixed line {Advances: [0]} covering no runes
+	// at all, and axTextLines works out that line's bounds and its height from the font on every call.
+	if len(lines) != len(f.lines) || (len(lines) != 0 && &lines[0] != &f.lines[0]) {
+		f.axLineCache = nil
+	}
+	f.lines, f.endsWithLineFeed = lines, endsWithLineFeed
 	f.linesBuiltFor = width
 	f.linesBuiltWithFont = f.Font.Descriptor()
 	f.linesBuiltWithRune = f.ObscurementRune
@@ -1453,28 +1471,31 @@ func (f *Field) ProvideAccessibility(b *AccessibilityBuilder) {
 	if node.Protected {
 		return
 	}
+	node.Actions = node.Actions.With(accessibility.ScrollRangeIntoView)
 	node.Value = f.Text()
-	// A field lays its content out over more than one line when it accepts line feeds, and also when it is a
-	// single-line field that wraps: buildLines breaks the one line such a field holds to the field's width, so it can
-	// show any number of them. That is the only case where this has to be measured — a single line that does not wrap
-	// is always the one line — and it has to agree with axTextLines, which hands back a line for each of them.
-	multiline := f.multiLine
-	if !multiline && f.wrap {
-		f.prepareLinesForCurrentWidth()
-		multiline = len(f.lines) > 1
-	}
+	// Every line is reported, whether or not the person is working in this field: a screen reader reads a field it is
+	// merely passing over by line and by word, and its review cursor asks where each character was drawn. What that
+	// costs is one rectangle per line, since the rest is cached beside the wrapped lines it was measured from; see
+	// axTextLines.
+	lines := f.axTextLines()
 	info := &accessibility.TextInfo{
-		Text:      node.Value,
-		SelStart:  f.selectionStart,
-		SelEnd:    f.selectionEnd,
-		Caret:     f.axCaret(),
-		Multiline: multiline,
+		Text:     node.Value,
+		Lines:    lines,
+		SelStart: f.selectionStart,
+		SelEnd:   f.selectionEnd,
+		Caret:    f.axCaret(),
+		// A field lays its content out over more than one line when it accepts line feeds, and also when it is a
+		// single-line field that wraps: buildLines breaks the one line such a field holds to the field's width, so it
+		// can show any number of them.
+		Multiline: f.multiLine || len(lines) > 1,
 	}
-	if b.Focused() {
-		// Where the lines fall has to be measured, which is worth doing only for the field the person is actually
-		// working in: an assistive technology asks where a character is to draw its own cursor around the caret, and
-		// there is only one caret in a window.
-		info.Lines = f.axTextLines()
+	if len(f.runes) != 0 {
+		// A field draws the whole of its content in one font, so there is one run covering all of it. It is reported
+		// rather than left out because a screen reader that asks what the text looks like — the font a person set out
+		// to read it in, whether it is fixed-pitch — has nowhere else to learn it.
+		run := axTextRunStyle(&TextDecoration{Font: f.Font})
+		run.End = len(f.runes)
+		info.Runs = []accessibility.TextRun{run}
 	}
 	node.Text = info
 }
@@ -1499,16 +1520,37 @@ func (f *Field) axCaret() int {
 // on that line rather than at the start of the next, and the last line always ends at the end of the content. Each
 // line's Advances are measured from its own Bounds.X and hold one entry more than the line has runes, the last being
 // the trailing edge of the line.
+//
+// Only the bounds are worked out here. Everything else is cached beside the wrapped lines it was measured from and
+// dropped when those are rebuilt, so describing a field costs one rectangle per line rather than one measurement per
+// rune — which is what makes it affordable to describe every field in a window on every snapshot rather than only the
+// one the person is working in. The cached Advances are handed out as they are and must never be modified.
 func (f *Field) axTextLines() []accessibility.Line {
 	rect := f.ContentRect(false)
 	f.prepareLinesForCurrentWidth()
+	if f.axLineCache == nil {
+		f.axLineCache = f.axBuildLineCache()
+	}
+	lines := slices.Clone(f.axLineCache)
 	top := rect.Y + f.scrollOffset.Y
 	if len(f.lines) == 0 {
 		// There is nothing laid out, but the caret is still somewhere, so the empty line it sits on is described.
-		return []accessibility.Line{{
-			Advances: []float32{0},
-			Bounds:   geom.NewRect(f.textLeftForWidth(0, rect)+f.scrollOffset.X, top, 0, f.Font.LineHeight()),
-		}}
+		lines[0].Bounds = geom.NewRect(f.textLeftForWidth(0, rect)+f.scrollOffset.X, top, 0, f.Font.LineHeight())
+		return lines
+	}
+	for i, line := range f.lines {
+		height := max(line.Height(), f.Font.LineHeight())
+		lines[i].Bounds = geom.NewRect(f.textLeft(line, rect)+f.scrollOffset.X, top, line.Width(), height)
+		top += height
+	}
+	return lines
+}
+
+// axBuildLineCache works out the rune range each laid-out line covers and the offset of every rune boundary within it.
+// It is called once per set of lines; see Field.axTextLines, which fills in where each of them is.
+func (f *Field) axBuildLineCache() []accessibility.Line {
+	if len(f.lines) == 0 {
+		return []accessibility.Line{{Advances: []float32{0}}}
 	}
 	total := len(f.runes)
 	lines := make([]accessibility.Line, 0, len(f.lines))
@@ -1522,11 +1564,10 @@ func (f *Field) axTextLines() []accessibility.Line {
 		}
 		// The boundaries are accumulated rather than each one being summed from the start of the line. Asking
 		// Text.PositionForRuneIndex for every boundary in turn costs the square of the line's rune count, since each
-		// answer sums the widths up to its index, and this runs on every published description of the focused field —
-		// twenty times a second — so one long line, a pasted URL in a single-line field or a long unwrapped run in a
-		// text area, would stall the UI thread for as long as a screen reader was attached. A boundary past the last
-		// width clamps to the full width of the line, exactly as PositionForRuneIndex does: a line that owns the line
-		// feed ending it has one boundary more than it has runes laid out.
+		// answer sums the widths up to its index, so one long line — a pasted URL in a single-line field or a long
+		// unwrapped run in a text area — would cost the square of its length each time the lines were rebuilt. A
+		// boundary past the last width clamps to the full width of the line, exactly as PositionForRuneIndex does: a
+		// line that owns the line feed ending it has one boundary more than it has runes laid out.
 		count := end - start
 		advances := make([]float32, count+1)
 		position := float32(0)
@@ -1536,24 +1577,57 @@ func (f *Field) axTextLines() []accessibility.Line {
 			}
 			advances[j+1] = position
 		}
-		height := max(line.Height(), f.Font.LineHeight())
-		lines = append(lines, accessibility.Line{
-			Advances: advances,
-			Start:    start,
-			End:      end,
-			Bounds:   geom.NewRect(f.textLeft(line, rect)+f.scrollOffset.X, top, line.Width(), height),
-		})
-		top += height
+		lines = append(lines, accessibility.Line{Advances: advances, Start: start, End: end})
 		start = end
 	}
 	return lines
 }
 
+// axScrollRangeIntoView brings a range of the field's content into view, which is what an assistive technology asks
+// for when it moves its own reading cursor through text the person cannot see.
+//
+// A field that scrolls its own content has to be scrolled first: nothing outside it can reveal a word that the field
+// itself is holding out of sight. The edge arithmetic autoScroll uses, shifted rather than assigned and without its
+// clamp, puts the range within the content rect — horizontally always, vertically only for a field that accepts line
+// feeds — and the rectangle is shifted along with the content so that whatever the field could not reveal by itself is
+// then asked of the ancestors that can scroll.
+func (f *Field) axScrollRangeIntoView(start, end int) {
+	lines := f.axTextLines()
+	rect := axRangeRect(lines, min(start, end), max(start, end))
+	if rect.Empty() {
+		return
+	}
+	if f.AutoScroll {
+		content := f.ContentRect(false)
+		original := f.scrollOffset
+		if content.Width > 0 {
+			if rect.X < content.X {
+				f.scrollOffset.X += content.X - rect.X
+			} else if rect.Right() > content.Right() {
+				f.scrollOffset.X -= min(rect.Right()-content.Right(), rect.X-content.X)
+			}
+		}
+		if f.multiLine && content.Height > 0 {
+			if rect.Y < content.Y {
+				f.scrollOffset.Y += content.Y - rect.Y
+			} else if rect.Bottom() > content.Bottom() {
+				f.scrollOffset.Y -= min(rect.Bottom()-content.Bottom(), rect.Y-content.Y)
+			}
+		}
+		if original != f.scrollOffset {
+			f.MarkForRedraw()
+			rect.Point = rect.Point.Add(f.scrollOffset.Sub(original))
+		}
+	}
+	f.ScrollRectIntoView(rect)
+}
+
 // PerformAccessibilityAction carries out a request from an assistive technology. The field's value may be replaced
 // outright, a range of it may be replaced in place — which participates in undo exactly as a paste does — the caret or
-// selection may be moved, and the field's contextual menu may be shown, which takes the focus first because the menu is
-// built out of the commands that act on whatever holds it. Focusing the field is otherwise left to the default
-// behavior.
+// selection may be moved, a range of the content may be brought into view, and the field's contextual menu may be
+// shown, which takes the focus first because the menu is built out of the commands that act on whatever holds it.
+// Focusing the field is otherwise left to the default behavior. A field that obscures what it shows brings no range
+// into view, since it publishes neither that action nor the text a range would address.
 func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.SetValue:
@@ -1567,6 +1641,16 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 		return true
 	case accessibility.ReplaceText:
 		f.replaceRunes(req.Start, req.End, req.Value)
+		return true
+	case accessibility.ScrollRangeIntoView:
+		if f.ObscurementRune != 0 {
+			// A protected field reports neither its text nor its caret, so it withholds this action as well — see
+			// ProvideAccessibility. Carrying it out anyway would leave an adapter that trusts what the node advertises
+			// told the field cannot do something it quietly does, and would scroll to a range of a string that was
+			// never published.
+			return false
+		}
+		f.axScrollRangeIntoView(req.Start, req.End)
 		return true
 	case accessibility.ShowContextMenu:
 		if !axMayPopupMenu(f.AsPanel()) {

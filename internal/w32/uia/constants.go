@@ -461,8 +461,8 @@ const (
 // ITextProvider::get_SupportedTextSelection.
 type SupportedTextSelection int32
 
-// Possible SupportedTextSelection values. A document here reports Single while it accepts a selection at all and None
-// otherwise: a Markdown view that is not focusable has no caret to move, so a client must not be told it can place one.
+// Possible SupportedTextSelection values. An element here reports Single while it accepts a selection at all and None
+// otherwise: a label never accepts one, so a client must not be told it can place one.
 //
 // https://learn.microsoft.com/en-us/windows/win32/api/uiautomationcore/ne-uiautomationcore-supportedtextselection
 const (

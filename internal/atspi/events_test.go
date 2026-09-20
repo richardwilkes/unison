@@ -167,6 +167,19 @@ func cacheRemoval(id accessibility.NodeID) signalRecord {
 	}
 }
 
+// cachedInterfaces returns the interfaces a cache item says its object implements, failing the test unless the signal
+// is a cache addition for the given node. The list is the whole of what a client ever learns about them: it is read out
+// of the item the object was described by and never asked for again, so another item is the only way an object that has
+// gained or lost an interface is told about.
+func (ta *testAdapter) cachedInterfaces(record signalRecord, id accessibility.NodeID) []string {
+	ta.c.Equal(nodeRef(id), ta.cachedID(record))
+	item, ok := record.args[0].(dbus.Struct)
+	ta.c.True(ok, "a cache item is a structure")
+	list, ok := item[5].([]string)
+	ta.c.True(ok, "a cache item carries the interfaces its object implements")
+	return list
+}
+
 // cachedID returns the id of the node a cache item describes, failing the test if the signal is not a cache addition.
 func (ta *testAdapter) cachedID(record signalRecord) dbus.ObjectRef {
 	ta.c.Equal(CachePath, record.path)
@@ -1177,6 +1190,65 @@ func bigTableTree() *accessibility.Tree {
 	)
 }
 
+// TestALabelChangingItsText covers what a label that redraws itself with different words tells a client. Its name and
+// its text say the same thing, so both move together: the name arrives as the property every client caches, and the
+// text as the edit that turned the old words into the new ones, reduced to the run of runes that actually differs. A
+// label holds no caret, so nothing says the caret moved.
+func TestALabelChangingItsText(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	before := labelTree()
+	ta.Publish(labelWindow, before, nil, sampleGeometry())
+	ta.peer.nextSignals(7) // Three cache items, the window's Create and place, and the two that say it is active
+
+	const fullName = "Full name:"
+	after := labelTree()
+	after.Generation++
+	after.Node(51).Name = fullName
+	after.Node(51).Text = &accessibility.TextInfo{
+		Text: fullName,
+		Lines: []accessibility.Line{
+			{
+				Start:    0,
+				End:      len(fullName),
+				Bounds:   geom.NewRect(0, 0, 100, 20),
+				Advances: []float32{0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
+			},
+		},
+	}
+	events := accessibility.Diff(before, after)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NameChanged, Node: 51, Old: labelTextBody, New: fullName},
+		{Kind: accessibility.TextDeleted, Node: 51, Start: 0, Length: 1, Old: "N"},
+		{Kind: accessibility.TextInserted, Node: 51, Start: 0, Length: 6, New: "Full n"},
+	}, events, "only the run of runes that differs moved")
+	ta.Publish(labelWindow, after, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		objectEvent(51, signalPropertyChange, propertyAccessibleName, 0, 0, variantString(fullName)),
+		objectEvent(51, signalTextChanged, detailDelete, 0, 1, variantString("N")),
+		objectEvent(51, signalTextChanged, detailInsert, 0, 6, variantString("Full n")),
+	}, ta.peer.nextSignals(3))
+
+	// Nothing else followed: the next signal is the one the next change makes, and a label whose lines were remeasured
+	// without its words changing says nothing at all.
+	remeasured := labelTree()
+	remeasured.Generation += 2
+	remeasured.Node(51).Name = fullName
+	remeasured.Node(51).Text = &accessibility.TextInfo{
+		Text:  fullName,
+		Lines: []accessibility.Line{{Start: 0, End: len(fullName), Bounds: geom.NewRect(0, 0, 120, 20)}},
+	}
+	remeasured.Node(52).Name = "Bytes"
+	moreEvents := accessibility.Diff(after, remeasured)
+	c.Equal([]accessibility.Event{
+		{Kind: accessibility.NameChanged, Node: 52, Old: headerTextBody, New: "Bytes"},
+	}, moreEvents)
+	ta.Publish(labelWindow, remeasured, moreEvents, sampleGeometry())
+	c.Equal(objectEvent(52, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("Bytes")),
+		ta.peer.nextSignal())
+}
+
 // TestTheCurrentRowOfATableThatManagesItsDescendants covers the promise a container makes by claiming
 // ATSPI_STATE_MANAGES_DESCENDANTS: it has told its client not to walk or cache what is inside it, so the only way the
 // client can follow the user through it is object:active-descendant-changed.
@@ -1322,11 +1394,16 @@ func TestPropertyAndAttributeChanges(t *testing.T) {
 		objectEvent(4, signalTextChanged, detailInsert, 0, 6, variantString(changedFieldValue)),
 	}, ta.peer.nextSignals(2))
 
-	// A value that is emptied is deleted with nothing put in its place.
+	// A value that is emptied is deleted with nothing put in its place. The synthesized text goes with it, so the
+	// object stops implementing org.a11y.atspi.Text and is described again: a client that went on holding the old
+	// interface list would call GetText on an object that now answers UnknownInterface.
 	emptied := activeMainTree(func(tree *accessibility.Tree) { tree.Node(4).Value = "" })
 	ta.Publish(mainWindow, emptied, accessibility.Diff(textual, emptied), sampleGeometry())
-	c.Equal(objectEvent(4, signalTextChanged, detailDelete, 0, 6, variantString(changedFieldValue)),
-		ta.peer.nextSignal())
+	drained := ta.peer.nextSignals(2)
+	c.Equal(objectEvent(4, signalTextChanged, detailDelete, 0, 6, variantString(changedFieldValue)), drained[0])
+	c.Equal(Interfaces(emptied.Node(4), false), ta.cachedInterfaces(drained[1], 4))
+	c.False(slices.Contains(ta.cachedInterfaces(drained[1], 4), InterfaceText),
+		"a field with nothing to say hands over no text")
 
 	// A node that carries text of its own says nothing about its value: the text has events of its own, and the value
 	// beside it is a description of the same thing. The field gains its text without any event, as in TestTextEvents,
@@ -1436,11 +1513,26 @@ func TestAWrappingFieldMovesTheLineCountStates(t *testing.T) {
 	ta := newEventAdapter(t)
 	c := ta.c
 	// The main window's field carries a value rather than text of its own, so the snapshot the flip is measured
-	// against is one that has given it some. Gaining text is a different change and is not what this is about.
+	// against is one that has given it some. Gaining text is a change of its own, and is announced as one: the states
+	// that only a node carrying text holds are granted, and the object is described again now that it implements the
+	// text interfaces. What this test is about is what happens to the line count afterwards.
 	typed := activeMainTree(func(tree *accessibility.Tree) {
 		tree.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue}
 	})
 	ta.Publish(mainWindow, typed, accessibility.Diff(mainTree(), typed), sampleGeometry())
+	gained := ta.peer.nextSignals(5)
+	// The field already handed over org.a11y.atspi.Text, synthesized from the value it carries; what it has gained
+	// along with text of its own is the interface an assistive technology types through. A gained interface is
+	// described before the signals of the publish rather than after them; see [Adapter.emitInterfaceGains].
+	c.Equal(Interfaces(typed.Node(4), false), ta.cachedInterfaces(gained[0], 4))
+	c.True(slices.Contains(ta.cachedInterfaces(gained[0], 4), InterfaceEditableText),
+		"the field has become one a reader may type into")
+	c.Equal([]signalRecord{
+		objectEvent(4, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+		stateEvent(4, stateNameSingleLine, true),
+		stateEvent(4, stateNameSelectableText, true),
+		stateEvent(4, stateNameEditable, true),
+	}, gained[1:])
 
 	wrapped := activeMainTree(func(tree *accessibility.Tree) {
 		tree.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue, Multiline: true}
@@ -1478,9 +1570,191 @@ func TestAWrappingFieldMovesTheLineCountStates(t *testing.T) {
 	bareStates := States(bare, true, false)
 	c.False(bareStates.Has(StateSingleLine))
 	c.False(bareStates.Has(StateMultiLine))
-	c.Equal([]stateChange{{name: stateNameMultiLine}}, attributeStateChanges(wrapped.Node(4), bare))
-	c.Equal([]stateChange{{name: stateNameSingleLine, on: true}}, attributeStateChanges(bare, unwrapped.Node(4)))
+	c.Equal([]stateChange{
+		{name: stateNameMultiLine},
+		{name: stateNameSelectableText},
+		{name: stateNameEditable},
+	}, attributeStateChanges(wrapped.Node(4), bare), "a field left with no text keeps none of the states text brings")
+	c.Equal([]stateChange{
+		{name: stateNameSingleLine, on: true},
+		{name: stateNameSelectableText, on: true},
+		{name: stateNameEditable, on: true},
+	}, attributeStateChanges(bare, unwrapped.Node(4)))
 	ta.Announce("Nothing about how many lines there are")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestATextualValueThatComesAndGoesMovesTheTextInterface covers the other route by which org.a11y.atspi.Text arrives on
+// an object that is staying where it is. A popup button with nothing chosen yet reports no value, and a node with no
+// value and no text of its own is given no text interface; choosing an item fills the value in, and [textualValue]
+// synthesizes read-only text from it. [accessibility.Diff] reports that as nothing but a value change, which
+// [Adapter.emitValueChanged] announces as text being inserted — on an object whose interface list, read once out of a
+// cache item and never asked for again, would otherwise still say it hands over no text at all. A client either ignores
+// the signal or calls GetText and is told UnknownInterface. The same route carries the value of a list item, of a
+// populated table cell and of a color well.
+//
+// The order of the two is what the gain half of the pass exists for: libatspi answers atspi_accessible_get_interfaces
+// out of the cached item, so the item that grants org.a11y.atspi.Text has to be on the wire before the text-changed a
+// client would query that interface from. The loss half stays at the end of the publish, where an item that takes an
+// interface away costs nothing.
+func TestATextualValueThatComesAndGoesMovesTheTextInterface(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	// The chooser starts with nothing chosen, which is a node carrying neither text nor value.
+	empty := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Role = role.PopupButton
+		tree.Node(4).Value = ""
+	})
+	ta.Publish(mainWindow, empty, accessibility.Diff(mainTree(), empty), sampleGeometry())
+	// Whatever the publish that set the chooser up said is not what this is about; the announcement marks its end.
+	ta.Announce("Nothing chosen")
+	for ta.peer.nextSignal().member != signalAnnouncement {
+		// Everything the setup publish sent is passed over.
+	}
+	c.False(slices.Contains(Interfaces(empty.Node(4), false), InterfaceText),
+		"a chooser with nothing chosen hands over nothing to read")
+
+	chosen := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Role = role.PopupButton
+		tree.Node(4).Value = testChosenValue
+	})
+	chosen.Generation++
+	events := accessibility.Diff(empty, chosen)
+	c.Equal([]accessibility.Event{{Kind: accessibility.ValueChanged, Node: 4, New: testChosenValue}}, events,
+		"choosing an item moves as nothing but a value change")
+	ta.Publish(mainWindow, chosen, events, sampleGeometry())
+	gained := ta.peer.nextSignals(2)
+	c.Equal(Interfaces(chosen.Node(4), false), ta.cachedInterfaces(gained[0], 4),
+		"what was announced has to be what the object now reports")
+	c.True(slices.Contains(ta.cachedInterfaces(gained[0], 4), InterfaceText),
+		"the chooser hands over the item it has chosen")
+	c.Equal(objectEvent(4, signalTextChanged, detailInsert, 0, 6, variantString(testChosenValue)), gained[1],
+		"and says so before the insertion a client would otherwise query that interface from")
+
+	// And a chooser that goes back to having nothing chosen takes the interface away again.
+	cleared := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Role = role.PopupButton
+		tree.Node(4).Value = ""
+	})
+	cleared.Generation += 2
+	events = accessibility.Diff(chosen, cleared)
+	ta.Publish(mainWindow, cleared, events, sampleGeometry())
+	lost := ta.peer.nextSignals(2)
+	c.Equal(objectEvent(4, signalTextChanged, detailDelete, 0, 6, variantString(testChosenValue)), lost[0])
+	c.False(slices.Contains(ta.cachedInterfaces(lost[1], 4), InterfaceText),
+		"and hands over nothing again")
+	ta.Announce("Nothing more about the chooser")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestAFieldMadeReadOnlyMovesTheEditableTextInterface covers the route that carries org.a11y.atspi.EditableText away
+// from an object that is staying where it is. A field switched to read-only keeps its text and its object, and
+// [accessibility.Diff] reports nothing but the state change, so a client holding the interface list it was handed when
+// the field arrived would go on offering to type into a control that now refuses every edit.
+func TestAFieldMadeReadOnlyMovesTheEditableTextInterface(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	typed := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue}
+	})
+	ta.Publish(mainWindow, typed, accessibility.Diff(mainTree(), typed), sampleGeometry())
+	ta.peer.nextSignals(5)
+	c.True(slices.Contains(Interfaces(typed.Node(4), false), InterfaceEditableText))
+
+	locked := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(4).Text = &accessibility.TextInfo{Text: testFieldValue}
+		tree.Node(4).ReadOnly = true
+	})
+	locked.Generation++
+	events := accessibility.Diff(typed, locked)
+	c.Equal([]accessibility.Event{{
+		Kind: accessibility.StateChanged, Node: 4, State: accessibility.StateReadOnly,
+		Old: falseValue, New: trueValue,
+	}}, events, "being made read-only moves as nothing but a state change")
+	ta.Publish(mainWindow, locked, events, sampleGeometry())
+	lost := ta.peer.nextSignals(3)
+	c.Equal([]signalRecord{
+		stateEvent(4, stateNameReadOnly, true),
+		stateEvent(4, stateNameEditable, false),
+	}, lost[:2])
+	c.Equal(Interfaces(locked.Node(4), false), ta.cachedInterfaces(lost[2], 4),
+		"what was announced has to be what the object now reports")
+	c.False(slices.Contains(ta.cachedInterfaces(lost[2], 4), InterfaceEditableText),
+		"nothing types into a field that has been locked")
+	c.True(slices.Contains(ta.cachedInterfaces(lost[2], 4), InterfaceText), "its content is still read")
+	ta.Announce("Nothing more about the field")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestALabelWhoseTextComesAndGoesMovesItsInterfaces covers the one node whose text can disappear while its object
+// stays exactly where it was. A label draws its own title as text, and an application that clears that title — a status
+// or an error label set back to "" — leaves the label in the tree for as long as something else names it, which an
+// application-set name or a LabeledBy does. Its Text goes from non-nil to nil and back, and with it go
+// org.a11y.atspi.Text and SINGLE_LINE; see [lineState]. SELECTABLE_TEXT is not among them: nothing selects within a
+// label, so it never had the state to lose.
+//
+// Both are cached: the state set comes out of the cache item the object was described by, and so does the interface
+// list, which has no signal of its own and is never asked for again. A client left holding the old pair would either
+// call GetText on an object that now answers UnknownInterface, or never read text the label has gained — which for a
+// label is the whole of what Orca's flat review has to say about it.
+func TestALabelWhoseTextComesAndGoesMovesItsInterfaces(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	// The main window's label carries a name only, so the snapshot this starts from is one that has given it the text
+	// it draws.
+	titled := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(3).Text = &accessibility.TextInfo{Text: testLabelName}
+	})
+	ta.Publish(mainWindow, titled, accessibility.Diff(mainTree(), titled), sampleGeometry())
+	ta.peer.nextSignals(3)
+
+	// The title is cleared while the name keeps the label in the tree, which the root package reports as an attribute
+	// change and nothing else: no state flag moved, and the label draws the same bounds it always did.
+	cleared := activeMainTree(func(*accessibility.Tree) {})
+	cleared.Generation++
+	events := accessibility.Diff(titled, cleared)
+	c.Equal([]accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 3}}, events,
+		"a label whose text is cleared moves as nothing but an attribute change")
+	ta.Publish(mainWindow, cleared, events, sampleGeometry())
+	lost := ta.peer.nextSignals(3)
+	c.Equal([]signalRecord{
+		objectEvent(3, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+		stateEvent(3, stateNameSingleLine, false),
+	}, lost[:2])
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
+		ta.cachedInterfaces(lost[2], 3), "the label has no text left to hand over")
+	c.Equal(Interfaces(cleared.Node(3), false), ta.cachedInterfaces(lost[2], 3),
+		"what was announced has to be what the object now reports")
+	states := States(cleared.Node(3), true, false)
+	c.False(states.Has(StateSingleLine))
+	c.False(states.Has(StateSelectableText), "a label never claimed one could be put in it")
+
+	// The title is filled in again, and everything the client was told to drop is handed back.
+	refilled := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(3).Text = &accessibility.TextInfo{Text: testLabelName}
+	})
+	refilled.Generation += 2
+	events = accessibility.Diff(cleared, refilled)
+	c.Equal([]accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 3}}, events)
+	ta.Publish(mainWindow, refilled, events, sampleGeometry())
+	regained := ta.peer.nextSignals(3)
+	// Handing the text back is a gained interface, so the item comes first this time, where taking it away came last.
+	c.Equal(Interfaces(refilled.Node(3), false), ta.cachedInterfaces(regained[0], 3))
+	c.True(slices.Contains(ta.cachedInterfaces(regained[0], 3), InterfaceText),
+		"the label hands over its text again")
+	c.Equal([]signalRecord{
+		objectEvent(3, signalAttributesChanged, "", 0, 0, variantInt32(0)),
+		stateEvent(3, stateNameSingleLine, true),
+	}, regained[1:])
+	states = States(refilled.Node(3), true, false)
+	c.True(states.Has(StateSingleLine))
+	c.False(states.Has(StateSelectableText), "nothing puts a selection in a label, and nothing says it may")
+	c.False(states.Has(StateEditable), "static text is never typed into, so nothing granted it either")
+
+	ta.Announce("Nothing about carrying text")
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
@@ -1535,6 +1809,10 @@ func TestStateChanges(t *testing.T) {
 		name     string
 		expected []signalRecord
 		event    accessibility.Event
+		// described is the node whose cache item the publish re-sends because the interfaces its object implements
+		// have moved with the change, or zero when no object was described again. The only entry that has one gains
+		// an interface, so the item goes out ahead of the change's own signals; see [Adapter.emitInterfaceGains].
+		described accessibility.NodeID
 	}{
 		{
 			name: "becoming disabled is the loss of two AT-SPI states",
@@ -1560,6 +1838,10 @@ func TestStateChanges(t *testing.T) {
 				stateEvent(4, stateNameReadOnly, true),
 				stateEvent(4, stateNameEditable, false),
 			},
+			// The snapshot before this one is the plain main tree, whose field carries no text of its own, so this
+			// publish is where the field gains org.a11y.atspi.Text and org.a11y.atspi.EditableText. A gained
+			// interface is described before the signals that depend on it rather than after them.
+			described: 4,
 		},
 		{
 			// A slider's state set never holds EDITABLE, so there is nothing for it to lose along with the change,
@@ -1756,6 +2038,10 @@ func TestStateChanges(t *testing.T) {
 			tree = mainTree()
 		}
 		ta.Publish(mainWindow, tree, []accessibility.Event{one.event}, sampleGeometry())
+		if one.described != 0 {
+			c.Equal(Interfaces(tree.Node(one.described), false),
+				ta.cachedInterfaces(ta.peer.nextSignal(), one.described), one.name)
+		}
 		if len(one.expected) != 0 {
 			c.Equal(one.expected, ta.peer.nextSignals(len(one.expected)), one.name)
 		}
@@ -1897,8 +2183,14 @@ func TestARoleChangeIsAPropertyChange(t *testing.T) {
 	// unnamed group is a panel while a named one is a grouping.
 	named := activeMainTree(func(tree *accessibility.Tree) { tree.Node(5).Role = role.Group })
 	ta.Publish(mainWindow, named, accessibility.Diff(mainTree(), named), sampleGeometry())
+	changed := ta.peer.nextSignals(2)
 	c.Equal(objectEvent(5, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleGrouping))),
-		ta.peer.nextSignal())
+		changed[0])
+	// A list that has become a group is no longer something a selection is made in, and the interface list is read
+	// once out of a cache item and never asked for again, so the object is described afresh.
+	c.Equal(Interfaces(named.Node(5), false), ta.cachedInterfaces(changed[1], 5))
+	c.False(slices.Contains(ta.cachedInterfaces(changed[1], 5), InterfaceSelection),
+		"a grouping holds no selection")
 
 	// A node with no object at all says nothing, as it has nothing for a property to have changed on.
 	ignored := activeMainTree(func(tree *accessibility.Tree) { tree.Node(2).Role = role.Toolbar })
@@ -1922,10 +2214,13 @@ func TestARoleChangeWithNoRoleChangedEvent(t *testing.T) {
 		tree.Node(5).Name = ""
 	})
 	ta.Publish(mainWindow, unnamed, accessibility.Diff(mainTree(), unnamed), sampleGeometry())
+	paneled := ta.peer.nextSignals(3)
 	c.Equal([]signalRecord{
 		objectEvent(5, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RolePanel))),
 		objectEvent(5, signalPropertyChange, propertyAccessibleName, 0, 0, variantString("")),
-	}, ta.peer.nextSignals(2))
+	}, paneled[:2])
+	c.Equal(Interfaces(unnamed.Node(5), false), ta.cachedInterfaces(paneled[2], 5),
+		"a list that has become layout hands over no selection")
 
 	// Giving it a name turns it into a group worth announcing, and nothing but the name has changed.
 	renamed := activeMainTree(func(tree *accessibility.Tree) {
@@ -1950,8 +2245,14 @@ func TestARoleChangeWithNoRoleChangedEvent(t *testing.T) {
 		Old: falseValue, New: trueValue,
 	}}, events)
 	ta.Publish(mainWindow, secret, events, sampleGeometry())
+	protected := ta.peer.nextSignals(2)
 	c.Equal(objectEvent(4, signalPropertyChange, propertyAccessibleRole, 0, 0,
-		variantUint32(uint32(RolePasswordText))), ta.peer.nextSignal())
+		variantUint32(uint32(RolePasswordText))), protected[0])
+	// A password field publishes neither text nor value, so the text synthesized from the value it had is gone and the
+	// object stops implementing org.a11y.atspi.Text.
+	c.Equal(Interfaces(secret.Node(4), false), ta.cachedInterfaces(protected[1], 4))
+	c.False(slices.Contains(ta.cachedInterfaces(protected[1], 4), InterfaceText),
+		"nothing reads the content of a password field")
 	ta.Announce("Nothing more about the field")
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
@@ -2433,4 +2734,96 @@ func TestAListGainingRowsBecomesAListBox(t *testing.T) {
 		stateEvent(111, stateNameFocusable, true),
 		objectEvent(111, signalPropertyChange, propertyAccessibleRole, 0, 0, variantUint32(uint32(RoleListBox))),
 	}, ta.peer.nextSignals(2))
+}
+
+// cachedIndex returns the index within its parent that a cache item says its object sits at, failing the test unless
+// the signal is a cache addition for the given node.
+func (ta *testAdapter) cachedIndex(record signalRecord, id accessibility.NodeID) int32 {
+	ta.c.Equal(nodeRef(id), ta.cachedID(record))
+	item, ok := record.args[0].(dbus.Struct)
+	ta.c.True(ok, "a cache item is a structure")
+	index, ok := item[3].(int32)
+	ta.c.True(ok, "a cache item carries where its object sits among its parent's children")
+	return index
+}
+
+// TestTheWindowRootIsDescribedWithItsPlaceAmongTheWindows covers the one node whose cache item cannot be built from
+// [windowData.indexInParent]: the window's own root has no parent inside the window, so that answers -1. The root is
+// named by every publish that activates or deactivates the window, moves its bounds or renames it, so a publish that
+// also moves the interfaces its object implements re-describes it, and an item saying the window sits nowhere is what
+// a client would be left holding. Its place among the application's windows is what [Adapter.emitWindowAdded] uses and
+// what this has to use as well.
+func TestTheWindowRootIsDescribedWithItsPlaceAmongTheWindows(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	c.Equal(-1, newWindowData(mainTree(), sampleGeometry()).indexInParent(1),
+		"the root is nobody's child within the window it is the root of")
+
+	// A window that has gained an action gains org.a11y.atspi.Action with it, which no signal reports: only another
+	// cache item can tell a client that the object answers where it did not before.
+	acting := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Node(1).Actions = accessibility.ActionSet(0).With(accessibility.ShowContextMenu)
+	})
+	events := accessibility.Diff(mainTree(), acting)
+	c.Equal([]accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 1}}, events)
+	c.False(slices.Contains(Interfaces(mainTree().Node(1), false), InterfaceAction))
+	c.True(slices.Contains(Interfaces(acting.Node(1), false), InterfaceAction))
+	ta.Publish(mainWindow, acting, events, sampleGeometry())
+	described := ta.peer.nextSignal()
+	c.Equal(Interfaces(acting.Node(1), false), ta.cachedInterfaces(described, 1))
+	c.Equal(int32(0), ta.cachedIndex(described, 1),
+		"the window is the first of the application's windows, not a child of nothing")
+	c.Equal(objectEvent(1, signalAttributesChanged, "", 0, 0, variantInt32(0)), ta.peer.nextSignal())
+	ta.Announce("Nothing more about the window")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestASpanTargetMovesTheHyperlinkInterface covers the interface that moves on a node no event ever names. A link or an
+// image within a paragraph is given org.a11y.atspi.Hyperlink because the paragraph's text says where it sits, so the
+// paragraph's spans coming and going move an interface on the objects those spans name while the only event of the
+// publish is the paragraph's own attribute change. A client reads an interface list out of the cache item it was handed
+// and never asks again, so without an item of its own the image would go on being asked where in the text it sits after
+// it has left the text, or never be asked after it has joined it.
+func TestASpanTargetMovesTheHyperlinkInterface(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	full := documentTree()
+	ta.Publish(documentWindow, full, nil, sampleGeometry())
+	ta.Announce("The document is up")
+	for ta.peer.nextSignal().member != signalAnnouncement {
+		// Everything the first publish sent is passed over.
+	}
+	c.True(slices.Contains(Interfaces(full.Node(105), true), InterfaceHyperlink),
+		"the image sits within the paragraph's text")
+
+	// The image is taken out of the paragraph's text while its own object stays exactly where it was. Nothing but the
+	// paragraph is named by the events, and the image is the node whose interfaces moved.
+	without := documentTree()
+	without.Generation++
+	paragraph := without.Node(103)
+	paragraph.Text.Spans = slices.Clone(paragraph.Text.Spans[:1])
+	events := accessibility.Diff(full, without)
+	c.Equal([]accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 103}}, events,
+		"a span that has gone moves as nothing but the container's attribute change")
+	ta.Publish(documentWindow, without, events, sampleGeometry())
+	lost := ta.peer.nextSignals(2)
+	c.Equal(objectEvent(103, signalAttributesChanged, "", 0, 0, variantInt32(0)), lost[0])
+	c.False(slices.Contains(ta.cachedInterfaces(lost[1], 105), InterfaceHyperlink),
+		"the image is nobody's hyperlink now")
+
+	// Putting it back grants the interface again, and a gain is described before the signals of the publish rather
+	// than after them.
+	restored := documentTree()
+	restored.Generation += 2
+	events = accessibility.Diff(without, restored)
+	c.Equal([]accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 103}}, events)
+	ta.Publish(documentWindow, restored, events, sampleGeometry())
+	regained := ta.peer.nextSignals(2)
+	c.True(slices.Contains(ta.cachedInterfaces(regained[0], 105), InterfaceHyperlink),
+		"the image sits within the text again")
+	c.Equal(objectEvent(103, signalAttributesChanged, "", 0, 0, variantInt32(0)), regained[1])
+	ta.Announce("Nothing more about the document")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }

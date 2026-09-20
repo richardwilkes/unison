@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/internal/w32"
 	"golang.org/x/sys/windows"
 )
@@ -379,4 +380,205 @@ func TestTextBlockNames(t *testing.T) {
 	c.Equal("Title", name(textHeadingID), "a heading keeps the name folded from its fragments")
 	c.Equal("link", name(textLinkID))
 	c.Equal("Notes", name(textDocumentID), "and a document keeps its own")
+
+	// A column header drawn as plain text is named by that text for the same reason a cell is: a client stepping onto
+	// one would otherwise be told a column's heading is a bare "header". A label always has a name of its own, and a
+	// header the widget named keeps that name.
+	plain := newTestWindow(t, newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Focused: true, Children: []accessibility.NodeID{2, 3, 4}},
+		&accessibility.Node{ID: 2, Role: role.ColumnHeader, Text: &accessibility.TextInfo{Text: "Name"}},
+		&accessibility.Node{
+			ID: 3, Role: role.ColumnHeader, Name: "Full name", Text: &accessibility.TextInfo{Text: "Name"},
+		},
+		&accessibility.Node{ID: 4, Role: role.Label, Name: "Note", Text: &accessibility.TextInfo{Text: "Note"}},
+	))
+	plainName := func(id accessibility.NodeID) string {
+		p := plain.providerFor(id)
+		c.NotNil(p)
+		*value = VARIANT{}
+		c.Equal(w32.COM_S_OK, simpleGetPropertyValue(p.ifacePtr(ifaceSimple), uintptr(NamePropertyId),
+			valueAddress))
+		defer value.Clear()
+		return variantString(value)
+	}
+	c.Equal("Name", plainName(2))
+	c.Equal("Full name", plainName(3))
+	c.Equal("Note", plainName(4))
+}
+
+// TestTextProviderAnswersForField covers the same interface over an element that carries text of its own rather than
+// a composed stream. Nothing below textInfoOf knows the difference, so what is checked here is that the COM around it
+// reaches a field at all: the pattern is obtainable, the caret and the selection are the field's own, and a label —
+// which accepts no selection — reports None and hands back an empty array rather than a caret the user cannot move.
+func TestTextProviderAnswersForField(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out := slotScratch(&pin)
+	ptr, ptrAddress := pinnedOut[uintptr](&pin)
+	w := newTestWindow(t, fieldFixtureTree())
+	field := w.providerFor(fieldID)
+	c.NotNil(field)
+	label := w.providerFor(fieldCellLabelID)
+	c.NotNil(label)
+
+	query := func(p *Provider, guid windows.GUID) uint64 {
+		wanted := guid
+		pin.Pin(&wanted)
+		*ptr = 0
+		return queryInterface(ifaceSimple, p.ifacePtr(ifaceSimple), uintptr(unsafe.Pointer(&wanted)), ptrAddress)
+	}
+
+	// Both of the Text pattern's identifiers reach the one table, by QueryInterface and by pattern identifier alike,
+	// and the field is no child of anyone's text.
+	for _, guid := range []windows.GUID{ifaceIIDs[ifaceText], ifaceIIDAliases[0].guid} {
+		c.Equal(w32.COM_S_OK, query(field, guid))
+		c.Equal(field.ifacePtr(ifaceText), *ptr)
+		c.Equal(uintptr(1), field.release())
+	}
+	c.Equal(w32.COM_E_NOINTERFACE, query(field, ifaceIIDs[ifaceTextChild]))
+	for _, id := range []PatternID{TextPatternId, TextPattern2Id} {
+		c.Equal(w32.COM_S_OK, simpleGetPatternProvider(field.ifacePtr(ifaceSimple), uintptr(id), ptrAddress))
+		c.Equal(field.ifacePtr(ifaceText), *ptr, "pattern %d", id)
+		c.Equal(uintptr(1), field.release())
+	}
+
+	// GetSelection is where NVDA reads the caret from after every arrow key, and here it is the field's own.
+	c.Equal(w32.COM_S_OK, callSlot(field, ifaceText, 0, out.fresh()))
+	ranges := safeArrayRanges(c, out.array())
+	c.Equal(1, len(ranges))
+	if len(ranges) == 1 {
+		start, end := ranges[0].offsets()
+		c.Equal(6, start)
+		c.Equal(11, end)
+	}
+
+	// get_DocumentRange is the whole of the field's content, which is where a client reading it starts.
+	c.Equal(w32.COM_S_OK, callSlot(field, ifaceText, 4, out.fresh()))
+	whole := rangeFromOut(c, out.ptr())
+	c.NotNil(whole)
+	if whole != nil {
+		start, end := whole.offsets()
+		c.Equal(0, start)
+		c.Equal(fieldFixtureLength, end)
+	}
+
+	c.Equal(w32.COM_S_OK, callSlot(field, ifaceText, 5, out.fresh()))
+	c.Equal(int32(SupportedTextSelection_Single), out.i32())
+
+	// GetCaretRange reports the caret as active, since the field is where the keyboard is.
+	caretOut, caretAddress := pinnedOut[uintptr](&pin)
+	c.Equal(w32.COM_S_OK, callSlot(field, ifaceText, 7, out.fresh(), caretAddress))
+	c.Equal(int32(1), out.i32())
+	caret := rangeFromOut(c, *caretOut)
+	c.NotNil(caret)
+	if caret != nil {
+		start, end := caret.offsets()
+		c.Equal(11, start)
+		c.Equal(11, end)
+	}
+
+	// A label hands out the pattern too — that is what lets Narrator's scan mode read it by line, word and character
+	// — but it accepts no selection, so it reports None and an empty array rather than a caret at offset zero.
+	c.Equal(w32.COM_S_OK, query(label, ifaceIIDs[ifaceText]))
+	c.Equal(uintptr(1), label.release())
+	c.Equal(w32.COM_S_OK, callSlot(label, ifaceText, 5, out.fresh()))
+	c.Equal(int32(SupportedTextSelection_None), out.i32())
+	c.Equal(w32.COM_S_OK, callSlot(label, ifaceText, 0, out.fresh()))
+	c.Equal(0, len(safeArrayRanges(c, out.array())), "an empty array rather than a NULL one")
+	c.Equal(w32.COM_S_OK, callSlot(label, ifaceText, 7, out.fresh(), caretAddress))
+	c.Equal(int32(0), out.i32(), "and the caret is not where the keyboard is")
+
+	// A field that becomes Protected publishes no text, which takes the pattern away while a client holds the
+	// interface: every method says E_NOTSUPPORTED and QueryInterface stops answering. The Value pattern stays, and
+	// answers with the empty string every protected node reports.
+	protected := fieldFixtureTree()
+	protected.Generation = 2
+	protected.Node(fieldID).Protected = true
+	protected.Node(fieldID).Text = nil
+	w.Publish(protected, nil)
+	for _, method := range []int{0, 1, 4, 5} {
+		c.Equal(E_NOTSUPPORTED, callSlot(field, ifaceText, method, out.fresh()), "method %d", method)
+	}
+	c.Equal(w32.COM_E_NOINTERFACE, query(field, ifaceIIDs[ifaceText]))
+	c.Equal(w32.COM_S_OK, simpleGetPatternProvider(field.ifacePtr(ifaceSimple), uintptr(TextPatternId), ptrAddress))
+	c.Equal(uintptr(0), *ptr, "an unsupported pattern is a NULL interface with S_OK rather than a failure")
+	c.Equal(w32.COM_S_OK, simpleGetPatternProvider(field.ifacePtr(ifaceSimple), uintptr(ValuePatternId),
+		ptrAddress))
+	c.Equal(field.ifacePtr(ifaceValue), *ptr, "the Value pattern is not what the flag takes away")
+	c.Equal(uintptr(1), field.release())
+}
+
+// TestTextChildProviderAbsentOutsideDocument verifies the other half of the exchange between the two patterns. An
+// element carrying text of its own that no document has claimed is a text container rather than a child of one, so it
+// answers the Text identifier and refuses the TextChild one — and nothing in a window without a document has any
+// business answering ITextChildProvider at all.
+func TestTextChildProviderAbsentOutsideDocument(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out := slotScratch(&pin)
+	ptr, ptrAddress := pinnedOut[uintptr](&pin)
+	w := newTestWindow(t, fieldFixtureTree())
+
+	for _, id := range []accessibility.NodeID{
+		fieldID, fieldHeadingID, fieldCellLabelID, fieldCellID, fieldTableID, fieldButtonID,
+	} {
+		p := w.providerFor(id)
+		c.NotNil(p)
+		wanted := ifaceIIDs[ifaceTextChild]
+		pin.Pin(&wanted)
+		*ptr = 0
+		c.Equal(w32.COM_E_NOINTERFACE, queryInterface(ifaceSimple, p.ifacePtr(ifaceSimple),
+			uintptr(unsafe.Pointer(&wanted)), ptrAddress), "node %d", id)
+		c.Equal(E_NOTSUPPORTED, callSlot(p, ifaceTextChild, 0, out.fresh()), "node %d", id)
+		c.Equal(E_NOTSUPPORTED, callSlot(p, ifaceTextChild, 1, out.fresh()), "node %d", id)
+	}
+
+	// The blocks of a real document are the ones that do answer it, which is what TestTextChildProvider covers; here
+	// the point is that gaining it costs them the Text pattern, so the two are never both obtainable.
+	doc := newTestWindow(t, textFixtureTree())
+	paragraph := doc.providerFor(textParagraphID)
+	c.NotNil(paragraph)
+	wanted := ifaceIIDs[ifaceText]
+	pin.Pin(&wanted)
+	*ptr = 0
+	c.Equal(w32.COM_E_NOINTERFACE, queryInterface(ifaceSimple, paragraph.ifacePtr(ifaceSimple),
+		uintptr(unsafe.Pointer(&wanted)), ptrAddress), "the document owns the paragraph's words")
+	c.Equal(w32.COM_S_OK, callSlot(paragraph, ifaceTextChild, 0, out.fresh()))
+	providerFromThis(out.ptr(), ifaceSimple).release()
+}
+
+// TestTextRangeFromPointOnField verifies the hit test over an owner whose lines sit at its own origin. The point is
+// in screen pixels, which the window's geometry converts: an origin of (100,50) and a scale of two, so the field's own
+// top left corner is at (120,90) and one character is twenty screen pixels wide.
+func TestTextRangeFromPointOnField(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out, outAddress := pinnedOut[uintptr](&pin)
+	w := newTestWindow(t, fieldFixtureTree())
+	field := w.providerFor(fieldID)
+	c.NotNil(field)
+
+	*out = 0
+	c.Equal(w32.COM_S_OK, textRangeFromPointCall(t, field.ifacePtr(ifaceText), 120+50, 90+5, outAddress))
+	r := rangeFromOut(c, *out)
+	c.NotNil(r)
+	if r != nil {
+		start, end := r.offsets()
+		c.Equal(2, start, "the third character of the first line, which is fifty screen pixels along it")
+		c.Equal(2, end, "and a degenerate range, which is a caret position")
+	}
+
+	// A point below everything answers with the last line, clipped away by the scroll area or not: a hit test is
+	// about where the text is, not about what is visible.
+	*out = 0
+	c.Equal(w32.COM_S_OK, textRangeFromPointCall(t, field.ifacePtr(ifaceText), 125, 90+1000, outAddress))
+	r = rangeFromOut(c, *out)
+	c.NotNil(r)
+	if r != nil {
+		start, _ := r.offsets()
+		c.Equal(11, start, "the third line begins at offset 11")
+	}
 }

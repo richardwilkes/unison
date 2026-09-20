@@ -90,7 +90,9 @@ type AccessibilityInfo struct {
 	// assistive technologies use it to offer the label as a separate element.
 	LabeledBy Paneler
 	// Callback runs last, after everything else about the node has been decided, and may adjust anything on it. Use it
-	// for the occasional fact that has no field of its own, such as a heading's level.
+	// for the occasional fact the widget itself cannot work out, such as the heading depth a piece of content really
+	// sits at within the document it was composed into, rather than the one the panel declared, or a Description for a
+	// group that only the application knows the purpose of.
 	//
 	// One thing it cannot decide on its own is the keyboard focus. A window reports the focus on the node of the panel
 	// that actually holds it, and a callback that sets accessibility.Node.Focused on any other node — or on a virtual
@@ -119,6 +121,12 @@ type AccessibilityInfo struct {
 	// and offer it among a document's links. It is copied onto the node as accessibility.Node.URL and means nothing for
 	// any other kind of panel.
 	URL string
+	// Level is the one-based depth of a heading — 1 for a top-level one — or of a row in a hierarchy. A heading is
+	// simply a panel with Role set to role.Heading and Level set to its depth, which is how an application marks up
+	// the structure of its own window: an assistive technology offers the headings of a window as a list and jumps
+	// between them. It is copied onto the node as accessibility.Node.Level, where a Callback may still adjust it, and
+	// means nothing for a panel that is neither.
+	Level int
 	// id is this panel's node id, assigned lazily the first time the panel is described or referred to.
 	id accessibility.NodeID
 	// Role is what kind of element this panel is. role.Auto, the zero value, derives it from the widget, and role.None
@@ -184,7 +192,8 @@ func (b *AccessibilityBuilder) Window() *Window {
 }
 
 // Focused returns true if the panel being described holds the keyboard focus within its window, whether or not that
-// window is the active one.
+// window is the active one. A widget uses it for the things that are only worth saying about the control a person is
+// actually working in.
 func (b *AccessibilityBuilder) Focused() bool {
 	return b.node.Focused
 }
@@ -301,9 +310,12 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 // for the duration of the call. See axCellContext for how the resulting nodes are identified and how requests about
 // them find their way back. A cell that stays attached to the table beyond this call — the one holding the keyboard
 // focus — is described as the real panels it is made of, under their own ids, since they persist and can be reached.
-func (b *AccessibilityBuilder) addCellPanel(parent accessibility.NodeID, key accessibility.CellKey, p *Panel,
-	persistent bool,
-) {
+//
+// key is whatever the widget identifies the cell by — a table and a table header both use an accessibility.CellKey,
+// the header filling in only its Col, and a list the row index — and comes back to it as the Cell of the
+// axCellPanelKey a request names, so it must be comparable and must mean the same thing from one description to the
+// next.
+func (b *AccessibilityBuilder) addCellPanel(parent accessibility.NodeID, key any, p *Panel, persistent bool) {
 	if p == nil || b.snapshot.tree.Nodes[parent] == nil {
 		return
 	}
@@ -584,17 +596,56 @@ func axAllocID() accessibility.NodeID {
 	return accessibility.NodeID(axNextID)
 }
 
-// axTakesFocus reports whether a panel that takes the keyboard focus only for an assistive technology's sake — a
-// Markdown, whose content is read rather than acted on — takes it now. It does so while an assistive technology is
-// being served, and only on the platforms whose screen readers start from the keyboard focus; see axReadersFollowFocus.
+// axTakesFocus reports whether a panel that takes the keyboard focus only for an assistive technology's sake takes it
+// now. Two kinds of panel do: one that asked to, through Panel.axFocusable — a Markdown, whose content is read rather
+// than acted on — and a heading, on the platforms whose screen readers ask a heading they jumped to for the focus.
+// Neither takes it unless an assistive technology is actually being served.
 //
 // Such a panel has no use for the focus itself: it draws no differently for holding it and handles no keys of its
 // own. What it holds the focus for is where a screen reader begins. Narrator keeps its cursor on the focused element,
 // and a window in which nothing holds the focus leaves that cursor on the window's own element, from which Narrator's
 // scan mode, heading and link navigation all refuse to move — while from any element inside the window they move
 // through the rest of it freely. Giving the document the focus puts the cursor inside the content, where the person can
-// read it. A keyboard user nothing is listening to is left alone, since these panels have never been tab stops, and an
-// application pays one atomic load per Focusable call on a panel marked this way, and nothing at all for the rest.
+// read it. A heading is the other half of the same story, from the other end: Orca's structural navigation lands on
+// the heading it found by asking for the focus there, and a heading that cannot take it leaves the person where they
+// were; see axHeadingsTakeFocus, which is its own flag rather than axReadersFollowFocus because what Orca needs is
+// not what Narrator needs. A heading only counts if it has something to announce — see axHasSomethingToAnnounce: a
+// label used purely as spacing, which an application may still have marked up as a heading, announces nothing when it
+// is landed on, so it is left out of the places Orca's structural navigation can stop, while one that has something to
+// say — text it draws, a name the application gave it, or the tooltip axDescribeStaticContent takes a name from — is
+// announced by that and so is somewhere the jump can land. The question is asked of what will be published rather than
+// of what kind of widget the heading is built out of, since an application marks up a heading by setting Role and
+// Level on any panel at all: a grouping Panel or a custom-drawn widget carrying a name is as much a heading Orca will
+// jump to as a Label is.
+//
+// A keyboard user nothing is listening to is left alone, since none of these panels have ever been tab stops. The
+// cost when nothing is listening is one bool read and one role comparison, which is what Panel.Focusable — called on
+// every panel of every traversal — pays for this.
 func (p *Panel) axTakesFocus() bool {
-	return p.axFocusable && axReadersFollowFocus && accessibilityActive.Load()
+	heading := axHeadingsTakeFocus && p.Accessibility.Role == role.Heading
+	if !p.axFocusable && !heading {
+		return false
+	}
+	if !accessibilityActive.Load() {
+		return false
+	}
+	if p.axFocusable {
+		return axReadersFollowFocus
+	}
+	return p.axHasSomethingToAnnounce()
+}
+
+// axHasSomethingToAnnounce reports whether the node this panel will be published as carries anything a screen reader
+// could say on landing there: text the panel draws, a name the application set, or the tooltip a drawable-only widget
+// takes its name from — see axDescribeStaticContent, which writes that tooltip onto the node before any role the
+// application asked for is looked at. A panel with none of them announces nothing at all, and is no use as a place a
+// jump can land.
+func (p *Panel) axHasSomethingToAnnounce() bool {
+	if p.Accessibility.Name != "" {
+		return true
+	}
+	if l := axLabelOf(p); l != nil && l.String() != "" {
+		return true
+	}
+	return axTooltipText(p) != ""
 }

@@ -20,8 +20,9 @@ import (
 // axReadersFollowFocus reports whether this platform's screen readers start from the keyboard focus. VoiceOver's cursor
 // is its own: it moves through a window's content from the window itself, whether or not anything inside holds the
 // focus, so a panel that takes the focus only for an assistive technology's sake — see Panel.axTakesFocus — has no
-// reason to take it here, and a window in which nothing holds the focus is left as it is.
-const axReadersFollowFocus = false
+// reason to take it here, and a window in which nothing holds the focus is left as it is. It is a var rather than a
+// const so that a test can pin either answer on whichever platform it runs on.
+var axReadersFollowFocus = false
 
 // axCaretBlockReportsFocus reports whether the block of a document that holds the reading caret publishes the focus as
 // well as the document itself. VoiceOver reads a document through its elements and has no use for a second element
@@ -29,6 +30,13 @@ const axReadersFollowFocus = false
 // only name one, so a block that claimed it would either be ignored or take the focus away from the document. It is a
 // var rather than a const so that a test can pin both answers whichever platform it runs on.
 var axCaretBlockReportsFocus = false
+
+// axHeadingsTakeFocus reports whether a heading takes the keyboard focus while an assistive technology is being
+// served. VoiceOver's cursor is its own: the rotor's heading list and VO navigation move that cursor without asking
+// anything to take the focus, so a heading that became a focusable element would gain nothing and would show up as
+// one more place the keyboard focus can be. It is a var rather than a const so that a test can pin either answer on
+// whichever platform it runs on.
+var axHeadingsTakeFocus = false
 
 // The macOS side of accessibility support: this file connects the snapshots the root package publishes to the
 // NSAccessibility adapter in internal/cocoa, and connects the requests that come back from an assistive technology to

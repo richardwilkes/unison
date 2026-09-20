@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -113,6 +114,21 @@ func (h *DefaultTableColumnHeader[T]) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 		}
 		h.sortIndicator.DrawInRect(canvas, r, nil, paint)
 	}
+}
+
+// axTextLine returns what this column header contributes as static text: its runes, the decoration each of them is
+// drawn with, and the one line they occupy, in the header's own coordinates. It shadows the Label's own answer through
+// Self, because a sorted column draws its title in a rect shrunk by the sort indicator — the same arithmetic
+// DefaultDraw uses — and a reading caret placed by the label's unshrunk rect would sit beside the characters rather
+// than on them.
+func (h *DefaultTableColumnHeader[T]) axTextLine() (runes []rune, decorations []*TextDecoration,
+	line accessibility.Line,
+) {
+	r := h.ContentRect(false)
+	if h.sortIndicator != nil {
+		r.Width -= h.Gap + h.sortIndicator.LogicalSize().Width
+	}
+	return axStaticTextLine(r, h.HAlign, h.VAlign, h.Font, h.Text, h.Drawable, h.Side, h.Gap)
 }
 
 // SortState returns the current SortState.

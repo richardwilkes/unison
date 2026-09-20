@@ -31,7 +31,7 @@ func TestMembership(t *testing.T) {
 			fn:   role.Enum.IsText,
 			members: []role.Enum{
 				role.TextField, role.TextArea, role.SpinButton, role.ComboBox, role.Document, role.Paragraph,
-				role.Heading, role.Code, role.Cell, role.ColumnHeader,
+				role.Heading, role.Code, role.Cell, role.ColumnHeader, role.Label,
 			},
 		},
 		{

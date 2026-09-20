@@ -34,12 +34,13 @@ import (
 // None of this runs unless accessibilityActive is set. See accessibility.go.
 //
 // Text controls fill in accessibility.Node.Text from their own ProvideAccessibility implementation, since only the
-// widget knows what its content and selection are. The laid-out lines within that — accessibility.TextInfo.Lines — are
-// measured by an editable control only while it holds the focus, which is what AccessibilityBuilder.Focused is for:
-// measuring every line of every text control in a window on every snapshot would cost far more than anything an
-// assistive technology would do with the result. The blocks of a document are the exception, and fill them in whether
-// the document holds the focus or not — laying the text out is what drew them, so the advances have already been
-// measured and there is nothing left to spend. See accessibility.TextInfo.Lines.
+// widget knows what its content and selection are. Every one of them fills in the laid-out lines within that —
+// accessibility.TextInfo.Lines — whether or not it holds the focus, since a screen reader reads by line, by word and
+// by character wherever its review cursor happens to be, and a control that reported no lines could be announced but
+// never explored. What keeps that affordable is that nothing is measured twice: a Field caches the rune boundaries of
+// each line beside the wrapped lines they were measured from and refills only where the lines are on the screen, a
+// document's blocks were measured by the layout that drew them, and a label's one line comes from the widths its text
+// already holds. See accessibility.TextInfo.Lines.
 
 // axPublishThrottle bounds how often a window's tree is rebuilt. A window that redraws continuously — a blinking caret
 // is enough — would otherwise rebuild its tree on every frame, and an assistive technology gains nothing from being
@@ -115,17 +116,23 @@ type axSnapshot struct {
 // panels. Instead each node is keyed by the cell and the position of its panel within the cell — the table's builder
 // allocates the ids, so they hold from one description to the next for as long as the row builds the same thing — and
 // requests are sent to the table, which builds the cell again, attaches it, and finds the panel at that position.
+//
+// The cell is named by whatever the widget identifies its own cells by, exactly as a virtual child is: a table and a
+// table header both use an accessibility.CellKey, the header filling in only its Col, and a list the row index. It has
+// to be comparable, since it ends up inside the key a virtual child is registered under, and the widget the requests
+// are sent to is the one that knows how to read it again.
 type axCellContext struct {
 	builder *AccessibilityBuilder
-	key     accessibility.CellKey
+	key     any
 	path    []int
 }
 
-// axCellPanelKey is the key under which a panel inside a table cell is registered: the cell, and the panel's position
-// within it as the child indexes on the way down from the cell's own panel, joined with dots.
+// axCellPanelKey is the key under which a panel inside a table cell, a column header or a list row is registered: the
+// cell, as its widget identifies it, and the panel's position within it as the child indexes on the way down from the
+// cell's own panel, joined with dots.
 type axCellPanelKey struct {
+	Cell any
 	Path string
-	Cell accessibility.CellKey
 }
 
 // pathString returns the current position within the cell in the form axCellPanelKey.Path uses.
@@ -558,6 +565,7 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		Name:        p.Accessibility.Name,
 		Description: p.Accessibility.Description,
 		URL:         p.Accessibility.URL,
+		Level:       p.Accessibility.Level,
 		Bounds:      raw,
 		Role:        p.Accessibility.Role,
 		Disabled:    !p.Enabled(),

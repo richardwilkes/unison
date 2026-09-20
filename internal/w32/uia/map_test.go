@@ -10,6 +10,7 @@
 package uia
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -203,16 +204,33 @@ func TestPatterns(t *testing.T) {
 		{node: &accessibility.Node{Role: role.TabPanel}},
 		{node: &accessibility.Node{Role: role.ScrollArea}},
 		{node: &accessibility.Node{Role: role.TableHeader}},
+		// Static text hands out the Text pattern precisely when it carries text, and never a Value pattern: the same
+		// words are already the element's name, and a client reading both would speak them twice. A label showing only
+		// an image carries none and hands out nothing.
 		{node: &accessibility.Node{Role: role.Label}},
+		{
+			node:     &accessibility.Node{Role: role.Label, Text: &accessibility.TextInfo{Text: "Some text"}},
+			patterns: PatternText | PatternText2,
+		},
 		{node: &accessibility.Node{Role: role.Heading}},
-		// The blocks a document is composed of hand out nothing at all, whether or not they carry text: a client reads
-		// their content through the document's Text pattern and as the name each takes from that content, and a Value
-		// pattern would have Narrator speak the same text twice. See NameString.
+		{
+			node:     &accessibility.Node{Role: role.Heading, Level: 2, Text: &accessibility.TextInfo{Text: "Title"}},
+			patterns: PatternText | PatternText2,
+		},
+		// The blocks a document is composed of answer the same way on their own. Inside a document they lose the
+		// pattern again, since the document owns their words; that is ProvidedPatterns' half of the answer, and
+		// TestProvidedPatternsTextChild covers it. BlockQuote is outside role.IsText and so carries no text at all.
 		{node: &accessibility.Node{Role: role.Paragraph}},
 		{node: &accessibility.Node{Role: role.Code}},
 		{node: &accessibility.Node{Role: role.BlockQuote}},
-		{node: &accessibility.Node{Role: role.Paragraph, Text: &accessibility.TextInfo{Text: "Hello"}}},
-		{node: &accessibility.Node{Role: role.Code, Text: &accessibility.TextInfo{Text: "x = 1"}}},
+		{
+			node:     &accessibility.Node{Role: role.Paragraph, Text: &accessibility.TextInfo{Text: "Hello"}},
+			patterns: PatternText | PatternText2,
+		},
+		{
+			node:     &accessibility.Node{Role: role.Code, Text: &accessibility.TextInfo{Text: "x = 1"}},
+			patterns: PatternText | PatternText2,
+		},
 		{node: &accessibility.Node{Role: role.BlockQuote, Text: &accessibility.TextInfo{Text: "Quoted"}}},
 		{node: &accessibility.Node{Role: role.Image}},
 		{node: &accessibility.Node{Role: role.Separator}},
@@ -228,6 +246,12 @@ func TestPatterns(t *testing.T) {
 			patterns: PatternInvoke | PatternValue,
 		},
 		{node: &accessibility.Node{Role: role.ColumnHeader}, patterns: PatternInvoke},
+		// A column header drawn as plain text carries that text and reports it, on top of the Invoke that sorts the
+		// column. A custom header draws its own content and carries none.
+		{
+			node:     &accessibility.Node{Role: role.ColumnHeader, Text: &accessibility.TextInfo{Text: "Name"}},
+			patterns: PatternInvoke | PatternText | PatternText2,
+		},
 		{node: &accessibility.Node{Role: role.ColorWell}, patterns: PatternInvoke | PatternValue},
 		{node: &accessibility.Node{Role: role.ToggleButton}, patterns: PatternToggle},
 		{node: &accessibility.Node{Role: role.CheckBox}, patterns: PatternToggle},
@@ -239,8 +263,29 @@ func TestPatterns(t *testing.T) {
 			patterns: PatternToggle | PatternExpandCollapse,
 		},
 		{node: &accessibility.Node{Role: role.RadioButton}, patterns: PatternSelectionItem},
+		// A field reports its content twice over: through Value, which is how a client reads the whole of it, and
+		// through Text, which is how it reads it by line, word and character and follows the caret. A Protected field
+		// carries no text at all, so it keeps Value alone.
 		{node: &accessibility.Node{Role: role.TextField}, patterns: PatternValue},
 		{node: &accessibility.Node{Role: role.TextArea}, patterns: PatternValue},
+		{
+			node:     &accessibility.Node{Role: role.TextField, Text: &accessibility.TextInfo{Text: "Hello"}},
+			patterns: PatternValue | PatternText | PatternText2,
+		},
+		{
+			node:     &accessibility.Node{Role: role.TextArea, Text: &accessibility.TextInfo{Text: "Hello"}},
+			patterns: PatternValue | PatternText | PatternText2,
+		},
+		{node: &accessibility.Node{Role: role.TextField, Protected: true}, patterns: PatternValue},
+		// A node marked Protected after its text was filled in — which only an AccessibilityInfo.Callback can
+		// produce — keeps Value alone as well: the pattern that would read the content out by line, word and
+		// character is refused on the flag rather than on the text being absent.
+		{
+			node: &accessibility.Node{
+				Role: role.TextField, Protected: true, Text: &accessibility.TextInfo{Text: "hunter2"},
+			},
+			patterns: PatternValue,
+		},
 		// A document with no composed stream carries nothing at all: no value, since the pattern would answer a client
 		// with an empty string as the whole content of the document, and no Text pattern, since there is no text to
 		// read through it. TestControlTypeDocument covers the other half.
@@ -256,7 +301,21 @@ func TestPatterns(t *testing.T) {
 			node:     &accessibility.Node{Role: role.SpinButton, HasNumber: true},
 			patterns: PatternValue | PatternRangeValue,
 		},
+		{
+			node:     &accessibility.Node{Role: role.SpinButton, Text: &accessibility.TextInfo{Text: "3"}},
+			patterns: PatternValue | PatternText | PatternText2,
+		},
+		{
+			node: &accessibility.Node{
+				Role: role.SpinButton, HasNumber: true, Text: &accessibility.TextInfo{Text: "3"},
+			},
+			patterns: PatternValue | PatternRangeValue | PatternText | PatternText2,
+		},
 		{node: &accessibility.Node{Role: role.ComboBox}, patterns: PatternValue | PatternExpandCollapse},
+		{
+			node:     &accessibility.Node{Role: role.ComboBox, Text: &accessibility.TextInfo{Text: "Red"}},
+			patterns: PatternValue | PatternExpandCollapse | PatternText | PatternText2,
+		},
 		{node: &accessibility.Node{Role: role.PopupButton}, patterns: PatternValue | PatternExpandCollapse},
 		// A slider and a scroll bar have a range only once they have a number, for the reason a spin button and a
 		// progress bar do: the roles are public API, and RangeValue answering zero for the value, the bounds and the
@@ -290,6 +349,14 @@ func TestPatterns(t *testing.T) {
 		{
 			node:     &accessibility.Node{Role: role.Cell, Value: "checked"},
 			patterns: PatternGridItem | PatternTableItem | PatternValue,
+		},
+		// A cell carrying text of its own reports it instead, so that a review cursor can read it by word and
+		// character rather than only hear it named. The toolkit's own cells are read through the Label within them
+		// and never carry text, so this is the shape an application produces by filling a cell's text in from an
+		// AccessibilityInfo.Callback.
+		{
+			node:     &accessibility.Node{Role: role.Cell, Text: &accessibility.TextInfo{Text: "Note"}},
+			patterns: PatternGridItem | PatternTableItem | PatternText | PatternText2,
 		},
 		{node: &accessibility.Node{Role: role.Menu}},
 		{node: &accessibility.Node{Role: role.MenuItem}, patterns: PatternInvoke},
@@ -352,11 +419,64 @@ func TestProvidedPatternsTextChild(t *testing.T) {
 	plain := textFixtureTree()
 	plain.Node(textDocumentID).Document = nil
 	c.False(ProvidesPattern(plain, plain.Node(textLinkID), PatternTextChild))
+
+	// Gaining TextChild costs the element the Text pattern. The blocks of this document carry text of their own, so
+	// Patterns grants them both — a paragraph outside a document is read through its own Text pattern — but inside
+	// one the document owns the words, and two providers over the same text with two sets of offsets is not an
+	// answer a client can reconcile.
+	for _, id := range []accessibility.NodeID{textParagraphID, textCodeID, textCellAID, textCellBID} {
+		n := tree.Node(id)
+		c.True(Patterns(n).Has(PatternText|PatternText2), "node %d carries its own text", id)
+		c.False(ProvidesPattern(tree, n, PatternText), "node %d is claimed by the document", id)
+		c.False(ProvidesPattern(tree, n, PatternText2), "node %d is claimed by the document", id)
+	}
+
+	// Once the stream is gone nothing claims them, and the blocks answer for their own text again.
+	c.True(ProvidesPattern(plain, plain.Node(textParagraphID), PatternText|PatternText2))
 }
 
-// TestNameString verifies the one place a node's name is not Node.Name: the blocks a document is made of, whose name
-// is their own content when the widget gave them none. Narrator's item navigation walks the control view and speaks
-// each element's name, so a paragraph with no name at all would be announced as a bare "text".
+// TestProvidedPatternsTextOwner verifies the other side of that exchange: an element carrying text that no document
+// has claimed hands out the Text pattern itself, wherever in the tree it sits. This is what lets Narrator's scan mode
+// read a label, a heading, a plain cell or a column header by line, word and character, and what gives NVDA the caret
+// it follows through a field.
+func TestProvidedPatternsTextOwner(t *testing.T) {
+	c := check.New(t)
+	tree := fieldFixtureTree()
+	for _, id := range []accessibility.NodeID{fieldID, fieldHeadingID, fieldCellLabelID} {
+		n := tree.Node(id)
+		c.True(ProvidesPattern(tree, n, PatternText|PatternText2), "node %d", id)
+		c.False(ProvidesPattern(tree, n, PatternTextChild), "node %d is in no document", id)
+	}
+
+	// Nothing that carries no text hands the pattern out, whatever its role.
+	for _, id := range []accessibility.NodeID{
+		fieldWindowID, fieldScrollID, fieldTableID, fieldRowID, fieldCellID, fieldButtonID,
+	} {
+		c.False(ProvidesPattern(tree, tree.Node(id), PatternText), "node %d", id)
+	}
+
+	// A Protected field publishes no text, so it keeps its Value pattern and loses the Text ones, which is the second
+	// line of the defense the flag is: nothing a client can read the content through is left.
+	protected := fieldFixtureTree()
+	protected.Node(fieldID).Protected = true
+	protected.Node(fieldID).Text = nil
+	c.False(ProvidesPattern(protected, protected.Node(fieldID), PatternText))
+	c.True(ProvidesPattern(protected, protected.Node(fieldID), PatternValue))
+
+	// The flag is obeyed even when the text was filled in before it was set, which is what an
+	// AccessibilityInfo.Callback marking a node Protected produces: the pattern is withheld rather than left to read
+	// a password out by line, word and character, exactly as ValueString withholds the value.
+	filled := fieldFixtureTree()
+	filled.Node(fieldID).Protected = true
+	c.NotNil(filled.Node(fieldID).Text)
+	c.False(ProvidesPattern(filled, filled.Node(fieldID), PatternText|PatternText2))
+	c.Equal("", ValueString(filled.Node(fieldID)))
+}
+
+// TestNameString verifies the one place a node's name is not Node.Name: the pieces that are nothing but the text
+// drawn in them — a paragraph, a code block, a cell and a plain column header — whose name is their own content when
+// the widget gave them none. Narrator's item navigation walks the control view and speaks each element's name, so a
+// paragraph with no name at all would be announced as a bare "text".
 func TestNameString(t *testing.T) {
 	c := check.New(t)
 	for i, one := range []struct {
@@ -375,6 +495,20 @@ func TestNameString(t *testing.T) {
 			node:     &accessibility.Node{Role: role.Cell, Text: &accessibility.TextInfo{Text: "42"}},
 			expected: "42",
 		},
+		// A column header whose name an application cleared in its Callback — the only shape that reaches this arm,
+		// since TableHeader names every column it fills text in for; see namedByItsText — is read as the title it
+		// draws rather than as a bare "header".
+		{
+			node:     &accessibility.Node{Role: role.ColumnHeader, Text: &accessibility.TextInfo{Text: "Name"}},
+			expected: "Name",
+		},
+		{
+			node: &accessibility.Node{
+				Role: role.ColumnHeader, Name: "Full name", Text: &accessibility.TextInfo{Text: "Name"},
+			},
+			expected: "Full name",
+		},
+		{node: &accessibility.Node{Role: role.ColumnHeader}},
 		{
 			node:     &accessibility.Node{Role: role.Paragraph, Name: "Summary", Text: &accessibility.TextInfo{Text: "Body"}},
 			expected: "Summary",
@@ -1731,34 +1865,175 @@ func TestDecideRaisesValue(t *testing.T) {
 	}))
 }
 
-// TestDecideRaisesText verifies that an edit to an element without the Text pattern reports the new value once, even
-// though the diff describes it as a value change plus the deletion and insertion that made it.
+// TestDecideRaisesText verifies what one edit to a field turns into, which is every channel the element has and each
+// of them once: the value property a client reads the whole field through, UI Automation's text event that tells one
+// reading through ITextProvider to read again, and the selection event that moves its caret. The diff describes that
+// one edit as a value change plus the deletion and the insertion that made it plus the caret that followed, and all
+// of that collapses to three raises.
 //
-// Neither of UI Automation's text events is raised for such an element: both belong to the Text control pattern, and a
-// client that responded to one by asking an element that answers NULL for it would have nothing to read. A caret move
-// reports nothing at all there, since it changes no property a client can read back. TestDecideRaisesDocumentText
-// covers the elements that do have the pattern.
+// An element carrying no text has only the value to report, which is the answer this used to give for every element:
+// both text events belong to the Text control pattern, and a client that responded to one by asking an element that
+// answers NULL for it would have nothing to read. TestDecideRaisesDocumentText covers a document, and
+// TestDecideRaisesLabelText an element with text and no value.
 func TestDecideRaisesText(t *testing.T) {
 	c := check.New(t)
-	c.Equal([]Raise{raiseProperty(2, ValueValuePropertyId)},
+	c.Equal([]Raise{
+		raiseProperty(2, ValueValuePropertyId),
+		raiseEvent(2, Text_TextChangedEventId),
+		raiseEvent(2, Text_TextSelectionChangedEventId),
+	}, DecideRaises(eventTree(), eventTree(), []accessibility.Event{
+		{Kind: accessibility.ValueChanged, Node: 2, Old: "hello", New: "help"},
+		{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
+		{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
+		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 4},
+	}))
+
+	// An edit with no value change of its own still reports the value, since that is where a client reading the field
+	// whole looks for the text.
+	c.Equal([]Raise{raiseEvent(2, Text_TextChangedEventId), raiseProperty(2, ValueValuePropertyId)},
 		DecideRaises(eventTree(), eventTree(), []accessibility.Event{
+			{Kind: accessibility.TextInserted, Node: 2, Start: 5, Length: 1, New: "!"},
+		}))
+
+	// A field carrying no text at all — which is what a Protected one publishes — has only the Value pattern, so the
+	// same edit reports the value once and nothing else. The caret move reports nothing, since there is no selection
+	// a client could read back.
+	textless := func() *accessibility.Tree {
+		tree := eventTree()
+		tree.Node(2).Text = nil
+		return tree
+	}
+	c.Equal([]Raise{raiseProperty(2, ValueValuePropertyId)},
+		DecideRaises(textless(), textless(), []accessibility.Event{
 			{Kind: accessibility.ValueChanged, Node: 2, Old: "hello", New: "help"},
 			{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
 			{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
 			{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 4},
 		}))
 
-	// An edit with no value change of its own still reports the value, since that is where a client reads the text.
-	c.Equal([]Raise{raiseProperty(2, ValueValuePropertyId)},
-		DecideRaises(eventTree(), eventTree(), []accessibility.Event{
-			{Kind: accessibility.TextInserted, Node: 2, Start: 5, Length: 1, New: "!"},
-		}))
-
-	// A button has no value pattern, so an edit to it reports nothing rather than an event a client cannot follow up.
+	// A button has no value pattern and no text, so an edit to it reports nothing rather than an event a client cannot
+	// follow up.
 	c.Nil(DecideRaises(eventTree(), eventTree(), []accessibility.Event{
 		{Kind: accessibility.TextInserted, Node: 10, Start: 0, Length: 1, New: "x"},
 		{Kind: accessibility.TextSelectionChanged, Node: 10},
 	}))
+}
+
+// TestDecideRaisesFieldText covers the two things a field's Text pattern adds beyond the edit itself: the caret event
+// NVDA reads its arrow keys from, and the pattern arriving and departing as the field's text does.
+func TestDecideRaisesFieldText(t *testing.T) {
+	c := check.New(t)
+
+	// A caret move with no edit behind it is the whole of NVDA's arrow-key reading: it answers the event by reading
+	// the new line, word or character through ITextProvider from the selection. Before the field had the pattern this
+	// reported nothing at all.
+	c.Equal([]Raise{raiseEvent(2, Text_TextSelectionChangedEventId)},
+		DecideRaises(eventTree(), eventTree(), []accessibility.Event{
+			{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 2},
+		}))
+
+	// A field that becomes Protected publishes no text, which takes both Text patterns away. The availability
+	// properties are the only thing that may be raised on an element that no longer has a pattern, and they come
+	// before the state's own property.
+	protected := eventTree()
+	protected.Node(2).Protected = true
+	protected.Node(2).Text = nil
+	protected.Node(2).Value = ""
+	c.Equal([]Raise{
+		raiseProperty(2, IsTextPatternAvailablePropertyId),
+		raiseProperty(2, IsTextPattern2AvailablePropertyId),
+		raiseProperty(2, IsPasswordPropertyId),
+	}, DecideRaises(eventTree(), protected, []accessibility.Event{
+		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateProtected},
+	}))
+
+	// And back again, which grants them: a client holding the interface has to be told both ways.
+	c.Equal([]Raise{
+		raiseProperty(2, IsTextPatternAvailablePropertyId),
+		raiseProperty(2, IsTextPattern2AvailablePropertyId),
+		raiseProperty(2, IsPasswordPropertyId),
+	}, DecideRaises(protected, eventTree(), []accessibility.Event{
+		{Kind: accessibility.StateChanged, Node: 2, State: accessibility.StateProtected},
+	}))
+
+	// Measuring the field's lines changes nothing about which patterns it hands out — it carried text before and
+	// carries text now — so a publish that fills them in as the field takes the focus reports no availability at all.
+	// A spurious pattern-gained raise would have every client re-read an element it already knows.
+	unmeasured := eventTree()
+	unmeasured.Node(2).Text = &accessibility.TextInfo{Text: "hello", SelStart: 5, SelEnd: 5}
+	measured := eventTree()
+	measured.Node(2).Text = &accessibility.TextInfo{
+		Text: "hello", SelStart: 5, SelEnd: 5,
+		Lines: []accessibility.Line{{Advances: []float32{0, 1, 2, 3, 4, 5}, Start: 0, End: 5}},
+	}
+	for _, raise := range DecideRaises(unmeasured, measured, []accessibility.Event{
+		{Kind: accessibility.FocusChanged, Node: 2},
+		{Kind: accessibility.AttributesChanged, Node: 2},
+	}) {
+		c.NotEqual(raiseProperty(2, IsTextPatternAvailablePropertyId), raise)
+		c.NotEqual(raiseProperty(2, IsTextPattern2AvailablePropertyId), raise)
+	}
+}
+
+// TestDecideRaisesLabelText covers an element that carries text and no value: a label. An edit to one reports the
+// text event, which is what a client reading it through ITextProvider answers by reading again, and the name change
+// the snapshot raises in its own right — and nothing through a Value pattern, since a label hands out none.
+func TestDecideRaisesLabelText(t *testing.T) {
+	c := check.New(t)
+	labels := func(text string) *accessibility.Tree {
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Focused: true, Children: []accessibility.NodeID{2, 3}},
+			&accessibility.Node{ID: 2, Role: role.Label, Name: text, Text: &accessibility.TextInfo{Text: text}},
+			&accessibility.Node{ID: 3, Role: role.Label, Name: "Image only"},
+		)
+	}
+	c.Equal([]Raise{raiseProperty(2, NamePropertyId), raiseEvent(2, Text_TextChangedEventId)},
+		DecideRaises(labels("Name"), labels("Full name"), []accessibility.Event{
+			{Kind: accessibility.NameChanged, Node: 2},
+			{Kind: accessibility.TextDeleted, Node: 2, Start: 0, Length: 4},
+			{Kind: accessibility.TextInserted, Node: 2, Start: 0, Length: 9},
+		}))
+
+	// A label showing only an image carries no text, so it hands out no pattern and an edit to it says nothing.
+	c.Nil(DecideRaises(labels("Name"), labels("Name"), []accessibility.Event{
+		{Kind: accessibility.TextInserted, Node: 3, Start: 0, Length: 1},
+	}))
+
+	// A label that stops carrying text loses both patterns, and the availability properties are what say so. The whole
+	// point of the case is what the production path produces for it, so the events are the ones accessibility.Diff
+	// really emits rather than a hand-made list: the text events describe an edit to text present on both sides, so
+	// they say nothing at all here, and what carries the news is the attributes change the diff fires when one
+	// snapshot carries text and the other does not.
+	//
+	// The label is a status label whose drawn title is cleared while the name the application set for it keeps it in
+	// the tree, which is why the name changes along with the text.
+	status := func(name, text string) *accessibility.Tree {
+		n := &accessibility.Node{ID: 2, Role: role.Label, Name: name}
+		if text != "" {
+			n.Text = &accessibility.TextInfo{Text: text}
+		}
+		return newTestTree(1, 0,
+			&accessibility.Node{ID: 1, Role: role.Window, Focused: true, Children: []accessibility.NodeID{2}},
+			n)
+	}
+	withText := status("Ready", "Ready")
+	withoutText := status("Status", "")
+	c.True(ProvidesPattern(withText, withText.Node(2), PatternText|PatternText2))
+	c.False(ProvidedPatterns(withoutText, withoutText.Node(2)).Has(PatternText | PatternText2))
+
+	lost := DecideRaises(withText, withoutText, accessibility.Diff(withText, withoutText))
+	c.True(slices.Contains(lost, raiseProperty(2, IsTextPatternAvailablePropertyId)),
+		"the pattern's departure is reported")
+	c.True(slices.Contains(lost, raiseProperty(2, IsTextPattern2AvailablePropertyId)))
+	c.True(slices.Contains(lost, raiseProperty(2, NamePropertyId)))
+
+	// And the other way about: a label that starts carrying text gains both patterns, which a client that cached
+	// IsTextPatternAvailable has to be told or it will never ask for ITextProvider again.
+	gained := DecideRaises(withoutText, withText, accessibility.Diff(withoutText, withText))
+	c.True(slices.Contains(gained, raiseProperty(2, IsTextPatternAvailablePropertyId)),
+		"the pattern's arrival is reported")
+	c.True(slices.Contains(gained, raiseProperty(2, IsTextPattern2AvailablePropertyId)))
+	c.True(slices.Contains(gained, raiseProperty(2, NamePropertyId)))
 }
 
 // TestDecideRaisesDocumentText verifies the two events UI Automation has for text, which are raised on the elements
@@ -1800,6 +2075,26 @@ func TestDecideRaisesDocumentText(t *testing.T) {
 		DecideRaises(textFixtureTree(), emptied, []accessibility.Event{
 			{Kind: accessibility.TextDeleted, Node: textParagraphID, Start: 0, Length: 16},
 		}))
+
+	// An edit that arrives on the same node as a change to the patterns it hands out reports both. A block whose
+	// words a document has just composed into its stream stops answering the Text pattern and answers TextChild
+	// instead, and nothing else in the diff says so: the stream arriving is an attributes change on the document, not
+	// on the block, so this edit is the block's only event and the availability raises have to ride along with it.
+	// Without them a client goes on reading the block through a pattern it no longer hands out.
+	unclaimed := textFixtureTree()
+	unclaimed.Node(textDocumentID).Document = nil
+	claimed := textFixtureTree()
+	claimed.Node(textParagraphID).Text = &accessibility.TextInfo{Text: "Hello link \ufffc ends"}
+	c.Equal(PatternText|PatternText2, ProvidedPatterns(unclaimed, unclaimed.Node(textParagraphID)))
+	c.Equal(PatternTextChild, ProvidedPatterns(claimed, claimed.Node(textParagraphID)))
+	c.Equal([]Raise{
+		raiseProperty(textParagraphID, IsTextPatternAvailablePropertyId),
+		raiseProperty(textParagraphID, IsTextPattern2AvailablePropertyId),
+		raiseProperty(textParagraphID, IsTextChildPatternAvailablePropertyId),
+		raiseProperty(textParagraphID, NamePropertyId),
+	}, DecideRaises(unclaimed, claimed, []accessibility.Event{
+		{Kind: accessibility.TextInserted, Node: textParagraphID, Start: 15, Length: 1},
+	}), "the edit is the only event the block gets, so it carries the pattern flip too")
 
 	// A caret move within a block reports nothing: the block has no Text pattern, so there is no selection a client
 	// could read from it, and the document's own event is what carries the news.

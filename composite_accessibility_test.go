@@ -118,7 +118,33 @@ func TestListAccessibility(t *testing.T) {
 		"only the visible rows and the selection should have been described, got %d", len(rows))
 	first := axMustNode(c, axNodeWithRowIndex(tree, node, 0))
 	c.Equal(role.ListItem, first.Role)
-	c.Equal("Row 0", first.Name, "a row is named by the text of the cell that draws it")
+	c.Equal("", first.Name, "a row whose cell was described is not named by that cell's text on top of it")
+	// The cell that draws the row is described beneath it, so that what the row is made of can be read as the static
+	// text it is rather than only announced as the row's name.
+	firstContent := axUnignoredNodes(tree, first)
+	c.Equal(1, len(firstContent), "the label drawing the row is described within it: %v", axNodeNames(firstContent))
+	if len(firstContent) == 1 {
+		cell := firstContent[0]
+		c.Equal(role.Label, cell.Role)
+		c.Equal("Row 0", cell.Name)
+		c.True(cell.Text != nil, "the label within the row carries its text")
+		if cell.Text != nil {
+			c.Equal("Row 0", cell.Text.Text)
+			c.Equal(1, len(cell.Text.Lines), "a label is one line")
+			if len(cell.Text.Lines) == 1 {
+				line := cell.Text.Lines[0]
+				c.Equal(5, line.End)
+				c.Equal(6, len(line.Advances), "one advance per rune boundary")
+				c.True(line.Bounds.Height > 0)
+				// The line is in the label's own coordinates, which is how every platform adapter expects it: it
+				// adds the node's own position to arrive at where the text is on the screen.
+				c.True(line.Bounds.Y >= 0 && line.Bounds.Bottom() <= cell.Bounds.Height+1,
+					"the line sits within the label that drew it")
+			}
+		}
+		c.True(cell.Bounds.Y >= first.Bounds.Y && cell.Bounds.Bottom() <= first.Bounds.Bottom()+1,
+			"the label sits within the row")
+	}
 	c.True(first.Selectable)
 	c.True(first.Selected)
 	c.False(first.Offscreen)
@@ -130,7 +156,9 @@ func TestListAccessibility(t *testing.T) {
 
 	last := axMustNode(c, axNodeWithRowIndex(tree, node, rowCount-1),
 		"a selected row is described however far out of sight it is")
-	c.Equal("Row 39", last.Name)
+	c.Equal("Row 39", last.Name, "a row described only because it is selected keeps the name of its cell's text")
+	c.Equal(0, len(axUnignoredNodes(tree, last)),
+		"a row out of reach is described as itself and nothing more, rather than being built and walked")
 	c.True(last.Selected)
 	c.True(last.Offscreen, "the last row is far below the view port")
 
@@ -235,10 +263,352 @@ func TestListAccessibilityWithVaryingRowHeights(t *testing.T) {
 	rows := axChildNodes(tree, node)
 	c.Equal(3, len(rows), "every row is visible, so every row is described")
 	if len(rows) == 3 {
-		c.Equal("alpha", rows[0].Name)
-		c.Equal("gamma", rows[2].Name)
+		c.Equal("", rows[0].Name, "a row whose cell was described is not named by that cell's text on top of it")
+		for i, want := range []string{"alpha", "beta", "gamma"} {
+			content := axUnignoredNodes(tree, rows[i])
+			c.Equal(1, len(content), "the label drawing the row is described within it: %v", axNodeNames(content))
+			if len(content) != 1 {
+				continue
+			}
+			c.Equal(want, content[0].Name)
+			c.True(content[0].Text != nil, "the label within the row carries its text")
+			if content[0].Text != nil {
+				c.Equal(want, content[0].Text.Text)
+				c.Equal(1, len(content[0].Text.Lines))
+			}
+		}
 		c.True(rows[1].Bounds.Y > rows[0].Bounds.Y, "the rows stack downwards")
 	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axListCellFactory builds whatever the test wants a list row drawn with, at a fixed height. The panels it hands back
+// are built once and handed back again every time the row is asked for, the way a real factory hands back a widget
+// bound to the row's data: a request from an assistive technology reaches the cell the list builds when it arrives,
+// not the one that was described, so a cell built afresh each time would answer with a widget the test cannot see.
+type axListCellFactory struct {
+	cells  []unison.Paneler
+	height float32
+}
+
+// CellHeight implements unison.CellFactory.
+func (f *axListCellFactory) CellHeight() float32 { return f.height }
+
+// CreateCell implements unison.CellFactory.
+func (f *axListCellFactory) CreateCell(_ unison.Paneler, _ any, row int, _, _ unison.Ink, _, _ bool) unison.Paneler {
+	return f.cells[row]
+}
+
+// TestListAccessibilityDescribesCellContent verifies that a list row is described as what it is made of rather than
+// only as a name: the widgets the factory drew it with are described beneath the item, the item drops its own name in
+// favor of them, and a row holding a single widget with a state reports that state as its value so that a change to it
+// is heard as a change to the row. Acting on one of those widgets reaches the widget itself, wherever it sits.
+func TestListAccessibilityDescribesCellContent(t *testing.T) {
+	c := check.New(t)
+	var pairs, boxes *unison.List[string]
+	var box *unison.CheckBox
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			pair := unison.NewPanel()
+			pair.SetLayout(&unison.FlexLayout{Columns: 2, HSpacing: unison.StdHSpacing})
+			pairBox := unison.NewCheckBox()
+			pairBox.SetTitle("On")
+			pair.AddChild(pairBox)
+			label := unison.NewLabel()
+			label.SetTitle("First")
+			pair.AddChild(label)
+			pairs = unison.NewList[string]()
+			pairs.Factory = &axListCellFactory{height: 24, cells: []unison.Paneler{pair}}
+			pairs.Append("first")
+
+			box = unison.NewCheckBox()
+			box.SetTitle("Done")
+			boxes = unison.NewList[string]()
+			boxes.Factory = &axListCellFactory{height: 24, cells: []unison.Paneler{box}}
+			boxes.Append("done")
+
+			wnd = newHeadlessWindow(t, "list content", geom.NewRect(10, 10, 400, 300), axColumn(pairs, boxes))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	pairItem := axMustNode(c, axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(pairs), 0))
+	c.Equal("", pairItem.Name, "a row whose content was described is not named on top of it")
+	c.Equal("", pairItem.Value, "a row holding more than one widget has no single state to report")
+	c.False(pairItem.Actions.Has(accessibility.Press), "a list with nothing to open a row with offers no press")
+	content := axUnignoredNodes(tree, pairItem)
+	c.Equal(2, len(content), "both widgets in the cell are described: %v", axNodeNames(content))
+	if len(content) == 2 {
+		c.Equal(role.CheckBox, content[0].Role)
+		c.Equal("On", content[0].Name)
+		c.True(content[0].Actions.Has(accessibility.Press), "the check box offers its own press where it sits")
+		c.Equal(role.Label, content[1].Role)
+		c.True(content[1].Text != nil, "the label within the row carries its text")
+		if content[1].Text != nil {
+			c.Equal("First", content[1].Text.Text)
+		}
+	}
+
+	boxItem := axMustNode(c, axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(boxes), 0))
+	c.Equal("", boxItem.Name)
+	c.Equal("Unchecked", boxItem.Value, "a row holding one check box reports its state as its value")
+	inside := axUnignoredNodes(tree, boxItem)
+	c.Equal(1, len(inside), "the check box is described within its row: %v", axNodeNames(inside))
+	if len(inside) != 1 {
+		return
+	}
+	c.Equal(role.CheckBox, inside[0].Role)
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   inside[0].ID,
+		Action: accessibility.Press,
+	}))
+	var state checkenum.Enum
+	var focusInCell bool
+	screen.Do(func() {
+		state = box.State
+		// A check box carries the press out itself, so nothing took the focus on the way; what matters either way is
+		// that the focus is not left on a panel in a cell the list has already thrown away, since the window cannot
+		// find such a panel and the focus would be silently gone until the person pressed Tab. A widget that does take
+		// the focus while being pressed is what TestListAccessibilityPressInCellTakesTheFocusBack covers.
+		focusInCell = box.Is(wnd.CurrentFocus())
+	})
+	c.Equal(checkenum.On, state, "the press should have reached the check box in the row")
+	c.False(focusInCell, "the focus must not be left on a widget inside a cell the list has thrown away")
+
+	tree = screen.AccessibilityTree(wnd)
+	boxItem = axMustNode(c, axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(boxes), 0))
+	c.Equal("Checked", boxItem.Value, "the row reports the new state as its own value")
+	again := tree.Node(inside[0].ID)
+	c.True(again != nil, "the check box keeps its node id from one description to the next")
+	if again != nil {
+		c.Equal(checkenum.On, again.Checked)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestListAccessibilityCellContentCannotTakeTheFocus verifies that nothing described inside a list row claims the
+// keyboard focus, and that a focus request naming one of those panels is refused rather than quietly taking the focus
+// away from wherever it was. The cell holding the panel is thrown away as soon as the request has been handled, so
+// there is nowhere for the focus to stay.
+func TestListAccessibilityCellContentCannotTakeTheFocus(t *testing.T) {
+	c := check.New(t)
+	var list *unison.List[string]
+	var outside *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			cell := unison.NewPanel()
+			cell.SetLayout(&unison.FlexLayout{Columns: 1, HSpacing: unison.StdHSpacing})
+			inside := unison.NewField()
+			inside.SetText("inside")
+			cell.AddChild(inside)
+			list = unison.NewList[string]()
+			list.Factory = &axListCellFactory{height: 24, cells: []unison.Paneler{cell}}
+			list.Append("row")
+
+			outside = unison.NewField()
+			outside.SetText("outside")
+
+			wnd = newHeadlessWindow(t, "list focus", geom.NewRect(10, 10, 400, 300), axColumn(list, outside))
+		}))
+	c.NotNil(wnd)
+
+	var focused bool
+	screen.Do(func() {
+		outside.RequestFocus()
+		focused = outside.Is(wnd.CurrentFocus())
+	})
+	c.True(focused, "the field outside the list should hold the focus to begin with")
+
+	tree := screen.AccessibilityTree(wnd)
+	item := axMustNode(c, axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(list), 0))
+	content := axUnignoredNodes(tree, item)
+	c.Equal(1, len(content), "the field in the cell is described within its row: %v", axNodeNames(content))
+	if len(content) != 1 {
+		return
+	}
+	field := content[0]
+	c.Equal(role.TextField, field.Role)
+	c.False(field.Focusable, "a panel inside a cell the list is about to throw away cannot hold the focus")
+	c.False(field.Actions.Has(accessibility.Focus), "such a panel does not offer to take the focus either")
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   field.ID,
+		Action: accessibility.Focus,
+	}), "a focus request that cannot leave the focus on the node it named must be refused")
+	screen.Do(func() { focused = outside.Is(wnd.CurrentFocus()) })
+	c.True(focused, "a refused focus request must leave the focus where it was")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestListDrawsCompositeCellsWhereItDescribesThem verifies that a list lays a cell out before painting it, so that
+// what an assistive technology is told about where a row's content sits is where that content was drawn. Panel.Draw
+// paints each child at its own frame, which on a freshly built cell is the zero rect, so a cell holding more than one
+// child that was never laid out would be painted with everything piled at the origin while the description — which
+// lays the cell out to measure it — reported real rectangles: a VoiceOver highlight or an Orca review cursor would
+// then land on empty space. The frames are read before anything asks for a description, since describing the row lays
+// the cell out regardless.
+func TestListDrawsCompositeCellsWhereItDescribesThem(t *testing.T) {
+	c := check.New(t)
+	var list *unison.List[string]
+	var cellBox *unison.CheckBox
+	var cellLabel *unison.Label
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			pair := unison.NewPanel()
+			pair.SetLayout(&unison.FlexLayout{Columns: 2, HSpacing: unison.StdHSpacing})
+			cellBox = unison.NewCheckBox()
+			cellBox.SetTitle("On")
+			pair.AddChild(cellBox)
+			cellLabel = unison.NewLabel()
+			cellLabel.SetTitle("First")
+			pair.AddChild(cellLabel)
+			list = unison.NewList[string]()
+			list.Factory = &axListCellFactory{height: 24, cells: []unison.Paneler{pair}}
+			list.Append("first")
+
+			wnd = newHeadlessWindow(t, "list drawing", geom.NewRect(10, 10, 400, 300), axColumn(list))
+		}))
+	c.NotNil(wnd)
+	screen.Sync() // the row must have been drawn before there is anything to ask about
+
+	var boxFrame, labelFrame geom.Rect
+	screen.Do(func() {
+		boxFrame = cellBox.FrameRect()
+		labelFrame = cellLabel.FrameRect()
+	})
+	c.False(boxFrame.Empty(), "drawing the row laid its check box out: %v", boxFrame)
+	c.False(labelFrame.Empty(), "drawing the row laid its label out: %v", labelFrame)
+	c.True(labelFrame.X > boxFrame.X, "the label was painted beside the check box rather than on top of it: %v, %v",
+		boxFrame, labelFrame)
+
+	tree := screen.AccessibilityTree(wnd)
+	item := axMustNode(c, axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(list), 0))
+	content := axUnignoredNodes(tree, item)
+	c.Equal(2, len(content), "both widgets in the cell are described: %v", axNodeNames(content))
+	if len(content) != 2 {
+		return
+	}
+	c.Equal(boxFrame.Size, content[0].Bounds.Size, "the check box is described at the size it was painted")
+	c.Equal(labelFrame.Size, content[1].Bounds.Size, "the label is described at the size it was painted")
+	c.Equal(labelFrame.X-boxFrame.X, content[1].Bounds.X-content[0].Bounds.X,
+		"the described positions within the row are the painted ones")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestListAccessibilityLooksPastAFocusableWrapper verifies that an anonymous wrapper panel inside a list row is looked
+// past even when it was built focusable. Nothing inside a cell can hold the keyboard focus, so the row's description
+// takes the focus away from what the cell put beneath it — and a node that was only kept out of the scaffolding it
+// otherwise is by being focusable has to be judged again once it is not, or it survives as the row's only unignored
+// content: a nameless, action-less group that the row drops its own name for and reads its value from, announcing
+// nothing in place of the widget inside it.
+func TestListAccessibilityLooksPastAFocusableWrapper(t *testing.T) {
+	c := check.New(t)
+	var list *unison.List[string]
+	var wrapper *unison.Panel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			// A wrapper with nothing to say about itself that was nonetheless made focusable, which is what an
+			// application does when it means the row to answer the keyboard as a whole.
+			wrapper = unison.NewPanel()
+			wrapper.SetLayout(&unison.FlexLayout{Columns: 1, HSpacing: unison.StdHSpacing})
+			wrapper.SetFocusable(true)
+			inside := unison.NewCheckBox()
+			inside.SetTitle("Done")
+			wrapper.AddChild(inside)
+			list = unison.NewList[string]()
+			list.Factory = &axListCellFactory{height: 24, cells: []unison.Paneler{wrapper}}
+			list.Append("row")
+
+			wnd = newHeadlessWindow(t, "list wrapper", geom.NewRect(10, 10, 400, 300), axColumn(list))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	item := axMustNode(c, axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(list), 0))
+	content := axUnignoredNodes(tree, item)
+	c.Equal(1, len(content), "the row is described as the widget the wrapper holds: %v", axNodeNames(content))
+	if len(content) != 1 {
+		return
+	}
+	c.Equal(role.CheckBox, content[0].Role, "the wrapper is looked past rather than standing in for its content")
+	c.Equal("Done", content[0].Name)
+	c.False(content[0].Focusable, "nothing inside a cell the list throws away can hold the focus")
+	c.Equal("", item.Name, "a row whose content was described is not named on top of it")
+	c.Equal("Unchecked", item.Value, "the row's value comes from the widget, not from the wrapper around it")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestListAccessibilityPressInCellTakesTheFocusBack verifies that a press which reaches a widget inside a list row
+// leaves the focus somewhere the window can find. The default press synthesizes a click, and a click takes the focus
+// for whatever it lands on — here a focusable panel inside the cell, which the list detaches again two lines later. A
+// focus left on a detached panel is a focus the window cannot find, silently gone until the person presses Tab, which
+// is what the take-back in List.axPerformInCell exists to prevent: the focus goes to the list itself, which is the one
+// tab stop a list has and where a real click on a row leaves it.
+func TestListAccessibilityPressInCellTakesTheFocusBack(t *testing.T) {
+	c := check.New(t)
+	var list *unison.List[string]
+	var cell *unison.DrawablePanel
+	var outside *unison.Field
+	var wnd *unison.Window
+	pressed := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			// A control of the application's own: it says what it is, takes the focus and answers a click, so the
+			// press it is handed goes through the default behavior that synthesizes one rather than being carried out
+			// by the widget itself the way a check box carries its own out.
+			cell = unison.NewDrawablePanel()
+			cell.Drawable = axTestDrawable()
+			cell.Accessibility.Role = role.Button
+			cell.Accessibility.Name = "Go"
+			cell.SetFocusable(true)
+			cell.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+			cell.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+				pressed++
+				return true
+			}
+			list = unison.NewList[string]()
+			list.Factory = &axListCellFactory{height: 24, cells: []unison.Paneler{cell}}
+			list.Append("row")
+
+			outside = unison.NewField()
+			outside.SetText("outside")
+
+			wnd = newHeadlessWindow(t, "list press focus", geom.NewRect(10, 10, 400, 300), axColumn(list, outside))
+		}))
+	c.NotNil(wnd)
+
+	var focused bool
+	screen.Do(func() {
+		outside.RequestFocus()
+		focused = outside.Is(wnd.CurrentFocus())
+	})
+	c.True(focused, "the field outside the list should hold the focus to begin with")
+
+	tree := screen.AccessibilityTree(wnd)
+	item := axMustNode(c, axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(list), 0))
+	content := axUnignoredNodes(tree, item)
+	c.Equal(1, len(content), "the control in the cell is described within its row: %v", axNodeNames(content))
+	if len(content) != 1 {
+		return
+	}
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   content[0].ID,
+		Action: accessibility.Press,
+	}))
+	c.Equal(1, pressed, "the press should have reached the control in the row")
+
+	var onList, inCell, stillOutside bool
+	screen.Do(func() {
+		onList = list.Is(wnd.CurrentFocus())
+		inCell = cell.Is(wnd.CurrentFocus())
+		stillOutside = outside.Is(wnd.CurrentFocus())
+	})
+	c.False(inCell, "the focus must not be left on a panel in a cell the list has thrown away")
+	c.False(stillOutside, "the click really did take the focus, so there is something to take back")
+	c.True(onList, "the list takes the focus back onto itself")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -280,6 +650,16 @@ func TestTableAccessibility(t *testing.T) {
 				rows[i] = newTableTestRow("r" + strconv.Itoa(i))
 				name := "row " + strconv.Itoa(i)
 				rows[i].cellData = func(col int) string { return name + " col " + strconv.Itoa(col) }
+				// The second column draws its data with a label, which is what a table showing text actually does,
+				// while the first hands back a panel with nothing in it — the two cases a cell is described as.
+				rows[i].cellFactory = func(row, col int) unison.Paneler {
+					if col == 0 {
+						return unison.NewPanel()
+					}
+					label := unison.NewLabel()
+					label.SetTitle(rows[row].cellData(col))
+					return label
+				}
 			}
 			table = axNewTable(rows...)
 			wnd = newHeadlessWindow(t, "table", geom.NewRect(10, 10, 400, 400), axColumn(table))
@@ -314,8 +694,21 @@ func TestTableAccessibility(t *testing.T) {
 	c.Equal(2, len(cells), "a row has one cell per column")
 	if len(cells) == 2 {
 		c.Equal(role.Cell, cells[0].Role)
-		c.Equal("row 0 col 0", cells[0].Name)
-		c.Equal("row 0 col 1", cells[1].Name)
+		c.Equal("row 0 col 0", cells[0].Name, "a cell with nothing describable in it is named by its sort data")
+		c.Equal("", cells[1].Name, "a cell whose content was described is not named on top of it")
+		// The label the cell was drawn with is described within it, carrying the text it drew, so that a screen reader
+		// reads the cell by line, by word and by character rather than only hearing its name.
+		content := axUnignoredNodes(tree, cells[1])
+		c.Equal(1, len(content), "the label drawing the cell is described within it: %v", axNodeNames(content))
+		if len(content) == 1 {
+			c.Equal(role.Label, content[0].Role)
+			c.Equal("row 0 col 1", content[0].Name)
+			c.True(content[0].Text != nil, "the label within the cell carries its text")
+			if content[0].Text != nil {
+				c.Equal("row 0 col 1", content[0].Text.Text)
+				c.Equal(1, len(content[0].Text.Lines), "a label is one line")
+			}
+		}
 		c.Equal(0, cells[0].ColumnIndex)
 		c.Equal(1, cells[1].ColumnIndex)
 		c.Equal(0, cells[1].RowIndex)
@@ -720,6 +1113,33 @@ func TestTableAccessibilityFocusedCell(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// axCheckColumnHeaderText verifies that a column header carries the text it drew, on the one line it drew it on, with
+// the line in the header's own coordinates — which is where every platform adapter expects it, since it adds the
+// node's own position to arrive at where the text is on the screen.
+// It returns the line it checked, or nil when there was not one to check, so that a caller can go on to pin where the
+// line was drawn.
+func axCheckColumnHeaderText(c check.Checker, column *accessibility.Node, want string) *accessibility.Line {
+	c.True(column.Text != nil, "a column header holding nothing but a title carries that title as text")
+	if column.Text == nil {
+		return nil
+	}
+	c.Equal(want, column.Text.Text)
+	c.Equal(1, len(column.Text.Lines), "a column header's title is one line")
+	if len(column.Text.Lines) != 1 {
+		return nil
+	}
+	line := column.Text.Lines[0]
+	c.Equal(len([]rune(want)), line.End)
+	c.Equal(len([]rune(want))+1, len(line.Advances), "one advance per rune boundary")
+	for i := 1; i < len(line.Advances); i++ {
+		c.True(line.Advances[i] >= line.Advances[i-1], "the advances run left to right")
+	}
+	c.True(line.Bounds.Height > 0)
+	c.True(line.Bounds.X >= 0 && line.Bounds.Y >= 0 && line.Bounds.Right() <= column.Bounds.Width+1 &&
+		line.Bounds.Bottom() <= column.Bounds.Height+1, "the line sits within the header that drew it")
+	return &line
+}
+
 // TestTableHeaderAccessibility verifies that a table's header describes each of its column headers, says which column
 // the rows are sorted on and in which direction, and sorts the table when one of them is pressed.
 func TestTableHeaderAccessibility(t *testing.T) {
@@ -756,6 +1176,10 @@ func TestTableHeaderAccessibility(t *testing.T) {
 	c.Equal(1, columns[1].ColumnIndex)
 	c.Equal("Value", columns[1].Name)
 	c.Equal(accessibility.SortNone, columns[0].Sort, "nothing is sorted yet")
+	// A column header is static text, so it carries that text and the one line it was drawn on: a screen reader reads
+	// a header by line, by word and by character, exactly as it reads any other piece of text.
+	unsorted := axCheckColumnHeaderText(c, columns[0], "Name")
+	axCheckColumnHeaderText(c, columns[1], "Value")
 	c.True(columns[0].Actions.Has(accessibility.Press))
 	c.True(columns[0].Bounds.Width > 0)
 	c.True(columns[1].Bounds.X > columns[0].Bounds.X, "the headers run across the table")
@@ -773,6 +1197,20 @@ func TestTableHeaderAccessibility(t *testing.T) {
 	}
 	c.Equal(accessibility.SortAscending, columns[0].Sort, "pressing the header sorted the table on that column")
 	c.Equal(accessibility.SortNone, columns[1].Sort, "only the primary sort column is reported as sorted")
+	// The sorted header draws its title in a rect shrunk by the sort indicator, so the line it reports has to be the
+	// shrunken one: a review cursor placed by the unshrunken rect would sit beside the characters rather than on them.
+	// The title is centered, so shrinking the rect moves the line to the left: the line the sorted header reports has
+	// to start further left than the one it reported before the indicator appeared, which is what says the arithmetic
+	// DefaultTableColumnHeader.axTextLine does was applied. Merely sitting within the header is not enough, since the
+	// unshrunken line does that too.
+	sorted := axCheckColumnHeaderText(c, columns[0], "Name")
+	c.NotNil(unsorted)
+	c.NotNil(sorted)
+	if unsorted != nil && sorted != nil {
+		c.True(sorted.Bounds.X < unsorted.Bounds.X,
+			"the centered title moved left into the rect the sort indicator left it: %v then %v",
+			unsorted.Bounds, sorted.Bounds)
+	}
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   columns[0].ID,
@@ -877,6 +1315,9 @@ func TestTableHeaderAccessibilityCustomColumnHeader(t *testing.T) {
 	c.Equal("Pick", columns[0].Name, "a column header is named by what it holds, never by its Go type")
 	c.Equal("Value", columns[1].Name, "a header that is nothing but a label is still named by its text")
 	c.Equal(0, len(axUnignoredNodes(tree, columns[1])), "such a header has nothing within it to describe")
+	c.True(columns[0].Text == nil,
+		"a header built around something other than a label carries no text: what it holds is described instead")
+	axCheckColumnHeaderText(c, columns[1], "Value")
 
 	inside := axUnignoredNodes(tree, columns[0])
 	c.Equal(1, len(inside), "the button in the header should have been described: %v", axNodeNames(inside))
@@ -972,6 +1413,7 @@ func TestTableHeaderAccessibilityLabelHeaderWithChildrenIsOneElement(t *testing.
 	}
 	c.Equal(role.ColumnHeader, columns[0].Role)
 	c.Equal("Named", columns[0].Name, "the embedded label's text names the column")
+	axCheckColumnHeaderText(c, columns[0], "Named")
 	c.Equal(0, len(axChildNodes(tree, columns[0])),
 		"a header that is described as static text has nothing beneath it worth describing: %v",
 		axNodeNames(axChildNodes(tree, columns[0])))

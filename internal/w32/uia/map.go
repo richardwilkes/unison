@@ -208,7 +208,8 @@ func PropertyPattern(propertyID PropertyID) PatternSet {
 //   - The TextChild pattern belongs to an element that sits inside a document's stream, which is a fact about where the
 //     node is rather than about what it is: the pattern's two methods report the document that contains the element and
 //     the stretch of that document's text the element occupies, so it is handed out precisely when there is such a
-//     document to point at. See textContainerFor.
+//     document to point at. See textContainerFor. Gaining it costs the element the Text pattern, which Patterns grants
+//     to anything carrying text of its own: the two would be two answers about the same words.
 //
 // Everything that decides what an element supports goes through this rather than through Patterns, which knows a
 // node and not where it sits: the provider that hands the interfaces out, ReportsProperty, and the decider that
@@ -219,7 +220,13 @@ func ProvidedPatterns(t *accessibility.Tree, n *accessibility.Node) PatternSet {
 		patterns &^= PatternWindow
 	}
 	if textContainerFor(t, n) != 0 {
-		patterns |= PatternTextChild
+		// The two are exclusive. A block that carries its own text and sits inside a document's stream would
+		// otherwise hand out both, and a client would read the same words through the document's Text pattern and
+		// through the block's, with two sets of offsets that mean different things. TextChild wins: the document is
+		// what the words belong to, and the pattern says which stretch of it this element is. See textInfoOf, which
+		// withholds the text itself for the same reason, so that nothing here could hand out a pattern with nothing
+		// behind it.
+		patterns = patterns&^(PatternText|PatternText2) | PatternTextChild
 	}
 	return patterns
 }
@@ -381,6 +388,27 @@ func Patterns(n *accessibility.Node) PatternSet {
 	return patterns
 }
 
+// textPatterns returns the Text patterns a node that carries its own text hands out, and nothing for one that does
+// not. Every role role.IsText names except Document reports its text through it — a field, a text area, a spin
+// button, a combo box, a label, a heading, a paragraph, a code block, a table cell and a column header — which is
+// what lets Narrator's scan mode read one by line, word and character and what gives NVDA the caret it follows
+// through a field. A Document is read from the stream its blocks were composed into instead; see the Document arm of
+// rolePatterns and ownsText.
+//
+// Both patterns or neither, for the reason a document's are: ITextProvider2 derives from ITextProvider and one
+// interface answers both — see patternIfaces — so a node that handed out one and not the other would have a client
+// reach the same six methods through a pattern the element says it does not support.
+//
+// Whether the node is inside a document's stream is not asked here, since a node cannot say where it sits.
+// ProvidedPatterns takes these away again from a block a document has claimed, and textInfoOf withholds the text
+// behind them, so the two answers cannot disagree.
+func textPatterns(n *accessibility.Node) PatternSet {
+	if ownsText(n) {
+		return PatternText | PatternText2
+	}
+	return 0
+}
+
 // rolePatterns returns the patterns a node's role and state alone call for, which is everything but ScrollItem.
 func rolePatterns(n *accessibility.Node) PatternSet {
 	switch n.Role {
@@ -392,7 +420,10 @@ func rolePatterns(n *accessibility.Node) PatternSet {
 		// destination, and the Value pattern is where every client looks for one — which is what lets a screen reader
 		// say where a link goes before the user follows it. It is read-only, since nothing retargets a link through
 		// accessibility; see IsValueReadOnly.
-		patterns := PatternInvoke
+		//
+		// A column header that was drawn as plain text carries that text, and is the one role of the four that can:
+		// the other three are not read as text at all, so textPatterns answers nothing for them.
+		patterns := PatternInvoke | textPatterns(n)
 		if n.Role == role.ColorWell || (n.Role == role.Link && n.URL != "") {
 			patterns |= PatternValue
 		}
@@ -417,18 +448,23 @@ func rolePatterns(n *accessibility.Node) PatternSet {
 		// belongs to is a layout panel with no pattern to report a container through.
 		return PatternSelectionItem
 	case role.TextField, role.TextArea:
-		return PatternValue
+		// The content goes out twice over: as the Value pattern's string, which is how a client reads the whole of a
+		// field at once, and as the Text pattern's text, which is how it reads the field by line, word and character
+		// and follows the caret. NVDA and Narrator both want the second — arrowing through a field says nothing
+		// without it — and neither is confused by the first. A Protected field carries no text at all, so it keeps
+		// Value alone.
+		return PatternValue | textPatterns(n)
 	case role.SpinButton:
 		// The range is gated the way the progress bar's is: an obscured numeric field never fills in a number, a
 		// minimum, a maximum or a step, and IRangeValueProvider answering zero for all four would have a screen reader
 		// read a PIN field as "0". The Value pattern stays, as it does for any other protected field, and answers with
 		// the empty string ValueString gives every protected node.
 		if n.HasNumber {
-			return PatternValue | PatternRangeValue
+			return PatternValue | PatternRangeValue | textPatterns(n)
 		}
-		return PatternValue
+		return PatternValue | textPatterns(n)
 	case role.ComboBox:
-		return PatternValue | PatternExpandCollapse
+		return PatternValue | PatternExpandCollapse | textPatterns(n)
 	case role.PopupButton:
 		// A popup button has no editable text, so its Value is read-only, but it is still the way the current choice
 		// is reported.
@@ -463,7 +499,14 @@ func rolePatterns(n *accessibility.Node) PatternSet {
 		// Value pattern is the only way a client can read it. The pattern is gated on there being a value, since a cell
 		// whose name carries its content has nothing to report through it, and it is read-only: a cell offers no
 		// SetValue action, which is what IsValueReadOnly answers from.
-		patterns := PatternGridItem | PatternTableItem
+		//
+		// A cell that carries text of its own reports it through the Text pattern as well, so that a review cursor can
+		// read the cell by word and character rather than only hear it named. Nothing in the toolkit fills a cell's
+		// text in: a table cell's words live on the Label inside it, which carries and reports them itself, so the
+		// grant is here for an application that fills them in from a unison.AccessibilityInfo.Callback. A cell inside
+		// a Markdown table is the one the toolkit does fill in, and it has its text claimed by the document and keeps
+		// TextChild instead; see ProvidedPatterns.
+		patterns := PatternGridItem | PatternTableItem | textPatterns(n)
 		if n.Value != "" {
 			patterns |= PatternValue
 		}
@@ -493,14 +536,28 @@ func rolePatterns(n *accessibility.Node) PatternSet {
 			return PatternText | PatternText2
 		}
 		return 0
-	default:
-		// Group, TabPanel, ScrollArea, TableHeader, Label, Heading, Image, Separator, MenuBar, Menu, Tooltip, Toolbar,
-		// Paragraph, Code and BlockQuote all present themselves through their properties and their children alone.
+	case role.Label, role.Heading, role.Paragraph, role.Code:
+		// Static text, which is read the same way everywhere a screen reader reads text at all: by line, by word and
+		// by character, with a review cursor that has to know where each character was drawn. The Text pattern is the
+		// only way any of that reaches a Windows client — Narrator's scan mode reads an element through it, and
+		// NVDA's review cursor has nothing else to work from — so a label that had only a name could be announced but
+		// never explored.
 		//
-		// The last three of those are the blocks a document is composed of, and a client reads their text without a
-		// pattern: through the containing document's Text pattern, which is what a document is read by, and as the Name
-		// each of them takes from its own content for the item navigation that steps onto elements — see NameString.
-		// A Value pattern would have that same text spoken twice.
+		// No Value pattern goes with it. The same words are already the element's Name, and a client that read both
+		// would speak them twice; see NameString.
+		//
+		// A paragraph or a code block inside a Markdown view is a block of that document's stream and loses the
+		// pattern again in ProvidedPatterns, which hands it TextChild instead. One outside a document — a widget that
+		// set the role itself and filled in its own text — keeps it, which is the same answer a label gets.
+		return textPatterns(n)
+	default:
+		// Group, TabPanel, ScrollArea, TableHeader, Image, Separator, MenuBar, Menu, Tooltip, Toolbar and BlockQuote
+		// all present themselves through their properties and their children alone.
+		//
+		// BlockQuote is one of the blocks a document is composed of, and a client reads its text without a pattern of
+		// its own: through the containing document's Text pattern, which is what a document is read by, and as the
+		// Name it takes from its own content for the item navigation that steps onto elements — see NameString. It
+		// carries no text of its own either, since role.IsText leaves it out.
 		//
 		// A Menu is the one of these that looks as though it should expand: the role belongs to the panel of an open
 		// menu, which nothing ever collapses and which never reports Expandable, so ExpandCollapse would be a pattern
@@ -543,22 +600,25 @@ func IsContentElement(t *accessibility.Tree, n *accessibility.Node) bool {
 	}
 }
 
-// NameString returns the text a node answers the Name property with. It is Node.Name for everything but the blocks a
-// document is made of — a paragraph, a code block and a table cell — whose name is their own content when the widget
-// gave them none.
+// NameString returns the text a node answers the Name property with. It is Node.Name for everything but the pieces
+// that are nothing but the text drawn in them — a paragraph, a code block, a table cell and a column header — whose
+// name is their own content when the widget gave them none.
 //
-// Those blocks need it because Narrator steps onto elements as well as reading text: its item navigation walks the
-// control view and speaks each element's name, and a paragraph with no name at all is announced as a bare "text". The
-// content is the only thing there is to say about such a block, and both other adapters say exactly that — AT-SPI reads
-// the block through its Text interface and AppKit through AXValue — so nothing is invented.
+// Those need it because Narrator steps onto elements as well as reading text: its item navigation walks the control
+// view and speaks each element's name, and a paragraph with no name at all is announced as a bare "text". The content
+// is the only thing there is to say about such a block, and both other adapters say exactly that — AT-SPI reads the
+// block through its Text interface and AppKit through AXValue — so nothing is invented.
 //
 // It is the name and not the value because the name is the one of the two a client reads for an element it has stepped
-// onto. A paragraph and a code block hand out no patterns at all, and a cell's Value pattern is there only while the
-// widget filled one in, so nothing here is reachable through ValueString — which is deliberate: an element answering
-// the same text as both its name and its value has Narrator speak it twice.
+// onto. None of the four hands out a Value pattern for its text — a cell's is there only while the widget filled a
+// value in — so nothing here is reachable through ValueString, which is deliberate: an element answering the same text
+// as both its name and its value has Narrator speak it twice. The Text pattern such an element may also hand out is
+// not a repetition of it: that is what a client reads the words *through*, character by character, rather than another
+// thing for it to speak whole.
 //
 // A block the widget did name keeps that name. A heading folds its fragments into a name of its own, and a cell that
-// holds one widget is named by the column it sits in, which is more useful than the text drawn in it.
+// holds one widget is named by the column it sits in, which is more useful than the text drawn in it. A label is not
+// among them either: it always has a name, which is the text it drew unless the application overrode it.
 func NameString(n *accessibility.Node) string {
 	if n == nil {
 		return ""
@@ -572,12 +632,19 @@ func NameString(n *accessibility.Node) string {
 // namedByItsText reports whether a node's name comes from its own text, which is what NameString answers with and
 // what makes an edit to that text a change of name. A block with no text carries none, and a node that already has a
 // name is not renamed by what it draws.
+//
+// A column header is among them for the same reason, but nothing the toolkit builds by itself reaches it: TableHeader
+// names every column node after its title before filling the node's text in, and it fills the text in only for a
+// header whose label has some, so a header carrying text always has a name to go with it. What reaches it is an
+// application that cleared the name in an AccessibilityInfo.Callback, which runs last and may empty a name the
+// builder set. Such a header still draws its title, and answering with it beats telling a client stepping onto the
+// column that its heading is a bare "header".
 func namedByItsText(n *accessibility.Node) bool {
 	if n == nil || n.Text == nil || n.Text.Text == "" {
 		return false
 	}
 	switch n.Role {
-	case role.Paragraph, role.Code, role.Cell:
+	case role.Paragraph, role.Code, role.Cell, role.ColumnHeader:
 		return true
 	default:
 		return false
@@ -1010,11 +1077,14 @@ func (r Raise) String() string {
 //     while nobody's list of children changed — a scroll bar appearing as its content outgrows its view port is exactly
 //     this — so the nearest unignored parent is told to read its children again.
 //   - UI Automation's two text events are raised on the elements that hand out the Text pattern, which is every
-//     document carrying a composed stream and nothing else. A client answers TextChanged by reading the document's text
-//     again and TextSelectionChanged by reading the selection, both through ITextProvider, so an element that has no
-//     such pattern to be read through reports the edit as a change to its value instead — and as a change to its name
-//     as well, when the name is the text itself; see NameString. A caret move on such an element reports nothing at
-//     all, since it changes no property a client could read back.
+//     element carrying text a client can read through ITextProvider: a document with its composed stream, a field, a
+//     label, a heading, a plain cell or column header. A client answers TextChanged by reading the text again and
+//     TextSelectionChanged by reading the selection, both through that pattern. An edit is reported through every
+//     channel the element has — the text event, the value property for an element that also hands out Value, and the
+//     name when the name is the text itself; see NameString — because which of them a client is listening to depends
+//     on how it is reading the element. An element with no Text pattern, such as a paragraph whose words a document
+//     owns, reports only the ones it has, and a caret move on it reports nothing at all, since it changes no property
+//     a client could read back.
 //   - Duplicates are dropped. One text edit arrives as a value change and as the deletion and the insertion that made
 //     it, and all three ask for the same value property, so without this a client would hear about one edit three
 //     times.
@@ -1121,6 +1191,13 @@ func (d *decider) translate(event accessibility.Event) {
 	case accessibility.FocusChanged:
 		d.focus(event.Node)
 	case accessibility.NameChanged:
+		// Nothing but the name, even though the change behind it may have granted or removed the Text pattern: a label
+		// whose title is cleared, or set from empty, is renamed and stops or starts carrying text at once. The
+		// availability of the pattern is not raised here because the snapshot reports that flip as an attributes
+		// change alongside this event — appendAttributeChanges compares whether the two snapshots carry any text at
+		// all — and the attributes branch records patternAvailability before anything else. Recording it here as well
+		// would be a second route to the same raise, which add would drop as a duplicate, so it would buy nothing but
+		// a second reading of both snapshots' patterns for every rename in the window.
 		d.property(event.Node, NamePropertyId)
 	case accessibility.DescriptionChanged:
 		// Both properties, because the provider answers both from Node.Description: a client that cached
@@ -1142,7 +1219,9 @@ func (d *decider) translate(event accessibility.Event) {
 		d.textChanged(event.Node)
 	case accessibility.TextSelectionChanged:
 		// The Text pattern's own event, and the only thing that reports a caret move: an element without the pattern
-		// has no selection a client could read, so nothing is said about it at all.
+		// has no selection a client could read, so nothing is said about it at all. Every element that hands the
+		// pattern out raises it, which is how NVDA learns that the caret in a field has moved — it reads the new line,
+		// word or character through ITextProvider from the selection this event sent it back to.
 		if d.patterns(event.Node).Has(PatternText) {
 			d.event(event.Node, Text_TextSelectionChangedEventId)
 		}
@@ -1412,23 +1491,37 @@ func (d *decider) focus(id accessibility.NodeID) {
 	d.event(id, AutomationFocusChangedEventId)
 }
 
-// textChanged records the calls an insertion or a deletion asks for.
+// textChanged records the calls an insertion or a deletion asks for. Every way a client can learn of the edit is
+// used, because which of them a given one listens to depends on how it is reading the element, and an element is
+// read in more than one way at once.
 //
 // An element that hands out the Text pattern reports UI Automation's own text event, which is what tells a client to
-// read the document again through ITextProvider. Nothing else can: the pattern's text is not a property, so there is no
+// read the text again through ITextProvider. Nothing else can: the pattern's text is not a property, so there is no
 // property change to raise, and the event may only be raised on an element that has the pattern.
 //
-// Everything else reports the edit as a change to its value, which is where a client reads such an element's text, and
-// as a change to its name when the name is that text — a paragraph and a code block within a document are named by
-// their content, so an edit renames them, and a client that cached the name would otherwise go on speaking the old one
-// while item navigation stepped onto the block. Either snapshot having been named by its text is enough: a block whose
-// text is emptied is named by nothing afterwards, which is as much a change of name as gaining one is.
+// The value goes out as well, and not instead. A field hands out both patterns over the same content — Value for
+// reading it whole, Text for reading it by line and following the caret — and a client watching either one has to be
+// told. A label hands out no Value pattern, so nothing is raised for it here; a paragraph inside a document has
+// neither, since the document owns its words.
+//
+// The name goes out when the name is that text — a paragraph, a code block, a cell and a plain column header are
+// named by their content, so an edit renames them, and a client that cached the name would otherwise go on speaking
+// the old one while item navigation stepped onto the block. Either snapshot having been named by its text is enough:
+// a block whose text is emptied is named by nothing afterwards, which is as much a change of name as gaining one is.
+// A label's name changes through NameChanged instead, which the snapshot raises for it in its own right.
+//
+// The availability of the patterns is recorded first, because an edit can be the only event a node gets while the
+// patterns it hands out change underneath it: a block whose words a document has just composed into its stream stops
+// answering the Text pattern and answers TextChild instead, and the stream arriving is an attributes change on the
+// document rather than on the block. Recording it before the rest also keeps a pattern that has just been taken away
+// from being reported as gone after something was raised through it.
 func (d *decider) textChanged(id accessibility.NodeID) {
-	if d.patterns(id).Has(PatternText) {
+	d.patternAvailability(id)
+	patterns := d.patterns(id)
+	if patterns.Has(PatternText) {
 		d.event(id, Text_TextChangedEventId)
-		return
 	}
-	d.valueProperty(id)
+	d.valueOf(id, patterns)
 	if namedByItsText(d.old.Node(id)) || namedByItsText(d.cur.Node(id)) {
 		d.property(id, NamePropertyId)
 	}
@@ -1439,7 +1532,13 @@ func (d *decider) textChanged(id accessibility.NodeID) {
 // patternAvailability instead, which is recorded first.
 func (d *decider) valueProperty(id accessibility.NodeID) {
 	d.patternAvailability(id)
-	patterns := d.patterns(id)
+	d.valueOf(id, d.patterns(id))
+}
+
+// valueOf records the change of whichever value property a node holding the given patterns has, and nothing when it
+// holds neither. The patterns are passed in rather than looked up because both callers have already worked them out,
+// and because the availability change that may have taken one away has to be recorded before this either way.
+func (d *decider) valueOf(id accessibility.NodeID, patterns PatternSet) {
 	switch {
 	case patterns.Has(PatternValue):
 		d.property(id, ValueValuePropertyId)

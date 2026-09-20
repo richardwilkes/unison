@@ -10,14 +10,18 @@
 package unison_test
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
 )
@@ -39,8 +43,9 @@ func axEventsOfKind(events []accessibility.Event, kind accessibility.EventKind,
 	return found
 }
 
-// TestFieldAccessibility verifies what a field says about itself: its content is its value, its watermark is the prompt
-// an empty one shows, a field that fails validation says so, and a field that obscures what it holds gives up nothing.
+// TestFieldAccessibility verifies what a field says about itself: its content is its value along with the lines and
+// the style it was drawn in, its watermark is the prompt an empty one shows, a field that fails validation says so,
+// and a field that obscures what it holds gives up nothing.
 func TestFieldAccessibility(t *testing.T) {
 	c := check.New(t)
 	var plain, watermarked, invalid, secret, multiLine *unison.Field
@@ -92,13 +97,29 @@ func TestFieldAccessibility(t *testing.T) {
 	c.True(node.Actions.Has(accessibility.ReplaceText))
 	c.True(node.Actions.Has(accessibility.ShowContextMenu))
 	c.False(node.Actions.Has(accessibility.Press), "clicking a field does no more than move its caret")
+	c.True(node.Actions.Has(accessibility.ScrollRangeIntoView), "a reading cursor can bring what it reached into view")
 	c.True(node.Text != nil)
 	if node.Text != nil {
 		c.Equal("Hello", node.Text.Text)
 		c.Equal(5, node.Text.SelStart, "setting the text left the caret at the end of it")
 		c.Equal(5, node.Text.SelEnd)
 		c.False(node.Text.Multiline)
-		c.Equal(0, len(node.Text.Lines), "the lines of a field nobody is working in are not measured")
+		c.Equal(1, len(node.Text.Lines), "a field is read by line whether or not anyone is working in it")
+		if len(node.Text.Lines) == 1 {
+			line := node.Text.Lines[0]
+			c.Equal(0, line.Start)
+			c.Equal(5, line.End)
+			c.Equal(6, len(line.Advances), "one offset per rune boundary")
+			axCheckLine(c, line)
+			c.True(line.Bounds.Height > 0)
+		}
+		c.Equal(1, len(node.Text.Runs), "a field draws the whole of its content in one font")
+		if len(node.Text.Runs) == 1 {
+			run := node.Text.Runs[0]
+			c.Equal(0, run.Start)
+			c.Equal(5, run.End)
+			c.Equal(unison.FieldFont.Descriptor().Family, run.Family)
+		}
 	}
 
 	watermarkNode := axMustNode(c, screen.AccessibilityNodeFor(watermarked))
@@ -113,6 +134,8 @@ func TestFieldAccessibility(t *testing.T) {
 	c.True(secretNode.Protected)
 	c.Equal("", secretNode.Value, "a password is never handed out")
 	c.True(secretNode.Text == nil, "not even the caret within a password is reported")
+	c.False(secretNode.Actions.Has(accessibility.ScrollRangeIntoView),
+		"and nothing may ask for a range of it to be scrolled to, since no range of it was ever handed out")
 
 	multiNode := axMustNode(c, screen.AccessibilityNodeFor(multiLine))
 	c.Equal(role.TextArea, multiNode.Role, "a field that accepts line feeds is a text area")
@@ -120,6 +143,11 @@ func TestFieldAccessibility(t *testing.T) {
 	if multiNode.Text != nil {
 		c.True(multiNode.Text.Multiline)
 		c.Equal("one\ntwo", multiNode.Text.Text)
+		c.Equal(2, len(multiNode.Text.Lines), "both of the lines are reported")
+		if len(multiNode.Text.Lines) == 2 {
+			c.True(multiNode.Text.Lines[1].Bounds.Y > multiNode.Text.Lines[0].Bounds.Y,
+				"the second line sits below the first")
+		}
 	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
@@ -310,7 +338,7 @@ func TestFieldAccessibilityTextEvents(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestFieldAccessibilityLines verifies that the laid-out lines of a field are measured only for the field holding the
+// TestFieldAccessibilityLines verifies that the laid-out lines of a field are reported whether or not it holds the
 // focus, that every rune boundary on a line is accounted for, and that the lines of a text area are stacked down the
 // field in the order they are read in.
 func TestFieldAccessibilityLines(t *testing.T) {
@@ -339,7 +367,7 @@ func TestFieldAccessibilityLines(t *testing.T) {
 	node := axMustNode(c, screen.AccessibilityNodeFor(area))
 	c.True(node.Text != nil)
 	if node.Text != nil {
-		c.Equal(0, len(node.Text.Lines), "an unfocused field's lines are not measured")
+		c.Equal(3, len(node.Text.Lines), "a field nobody is working in is read by line too")
 	}
 
 	c.True(screen.Do(func() {
@@ -400,6 +428,259 @@ func TestFieldAccessibilityLines(t *testing.T) {
 			}
 		}
 	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldAccessibilityLinesFollowTheText verifies that the cached measurements a field hands out are rebuilt when
+// what they measured changes — the content and the font — and that a tree already published goes on describing the
+// text as it was when it was built.
+func TestFieldAccessibilityLinesFollowTheText(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.SetText("Hi")
+			wnd = newHeadlessWindow(t, "field text changes", geom.NewRect(10, 10, 500, 200), axColumn(field))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	screen.AccessibilityTree(wnd)
+	first := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.True(first.Text != nil)
+	if first.Text == nil || len(first.Text.Lines) != 1 {
+		c.Fatal("the field should have been described with the one line it drew")
+	}
+	before := first.Text.Lines[0]
+	beforeAdvances := slices.Clone(before.Advances)
+
+	c.True(screen.Do(func() { field.SetText("Hi there") }))
+	screen.AccessibilityTree(wnd)
+	second := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.True(second.Text != nil)
+	if second.Text != nil && len(second.Text.Lines) == 1 {
+		line := second.Text.Lines[0]
+		c.Equal(8, line.End, "the line covers the new content")
+		c.Equal(9, len(line.Advances))
+		axCheckLine(c, line)
+		c.True(line.Advances[len(line.Advances)-1] > before.Advances[len(before.Advances)-1],
+			"the longer text reaches further across the field")
+	}
+	c.True(slices.Equal(beforeAdvances, before.Advances),
+		"a tree already handed out describes the text as it was, so its measurements are never written over")
+
+	c.True(screen.Do(func() {
+		field.Font = unison.SystemFont.Face().Font(unison.LabelFont.Size() * 3)
+		field.MarkForLayoutAndRedraw()
+	}))
+	screen.AccessibilityTree(wnd)
+	third := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.True(third.Text != nil)
+	if third.Text != nil {
+		c.Equal(1, len(third.Text.Runs), "the whole of the content is drawn in the one font the field holds")
+		if len(third.Text.Runs) == 1 {
+			c.Equal(unison.SystemFont.Descriptor().Family, third.Text.Runs[0].Family,
+				"the run says what the field is now drawn in")
+			c.Equal(8, third.Text.Runs[0].End)
+		}
+		if len(third.Text.Lines) == 1 && len(second.Text.Lines) == 1 {
+			c.True(third.Text.Lines[0].Advances[8] > second.Text.Lines[0].Advances[8],
+				"the larger font pushed every rune boundary further across")
+		}
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldAccessibilityLinesFollowAResize verifies that the cached measurements a field hands out are dropped when
+// the width it wrapped to changes. The content and the font are noticed by the line cache being rebuilt outright; a
+// width change is noticed only by the lines coming back as a freshly allocated slice, which is the whole of the
+// argument at Field.prepareLines, and a resize that rewraps the same text into the same number of lines is what that
+// rests on. A stale cache shows up as advances that no longer reach as far as the line they are reported beside: the
+// bounds are worked out afresh on every call from the lines the field actually laid out, while the advances would
+// still be the ones measured over the wrap that was thrown away.
+func TestFieldAccessibilityLinesFollowAResize(t *testing.T) {
+	c := check.New(t)
+	const content = "aaaaaaaaaa bb cccccc"
+	var field *unison.Field
+	var wnd *unison.Window
+	var em float32
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewMultiLineField()
+			// Monospaced, so that a width stated in characters is the width the text actually takes: the wrap has to
+			// land where the test says it does for the same number of lines to come back from both widths.
+			field.Font = unison.MonospacedFont
+			field.SetWrap(true)
+			field.SetText(content)
+			em = unison.NewText("a", &unison.TextDecoration{Font: field.Font}).Width()
+			wnd = newHeadlessWindow(t, "field resize", geom.NewRect(10, 10, 500, 300), axColumn(field))
+		}))
+	c.NotNil(wnd)
+	c.True(em > 0)
+
+	// The wrap width a field uses is its content width less two, so the hint is that much wider than the number of
+	// characters each width is meant to hold.
+	setWidth := func(chars float32) {
+		c.True(screen.Do(func() {
+			insets := geom.Size{}
+			if border := field.Border(); border != nil {
+				insets = border.Insets().Size()
+			}
+			field.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(chars*em+2+insets.Width, 0),
+				HAlign:   align.Start,
+				VAlign:   align.Start,
+			})
+			field.MarkForLayoutRecursivelyUpward()
+			field.MarkForRedraw()
+		}))
+	}
+
+	// Wide enough for "aaaaaaaaaa bb" but not for the whole of it, so it wraps as "aaaaaaaaaa bb" / "cccccc".
+	setWidth(13.5)
+	screen.AccessibilityTree(wnd)
+	wide := axMustNode(c, screen.AccessibilityNodeFor(field))
+	axCheckWrappedLines(c, wide, content, 2)
+
+	// Wide enough for "aaaaaaaaaa" and for "bb cccccc", but not for the two together, so the same text wraps into the
+	// same number of lines split somewhere else entirely.
+	setWidth(10.5)
+	screen.AccessibilityTree(wnd)
+	narrow := axMustNode(c, screen.AccessibilityNodeFor(field))
+	axCheckWrappedLines(c, narrow, content, 2)
+	if wide.Text != nil && narrow.Text != nil && len(wide.Text.Lines) == 2 && len(narrow.Text.Lines) == 2 {
+		c.True(narrow.Text.Lines[0].End < wide.Text.Lines[0].End,
+			"the narrower field broke the text earlier: %d then %d", wide.Text.Lines[0].End,
+			narrow.Text.Lines[0].End)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axCheckWrappedLines verifies that what a wrapping field reports about its lines was all measured over the same wrap:
+// the lines cover the whole of the content in order, and the advances on each of them reach exactly as far as the
+// bounds that line was drawn at. Advances that were measured over a wrap the field has since thrown away fall short of,
+// or overrun, the line they are reported beside.
+func axCheckWrappedLines(c check.Checker, node *accessibility.Node, content string, expected int) {
+	c.True(node.Text != nil)
+	if node.Text == nil {
+		return
+	}
+	c.Equal(content, node.Text.Text)
+	c.Equal(expected, len(node.Text.Lines), "the text wrapped into the number of lines the width called for")
+	if len(node.Text.Lines) != expected {
+		return
+	}
+	for i, line := range node.Text.Lines {
+		axCheckLine(c, line)
+		if i != 0 {
+			c.True(line.Start >= node.Text.Lines[i-1].End, "the lines run through the content in order")
+		}
+		c.True(xmath.Abs(line.Advances[len(line.Advances)-1]-line.Bounds.Width) < 0.5,
+			"line %d was measured over the wrap it was drawn with: advances reach %v, the line is %v wide", i,
+			line.Advances[len(line.Advances)-1], line.Bounds.Width)
+	}
+	c.Equal(len([]rune(content)), node.Text.Lines[len(node.Text.Lines)-1].End,
+		"the last line ends where the content does")
+}
+
+// TestFieldAccessibilityScrollRangeIntoView verifies that a field brings a range of its own content into view when a
+// screen reader's reading cursor reaches text that cannot be seen, scrolling itself and then asking whatever it sits
+// in to scroll the rest of the way.
+func TestFieldAccessibilityScrollRangeIntoView(t *testing.T) {
+	c := check.New(t)
+	var narrow, area, secret *unison.Field
+	var scroller *unison.ScrollPanel
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 500},
+		unison.StartupFinishedCallback(func() {
+			narrow = unison.NewField()
+			narrow.SetText("a considerably longer piece of text than this field can show at once")
+			narrow.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(80, 0),
+				HAlign:   align.Start,
+				VAlign:   align.Start,
+			})
+
+			secret = unison.NewField()
+			secret.ObscurementRune = '\u2022'
+			secret.SetText("a considerably longer piece of text than this field can show at once")
+			secret.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(80, 0),
+				HAlign:   align.Start,
+				VAlign:   align.Start,
+			})
+
+			area = unison.NewMultiLineField()
+			area.SetText(strings.Join([]string{
+				"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+			}, "\n"))
+			scroller = unison.NewScrollPanel()
+			scroller.SetContent(area, behavior.Fill, behavior.Unmodified)
+			scroller.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(200, 60),
+				HAlign:   align.Fill,
+				VAlign:   align.Start,
+			})
+
+			wnd = newHeadlessWindow(t, "field scrolling", geom.NewRect(10, 10, 400, 300),
+				axColumn(narrow, secret, scroller))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(narrow))
+	c.True(node.Actions.Has(accessibility.ScrollRangeIntoView))
+	var offset geom.Point
+	c.True(screen.Do(func() {
+		narrow.SetScrollOffset(geom.Point{})
+		offset = narrow.ScrollOffset()
+	}))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ScrollRangeIntoView,
+		Start:  60,
+		End:    68,
+	}))
+	var moved geom.Point
+	screen.Do(func() { moved = narrow.ScrollOffset() })
+	c.True(moved.X < offset.X, "the end of the content was brought into view by scrolling the field itself")
+
+	areaNode := axMustNode(c, screen.AccessibilityNodeFor(area))
+	var position float32
+	screen.Do(func() { position = area.FrameRect().Y })
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   areaNode.ID,
+		Action: accessibility.ScrollRangeIntoView,
+		Start:  45,
+		End:    48,
+	}))
+	var scrolled float32
+	screen.Do(func() { scrolled = area.FrameRect().Y })
+	c.True(scrolled < position, "the last line of the text area was scrolled into the view holding it")
+
+	// A field that obscures what it shows publishes neither its text nor this action, so it must not carry it out
+	// either: an adapter that trusts what a node advertises would otherwise be told the field cannot do something it
+	// quietly does, over a range of a string that was never handed out. The field is asked directly, since the request
+	// is refused before it ever reaches a widget when the node does not offer the action.
+	secretNode := axMustNode(c, screen.AccessibilityNodeFor(secret))
+	c.False(secretNode.Actions.Has(accessibility.ScrollRangeIntoView))
+	var handled bool
+	var secretBefore, secretAfter geom.Point
+	c.True(screen.Do(func() {
+		secret.SetScrollOffset(geom.Point{})
+		secretBefore = secret.ScrollOffset()
+		handled = secret.PerformAccessibilityAction(accessibility.ActionRequest{
+			Action: accessibility.ScrollRangeIntoView,
+			Start:  60,
+			End:    68,
+		})
+		secretAfter = secret.ScrollOffset()
+	}))
+	c.False(handled, "a protected field refuses the action it never offered")
+	c.Equal(secretBefore, secretAfter, "and it scrolls nowhere")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

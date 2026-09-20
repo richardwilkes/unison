@@ -62,16 +62,21 @@ const (
 	textButtonID    = accessibility.NodeID(16)
 )
 
-// textLine builds one visual line of the fixture: ten units per rune, so that an offset and a coordinate can be read
-// off each other. The line feed a block is joined to the next with belongs to the line it ends and is zero-width, which
-// is why a line's last two advances are equal.
+// textLine builds one visual line of the document fixture: ten units per rune, so that an offset and a coordinate can
+// be read off each other.
 func textLine(start, end int, y float32) accessibility.Line {
-	runes := end - start
-	advances := make([]float32, 0, runes+1)
+	return measuredLine(textFixtureRunes(), start, end, y)
+}
+
+// measuredLine builds one visual line of a fixture's text: ten units per rune, so that an offset and a coordinate can
+// be read off each other. The line feed a block is joined to the next with belongs to the line it ends and is
+// zero-width, which is why such a line's last two advances are equal.
+func measuredLine(runes []rune, start, end int, y float32) accessibility.Line {
+	advances := make([]float32, 0, end-start+1)
 	width := float32(0)
-	for i := 0; i <= runes; i++ {
+	for i := start; i <= end; i++ {
 		advances = append(advances, width)
-		if i < runes && textFixtureRunes()[start+i] != '\n' {
+		if i < end && runes[i] != '\n' {
 			width += 10
 		}
 	}
@@ -686,8 +691,9 @@ func TestTextAttributes(t *testing.T) {
 	c.Equal(attribute{Kind: attributeInteger, Int: int32(StyleId_Heading2)},
 		doc.Attribute(0, 5, StyleIdAttributeId))
 
-	// Every document here is read-only, nothing in a stream is hidden, and the text is active while the document holds
-	// the keyboard focus.
+	// A Markdown document is read-only — a person selects and reads its text but never edits it — nothing in a stream
+	// is hidden, and the text is active while the document holds the keyboard focus. TestTextOwnerAttributes covers the
+	// owner that is not read-only.
 	c.Equal(attribute{Kind: attributeBoolean, Bool: true}, doc.Attribute(0, 5, IsReadOnlyAttributeId))
 	c.Equal(attribute{Kind: attributeBoolean, Bool: false}, doc.Attribute(0, 5, IsHiddenAttributeId))
 	c.Equal(attribute{Kind: attributeBoolean, Bool: true}, doc.Attribute(0, 5, IsActiveAttributeId))
@@ -1059,7 +1065,7 @@ func TestTextDocumentMemo(t *testing.T) {
 	c.False(third == second)
 	c.True(second == memoizedTextDocument(next, textDocumentID))
 
-	// Nothing but a Document with a stream has a view.
+	// Nothing that hands out no Text pattern has a view; TestTextOwnerMemo covers the owners that are not documents.
 	c.Nil(memoizedTextDocument(tree, textLinkID))
 	c.Nil(memoizedTextDocument(tree, 0))
 	c.Nil(memoizedTextDocument(nil, textDocumentID))
@@ -1237,5 +1243,544 @@ func TestTextCaretWalkReachesTheEnd(t *testing.T) {
 			at = next
 		}
 		c.Equal(0, at, "the backward walk ends at the beginning of the stream, unit %d", unit)
+	}
+}
+
+// The second fixture's cast: the elements that hand the Text pattern out over text of their own rather than over a
+// composed stream. Everything the arithmetic above is tested against for a document has to hold for these too, since
+// nothing below textInfoOf knows which kind of owner it is answering for — and two things are theirs alone: text with
+// no spans in it at all, and an owner that is not read-only.
+//
+// The field's content, laid out so that every offset in the tests can be checked by eye. It wraps after "Hello ",
+// and the line feed within it starts a second paragraph as well as a third line:
+//
+//	offset  0           6         11             16
+//	        Hello       wide    ⏎ world
+const (
+	fieldFixtureText   = "Hello wide\nworld"
+	fieldFixtureLength = 16
+)
+
+// The ids of the second fixture's nodes.
+const (
+	fieldWindowID    = accessibility.NodeID(21)
+	fieldScrollID    = accessibility.NodeID(22)
+	fieldID          = accessibility.NodeID(23)
+	fieldHeadingID   = accessibility.NodeID(24)
+	fieldTableID     = accessibility.NodeID(25)
+	fieldRowID       = accessibility.NodeID(26)
+	fieldCellID      = accessibility.NodeID(27)
+	fieldCellLabelID = accessibility.NodeID(28)
+	fieldButtonID    = accessibility.NodeID(29)
+)
+
+// fieldFixtureTree builds the snapshot the owner tests work over: a window holding a scroll area that is shorter than
+// the field inside it, so that the field's last line is clipped away, plus a heading label, a one-cell table whose
+// cell holds a label, and a button that carries no text at all.
+//
+// The field holds the keyboard focus, which is what the IsActive attribute and GetCaretRange report, and it offers
+// SetValue, which is what makes it the one owner here that is not read-only. Every element's lines are measured from
+// its own top left corner, as a snapshot records them, and every one of those origins differs from the window's, so
+// a conversion that forgets to add them shows up.
+func fieldFixtureTree() *accessibility.Tree {
+	runes := []rune(fieldFixtureText)
+	return newTestTree(fieldWindowID, fieldID,
+		&accessibility.Node{
+			ID: fieldWindowID, Role: role.Window, Name: "Window", Focused: true,
+			Bounds:   geom.NewRect(0, 0, 200, 200),
+			Children: []accessibility.NodeID{fieldScrollID, fieldHeadingID, fieldTableID, fieldButtonID},
+		},
+		&accessibility.Node{
+			ID: fieldScrollID, Role: role.ScrollArea, Bounds: geom.NewRect(10, 20, 110, 20),
+			Children: []accessibility.NodeID{fieldID},
+		},
+		&accessibility.Node{
+			ID: fieldID, Role: role.TextArea, Name: "Notes", Focusable: true, Focused: true,
+			Bounds: geom.NewRect(10, 20, 110, 30),
+			Actions: accessibility.ActionSet(0).With(accessibility.SetValue, accessibility.SetTextSelection,
+				accessibility.ScrollRangeIntoView, accessibility.ShowContextMenu, accessibility.ScrollIntoView),
+			Text: &accessibility.TextInfo{
+				Text: fieldFixtureText,
+				Lines: []accessibility.Line{
+					measuredLine(runes, 0, 6, 0),
+					measuredLine(runes, 6, 11, 10),
+					measuredLine(runes, 11, 16, 20),
+				},
+				Runs:      []accessibility.TextRun{{Family: "Field", Start: 0, End: 16, Weight: 400, Size: 12}},
+				SelStart:  6,
+				SelEnd:    11,
+				Caret:     11,
+				Multiline: true,
+			},
+		},
+		&accessibility.Node{
+			ID: fieldHeadingID, Role: role.Heading, Name: "Title", Level: 2, Bounds: geom.NewRect(10, 60, 50, 10),
+			Actions: accessibility.ActionSet(0).With(accessibility.ScrollIntoView),
+			Text: &accessibility.TextInfo{
+				Text:  "Title",
+				Lines: []accessibility.Line{measuredLine([]rune("Title"), 0, 5, 0)},
+				Runs:  []accessibility.TextRun{{Family: "Heading", Start: 0, End: 5, Weight: 700, Size: 20}},
+			},
+		},
+		&accessibility.Node{
+			ID: fieldTableID, Role: role.Table, Bounds: geom.NewRect(10, 80, 100, 10), RowCount: 1, ColumnCount: 1,
+			Children: []accessibility.NodeID{fieldRowID},
+		},
+		&accessibility.Node{
+			ID: fieldRowID, Role: role.Row, RowIndex: 0, Bounds: geom.NewRect(10, 80, 100, 10),
+			Children: []accessibility.NodeID{fieldCellID},
+		},
+		&accessibility.Node{
+			ID: fieldCellID, Role: role.Cell, RowIndex: 0, ColumnIndex: 0, Bounds: geom.NewRect(10, 80, 50, 10),
+			Children: []accessibility.NodeID{fieldCellLabelID},
+		},
+		&accessibility.Node{
+			ID: fieldCellLabelID, Role: role.Label, Name: "Note", Bounds: geom.NewRect(10, 80, 40, 10),
+			Actions: accessibility.ActionSet(0).With(accessibility.ScrollIntoView),
+			Text: &accessibility.TextInfo{
+				Text:  "Note",
+				Lines: []accessibility.Line{measuredLine([]rune("Note"), 0, 4, 0)},
+				Runs:  []accessibility.TextRun{{Family: "Label", Start: 0, End: 4, Weight: 400, Size: 12}},
+			},
+		},
+		&accessibility.Node{ID: fieldButtonID, Role: role.Button, Name: "Close", Bounds: geom.NewRect(150, 10, 40, 20)},
+	)
+}
+
+// fieldFixture, headingFixture and labelFixture return the views of the three owners' text, built fresh rather than
+// from the memo so that one test cannot be affected by another.
+func fieldFixture(t *testing.T) *textDocument {
+	t.Helper()
+	return ownerFixture(t, fieldID)
+}
+
+func headingFixture(t *testing.T) *textDocument {
+	t.Helper()
+	return ownerFixture(t, fieldHeadingID)
+}
+
+func labelFixture(t *testing.T) *textDocument {
+	t.Helper()
+	return ownerFixture(t, fieldCellLabelID)
+}
+
+func ownerFixture(t *testing.T, id accessibility.NodeID) *textDocument {
+	t.Helper()
+	tree := fieldFixtureTree()
+	doc := newTextDocument(tree, tree.Node(id))
+	check.New(t).NotNil(doc)
+	return doc
+}
+
+// TestTextOwnerInfo pins the one decision every other answer in this file hangs from: which text an element hands the
+// Text pattern out over. A Document answers with the stream its blocks were composed into, an element that carries
+// text of its own answers with that, and a block a document has already claimed answers with nothing, since the
+// document is what owns its words.
+func TestTextOwnerInfo(t *testing.T) {
+	c := check.New(t)
+	forgetSnapshotMemo()
+	t.Cleanup(forgetSnapshotMemo)
+	tree := fieldFixtureTree()
+	for _, id := range []accessibility.NodeID{fieldID, fieldHeadingID, fieldCellLabelID} {
+		n := tree.Node(id)
+		c.True(ownsText(n), "node %d", id)
+		c.True(n.Text == textInfoOf(tree, n), "node %d answers with its own text", id)
+	}
+
+	// Nothing that carries no text owns any, whatever its role.
+	for _, id := range []accessibility.NodeID{
+		fieldWindowID, fieldScrollID, fieldTableID, fieldRowID, fieldCellID, fieldButtonID,
+	} {
+		n := tree.Node(id)
+		c.False(ownsText(n), "node %d", id)
+		c.Nil(textInfoOf(tree, n), "node %d", id)
+	}
+	c.False(ownsText(nil))
+	c.Nil(textInfoOf(tree, nil))
+
+	// A Protected field publishes no text at all, which is the whole point of the flag: there is nothing for a Text
+	// pattern to be answered from, so none is handed out.
+	protected := fieldFixtureTree()
+	protected.Node(fieldID).Protected = true
+	protected.Node(fieldID).Text = nil
+	c.False(ownsText(protected.Node(fieldID)))
+	c.Nil(textInfoOf(protected, protected.Node(fieldID)))
+
+	// The flag wins even when the text is there anyway, which is what an AccessibilityInfo.Callback setting it on a
+	// node whose text has already been filled in produces: a password read out by line, word and character is exactly
+	// what the flag exists to prevent, so the text is withheld here as ValueString withholds the value.
+	filled := fieldFixtureTree()
+	filled.Node(fieldID).Protected = true
+	c.NotNil(filled.Node(fieldID).Text)
+	c.False(ownsText(filled.Node(fieldID)))
+	c.Nil(textInfoOf(filled, filled.Node(fieldID)))
+	c.Nil(newTextDocument(filled, filled.Node(fieldID)))
+	for _, r := range []role.Enum{role.Label, role.Heading, role.Cell, role.ColumnHeader} {
+		n := &accessibility.Node{Role: r, Protected: true, Text: &accessibility.TextInfo{Text: "secret"}}
+		c.False(ownsText(n), "role %s", r.Key())
+	}
+
+	// A role that is not read as text carries none even when a snapshot filled some in: a list item's words live on
+	// the label within it. See role.IsText.
+	c.False(ownsText(&accessibility.Node{Role: role.ListItem, Text: &accessibility.TextInfo{Text: "one"}}))
+	c.False(ownsText(&accessibility.Node{Role: role.BlockQuote, Text: &accessibility.TextInfo{Text: "quoted"}}))
+
+	// A Document answers with its composed stream rather than with Node.Text, and the blocks within it answer with
+	// nothing: they carry text, and role.IsText holds for them, but the document has claimed it.
+	doc := textFixtureTree()
+	c.True(&doc.Node(textDocumentID).Document.Text == textInfoOf(doc, doc.Node(textDocumentID)))
+	for _, id := range []accessibility.NodeID{textParagraphID, textCodeID, textCellAID, textCellBID} {
+		n := doc.Node(id)
+		c.True(ownsText(n), "node %d carries text of its own", id)
+		c.Nil(textInfoOf(doc, n), "node %d is claimed by the document", id)
+	}
+
+	// Once the stream is gone nothing claims them, and they answer for their own text again.
+	plain := textFixtureTree()
+	plain.Node(textDocumentID).Document = nil
+	c.True(plain.Node(textParagraphID).Text == textInfoOf(plain, plain.Node(textParagraphID)))
+
+	// Which of the two kinds of text is answered is decided by the role, exactly as the grant in rolePatterns is, so
+	// that a view is built only for an element that really hands the pattern out. Three shapes no composition produces
+	// but nothing in the API forbids pin that agreement, since an element with a view and no pattern would be text a
+	// client can never reach, and one with a pattern and no view would be an interface with nothing behind it.
+	streamless := &accessibility.Node{ID: 1, Role: role.Document, Text: &accessibility.TextInfo{Text: "typed in"}}
+	misfiled := &accessibility.Node{
+		ID:       1,
+		Role:     role.Group,
+		Document: &accessibility.DocumentInfo{Text: accessibility.TextInfo{Text: "composed"}},
+	}
+	for _, one := range []struct {
+		node *accessibility.Node
+		name string
+	}{
+		{name: "a Document with no stream", node: streamless},
+		{name: "a stream hung on a role that is not a Document", node: misfiled},
+	} {
+		tree := newTextTestTree(one.node)
+		c.Nil(textInfoOf(tree, one.node), one.name)
+		c.Nil(newTextDocument(tree, one.node), one.name)
+		c.Equal(PatternSet(0), ProvidedPatterns(tree, one.node)&(PatternText|PatternText2), one.name)
+	}
+
+	// A Document with a stream is the one that answers, and it answers with the stream.
+	withStream := &accessibility.Node{
+		ID:       1,
+		Role:     role.Document,
+		Document: &accessibility.DocumentInfo{Text: accessibility.TextInfo{Text: "composed"}},
+	}
+	streamTree := newTextTestTree(withStream)
+	c.True(&withStream.Document.Text == textInfoOf(streamTree, withStream))
+	c.NotNil(newTextDocument(streamTree, withStream))
+	c.True(ProvidesPattern(streamTree, withStream, PatternText|PatternText2))
+}
+
+// newTextTestTree wraps one node up as a whole snapshot of its own, which is all the tests of textInfoOf that work
+// from a hand-made node rather than from a fixture need: nothing above the node decides what text it answers with.
+func newTextTestTree(n *accessibility.Node) *accessibility.Tree {
+	return &accessibility.Tree{
+		Nodes:      map[accessibility.NodeID]*accessibility.Node{n.ID: n},
+		Root:       n.ID,
+		Generation: 1,
+	}
+}
+
+// TestTextFieldBasics verifies what a field's view says about its text as a whole, which is the same set of questions
+// TestTextDocumentBasics asks of a document: its length, the text between two offsets, and what it reports about the
+// selection and the focus.
+func TestTextFieldBasics(t *testing.T) {
+	c := check.New(t)
+	doc := fieldFixture(t)
+	c.Equal(fieldFixtureLength, doc.Len())
+	c.Equal(fieldID, doc.Node().ID)
+	c.Equal(fieldFixtureText, doc.Text(0, doc.Len()))
+	c.Equal("Hello", doc.Text(0, 5))
+	c.Equal("world", doc.Text(11, 16))
+
+	start, end := doc.Selection()
+	c.Equal(6, start)
+	c.Equal(11, end)
+	c.Equal(11, doc.Caret())
+	c.True(doc.Focused(), "the field holds the keyboard focus, which is what IsActive and GetCaretRange report")
+	c.Equal(SupportedTextSelection_Single, doc.SupportedSelection())
+
+	// A label accepts no selection at all — it offers no SetTextSelection action — so a client must be told it cannot
+	// place a caret rather than left to discover it when Select fails.
+	label := labelFixture(t)
+	c.Equal(SupportedTextSelection_None, label.SupportedSelection())
+	c.False(label.Focused())
+	c.Equal("Note", label.Text(0, label.Len()))
+	c.Equal(4, label.Len())
+	c.Equal(5, headingFixture(t).Len())
+}
+
+// TestTextFieldBoundaries pins the divisions of a field's text for every unit. The only difference from a document is
+// that there are no spans to divide it further: a paragraph is where the text itself breaks and nothing else.
+func TestTextFieldBoundaries(t *testing.T) {
+	c := check.New(t)
+	doc := fieldFixture(t)
+
+	characters := make([]int, 0, fieldFixtureLength+1)
+	for i := 0; i <= fieldFixtureLength; i++ {
+		characters = append(characters, i)
+	}
+	c.Equal(characters, doc.Boundaries(TextUnit_Character))
+	c.Equal([]int{0, 6, 11, 16}, doc.Boundaries(TextUnit_Word))
+	c.Equal([]int{0, 6, 11, 16}, doc.Boundaries(TextUnit_Line), "the layout wrapped after \"Hello \"")
+	c.Equal([]int{0, 11, 16}, doc.Boundaries(TextUnit_Paragraph), "the one line feed is the one paragraph break")
+	c.Equal([]int{0, 16}, doc.Boundaries(TextUnit_Format), "one run over the whole of it")
+	c.Equal([]int{0, 16}, doc.Boundaries(TextUnit_Page))
+	c.Equal([]int{0, 16}, doc.Boundaries(TextUnit_Document))
+
+	// Text whose lines were never measured falls back to its paragraphs, exactly as a document's does.
+	tree := fieldFixtureTree()
+	tree.Node(fieldID).Text.Lines = nil
+	unmeasured := newTextDocument(tree, tree.Node(fieldID))
+	c.Equal([]int{0, 11, 16}, unmeasured.Boundaries(TextUnit_Line))
+	c.Equal(unmeasured.Boundaries(TextUnit_Paragraph), unmeasured.Boundaries(TextUnit_Line))
+
+	// A label draws one line and no line feed, so every division above the character is the whole of it.
+	label := labelFixture(t)
+	for _, unit := range []TextUnit{TextUnit_Line, TextUnit_Paragraph, TextUnit_Format, TextUnit_Document} {
+		c.Equal([]int{0, 4}, label.Boundaries(unit), "unit %d", unit)
+	}
+}
+
+// TestTextFieldRectangles verifies where a field's text is on screen: node-local lines offset by the node's own
+// bounds, clipped by the scroll area above it, and nothing at all once the element is off screen.
+func TestTextFieldRectangles(t *testing.T) {
+	c := check.New(t)
+	doc := fieldFixture(t)
+
+	// The first five characters of the first line. The field's own origin is added, and the advances pick out the
+	// covered part of the line.
+	c.Equal([]geom.Rect{geom.NewRect(10, 20, 50, 10)}, doc.Rectangles(0, 5))
+	c.Equal([]geom.Rect{geom.NewRect(30, 20, 20, 10)}, doc.Rectangles(2, 4), "part of a line")
+
+	// A range crossing the wrap contributes one rectangle per line.
+	c.Equal([]geom.Rect{
+		geom.NewRect(10, 20, 60, 10),
+		geom.NewRect(10, 30, 40, 10),
+	}, doc.Rectangles(0, 11))
+
+	// The third line is below the scroll area's bottom edge, so it has no rectangle at all.
+	c.Nil(doc.Rectangles(11, 16))
+	c.Nil(doc.Rectangles(4, 4), "a degenerate range covers no text")
+
+	// The visible range is the two lines the scroll area shows.
+	start, end, ok := doc.VisibleRange()
+	c.True(ok)
+	c.Equal(0, start)
+	c.Equal(11, end)
+
+	// A field scrolled out of view has no rectangles and no visible range: there is nothing on screen to report.
+	offscreen := fieldFixtureTree()
+	offscreen.Node(fieldID).Offscreen = true
+	hidden := newTextDocument(offscreen, offscreen.Node(fieldID))
+	c.Nil(hidden.Rectangles(0, 5))
+	_, _, ok = hidden.VisibleRange()
+	c.False(ok)
+
+	// A label is measured from its own origin, which is the cell's, so nothing needs rebasing for it either.
+	c.Equal([]geom.Rect{geom.NewRect(10, 80, 40, 10)}, labelFixture(t).Rectangles(0, 4))
+	c.Equal([]geom.Rect{geom.NewRect(10, 60, 50, 10)}, headingFixture(t).Rectangles(0, 5))
+}
+
+// TestTextFieldOffsetAt verifies the hit test a client placing the caret with the mouse goes through, over an owner
+// whose lines sit at its own origin rather than at the window's.
+func TestTextFieldOffsetAt(t *testing.T) {
+	c := check.New(t)
+	doc := fieldFixture(t)
+
+	// Ten units per rune, measured from the field's own top left corner at (10,20).
+	c.Equal(0, doc.OffsetAt(geom.NewPoint(10, 20)))
+	c.Equal(2, doc.OffsetAt(geom.NewPoint(35, 25)))
+	c.Equal(8, doc.OffsetAt(geom.NewPoint(35, 35)), "the second line begins at offset 6")
+
+	// A point past the end of a line answers with that line's last character, which for the line ending in the zero
+	// width line feed is the offset the feed itself sits at.
+	c.Equal(10, doc.OffsetAt(geom.NewPoint(500, 35)))
+
+	// A point above the text answers with the first line, and one below it with the last — including a line the
+	// scroll area clips away, since a hit test is about where the text is and not about what is visible.
+	c.Equal(0, doc.OffsetAt(geom.NewPoint(10, -100)))
+	c.Equal(15, doc.OffsetAt(geom.NewPoint(500, 500)))
+
+	// Text whose lines were never measured has nothing to place a point against.
+	tree := fieldFixtureTree()
+	tree.Node(fieldID).Text.Lines = nil
+	c.Equal(0, newTextDocument(tree, tree.Node(fieldID)).OffsetAt(geom.NewPoint(50, 50)))
+}
+
+// TestTextOwnerAttributes verifies what a stretch of an owner's own text says about itself. Two of the answers are
+// the owner's rather than the run's: whether the text can be typed into, which a client uses to decide whether to
+// announce it as editable, and whether the keyboard is in it.
+//
+// The style is the other: an owner with no spans within its text has nothing to take a style from but itself, so a
+// heading label reports its own text as heading text of its level. See styleAt.
+func TestTextOwnerAttributes(t *testing.T) {
+	c := check.New(t)
+	doc := fieldFixture(t)
+
+	// A field is exactly what the user is there to type into, so answering "read-only" would have a screen reader
+	// describe the control the caret is in as one that cannot be typed in.
+	c.Equal(attribute{Kind: attributeBoolean, Bool: false}, doc.Attribute(0, 16, IsReadOnlyAttributeId))
+	c.Equal(attribute{Kind: attributeBoolean, Bool: true}, doc.Attribute(0, 16, IsActiveAttributeId))
+	c.Equal(attribute{Kind: attributeBoolean, Bool: false}, doc.Attribute(0, 16, IsHiddenAttributeId))
+	c.Equal(attribute{Kind: attributeString, Text: "Field"}, doc.Attribute(0, 16, FontNameAttributeId))
+	c.Equal(attribute{Kind: attributeNumber, Number: 12}, doc.Attribute(0, 16, FontSizeAttributeId))
+	c.Equal(attribute{Kind: attributeInteger, Int: 400}, doc.Attribute(0, 16, FontWeightAttributeId))
+	c.Equal(attribute{Kind: attributeInteger, Int: int32(StyleId_Normal)}, doc.Attribute(0, 16, StyleIdAttributeId))
+	c.Equal(attribute{Kind: attributeEmpty}, doc.Attribute(0, 16, LinkAttributeId), "there is no link in a field")
+
+	// A label and a heading are read but never typed into, and neither holds the keyboard.
+	label := labelFixture(t)
+	c.Equal(attribute{Kind: attributeBoolean, Bool: true}, label.Attribute(0, 4, IsReadOnlyAttributeId))
+	c.Equal(attribute{Kind: attributeBoolean, Bool: false}, label.Attribute(0, 4, IsActiveAttributeId))
+	c.Equal(attribute{Kind: attributeInteger, Int: int32(StyleId_Normal)}, label.Attribute(0, 4, StyleIdAttributeId))
+
+	// The heading's own role is what says its text is heading text: there is no span within it to say so, and a
+	// client walking a document by style would otherwise never find it.
+	heading := headingFixture(t)
+	c.Equal(attribute{Kind: attributeBoolean, Bool: true}, heading.Attribute(0, 5, IsReadOnlyAttributeId))
+	c.Equal(attribute{Kind: attributeInteger, Int: int32(StyleId_Heading2)},
+		heading.Attribute(0, 5, StyleIdAttributeId))
+	c.Equal(attribute{Kind: attributeString, Text: "Heading"}, heading.Attribute(0, 5, FontNameAttributeId))
+
+	// A heading whose level the snapshot never filled in is still a heading: a client walking by heading must not be
+	// made to skip it.
+	levelless := fieldFixtureTree()
+	levelless.Node(fieldHeadingID).Level = 0
+	c.Equal(attribute{Kind: attributeInteger, Int: int32(StyleId_Heading1)},
+		newTextDocument(levelless, levelless.Node(fieldHeadingID)).Attribute(0, 5, StyleIdAttributeId))
+
+	// A read-only field says so, which is the one thing about the attribute that is not the role's to decide.
+	frozen := fieldFixtureTree()
+	frozen.Node(fieldID).ReadOnly = true
+	c.Equal(attribute{Kind: attributeBoolean, Bool: true},
+		newTextDocument(frozen, frozen.Node(fieldID)).Attribute(0, 16, IsReadOnlyAttributeId))
+
+	// And FindAttribute searches an owner's text by the same answers, which is how a client looks for the next
+	// stretch in a given style.
+	start, end, ok := heading.FindAttribute(0, 5, StyleIdAttributeId,
+		attribute{Kind: attributeInteger, Int: int32(StyleId_Heading2)}, false)
+	c.True(ok)
+	c.Equal(0, start)
+	c.Equal(5, end)
+}
+
+// TestTextOwnerEnclosingAndChildren verifies what an owner whose text holds no elements answers the three methods a
+// client walks a document's structure with. There is nothing inside the text, so the owner itself encloses every
+// range, it has no children, and no element occupies a stretch of it — RangeFromChild reports that as an invalid
+// argument, which is the truth: a field has no parts.
+func TestTextOwnerEnclosingAndChildren(t *testing.T) {
+	c := check.New(t)
+	doc := fieldFixture(t)
+	c.Equal(fieldID, doc.EnclosingSpan(0, doc.Len()))
+	c.Equal(fieldID, doc.EnclosingSpan(6, 11))
+	c.Equal(fieldID, doc.EnclosingSpan(3, 3))
+	c.Nil(doc.Children(0, doc.Len()))
+	c.Nil(doc.Children(6, 11))
+	_, _, ok := doc.SpanFor(fieldID)
+	c.False(ok, "the owner is not a part of its own text")
+	_, _, ok = doc.SpanFor(fieldButtonID)
+	c.False(ok)
+
+	label := labelFixture(t)
+	c.Equal(fieldCellLabelID, label.EnclosingSpan(0, 4))
+	c.Nil(label.Children(0, 4))
+
+	// Nothing in this tree sits inside anything else's text, so nothing hands out TextChild either.
+	tree := fieldFixtureTree()
+	for id := range tree.Nodes {
+		c.Equal(accessibility.NodeID(0), textContainerFor(tree, tree.Node(id)), "node %d", id)
+	}
+}
+
+// TestTextOwnerMemo verifies that each owner in a snapshot gets a view of its own and keeps it, which is what a
+// client reading two fields in one window depends on, and that a block a document has claimed gets none.
+func TestTextOwnerMemo(t *testing.T) {
+	c := check.New(t)
+	forgetSnapshotMemo()
+	t.Cleanup(forgetSnapshotMemo)
+	tree := fieldFixtureTree()
+	field := memoizedTextDocument(tree, fieldID)
+	heading := memoizedTextDocument(tree, fieldHeadingID)
+	c.NotNil(field)
+	c.NotNil(heading)
+	c.False(field == heading, "two owners in one snapshot are two views")
+	c.True(field == memoizedTextDocument(tree, fieldID))
+	c.True(heading == memoizedTextDocument(tree, fieldHeadingID))
+	c.Equal(fieldFixtureLength, field.Len())
+	c.Equal(5, heading.Len())
+
+	// Nothing that carries no text has a view.
+	c.Nil(memoizedTextDocument(tree, fieldButtonID))
+	c.Nil(memoizedTextDocument(tree, fieldCellID))
+
+	// Neither has a block whose text a document has claimed: the document is the one view over those words, and a
+	// second one would answer the same client with different offsets.
+	doc := textFixtureTree()
+	c.NotNil(memoizedTextDocument(doc, textDocumentID))
+	c.Nil(memoizedTextDocument(doc, textParagraphID))
+	c.Nil(memoizedTextDocument(doc, textCellAID))
+
+	// Such a block is refused without anything being remembered about it, since there is no view to remember.
+	c.Nil(memoizedTextDocument(doc, textParagraphID))
+	_, held := snapshotMemo.documents[textParagraphID]
+	c.False(held)
+
+	// A Protected field loses its view along with its text, while a client may still hold the interface: that is what
+	// has textProviderDocument answer E_NOTSUPPORTED.
+	protected := fieldFixtureTree()
+	protected.Generation = 2
+	protected.Node(fieldID).Protected = true
+	protected.Node(fieldID).Text = nil
+	c.Nil(memoizedTextDocument(protected, fieldID))
+}
+
+// TestMayOwnText verifies the node-local half of textInfoOf: the question memoizedTextDocument asks before it takes
+// the memo's lock, which has to be answerable from the node alone and has to refuse everything that hands out no Text
+// pattern. A block a document has claimed is the one shape the two disagree about, and is refused by the walk that
+// follows rather than here.
+func TestMayOwnText(t *testing.T) {
+	c := check.New(t)
+	c.False(mayOwnText(nil))
+	tree := textFixtureTree()
+	for _, id := range []accessibility.NodeID{textWindowID, textScrollID, textButtonID, textLinkID, textImageID} {
+		c.False(mayOwnText(tree.Node(id)), "node %d carries no text", id)
+	}
+	for _, id := range []accessibility.NodeID{textDocumentID, textParagraphID, textCodeID, textCellAID} {
+		c.True(mayOwnText(tree.Node(id)), "node %d carries text", id)
+	}
+
+	// A Document is judged by its stream and not by its Text field, exactly as textInfoOf judges it.
+	stripped := textFixtureTree()
+	stripped.Node(textDocumentID).Document = nil
+	stripped.Node(textDocumentID).Text = &accessibility.TextInfo{Text: "ignored"}
+	c.False(mayOwnText(stripped.Node(textDocumentID)))
+
+	// The claimed block is where the two part: it may own text as far as the node itself says, and the walk of its
+	// ancestors is what takes the pattern away.
+	c.True(mayOwnText(tree.Node(textParagraphID)))
+	c.Nil(textInfoOf(tree, tree.Node(textParagraphID)))
+	c.NotNil(textInfoOf(stripped, stripped.Node(textParagraphID)), "and grants it once nothing claims the words")
+}
+
+// BenchmarkMemoizedTextDocumentHit measures the path a client reading by character or by word takes thousands of
+// times per say-all: an element whose view the memo already holds. It must not walk the element's ancestors, which is
+// why memoizedTextDocument's guard is node-local; see mayOwnText.
+func BenchmarkMemoizedTextDocumentHit(b *testing.B) {
+	forgetSnapshotMemo()
+	b.Cleanup(forgetSnapshotMemo)
+	tree := fieldFixtureTree()
+	if memoizedTextDocument(tree, fieldHeadingID) == nil {
+		b.Fatal("no view to answer from")
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		if memoizedTextDocument(tree, fieldHeadingID) == nil {
+			b.Fatal("no view to answer from")
+		}
 	}
 }

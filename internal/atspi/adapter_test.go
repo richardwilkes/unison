@@ -39,6 +39,9 @@ const (
 	// testLabelName is what the main window's label says, and testFieldValue is what the field beside it holds.
 	testLabelName  = "Name:"
 	testFieldValue = "Fred"
+	// testChosenValue is what a chooser that has had something picked from it shows, in the tests that flip a node
+	// between holding a textual value and holding none.
+	testChosenValue = "Weekly"
 )
 
 // mainTree is the window the adapter tests work over:
@@ -68,7 +71,8 @@ func mainTree() *accessibility.Tree {
 		&accessibility.Node{
 			ID: 4, Parent: 2, Role: role.TextField, Value: testFieldValue, Placeholder: "Your name", Focusable: true,
 			Focused: true, Bounds: geom.NewRect(60, 10, 100, 20), LabeledBy: []accessibility.NodeID{3},
-			Controls: []accessibility.NodeID{5}, Actions: accessibility.ActionSet(0).With(accessibility.Focus),
+			Controls: []accessibility.NodeID{5},
+			Actions:  accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetTextSelection),
 		},
 		&accessibility.Node{
 			ID: 5, Parent: 1, Role: role.List, Name: "Items", Multiselectable: true,

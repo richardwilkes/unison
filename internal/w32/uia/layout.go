@@ -87,8 +87,8 @@ const (
 )
 
 // textRangeSlots is the size of the virtual method table of a text range, which is the one COM object in this file's
-// scheme that is not a provider: a range stands for a stretch of one document's text rather than for an element, so it
-// is an object of its own with a single table rather than one of a provider's interfaces. See TextRange.
+// scheme that is not a provider: a range stands for a stretch of one element's text rather than for the element, so
+// it is an object of its own with a single table rather than one of a provider's interfaces. See TextRange.
 //
 // The table is ITextRangeProvider2's: its first eighteen methods are ITextRangeProvider's, in the order that interface
 // declares them, and ShowContextMenu is the nineteenth. One object answers both interface identifiers, exactly as the

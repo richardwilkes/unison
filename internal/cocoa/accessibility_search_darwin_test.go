@@ -850,3 +850,94 @@ func TestAXSearchCannotLoop(t *testing.T) {
 		t.Errorf("a search of a cyclic hierarchy for static text answered %d nodes, want 1", len(got))
 	}
 }
+
+// TestAXSearchKeysOnLabels proves what the rotor and Quick Nav find now that an ordinary label carries the text it
+// drew. The text keys answer from what a node holds rather than from where it sits, so a form's labels are found by
+// the same keys a document's paragraphs are: the static-text key reaches every one of them, the plain-text key
+// reaches only the ones drawn in one unremarkable style — a label drawn bold is exactly what a person stepping by
+// "plain text" is trying to skip — and the font keys, which no label could ever have answered before, now match the
+// runs a label was drawn with.
+//
+// The keys that have nothing to do with text are the control: a heading is still found by the heading keys and by
+// them alone, and a label is keyboard-focusable nowhere on this platform, since VoiceOver moves a cursor of its own
+// and headings are given no Focus action here.
+func TestAXSearchKeysOnLabels(t *testing.T) {
+	const (
+		rootID accessibility.NodeID = 1900 + iota
+		plainID
+		boldID
+		headingID
+		fieldID
+	)
+	styled := func(text string, weight int) *accessibility.TextInfo {
+		count := len([]rune(text))
+		return &accessibility.TextInfo{
+			Text: text,
+			Runs: []accessibility.TextRun{axDocRun(0, count, axDocSerif, 13, weight)},
+			Lines: []accessibility.Line{
+				{
+					Advances: axDocAdvances(count, 7), Start: 0, End: count,
+					Bounds: geom.NewRect(0, 0, float32(count)*7, 16),
+				},
+			},
+		}
+	}
+	tree := &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			rootID: {
+				ID: rootID, Children: []accessibility.NodeID{plainID, boldID, headingID, fieldID}, Role: role.Window,
+				Bounds: geom.NewRect(0, 0, 320, 240),
+			},
+			plainID: {
+				ID: plainID, Parent: rootID, Role: role.Label, Name: "Stopped", Bounds: geom.NewRect(10, 10, 60, 16),
+				Text: styled("Stopped", 400),
+			},
+			boldID: {
+				ID: boldID, Parent: rootID, Role: role.Label, Name: "Warning", Bounds: geom.NewRect(10, 30, 60, 16),
+				Text: styled("Warning", 700),
+			},
+			headingID: {
+				ID: headingID, Parent: rootID, Role: role.Heading, Name: "Colors", Level: 2,
+				Bounds: geom.NewRect(10, 50, 100, 20), Text: styled("Colors", 700),
+			},
+			fieldID: {
+				ID: fieldID, Parent: rootID, Role: role.TextField, Name: "Owner", Value: "Hopper",
+				Bounds: geom.NewRect(10, 80, 200, 24), Focusable: true,
+				Text:    &accessibility.TextInfo{Text: "Hopper"},
+				Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetValue),
+			},
+		},
+		Root:       rootID,
+		Generation: 1,
+	}
+	// A heading is reported as static text only where the AXHeading role is not honored, so the static-text keys
+	// follow the same rule the adapter follows rather than this machine's answer (see axIsStaticText).
+	staticText := []accessibility.NodeID{plainID, boldID}
+	plainText := []accessibility.NodeID{plainID}
+	if axHeadingIsStaticText() {
+		staticText = []accessibility.NodeID{plainID, boldID, headingID}
+	}
+	for _, c := range []struct {
+		key  string
+		want []accessibility.NodeID
+	}{
+		{key: axSearchKeyStaticText, want: staticText},
+		{key: axSearchKeyPlainText, want: plainText},
+		{key: axSearchKeyBoldFont, want: []accessibility.NodeID{boldID, headingID}},
+		{key: axSearchKeyItalicFont, want: nil},
+		{key: axSearchKeyHeading, want: []accessibility.NodeID{headingID}},
+		{key: axSearchKeyHeadingLevel2, want: []accessibility.NodeID{headingID}},
+		{key: axSearchKeyHeadingLevel1, want: nil},
+		{key: axSearchKeyKeyboardFocusable, want: []accessibility.NodeID{fieldID}},
+		{key: axSearchKeyTextField, want: []accessibility.NodeID{fieldID}},
+	} {
+		if got := axSearch(tree, rootID, axSearchQuery{Keys: []string{c.key}}); !slices.Equal(got, c.want) {
+			t.Errorf("%s answered %v, want %v", c.key, got, c.want)
+		}
+	}
+	// Searching by text finds a label by the text it drew, which is the string a person searching heard it speak.
+	if got := axSearch(tree, rootID, axSearchQuery{Text: "warn"}); !slices.Equal(got,
+		[]accessibility.NodeID{boldID}) {
+		t.Errorf("a search for \"warn\" answered %v, want %v", got, []accessibility.NodeID{boldID})
+	}
+}

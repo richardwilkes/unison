@@ -21,8 +21,17 @@ import (
 	"github.com/richardwilkes/unison/internal/dbus"
 )
 
-// textWindow is the window the text tests publish.
-const textWindow WindowKey = 3
+// textWindow is the window the text tests publish, and labelWindow the one the static text tests publish.
+const (
+	textWindow  WindowKey = 3
+	labelWindow WindowKey = 9
+)
+
+// The static text of [labelTree]: what the label says and what the column header says.
+const (
+	labelTextBody  = "Name:"
+	headerTextBody = "Size"
+)
 
 // The content of the measured text area: two lines, the first of which ends with a line feed.
 const (
@@ -109,6 +118,54 @@ func newTextAdapter(t *testing.T) *testAdapter {
 	return ta
 }
 
+// labelTree is the window the static text tests work over, holding the two things that carry text without ever being
+// typed into:
+//
+//	50 window "Form"            (0,0 200x80)   active
+//	├─ 51 label "Name:"         (10,10 60x20)  one measured line, and nothing to do but come into view
+//	└─ 52 column header "Size"  (10,40 80x20)  text that was never measured
+//
+// The label's line is twenty units tall and each of its characters ten wide. The column header carries the text it
+// draws without the line it drew it on, which is what a header that is not the focus of the window publishes. It is
+// also given no actions at all, which no published node is — axSnapshot hands every one of them ScrollIntoView — so
+// that the methods that refuse a node with nothing to ask of it have something to refuse.
+func labelTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 50, Role: role.Window, Name: "Form", Focused: true, Bounds: geom.NewRect(0, 0, 200, 80),
+			Children: []accessibility.NodeID{51, 52},
+		},
+		&accessibility.Node{
+			ID: 51, Parent: 50, Role: role.Label, Name: labelTextBody, Bounds: geom.NewRect(10, 10, 60, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.ScrollIntoView),
+			Text: &accessibility.TextInfo{
+				Text: labelTextBody,
+				Lines: []accessibility.Line{
+					{
+						Start:    0,
+						End:      len(labelTextBody),
+						Bounds:   geom.NewRect(0, 0, 50, 20),
+						Advances: []float32{0, 10, 20, 30, 40, 50},
+					},
+				},
+			},
+		},
+		&accessibility.Node{
+			ID: 52, Parent: 50, Role: role.ColumnHeader, Name: headerTextBody, Bounds: geom.NewRect(10, 40, 80, 20),
+			Text: &accessibility.TextInfo{Text: headerTextBody},
+		},
+	)
+}
+
+// newLabelAdapter starts an adapter and publishes the static text window, leaving the signals both publishes sent
+// unread, since none of the static text tests are about them.
+func newLabelAdapter(t *testing.T) *testAdapter {
+	t.Helper()
+	ta := newTestAdapter(t)
+	ta.Publish(labelWindow, labelTree(), nil, sampleGeometry())
+	return ta
+}
+
 func TestTextInterfaceIsOnlyThereForText(t *testing.T) {
 	t.Parallel()
 	ta := newTextAdapter(t)
@@ -130,7 +187,7 @@ func TestTextInterfaceIsOnlyThereForText(t *testing.T) {
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(40), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
 		"a window holds no text of its own")
 	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(3), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
-		"neither does a label")
+		"neither does a label that publishes no text of its own; see TestTextOfALabel for one that does")
 }
 
 func TestTextContent(t *testing.T) {
@@ -465,6 +522,90 @@ func TestTextOffsetAtPoint(t *testing.T) {
 		uint32(CoordWindow)), "an unmeasured field answers with its first character wherever it is asked about")
 }
 
+// TestTextOfALabel covers the static text a label hands over. A label is not typed into and holds no caret, but it is
+// read by line, word and character like any other text: Orca's flat review walks its lines, and without the text
+// interface all an assistive technology can say about it is its name, in one breath.
+func TestTextOfALabel(t *testing.T) {
+	t.Parallel()
+	ta := newLabelAdapter(t)
+	c := ta.c
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
+		ta.one(NodePath(51), InterfaceAccessible, "GetInterfaces", ""),
+		"bringing itself into view is not one of the things AT-SPI's Action interface covers")
+	c.Equal(int32(len(labelTextBody)), ta.peer.getProperty(NodePath(51), InterfaceText, "CharacterCount"))
+	c.Equal(labelTextBody, ta.one(NodePath(51), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
+	c.Equal(int32(0), ta.peer.getProperty(NodePath(51), InterfaceText, "CaretOffset"),
+		"nothing ever moves a caret about in a label")
+
+	// The label sits at 10,10 within a window at 100,50 on the screen, and everything in it is twice the size in
+	// physical pixels, so its first character — ten units wide and twenty tall at the label's own top left corner — is
+	// forty pixels tall at 120,70.
+	c.Equal([]any{int32(120), int32(70), int32(20), int32(40)},
+		ta.values(NodePath(51), InterfaceText, "GetCharacterExtents", "iu", int32(0), uint32(CoordScreen)))
+	c.Equal([]any{int32(20), int32(20), int32(20), int32(40)},
+		ta.values(NodePath(51), InterfaceText, "GetCharacterExtents", "iu", int32(0), uint32(CoordWindow)))
+	c.Equal([]any{int32(100), int32(20), int32(20), int32(40)},
+		ta.values(NodePath(51), InterfaceText, "GetCharacterExtents", "iu", int32(4), uint32(CoordWindow)),
+		"the last character is four of them along")
+	c.Equal([]any{int32(20), int32(20), int32(100), int32(40)},
+		ta.values(NodePath(51), InterfaceText, "GetRangeExtents", "iiu", int32(0), int32(-1), uint32(CoordWindow)),
+		"the whole of it is the one line it was drawn on")
+
+	// The whole label is one line, and a reader asking for the line at any offset within it gets all of it.
+	c.Equal([]any{labelTextBody, int32(0), int32(len(labelTextBody))},
+		ta.values(NodePath(51), InterfaceText, "GetStringAtOffset", "iu", int32(2), uint32(GranularityLine)))
+	c.Equal([]any{"m", int32(2), int32(3)},
+		ta.values(NodePath(51), InterfaceText, "GetStringAtOffset", "iu", int32(2), uint32(GranularityChar)))
+	for _, one := range []struct {
+		why      string
+		x, y     int32
+		expected int32
+	}{
+		{why: "the first character", x: 25, y: 25, expected: 0},
+		{why: "the second character", x: 55, y: 25, expected: 1},
+		{why: "past the end of the text is its last character", x: 135, y: 25, expected: 4},
+		{why: "below the label altogether", x: 25, y: 400, expected: -1},
+	} {
+		c.Equal(one.expected, ta.one(NodePath(51), InterfaceText, "GetOffsetAtPoint", "iiu", one.x, one.y,
+			uint32(CoordWindow)), one.why)
+	}
+
+	// A label lays its text out over one line, but nothing about it is typed into, nothing selects within it, and none
+	// of its text is somebody else's link. SELECTABLE_TEXT goes with offering [accessibility.SetTextSelection], which
+	// a label does not: claiming it would have a reader put a selection in the label and be refused.
+	states := ta.statesOf(51)
+	c.True(states.Has(StateSingleLine))
+	c.False(states.Has(StateSelectableText))
+	c.False(states.Has(StateMultiLine))
+	c.False(states.Has(StateEditable))
+	c.Equal(dbus.UnknownInterface,
+		ta.errorName(NodePath(51), InterfaceEditableText, "InsertText", "isi", int32(0), "no", int32(2)))
+	c.Equal(dbus.UnknownInterface, ta.errorName(NodePath(51), InterfaceHypertext, "GetNLinks", ""))
+}
+
+// TestTextOfAnUnmeasuredColumnHeader covers the static text of a node that published what it drew without where it
+// drew it, which is what everything but the focus of a window does: the whole node stands in for the one line, so a
+// reader is told where the text is rather than where each character of it is.
+func TestTextOfAnUnmeasuredColumnHeader(t *testing.T) {
+	t.Parallel()
+	ta := newLabelAdapter(t)
+	c := ta.c
+	c.Equal(int32(len(headerTextBody)), ta.peer.getProperty(NodePath(52), InterfaceText, "CharacterCount"))
+	c.Equal(headerTextBody, ta.one(NodePath(52), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
+	// The header is eighty units wide and twenty tall at 10,40 within the window, which is the area every one of its
+	// characters is reported at.
+	c.Equal([]any{int32(20), int32(80), int32(160), int32(40)},
+		ta.values(NodePath(52), InterfaceText, "GetCharacterExtents", "iu", int32(0), uint32(CoordWindow)))
+	c.Equal([]any{int32(20), int32(80), int32(160), int32(40)},
+		ta.values(NodePath(52), InterfaceText, "GetRangeExtents", "iiu", int32(0), int32(-1), uint32(CoordWindow)))
+	c.Equal([]any{headerTextBody, int32(0), int32(len(headerTextBody))},
+		ta.values(NodePath(52), InterfaceText, "GetStringAtOffset", "iu", int32(1), uint32(GranularityLine)),
+		"the whole of an unmeasured header is one line")
+	c.Equal(int32(0), ta.one(NodePath(52), InterfaceText, "GetOffsetAtPoint", "iiu", int32(150), int32(90),
+		uint32(CoordWindow)), "with no measurements there is no telling which character is where")
+	c.True(ta.statesOf(52).Has(StateSingleLine))
+}
+
 func TestTextSelection(t *testing.T) {
 	t.Parallel()
 	ta := newTextAdapter(t)
@@ -575,10 +716,10 @@ func TestTextSynthesizedFromAValue(t *testing.T) {
 	popup.Generation++
 	chooser := popup.Node(4)
 	chooser.Role = role.PopupButton
-	chooser.Value = "Weekly"
+	chooser.Value = testChosenValue
 	ta.Publish(mainWindow, popup, nil, sampleGeometry())
 	c.Equal(uint32(RoleComboBox), ta.one(NodePath(4), InterfaceAccessible, "GetRole", ""))
-	c.Equal("Weekly", ta.one(NodePath(4), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
+	c.Equal(testChosenValue, ta.one(NodePath(4), InterfaceText, "GetText", "ii", int32(0), int32(-1)))
 
 	// So is a populated table cell: Table.axAddRow clears such a cell's name and puts what its content reports into
 	// the value, which would otherwise leave the cell with nothing an assistive technology could read.
@@ -846,6 +987,16 @@ func TestScrollSubstringTo(t *testing.T) {
 
 	// A control that does not offer to scroll a range of its text into view says no and is asked for nothing.
 	c.Equal(false, ta.one(NodePath(41), InterfaceText, "ScrollSubstringTo", "iiu", int32(0), int32(2), uint32(0)))
+
+	// A label cannot scroll to a range of its text, but it can bring itself into view, which puts the range the
+	// caller asked about on the screen just the same.
+	ta.Publish(labelWindow, labelTree(), nil, sampleGeometry())
+	c.Equal(true, ta.one(NodePath(51), InterfaceText, "ScrollSubstringTo", "iiu", int32(0), int32(2), uint32(0)))
+	c.Equal(accessibility.ActionRequest{Node: 51, Action: accessibility.ScrollIntoView}, ta.nextRequest(t))
+	// A node that offers neither says no and is asked for nothing. No published node reaches this: axSnapshot gives
+	// every one of them ScrollIntoView and keeps it even for a disabled node, so the header is stripped of its actions
+	// by the fixture to get the refusal branch under test.
+	c.Equal(false, ta.one(NodePath(52), InterfaceText, "ScrollSubstringTo", "iiu", int32(0), int32(2), uint32(0)))
 	// Where in the view the range ends up is the widget's business, so the one method that asks for a particular place
 	// on the screen reports that it did nothing, as ScrollToPoint does.
 	c.Equal(false, ta.one(NodePath(103), InterfaceText, "ScrollSubstringToPoint", "iiuii", int32(0), int32(2),

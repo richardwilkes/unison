@@ -35,6 +35,9 @@ const (
 // accident.
 const axTestText = "héllo 😀\nwörld"
 
+// axTestCloseName is the name the tests give an element as a label of its own, over whatever text it drew.
+const axTestCloseName = "Close"
+
 // newAXTestTree returns a synthetic snapshot holding a button, a focused text field with measured lines, and an ignored
 // group wrapping a label — which is what proves an assistive technology is shown the label as a direct child of the
 // window rather than the group that happens to hold it.
@@ -2648,6 +2651,7 @@ func TestAXSelectorAllowed(t *testing.T) {
 		const (
 			rootID accessibility.NodeID = 1400 + iota
 			labelID
+			textLabelID
 			buttonID
 			sliderID
 			fieldID
@@ -2660,11 +2664,25 @@ func TestAXSelectorAllowed(t *testing.T) {
 			Nodes: map[accessibility.NodeID]*accessibility.Node{
 				rootID: {
 					ID: rootID, Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
-					Children: []accessibility.NodeID{labelID, buttonID, sliderID, fieldID, tableID, progressID},
+					Children: []accessibility.NodeID{
+						labelID, textLabelID, buttonID, sliderID, fieldID, tableID, progressID,
+					},
 				},
 				labelID: {
 					ID: labelID, Parent: rootID, Role: role.Label, Name: "Status",
 					Bounds: geom.NewRect(0, 0, 80, 20),
+				},
+				// A label carrying the text it drew, which holds text and offers no action at all: the text protocol
+				// is read from it and nothing about it can be written.
+				textLabelID: {
+					ID: textLabelID, Parent: rootID, Role: role.Label, Name: "Idle",
+					Bounds: geom.NewRect(0, 0, 80, 20),
+					Text: &accessibility.TextInfo{
+						Text: "Idle",
+						Lines: []accessibility.Line{
+							{Advances: axDocAdvances(4, 7), Start: 0, End: 4, Bounds: geom.NewRect(0, 0, 28, 16)},
+						},
+					},
 				},
 				buttonID: {
 					ID: buttonID, Parent: rootID, Role: role.Button, Name: "OK", Bounds: geom.NewRect(0, 20, 80, 24),
@@ -2711,8 +2729,8 @@ func TestAXSelectorAllowed(t *testing.T) {
 			return
 		}
 		WithPool(func() {
-			children := axTestChildren(t, v, 6)
-			rows := IDsFromNSArray(children[4].Send(Sel("accessibilityRows")))
+			children := axTestChildren(t, v, 7)
+			rows := IDsFromNSArray(children[5].Send(Sel("accessibilityRows")))
 			if len(rows) != 1 {
 				t.Fatalf("the table reported %d rows, want 1", len(rows))
 			}
@@ -2722,25 +2740,27 @@ func TestAXSelectorAllowed(t *testing.T) {
 				element objc.ID
 			}{
 				{name: "label", element: children[0]},
-				{name: "button", element: children[1]},
-				{name: "slider", element: children[2]},
-				{name: "text field", element: children[3]},
-				{name: "table", element: children[4]},
+				{name: "label carrying its text", element: children[1]},
+				{name: "button", element: children[2]},
+				{name: "slider", element: children[3]},
+				{name: "text field", element: children[4]},
+				{name: "table", element: children[5]},
 				{name: "row", element: rows[0]},
-				{name: "progress bar", element: children[5]},
+				{name: "progress bar", element: children[6]},
 			}
 			// The expectation rows are made of these: one character per element in the order above, "y" for an
 			// element that offers the selector and "n" for one that refuses it.
 			const (
-				axByEveryNode    = "yyyyyyy"
-				axByNoNode       = "nnnnnnn"
-				axByButton       = "nynnnnn"
-				axBySlider       = "nnynnnn"
-				axByTextField    = "nnnynnn"
-				axByFocusable    = "nynynnn"
-				axBySettable     = "nnyynnn"
-				axByRowContainer = "nnnnynn"
-				axByRow          = "nnnnnyn"
+				axByEveryNode    = "yyyyyyyy"
+				axByNoNode       = "nnnnnnnn"
+				axByButton       = "nnynnnnn"
+				axBySlider       = "nnnynnnn"
+				axByTextField    = "nnnnynnn"
+				axByTextHolder   = "nynnynnn"
+				axByFocusable    = "nnynynnn"
+				axBySettable     = "nnnyynnn"
+				axByRowContainer = "nnnnnynn"
+				axByRow          = "nnnnnnyn"
 			)
 			// The attributes an assistive technology may write are asked about by name rather than by selector, and
 			// that question is the one an AX client's answer comes from: a setter this class implements is never
@@ -2819,15 +2839,18 @@ func TestAXSelectorAllowed(t *testing.T) {
 				{selector: "accessibilityPerformIncrement", allowed: axBySlider},
 				{selector: "accessibilityPerformDecrement", allowed: axBySlider},
 				{selector: "accessibilityPerformShowMenu", allowed: axByNoNode},
-				// The text protocol belongs to the nodes that hold text and to no others.
-				{selector: "accessibilityNumberOfCharacters", allowed: axByTextField},
-				{selector: "accessibilitySelectedText", allowed: axByTextField},
-				{selector: "accessibilitySelectedTextRange", allowed: axByTextField},
-				{selector: "accessibilityStringForRange:", allowed: axByTextField},
-				{selector: "accessibilityAttributedStringForRange:", allowed: axByTextField},
-				{selector: "accessibilityRangeForLine:", allowed: axByTextField},
-				{selector: "accessibilityLineForIndex:", allowed: axByTextField},
-				{selector: "accessibilityInsertionPointLineNumber", allowed: axByTextField},
+				// The text protocol belongs to the nodes that hold text and to no others, which a label carrying
+				// the text it drew is now one of: VoiceOver reads it by line and by word through these very
+				// selectors. Moving the selection is the exception, since that is an action a node has to offer and
+				// a label offers none.
+				{selector: "accessibilityNumberOfCharacters", allowed: axByTextHolder},
+				{selector: "accessibilitySelectedText", allowed: axByTextHolder},
+				{selector: "accessibilitySelectedTextRange", allowed: axByTextHolder},
+				{selector: axSelStringForRange, allowed: axByTextHolder},
+				{selector: "accessibilityAttributedStringForRange:", allowed: axByTextHolder},
+				{selector: axSelRangeForLine, allowed: axByTextHolder},
+				{selector: axSelLineForIndex, allowed: axByTextHolder},
+				{selector: "accessibilityInsertionPointLineNumber", allowed: axByTextHolder},
 				{selector: "setAccessibilitySelectedTextRange:", allowed: axByTextField},
 				// The rows of a container, and the disclosure of a row: a group offering either is the symptom.
 				{selector: "accessibilityRows", allowed: axByRowContainer},
@@ -2877,7 +2900,7 @@ func TestAXSelectorAllowed(t *testing.T) {
 		delete(next.Nodes, labelID)
 		next.Nodes[rootID] = &accessibility.Node{
 			ID: rootID, Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
-			Children: []accessibility.NodeID{buttonID, sliderID, fieldID, tableID, progressID},
+			Children: []accessibility.NodeID{textLabelID, buttonID, sliderID, fieldID, tableID, progressID},
 		}
 		a.Publish(next, accessibility.Diff(tree, next))
 		WithPool(func() {
@@ -3563,7 +3586,7 @@ func TestAXSeparatorsAreNotPresented(t *testing.T) {
 				},
 				// An item scrolled out of sight, which is still a child but not a visible one.
 				closeID: {
-					ID: closeID, Parent: menuID, Role: role.MenuItem, Name: "Close",
+					ID: closeID, Parent: menuID, Role: role.MenuItem, Name: axTestCloseName,
 					Bounds: geom.NewRect(0, 21, 200, 20), Offscreen: true,
 					Actions: accessibility.ActionSet(0).With(accessibility.Press),
 				},
@@ -3643,7 +3666,7 @@ func TestAXSeparatorsAreNotPresented(t *testing.T) {
 				element objc.ID
 			}{
 				{name: "Open", element: a.Element(openID)},
-				{name: "Close", element: a.Element(closeID)},
+				{name: axTestCloseName, element: a.Element(closeID)},
 				{name: "the Quit the separator holds", element: a.Element(quitID)},
 			} {
 				if got := c.element.Send(Sel("accessibilityParent")); got != menu {
@@ -4280,10 +4303,10 @@ func TestAXHeadingLevelAttribute(t *testing.T) {
 			if !slices.Contains(names, "AXRole") {
 				t.Errorf("an element lists %v, which does not include the superclass's own AXRole", names)
 			}
-			// A heading whose snapshot says nothing about its depth neither lists the attribute nor answers it, and
-			// reports its content as its value rather than a level of zero: VoiceOver speaks the number it is given,
-			// and zero is heard as "heading level 0". The fixture's second heading has its level taken away in place,
-			// which an element notices at once — every answer is read from the current snapshot as it is asked for.
+			// A heading whose snapshot says nothing about its depth neither lists the attribute nor answers it:
+			// VoiceOver speaks the number it is given, and zero is heard as "heading level 0". The fixture's second
+			// heading has its level taken away in place, which an element notices at once — every answer is read from
+			// the current snapshot as it is asked for.
 			tree.Node(axDocHeading2).Level = 0
 			levelless := axDocElement(t, a, axDocHeading2)
 			if listed := axAttributeNames(levelless); slices.Contains(listed, axAttrHeadingLevel) {
@@ -4292,8 +4315,619 @@ func TestAXHeadingLevelAttribute(t *testing.T) {
 			if got := axLegacyAttribute(levelless, axAttrHeadingLevel); got != 0 {
 				t.Errorf("a heading with no level answered %s with %#x, want nothing", axAttrHeadingLevel, got)
 			}
-			if got := GoStringFromNSString(levelless.Send(Sel("accessibilityValue"))); got != "Details" {
-				t.Errorf("a heading with no level reports the value %q, want its own text", got)
+			// With no level to report, its text is heard once and only once: a heading is named by the text it drew,
+			// so that string is its label and reporting it as the value as well would have VoiceOver say it twice
+			// (see axTextIsValue).
+			if got := levelless.Send(Sel("accessibilityValue")); got != 0 {
+				t.Errorf("a heading with no level reports the value %q, and its text is already its label",
+					GoStringFromNSString(got))
+			}
+			if got := GoStringFromNSString(levelless.Send(Sel("accessibilityLabel"))); got != "Details" {
+				t.Errorf("a heading with no level reports the label %q, want its own text", got)
+			}
+		})
+	})
+}
+
+// The node ids axLabelTestTree builds.
+const (
+	axLabelRootID accessibility.NodeID = 2500 + iota
+	axLabelPlainID
+	axLabelOverrideID
+	axLabelNamelessID
+	axLabelHeadingID
+	axLabelLevellessID
+	axLabelTableID
+	axLabelHeaderID
+	axLabelColumnID
+	axLabelColumnOverrideID
+	axLabelRowID
+	axLabelCellID
+	axLabelNamedCellID
+)
+
+// axLabelTestText returns the text a node of the label fixture drew, measured as the single line it was drawn on: one
+// boundary per rune plus the line's end, which is all any answer about it needs.
+func axLabelTestText(text string) *accessibility.TextInfo {
+	count := len([]rune(text))
+	return &accessibility.TextInfo{
+		Text: text,
+		Runs: []accessibility.TextRun{{Family: axDocSerif, Start: 0, End: count, Weight: 400, Size: 13}},
+		Lines: []accessibility.Line{
+			{
+				Advances: axDocAdvances(count, 7),
+				Start:    0,
+				End:      count,
+				Bounds:   geom.NewRect(0, 0, float32(count)*7, 16),
+			},
+		},
+	}
+}
+
+// axLabelTestTree returns the fixture the label rules are proved against: every shape of node that both carries the
+// text it drew and has a name, which is what decides whether that text is heard as the label, as the value, or as
+// both. A plain label is named by the very text it drew, one has a name an application set instead, one has no name
+// at all, a heading is named by its text with and without a level, a column header the same, and a table holds a
+// pair of cells, one with no name of its own and one named by the very text it holds.
+func axLabelTestTree() *accessibility.Tree {
+	nodes := []*accessibility.Node{
+		{
+			ID: axLabelRootID, Role: role.Window, Name: "Form", Bounds: geom.NewRect(0, 0, 320, 240),
+			Children: []accessibility.NodeID{
+				axLabelPlainID, axLabelOverrideID, axLabelNamelessID, axLabelHeadingID, axLabelLevellessID,
+				axLabelTableID,
+			},
+		},
+		{
+			// What the snapshot builder makes of an ordinary label: the drawn text in Name, since that is the
+			// accessible name every other platform wants, and the same text again as the text it holds.
+			ID: axLabelPlainID, Parent: axLabelRootID, Role: role.Label, Name: "Region:",
+			Bounds: geom.NewRect(10, 10, 60, 16), Text: axLabelTestText("Region:"),
+		},
+		{
+			// A label an application named something else: a glyph button's caption, whose drawn text says nothing
+			// about what it is for.
+			ID: axLabelOverrideID, Parent: axLabelRootID, Role: role.Label, Name: "Hide",
+			Bounds: geom.NewRect(80, 10, 16, 16), Text: axLabelTestText("X"),
+		},
+		{
+			ID: axLabelNamelessID, Parent: axLabelRootID, Role: role.Label, Bounds: geom.NewRect(10, 30, 60, 16),
+			Text: axLabelTestText("Draft"),
+		},
+		{
+			ID: axLabelHeadingID, Parent: axLabelRootID, Role: role.Heading, Name: "Colors", Level: 2,
+			Bounds: geom.NewRect(10, 50, 100, 20), Text: axLabelTestText("Colors"),
+		},
+		{
+			ID: axLabelLevellessID, Parent: axLabelRootID, Role: role.Heading, Name: "Summary",
+			Bounds: geom.NewRect(10, 70, 100, 20), Text: axLabelTestText("Summary"),
+		},
+		{
+			ID: axLabelTableID, Parent: axLabelRootID, Children: []accessibility.NodeID{axLabelHeaderID, axLabelRowID},
+			Role: role.Table, Name: "People", Bounds: geom.NewRect(10, 90, 300, 40), RowCount: 1, ColumnCount: 2,
+		},
+		{
+			ID: axLabelHeaderID, Parent: axLabelTableID,
+			Children: []accessibility.NodeID{axLabelColumnID, axLabelColumnOverrideID}, Role: role.TableHeader,
+			Bounds: geom.NewRect(10, 90, 300, 20),
+		},
+		{
+			ID: axLabelColumnID, Parent: axLabelHeaderID, Role: role.ColumnHeader, Name: "Surname", ColumnIndex: 0,
+			Bounds: geom.NewRect(10, 90, 150, 20), Text: axLabelTestText("Surname"),
+		},
+		{
+			// A header an application named something the person cannot see, which is the case a header's own text
+			// does not already say.
+			ID: axLabelColumnOverrideID, Parent: axLabelHeaderID, Role: role.ColumnHeader, Name: "Age in years",
+			ColumnIndex: 1, Bounds: geom.NewRect(160, 90, 150, 20), Text: axLabelTestText("Age"),
+		},
+		{
+			ID: axLabelRowID, Parent: axLabelTableID, Children: []accessibility.NodeID{
+				axLabelCellID,
+				axLabelNamedCellID,
+			}, Role: role.Row, Bounds: geom.NewRect(10, 110, 300, 20), RowIndex: 0,
+		},
+		{
+			// A cell carrying text of its own, which is the role rule rather than a shape the root package builds:
+			// nothing there puts text on a cell, and a cell whose name was cleared because its content is described
+			// beneath it is described by the child label that carries the text. What it stands for is what any cell
+			// with no name would report — the text as the value, there being no label to have said it already.
+			ID: axLabelCellID, Parent: axLabelRowID, Role: role.Cell, Bounds: geom.NewRect(10, 110, 150, 20),
+			RowIndex: 0, ColumnIndex: 0, Text: axLabelTestText("Grace"),
+		},
+		{
+			ID: axLabelNamedCellID, Parent: axLabelRowID, Role: role.Cell, Name: "36",
+			Bounds: geom.NewRect(160, 110, 150, 20), RowIndex: 0, ColumnIndex: 1, Text: axLabelTestText("36"),
+		},
+	}
+	tree := &accessibility.Tree{
+		Nodes:      make(map[accessibility.NodeID]*accessibility.Node, len(nodes)),
+		Root:       axLabelRootID,
+		Generation: 1,
+	}
+	for _, n := range nodes {
+		tree.Nodes[n.ID] = n
+	}
+	return tree
+}
+
+// The selectors of the text protocol the label tests ask about by name.
+const (
+	axSelStringForRange = "accessibilityStringForRange:"
+	axSelRangeForLine   = "accessibilityRangeForLine:"
+	axSelLineForIndex   = "accessibilityLineForIndex:"
+)
+
+// TestAXLabelWithTextSpeaksItOnce proves a label is heard once. A label carries the text it drew and the snapshot
+// builder puts that same text in its name, so an element reporting both a description and a value has VoiceOver say
+// the string twice over — which is why the text is all such a label reports (see axHasLabel and axTextIsValue). What
+// it gains by carrying the text is the whole text protocol: the element is AXStaticText, and VoiceOver reads it by
+// line, by word and by character rather than only announcing it. The selection setter stays refused, since a label
+// offers no way to move a selection it does not have.
+//
+// A label an application named something else is the other half of the rule: that name is a thing the drawn text does
+// not say, so it is the label and the drawn text is the value beside it.
+func TestAXLabelWithTextSpeaksItOnce(t *testing.T) {
+	runOnMain(func() {
+		_, a, cleanup := newAXAdapterWithTree(t, axLabelTestTree())
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			label := axDocElement(t, a, axLabelPlainID)
+			staticText := GoStringFromNSString(AppKitString(axRoleStaticText))
+			if got := GoStringFromNSString(label.Send(Sel("accessibilityRole"))); got != staticText {
+				t.Errorf("a label reports the role %q, want %q", got, staticText)
+			}
+			if got := label.Send(Sel("accessibilityLabel")); got != 0 {
+				t.Errorf("a label named by its own text reports the label %q, and its text is its value",
+					GoStringFromNSString(got))
+			}
+			if got := GoStringFromNSString(label.Send(Sel("accessibilityValue"))); got != "Region:" {
+				t.Errorf("a label's value = %q, want its own text", got)
+			}
+			if got := objc.Send[int64](label, Sel("accessibilityNumberOfCharacters")); got != 7 {
+				t.Errorf("a label reports %d characters, want 7", got)
+			}
+			want := NSRange{Location: 0, Length: 7}
+			if got := objc.Send[NSRange](label, Sel(axSelRangeForLine), int64(0)); got != want {
+				t.Errorf("a label's %s0 = %+v, want %+v", axSelRangeForLine, got, want)
+			}
+			if got := objc.Send[NSRange](label, Sel(axSelRangeForLine), int64(1)); got != emptyRange {
+				t.Errorf("a label's %s1 = %+v, want %+v", axSelRangeForLine, got, emptyRange)
+			}
+			if got := GoStringFromNSString(label.Send(Sel(axSelStringForRange),
+				NSRange{Location: 0, Length: 6})); got != "Region" {
+				t.Errorf("a label's %s{0,6} = %q, want %q", axSelStringForRange, got, "Region")
+			}
+			for _, selector := range []string{
+				"accessibilityNumberOfCharacters", axSelStringForRange, axSelRangeForLine,
+				axSelLineForIndex, "accessibilityFrameForRange:",
+			} {
+				if !axSelectorAllowed(label, selector) {
+					t.Errorf("a label carrying its text does not offer %s", selector)
+				}
+			}
+			// Nothing moves a selection inside a label: it has no caret and offers no action to set one, so the
+			// setter is refused and the attribute reads as unwritable.
+			if axSelectorAllowed(label, "setAccessibilitySelectedTextRange:") {
+				t.Error("a label advertises that its selected range can be set, and it offers no such action")
+			}
+			if axAttributeSettable(label, "AXSelectedTextRange") {
+				t.Error("a label reports AXSelectedTextRange as settable, and it offers no such action")
+			}
+			override := axDocElement(t, a, axLabelOverrideID)
+			if got := GoStringFromNSString(override.Send(Sel("accessibilityLabel"))); got != "Hide" {
+				t.Errorf("a label an application named reports the label %q, want Hide", got)
+			}
+			if got := GoStringFromNSString(override.Send(Sel("accessibilityValue"))); got != "X" {
+				t.Errorf("a label an application named reports the value %q, want the text it drew", got)
+			}
+			// A label with no name at all has only its text to say, and says it as the value the same way.
+			nameless := axDocElement(t, a, axLabelNamelessID)
+			if got := nameless.Send(Sel("accessibilityLabel")); got != 0 {
+				t.Errorf("a nameless label reports the label %q", GoStringFromNSString(got))
+			}
+			if got := GoStringFromNSString(nameless.Send(Sel("accessibilityValue"))); got != "Draft" {
+				t.Errorf("a nameless label's value = %q, want its own text", got)
+			}
+		})
+	})
+}
+
+// TestAXTextAlreadySpokenAsTheLabelIsNotTheValue proves the rule the whole of Node.Text is reported under: a string
+// heard as the element's description is not reported as its value as well. A heading, a column header and a cell keep
+// their label — a heading is named by its text and a header is a button a person presses, and each of them would lose
+// what it is called if its name were withheld — so when that name is the text it drew there is nothing left for the
+// value to add, and reporting it would have VoiceOver say the string twice. Where the name says something the drawn
+// text does not, both are reported: the name is the description and the text is the content.
+func TestAXTextAlreadySpokenAsTheLabelIsNotTheValue(t *testing.T) {
+	runOnMain(func() {
+		_, a, cleanup := newAXAdapterWithTree(t, axLabelTestTree())
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			for _, c := range []struct {
+				what  string
+				label string
+				value string
+				node  accessibility.NodeID
+				level int64
+			}{
+				{
+					what: "a heading named by its own text", node: axLabelHeadingID, label: "Colors", level: 2,
+				},
+				{
+					// A level is the one value a heading reports ahead of everything else, so a level-less one is
+					// where the doubling would have been heard.
+					what: "a heading with no level", node: axLabelLevellessID, label: "Summary",
+				},
+				{what: "a column header named by its own text", node: axLabelColumnID, label: "Surname"},
+				{
+					what: "a column header an application named", node: axLabelColumnOverrideID,
+					label: "Age in years", value: "Age",
+				},
+				// Neither cell is a shape the root package builds — it puts text on labels, fields, headers and
+				// document blocks, never on a cell — so the pair proves the rule for the role rather than a widget
+				// path: a cell with no name has nothing to have said its text already, and one named by that text
+				// has.
+				{what: "a cell with no name of its own", node: axLabelCellID, value: "Grace"},
+				{what: "a cell named by its own text", node: axLabelNamedCellID, label: "36"},
+			} {
+				element := axDocElement(t, a, c.node)
+				if got := GoStringFromNSString(element.Send(Sel("accessibilityLabel"))); got != c.label {
+					t.Errorf("%s reports the label %q, want %q", c.what, got, c.label)
+				}
+				switch {
+				case c.level != 0:
+					if got := Int64FromNSNumber(element.Send(Sel("accessibilityValue"))); got != c.level {
+						t.Errorf("%s reports the value %d, want its level %d", c.what, got, c.level)
+					}
+				case c.value == "":
+					if got := element.Send(Sel("accessibilityValue")); got != 0 {
+						t.Errorf("%s reports the value %q, and its text is already its label", c.what,
+							GoStringFromNSString(got))
+					}
+				default:
+					if got := GoStringFromNSString(element.Send(Sel("accessibilityValue"))); got != c.value {
+						t.Errorf("%s reports the value %q, want %q", c.what, got, c.value)
+					}
+				}
+				// Whatever it reports them as, the text protocol is answered: everything here carries the text it
+				// drew, and that is what VoiceOver reads by line and by word.
+				if got := objc.Send[int64](element, Sel("accessibilityNumberOfCharacters")); got == 0 {
+					t.Errorf("%s reports no characters, and it carries the text it drew", c.what)
+				}
+			}
+		})
+	})
+}
+
+// TestAXLabelTextChangePostsOneNotification proves a label that redraws its text prompts a client once. The change
+// reaches the adapter as a changed name and a changed text alike, since the snapshot builder puts the drawn text in
+// both, and the name is heard nowhere for such a label: a title-changed notification sends a client to re-read a
+// description that does not exist, so the value-changed notification the text events produce is the whole of what
+// goes out.
+//
+// A label an application named is the other way about: its name is the description a client hears, so a change to
+// that name alone is the one thing the title-changed notification is for — whether the name is being set to something
+// else or taken away entirely, which leaves the element with no description and is the case the suppression above has
+// to be careful not to swallow.
+func TestAXLabelTextChangePostsOneNotification(t *testing.T) {
+	runOnMain(func() {
+		before := axLabelTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var label, override objc.ID
+		WithPool(func() {
+			label = axDocElement(t, a, axLabelPlainID)
+			override = axDocElement(t, a, axLabelOverrideID)
+		})
+		var recorded []axRecordedNotification
+		defer axRecordNotifications(&recorded)()
+		valueChanged := GoStringFromNSString(AppKitString(axNotifyValueChanged))
+		titleChanged := GoStringFromNSString(AppKitString(axNotifyTitleChanged))
+		after := axLabelTestTree()
+		after.Generation = 2
+		redrawn := after.Node(axLabelPlainID)
+		redrawn.Name = "Full name:"
+		redrawn.Text = axLabelTestText("Full name:")
+		events := accessibility.Diff(before, after)
+		if !slices.ContainsFunc(events, func(e accessibility.Event) bool {
+			return e.Kind == accessibility.NameChanged && e.Node == axLabelPlainID
+		}) {
+			t.Fatalf("the diff produced %v, want a name-changed event for the label", events)
+		}
+		a.Publish(after, events)
+		want := []axRecordedNotification{{element: label, name: valueChanged}}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a label redrawing its text posted %v, want %v", recorded, want)
+		}
+		// The name of a label an application named is what a client hears, so a change to it is worth the one
+		// notification macOS has for "what this element is called has changed".
+		recorded = nil
+		renamed := axLabelTestTree()
+		renamed.Generation = 3
+		renamed.Node(axLabelPlainID).Name = redrawn.Name
+		renamed.Node(axLabelPlainID).Text = axLabelTestText(redrawn.Name)
+		renamed.Node(axLabelOverrideID).Name = "Dismiss"
+		a.Publish(renamed, accessibility.Diff(after, renamed))
+		want = []axRecordedNotification{{element: override, name: titleChanged}}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a renamed label posted %v, want %v", recorded, want)
+		}
+		// Taking that name back off is the same thing again, and the case the suppression must not swallow: the label
+		// is left named by the very text it drew, so it has no description for a client to hear any more, while the
+		// text itself is untouched and no value-changed notification goes out to send one back to the element. The
+		// title-changed notification is all the publish has, and without it VoiceOver goes on speaking "Dismiss" for
+		// an element now called "X".
+		recorded = nil
+		cleared := axLabelTestTree()
+		cleared.Generation = 4
+		cleared.Node(axLabelPlainID).Name = redrawn.Name
+		cleared.Node(axLabelPlainID).Text = axLabelTestText(redrawn.Name)
+		cleared.Node(axLabelOverrideID).Name = cleared.Node(axLabelOverrideID).Text.Text
+		events = accessibility.Diff(renamed, cleared)
+		for _, e := range events {
+			if e.Node == axLabelOverrideID && e.Kind != accessibility.NameChanged {
+				t.Fatalf("the diff produced %v, want nothing but a name-changed event for the label", events)
+			}
+		}
+		a.Publish(cleared, events)
+		want = []axRecordedNotification{{element: override, name: titleChanged}}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a label whose name override was removed posted %v, want %v", recorded, want)
+		}
+		// Dropping the override and redrawing the caption in the same publish is the two together, and the case the
+		// text edit must not be allowed to swallow: the new name is the new text, so the element reports no
+		// description at all, while the description a client cached — axTestCloseName — is exactly what has gone. The value
+		// notification says the caption is now something else; only the title notification says there is no longer a
+		// description to speak over it.
+		recorded = nil
+		named := axLabelTestTree()
+		named.Generation = 5
+		named.Node(axLabelPlainID).Name = redrawn.Name
+		named.Node(axLabelPlainID).Text = axLabelTestText(redrawn.Name)
+		named.Node(axLabelOverrideID).Name = axTestCloseName
+		a.Publish(named, accessibility.Diff(cleared, named))
+		recorded = nil
+		both := axLabelTestTree()
+		both.Generation = 6
+		both.Node(axLabelPlainID).Name = redrawn.Name
+		both.Node(axLabelPlainID).Text = axLabelTestText(redrawn.Name)
+		both.Node(axLabelOverrideID).Name = "\u2715"
+		both.Node(axLabelOverrideID).Text = axLabelTestText("\u2715")
+		events = accessibility.Diff(named, both)
+		if !slices.ContainsFunc(events, func(e accessibility.Event) bool {
+			return e.Kind == accessibility.TextInserted && e.Node == axLabelOverrideID
+		}) {
+			t.Fatalf("the diff produced %v, want a text edit for the label as well as a name change", events)
+		}
+		a.Publish(both, events)
+		want = []axRecordedNotification{
+			{element: override, name: titleChanged},
+			{element: override, name: valueChanged},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a label that lost its name override as it redrew posted %v, want %v", recorded, want)
+		}
+		// Gaining an override as it redraws is that same publish the other way about, and the direction the
+		// suppression is told from the name it now has rather than from the one it had: the previous name was the
+		// previous text, which is what the suppression looks for, yet the new name is a description the element did
+		// not have and a client has never been told to read.
+		recorded = nil
+		regained := axLabelTestTree()
+		regained.Generation = 7
+		regained.Node(axLabelPlainID).Name = redrawn.Name
+		regained.Node(axLabelPlainID).Text = axLabelTestText(redrawn.Name)
+		regained.Node(axLabelOverrideID).Name = axTestCloseName
+		regained.Node(axLabelOverrideID).Text = axLabelTestText("X")
+		events = accessibility.Diff(both, regained)
+		a.Publish(regained, events)
+		want = []axRecordedNotification{
+			{element: override, name: titleChanged},
+			{element: override, name: valueChanged},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a label that gained a name override as it redrew posted %v, want %v", recorded, want)
+		}
+		// A role whose name is its label whatever it says is the same case again, and the one the text edit cannot
+		// speak for: a column header reports its name as the description however the two compare, so only the name
+		// change says the description is there at all.
+		var column objc.ID
+		WithPool(func() {
+			column = axDocElement(t, a, axLabelColumnID)
+		})
+		recorded = nil
+		headed := axLabelTestTree()
+		headed.Generation = 8
+		headed.Node(axLabelPlainID).Name = redrawn.Name
+		headed.Node(axLabelPlainID).Text = axLabelTestText(redrawn.Name)
+		headed.Node(axLabelOverrideID).Name = axTestCloseName
+		headed.Node(axLabelColumnID).Name = "Family name"
+		headed.Node(axLabelColumnID).Text = axLabelTestText("Surnames")
+		a.Publish(headed, accessibility.Diff(regained, headed))
+		want = []axRecordedNotification{
+			{element: column, name: titleChanged},
+			{element: column, name: valueChanged},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a column header that gained a name override as it redrew posted %v, want %v", recorded, want)
+		}
+	})
+}
+
+// TestAXLabelTextEditAlonePostsTheDescriptionItChanges proves a label that redraws text its name never changes with
+// tells a client that the description it answers has appeared or gone. Whether a label's name is heard at all is
+// decided by measuring it against the text it drew (see axHasLabel), so the two can part company or meet with no
+// name change at all: a label an application named "Region:" while it was drawing "Region:" answers no description,
+// and the moment it redraws as "Full name:" that same name becomes one — a string the value-changed notification the
+// edit produces sends no client to read. Drawing the name again takes the description back off, which is the same
+// publish in reverse and just as silent without the notice.
+func TestAXLabelTextEditAlonePostsTheDescriptionItChanges(t *testing.T) {
+	runOnMain(func() {
+		before := axLabelTestTree()
+		_, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var label objc.ID
+		WithPool(func() {
+			label = axDocElement(t, a, axLabelPlainID)
+		})
+		var recorded []axRecordedNotification
+		defer axRecordNotifications(&recorded)()
+		valueChanged := GoStringFromNSString(AppKitString(axNotifyValueChanged))
+		titleChanged := GoStringFromNSString(AppKitString(axNotifyTitleChanged))
+		gained := axLabelTestTree()
+		gained.Generation = 2
+		gained.Node(axLabelPlainID).Text = axLabelTestText("Full name:")
+		events := accessibility.Diff(before, gained)
+		for _, e := range events {
+			if e.Node == axLabelPlainID && e.Kind == accessibility.NameChanged {
+				t.Fatalf("the diff produced %v, want no name change for the label", events)
+			}
+		}
+		a.Publish(gained, events)
+		want := []axRecordedNotification{
+			{element: label, name: titleChanged},
+			{element: label, name: valueChanged},
+		}
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a label that gained a description as it redrew posted %v, want %v", recorded, want)
+		}
+		// Redrawing the name itself is the mirror case: the element had a description a client cached and now has
+		// none, and nothing but this notice says so.
+		recorded = nil
+		lost := axLabelTestTree()
+		lost.Generation = 3
+		a.Publish(lost, accessibility.Diff(gained, lost))
+		if !slices.Equal(recorded, want) {
+			t.Errorf("a label that lost its description as it redrew posted %v, want %v", recorded, want)
+		}
+	})
+}
+
+// TestAXTextBefore proves the text a node held before a publish is recovered from the text it holds now and the
+// insertions and deletions the publish reported against it, which is what lets a name change ask what the name it is
+// replacing was measured against: the adapter keeps no previous snapshot, since Publish swaps the new one in before
+// anything is posted. Runes rather than bytes, and an edit whose bounds do not fit is left alone rather than guessed
+// at.
+func TestAXTextBefore(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		text  string
+		want  string
+		edits []accessibility.Event
+	}{
+		{name: "no edits at all", text: axTestCloseName, want: axTestCloseName},
+		{
+			name:  "an insertion alone",
+			text:  "Closed",
+			want:  axTestCloseName,
+			edits: []accessibility.Event{{Kind: accessibility.TextInserted, Start: 5, Length: 1, New: "d"}},
+		},
+		{
+			name:  "a deletion alone",
+			text:  axTestCloseName,
+			want:  "Closed",
+			edits: []accessibility.Event{{Kind: accessibility.TextDeleted, Start: 5, Length: 1, Old: "d"}},
+		},
+		{
+			name: "a replacement, which is the pair in the order the differ emits them",
+			text: "\u2715",
+			want: "X",
+			edits: []accessibility.Event{
+				{Kind: accessibility.TextDeleted, Start: 0, Length: 1, Old: "X"},
+				{Kind: accessibility.TextInserted, Start: 0, Length: 1, New: "\u2715"},
+			},
+		},
+		{
+			name: "text emptied entirely",
+			text: "",
+			want: "Bob",
+			edits: []accessibility.Event{
+				{Kind: accessibility.TextDeleted, Start: 0, Length: 3, Old: "Bob"},
+			},
+		},
+		{
+			name:  "runes counted as runes",
+			text:  "\u00e9\u00e9\u00e9",
+			want:  "\u00e9\u00e9",
+			edits: []accessibility.Event{{Kind: accessibility.TextInserted, Start: 2, Length: 1, New: "\u00e9"}},
+		},
+		{
+			name:  "an insertion reaching past the end, which is left alone",
+			text:  axTestCloseName,
+			want:  axTestCloseName,
+			edits: []accessibility.Event{{Kind: accessibility.TextInserted, Start: 4, Length: 9, New: "nonsense"}},
+		},
+	} {
+		if got := axTextBefore(c.text, c.edits); got != c.want {
+			t.Errorf("%s: axTextBefore(%q) = %q, want %q", c.name, c.text, got, c.want)
+		}
+	}
+}
+
+// TestAXEmptyFieldReportsEmptyValue proves a text field with nothing typed into it answers an empty value rather than
+// no value at all, whether or not anything named it. An unnamed field is the one at stake: a toolbar search box or an
+// editor installed in a table cell has no sibling label, no LabeledBy and no name an application set, so the snapshot
+// leaves both its name and its text empty — and a rule that withheld text already heard as the label would match the
+// two against each other and suppress the value, leaving AppKit to drop AXValue from the attribute list entirely. See
+// axTextIsValue.
+func TestAXEmptyFieldReportsEmptyValue(t *testing.T) {
+	runOnMain(func() {
+		const (
+			rootID accessibility.NodeID = 2600 + iota
+			unnamedID
+			namedID
+		)
+		tree := &accessibility.Tree{
+			Nodes: map[accessibility.NodeID]*accessibility.Node{
+				rootID: {
+					ID: rootID, Role: role.Window, Name: "Form", Bounds: geom.NewRect(0, 0, 320, 240),
+					Children: []accessibility.NodeID{unnamedID, namedID},
+				},
+				unnamedID: {
+					ID: unnamedID, Parent: rootID, Role: role.TextField, Bounds: geom.NewRect(0, 0, 200, 24),
+					Text: axLabelTestText(""),
+				},
+				namedID: {
+					ID: namedID, Parent: rootID, Role: role.TextField, Name: "Subject",
+					Bounds: geom.NewRect(0, 24, 200, 24), Text: axLabelTestText(""),
+				},
+			},
+			Root:       rootID,
+			Generation: 1,
+		}
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 2)
+			for i, name := range []string{"an unnamed empty field", "a named empty field"} {
+				element := children[i]
+				// Whether AppKit advertises AXValue at all is decided by whether this answers anything: an element
+				// whose accessibilityValue is nil has the attribute dropped from the list an AX client is handed, and
+				// an empty AXTextField that lists no AXValue is one an assistive technology cannot read. The list
+				// itself is not what is asserted here, since the informal protocol these tests reach in process
+				// reports only the structural attributes whatever the node holds — the bridging that fills it in is
+				// done for an out-of-process client — so the answer is the whole of what can be seen from here.
+				value := element.Send(Sel("accessibilityValue"))
+				if value == 0 {
+					t.Errorf("%s answers no value at all, so AXValue is not advertised for it", name)
+				} else if got := GoStringFromNSString(value); got != "" {
+					t.Errorf("%s answered the value %q, want the empty string", name, got)
+				}
 			}
 		})
 	})

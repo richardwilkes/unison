@@ -73,8 +73,8 @@ type Button struct {
 	Drawable      Drawable
 	Text          *Text
 	group         *Group
-	Panel
 	ButtonTheme
+	Panel
 	Pressed bool
 }
 

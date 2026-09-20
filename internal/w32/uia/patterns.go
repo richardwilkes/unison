@@ -236,10 +236,10 @@ type setPosition struct {
 //   - Where a node sits in its set, which takes a walk up to the container that holds the count plus a scan of the
 //     node's siblings. PositionInSet and SizeOfSet are two properties carrying the two halves of that one answer, and a
 //     client reading an element reads both.
-//   - How a document's stream divides into the units a screen reader reads it in. Working the divisions out costs
-//     several passes over the whole stream, and a client reading a document asks for them once per line, word or
-//     character it moves the caret over — a say-all over a long document is thousands of calls, every one of which
-//     would otherwise re-divide the text. See memoizedTextDocument.
+//   - How the text an element hands the Text pattern out over divides into the units a screen reader reads it in.
+//     Working the divisions out costs several passes over the whole of it, and a client reading asks for them once
+//     per line, word or character it moves the caret over — a say-all over a long document is thousands of calls,
+//     every one of which would otherwise re-divide the text. See memoizedTextDocument.
 //   - Which stretch of which document's stream each element occupies. ProvidedPatterns asks it of every element a
 //     client so much as looks at, in both of the snapshots a publish compares, and answering it by scanning a
 //     document's span list costs a pass over as many spans as the document has blocks and inline elements — which over
@@ -530,6 +530,10 @@ func ColumnHeaderItem(t *accessibility.Tree, id accessibility.NodeID) accessibil
 // is where every client looks for one, and the pattern is handed out precisely when there is a URL to report; see
 // rolePatterns. It wins over Value for that one role, since the URL is what the pattern was granted for — a link's
 // text is its name, and reporting the text twice would tell a client nothing about where following it would go.
+//
+// Falling back to the text reaches only the nodes that hand out both patterns, which is a field, a spin button or a
+// combo box: a label, a heading and a plain column header carry text and no Value pattern at all, so nothing ever asks
+// this of them, and a cell's Value pattern is gated on the widget having filled a value in. See rolePatterns.
 func ValueString(n *accessibility.Node) string {
 	if n == nil || n.Protected {
 		return ""

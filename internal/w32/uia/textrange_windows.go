@@ -22,18 +22,21 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// This file holds the one COM object in the adapter that does not stand for an element: a stretch of one document's
-// composed stream, which is what a client reads a document through. It is built on the same template as the data object
-// in data_object_windows.go — the virtual method table pointer first, a reference count, and a pinner — rather than on
-// the provider's multiple-interface layout, because a range is one interface: ITextRangeProvider2, whose first eighteen
-// methods are ITextRangeProvider's.
+// This file holds the one COM object in the adapter that does not stand for an element: a stretch of the text one
+// element hands the Text pattern out over, which is what a client reads that text through. The element is a Markdown
+// view answering from its composed stream, or a field, a label, a heading or a cell answering from its own text; the
+// range calls it its owner and treats the two alike, as UI Automation does in calling either one the pattern's
+// document. It is built on the same template as the data object in data_object_windows.go — the virtual method table
+// pointer first, a reference count, and a pinner — rather than on the provider's multiple-interface layout, because a
+// range is one interface: ITextRangeProvider2, whose first eighteen methods are ITextRangeProvider's.
 //
 // A range is a pair of offsets and nothing else. It does not hold the snapshot it came from, and every method re-reads
-// the document from the window's current snapshot and clamps the offsets to what is there now, because a client keeps a
-// range for as long as it likes: Narrator's scan mode holds one while the user reads, and a publish in between may have
-// rewritten the document, shortened it, or removed it from the window altogether. Clamping is what turns "the document
-// is now shorter than this range" into a shorter range rather than into an out-of-bounds read, and a document that has
-// gone reports E_ELEMENTNOTAVAILABLE, which is what a client holding something that no longer exists must be told.
+// its owner's text from the window's current snapshot and clamps the offsets to what is there now, because a client
+// keeps a range for as long as it likes: Narrator's scan mode holds one while the user reads, and a publish in between
+// may have rewritten the text, shortened it, or removed the element from the window altogether. Clamping is what turns
+// "the text is now shorter than this range" into a shorter range rather than into an out-of-bounds read, and an owner
+// that has gone reports E_ELEMENTNOTAVAILABLE, which is what a client holding something that no longer exists must be
+// told.
 //
 // The offsets are guarded, because a client may move a range from one thread while reading it from another — UI
 // Automation calls in on whichever thread it likes, and the providers here declare themselves free-threaded. Nothing
@@ -101,8 +104,8 @@ func lookupRange(this uintptr) *TextRange {
 	return nil
 }
 
-// TextRange is the UI Automation text range for a stretch of one document's composed stream: an ITextRangeProvider2,
-// which is the only thing a client can read a document's text, attributes and rectangles through.
+// TextRange is the UI Automation text range for a stretch of one element's text: an ITextRangeProvider2, which is the
+// only thing a client can read that text, its attributes and its rectangles through.
 //
 // Like Provider it is never used through this Go type by anything but the package's own bookkeeping — UI Automation
 // holds the address of its virtual method table pointer instead — and its lifetime is the COM reference count's to
@@ -111,27 +114,29 @@ func lookupRange(this uintptr) *TextRange {
 type TextRange struct {
 	// lpVtbl MUST BE FIRST: the pointer a client holds for the range is the address of this field, which is the address
 	// of the object, and every method recovers the object from it.
-	lpVtbl   uintptr
-	window   *Window
-	pinner   runtime.Pinner
-	document accessibility.NodeID
+	lpVtbl uintptr
+	window *Window
+	pinner runtime.Pinner
+	// owner is the element whose text the range is a stretch of: a Markdown view, a field, a label, a cell. It is
+	// what the range is resolved against and what every action it dispatches is addressed to.
+	owner    accessibility.NodeID
 	start    int
 	end      int
 	refCount int32
 	lock     sync.Mutex
 }
 
-// newTextRange creates the range for one stretch of one document's stream, holding the one reference its creator
-// owns. The range is anchored and pinned here, together, and both are given up by the release of the last reference.
+// newTextRange creates the range for one stretch of one element's text, holding the one reference its creator owns.
+// The range is anchored and pinned here, together, and both are given up by the release of the last reference.
 //
-// The offsets are remembered as they are given, and clamped on every use rather than now: the document they name may
-// grow or shrink while a client holds the range, and a range clamped at birth would answer from the wrong part of a
-// document that has since grown.
-func newTextRange(window *Window, document accessibility.NodeID, start, end int) *TextRange {
+// The offsets are remembered as they are given, and clamped on every use rather than now: the text they name may grow
+// or shrink while a client holds the range, and a range clamped at birth would answer from the wrong part of text
+// that has since grown.
+func newTextRange(window *Window, owner accessibility.NodeID, start, end int) *TextRange {
 	ensureVtbls()
 	r := &TextRange{
 		window:   window,
-		document: document,
+		owner:    owner,
 		start:    start,
 		end:      end,
 		refCount: 1,
@@ -222,15 +227,15 @@ func (r *TextRange) store(start, end int) {
 	r.start, r.end = start, end
 }
 
-// resolve reads the document this range stands for out of the window's current snapshot and clamps the range to it. hr
-// is w32.COM_S_OK when the method may go ahead, and otherwise E_ELEMENTNOTAVAILABLE: the window has been
-// destroyed, the document has left the tree, or it no longer carries a stream, all of which are the same thing to a
-// client holding a range for text that is no longer there.
+// resolve reads the text this range stands for out of the window's current snapshot and clamps the range to it. hr is
+// w32.COM_S_OK when the method may go ahead, and otherwise E_ELEMENTNOTAVAILABLE: the window has been destroyed, the
+// owner has left the tree, or it no longer carries text — a field that became Protected, a block a document has since
+// claimed — all of which are the same thing to a client holding a range for text that is no longer there.
 func (r *TextRange) resolve() (doc *textDocument, start, end int, hr uint64) {
 	if r.window == nil {
 		return nil, 0, 0, E_ELEMENTNOTAVAILABLE
 	}
-	p := r.window.Provider(r.document)
+	p := r.window.Provider(r.owner)
 	if p == nil {
 		return nil, 0, 0, E_ELEMENTNOTAVAILABLE
 	}
@@ -247,10 +252,10 @@ func (r *TextRange) resolve() (doc *textDocument, start, end int, hr uint64) {
 	return doc, start, end, w32.COM_S_OK
 }
 
-// dispatch hands one action request to the window on the document's behalf, filling in the document as the node it is
+// dispatch hands one action request to the window on the owner's behalf, filling in the owner as the node it is
 // about. A window with nowhere to send the request reports the operation as impossible rather than as done.
 func (r *TextRange) dispatch(request accessibility.ActionRequest) uint64 {
-	request.Node = r.document
+	request.Node = r.owner
 	if r.window == nil || !r.window.dispatch(request) {
 		return E_INVALIDOPERATION
 	}
@@ -307,7 +312,7 @@ func textRangeClone(this, out uintptr) uint64 {
 		return hr
 	}
 	// The reference the new range holds becomes the caller's, which is what an interface out-parameter means.
-	*xruntime.PtrFromUintptr[uintptr](out) = newTextRange(r.window, r.document, start, end).this()
+	*xruntime.PtrFromUintptr[uintptr](out) = newTextRange(r.window, r.owner, start, end).this()
 	return w32.COM_S_OK
 }
 
@@ -316,11 +321,11 @@ func textRangeClone(this, out uintptr) uint64 {
 // legitimately compare ranges it collected from several places; a pointer that is no range of ours at all is an invalid
 // argument.
 //
-// A range whose document can no longer be read is answered the same way. If the other range's document has left the
-// tree or lost its stream while this one is still readable, the two plainly do not stand for the same text, so a client
-// — one comparing a range it cached against a fresh one across a publish — is better told FALSE than handed an error
-// for a range it passed in good faith. This range's own document is a different matter: a range that cannot say what it
-// stands for cannot answer at all.
+// A range whose owner can no longer be read is answered the same way. If the other range's owner has left the tree or
+// lost its text while this one is still readable, the two plainly do not stand for the same text, so a client — one
+// comparing a range it cached against a fresh one across a publish — is better told FALSE than handed an error for a
+// range it passed in good faith. This range's own owner is a different matter: a range that cannot say what it stands
+// for cannot answer at all.
 func textRangeCompare(this, other, out uintptr) uint64 {
 	if out == 0 {
 		return w32.COM_E_POINTER
@@ -339,7 +344,7 @@ func textRangeCompare(this, other, out uintptr) uint64 {
 	if targetHR != w32.COM_S_OK {
 		return w32.COM_S_OK
 	}
-	setBOOL(out, r.document == target.document && r.window == target.window && start == targetStart &&
+	setBOOL(out, r.owner == target.owner && r.window == target.window && start == targetStart &&
 		end == targetEnd)
 	return w32.COM_S_OK
 }
@@ -348,8 +353,8 @@ func textRangeCompare(this, other, out uintptr) uint64 {
 // range's endpoint comes first in the text, zero when the two are in the same place, and a positive number when it
 // comes later.
 //
-// Two ranges over different documents cannot be compared: there is no order between the text of one document and the
-// text of another, so the answer is E_INVALIDARG rather than a number a client would read as an ordering.
+// Two ranges over different owners cannot be compared: there is no order between the text of one element and the text
+// of another, so the answer is E_INVALIDARG rather than a number a client would read as an ordering.
 func textRangeCompareEndpoints(this, endpoint, other, otherEndpoint, out uintptr) uint64 {
 	if out == 0 {
 		return w32.COM_E_POINTER
@@ -369,7 +374,7 @@ func textRangeCompareEndpoints(this, endpoint, other, otherEndpoint, out uintptr
 	if target == nil {
 		return w32.COM_E_INVALIDARG
 	}
-	if target.document != r.document || target.window != r.window {
+	if target.owner != r.owner || target.window != r.window {
 		return w32.COM_E_INVALIDARG
 	}
 	_, targetStart, targetEnd, hr := target.resolve()
@@ -436,7 +441,7 @@ func textRangeFindAttribute(this, attributeID, value, backward, out uintptr) uin
 		return w32.COM_S_OK
 	}
 	// The reference the new range holds becomes the caller's, which is what an interface out-parameter means.
-	*xruntime.PtrFromUintptr[uintptr](out) = newTextRange(r.window, r.document, foundStart, foundEnd).this()
+	*xruntime.PtrFromUintptr[uintptr](out) = newTextRange(r.window, r.owner, foundStart, foundEnd).this()
 	return w32.COM_S_OK
 }
 
@@ -461,7 +466,7 @@ func textRangeFindText(this, text, backward, ignoreCase, out uintptr) uint64 {
 		return w32.COM_S_OK
 	}
 	// The reference the new range holds becomes the caller's, which is what an interface out-parameter means.
-	*xruntime.PtrFromUintptr[uintptr](out) = newTextRange(r.window, r.document, foundStart, foundEnd).this()
+	*xruntime.PtrFromUintptr[uintptr](out) = newTextRange(r.window, r.owner, foundStart, foundEnd).this()
 	return w32.COM_S_OK
 }
 
@@ -507,7 +512,7 @@ func textRangeGetAttributeValue(this, attributeID, out uintptr) uint64 {
 		// The Link attribute's value is a range over the link, which is how a client reads the text of a link it has
 		// found without walking the element tree. The reference the new range holds becomes the VARIANT's, and through
 		// it UI Automation Core's.
-		value.SetUnknown(newTextRange(r.window, r.document, answer.Start, answer.End).Unknown())
+		value.SetUnknown(newTextRange(r.window, r.owner, answer.Start, answer.End).Unknown())
 	}
 	return w32.COM_S_OK
 }
@@ -555,8 +560,8 @@ func storeReserved(value *VARIANT, get func() (*w32.Unknown, uintptr)) uint64 {
 // height — in screen pixels, which is the shape UI Automation wants rather than the Rect a bounding rectangle is
 // answered with.
 //
-// A degenerate range covers no text and so has no rectangles, and neither has a range in a document that is scrolled
-// out of view: an empty array is the answer, not a NULL one.
+// A degenerate range covers no text and so has no rectangles, and neither has a range whose owner is scrolled out of
+// view: an empty array is the answer, not a NULL one.
 func textRangeGetBoundingRectangles(this, out uintptr) uint64 {
 	if out == 0 {
 		return w32.COM_E_POINTER
@@ -584,7 +589,7 @@ func textRangeGetBoundingRectangles(this, out uintptr) uint64 {
 
 // textRangeGetEnclosingElement implements ITextRangeProvider::GetEnclosingElement, which is how a client reading
 // with the caret finds out what it has moved into: the innermost element whose own text covers the whole range, or the
-// document itself when no element's does.
+// owner itself when no element's does, which is the only answer there is for text that holds no elements.
 func textRangeGetEnclosingElement(this, out uintptr) uint64 {
 	if out == 0 {
 		return w32.COM_E_POINTER
@@ -597,9 +602,9 @@ func textRangeGetEnclosingElement(this, out uintptr) uint64 {
 	}
 	enclosing := r.window.Provider(doc.EnclosingSpan(start, end))
 	if enclosing == nil {
-		// Whatever the span named has no provider after all, so the document is what encloses the range. It always has
+		// Whatever the span named has no provider after all, so the owner is what encloses the range. It always has
 		// one: this range was reached through it.
-		if enclosing = r.window.Provider(r.document); enclosing == nil {
+		if enclosing = r.window.Provider(r.owner); enclosing == nil {
 			return E_ELEMENTNOTAVAILABLE
 		}
 	}
@@ -679,7 +684,7 @@ func textRangeMoveEndpointByUnit(this, endpoint, unit, count, out uintptr) uint6
 // to where one end of another range is. An endpoint moved past the other takes it along, leaving the range degenerate,
 // since a range whose start had crossed its end would stand for text that runs backwards.
 //
-// Two ranges over different documents have no common text to move between, so that is E_INVALIDARG, as it is for
+// Two ranges over different owners have no common text to move between, so that is E_INVALIDARG, as it is for
 // CompareEndpoints.
 func textRangeMoveEndpointByRange(this, endpoint, other, otherEndpoint uintptr) uint64 {
 	mineEnd := TextPatternRangeEndpoint(int32(uint32(endpoint)))
@@ -696,7 +701,7 @@ func textRangeMoveEndpointByRange(this, endpoint, other, otherEndpoint uintptr) 
 	if target == nil {
 		return w32.COM_E_INVALIDARG
 	}
-	if target.document != r.document || target.window != r.window {
+	if target.owner != r.owner || target.window != r.window {
 		return w32.COM_E_INVALIDARG
 	}
 	_, targetStart, targetEnd, hr := target.resolve()
@@ -712,13 +717,13 @@ func textRangeMoveEndpointByRange(this, endpoint, other, otherEndpoint uintptr) 
 	return w32.COM_S_OK
 }
 
-// textRangeSelect implements ITextRangeProvider::Select, which is a client asking for this stretch of the document
-// to become the selection — and, when the range is degenerate, for the caret to be placed there. It is the one write
-// path a text range has.
+// textRangeSelect implements ITextRangeProvider::Select, which is a client asking for this stretch of the owner's
+// text to become the selection — and, when the range is degenerate, for the caret to be placed there. It is the one
+// write path a text range has.
 //
-// The offsets go to the widget as a SetTextSelection action, which is refused when the document does not offer it: a
-// Markdown view that cannot take the focus has no caret to place, so answering S_OK would have a client waiting for a
-// selection event that is never coming.
+// The offsets go to the widget as a SetTextSelection action, which is refused when the owner does not offer it: a
+// label has no caret to place, so answering S_OK would have a client waiting for a selection event that is never
+// coming.
 func textRangeSelect(this uintptr) uint64 {
 	r := rangeFromThis(this)
 	doc, start, end, hr := r.resolve()
@@ -735,8 +740,8 @@ func textRangeSelect(this uintptr) uint64 {
 	return r.dispatch(accessibility.ActionRequest{Action: accessibility.SetTextSelection, Start: start, End: end})
 }
 
-// textRangeAddToSelection implements ITextRangeProvider::AddToSelection. A document here holds one selection at a
-// time — get_SupportedTextSelection reports Single — so adding to it means nothing: the widget would replace the
+// textRangeAddToSelection implements ITextRangeProvider::AddToSelection. Nothing here holds more than one selection
+// at a time — get_SupportedTextSelection reports Single — so adding to it means nothing: the widget would replace the
 // selection instead, and a client answered S_OK would be told the opposite of what happened. E_INVALIDOPERATION is
 // UI Automation's answer for an operation that cannot be performed on this element, as against E_NOTSUPPORTED,
 // which would deny the whole pattern.
@@ -750,9 +755,9 @@ func textRangeRemoveFromSelection(this uintptr) uint64 {
 	return textRangeNoMultipleSelection(this)
 }
 
-// textRangeNoMultipleSelection is the answer of the two methods that only mean something in a document holding
-// several selections at once. The document is still resolved first, so that a client holding a range for text that is
-// gone is told that rather than that the operation is invalid.
+// textRangeNoMultipleSelection is the answer of the two methods that only mean something for text holding several
+// selections at once. The owner is still resolved first, so that a client holding a range for text that is gone is
+// told that rather than that the operation is invalid.
 func textRangeNoMultipleSelection(this uintptr) uint64 {
 	if _, _, _, hr := rangeFromThis(this).resolve(); hr != w32.COM_S_OK {
 		return hr
@@ -765,15 +770,24 @@ func textRangeNoMultipleSelection(this uintptr) uint64 {
 // visible, which is what a person reading wants and what every ScrollIntoView in this package does.
 //
 // Like IScrollItemProvider::ScrollIntoView it is allowed while the element is disabled — a screen reader reading a
-// disabled document must still be able to bring it on screen — and refused when the document does not offer the action.
+// disabled document must still be able to bring it on screen — and refused when the owner offers neither action.
+//
+// An owner that cannot scroll to a stretch of its text, but can bring itself into view, does that instead. A label
+// draws one line and scrolls nowhere within itself, so bringing the whole of it on screen is the whole of what
+// "scroll this text into view" can mean for one, and it is what a client asked for: the text it is about to read
+// becomes visible. Only an element that can do neither refuses.
 func textRangeScrollIntoView(this, _ uintptr) uint64 {
 	r := rangeFromThis(this)
 	doc, start, end, hr := r.resolve()
 	if hr != w32.COM_S_OK {
 		return hr
 	}
-	if !doc.Node().Actions.Has(accessibility.ScrollRangeIntoView) {
-		return E_INVALIDOPERATION
+	actions := doc.Node().Actions
+	if !actions.Has(accessibility.ScrollRangeIntoView) {
+		if !actions.Has(accessibility.ScrollIntoView) {
+			return E_INVALIDOPERATION
+		}
+		return r.dispatch(accessibility.ActionRequest{Action: accessibility.ScrollIntoView})
 	}
 	return r.dispatch(accessibility.ActionRequest{Action: accessibility.ScrollRangeIntoView, Start: start, End: end})
 }
@@ -800,12 +814,13 @@ func textRangeGetChildren(this, out uintptr) uint64 {
 }
 
 // textRangeShowContextMenu implements ITextRangeProvider2::ShowContextMenu, which is what the applications key does
-// while a screen reader's reading cursor is in a document: the menu opens where the range begins rather than where the
-// mouse is.
+// while a screen reader's reading cursor is in a stretch of text: the menu opens where the range begins rather than
+// where the mouse is.
 //
 // The caret is placed there first, which the widget does as part of the request: the menu's Copy applies to the
-// selection, so a menu opened at one place while the caret sat at another would copy the wrong text. A document that
-// does not offer the action refuses, which is what an unfocusable Markdown view does — it has no menu to open.
+// selection, so a menu opened at one place while the caret sat at another would copy the wrong text. An owner that
+// does not offer the action refuses, which is what an unfocusable Markdown view and a label both do — neither has a
+// menu to open.
 func textRangeShowContextMenu(this uintptr) uint64 {
 	r := rangeFromThis(this)
 	doc, start, _, hr := r.resolve()

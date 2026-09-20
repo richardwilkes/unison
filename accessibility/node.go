@@ -211,10 +211,11 @@ type Node struct {
 type TextInfo struct {
 	// Text is the full content of the control.
 	Text string
-	// Lines holds the laid-out lines of Text. An editable control fills it in only while it holds the focus, since the
-	// measurements it needs are too expensive to take for every text control in a window on every snapshot; a document's
-	// blocks always fill it in, since laying the text out is what drew them and the advances have already been measured.
-	// When it is empty, an adapter must treat the whole content as one line.
+	// Lines holds the laid-out lines of Text. Every control that carries text fills it in, whether or not it holds the
+	// focus, since a screen reader reads by line, by word and by character wherever its own cursor is: a field caches
+	// the rune boundaries of each line beside the wrapped lines they were measured from, a document's blocks were
+	// measured by the layout that drew them, and a piece of static text reports the one line it was drawn on. When it
+	// is empty, an adapter must treat the whole content as one line.
 	Lines []Line
 	// Runs holds the styled runs of Text, in ascending order and tiling it end to end, so that run i ends where run i+1
 	// begins. It is empty for a control that draws the whole of its content in one style, which an adapter reads as one
@@ -246,6 +247,8 @@ type Line struct {
 	// Advances holds the horizontal offset of every rune boundary on the line, measured from the line's own left edge
 	// (Bounds.X), so an adapter adds Bounds.X to get a panel-local x. It has one more entry than the line has runes:
 	// entry i is the leading edge of rune Start+i, and the last entry is the trailing edge of the line's final rune.
+	// Do not modify this slice: a widget may hand the same slice to every snapshot it publishes, so writing into it
+	// would corrupt the widget's own cache and every snapshot already handed out.
 	Advances []float32
 	// Start is the rune index in TextInfo.Text where this line begins.
 	Start int

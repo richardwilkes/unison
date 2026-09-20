@@ -362,7 +362,27 @@ func TestDiffMultilineAloneIsReported(t *testing.T) {
 	bare := fieldTree("", 0, 0)
 	bare.Node(2).Text = nil
 	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(bare, field(true)))
-	c.Nil(accessibility.Diff(bare, field(false)), "text that fits on one line leaves it where it was")
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(bare, field(false)),
+		"text arriving on a node that carried none is a change even when it fits on one line: see TestDiffTextGainedOrLost")
+}
+
+// TestDiffTextGainedOrLost pins the AttributesChanged a node gets when it starts, or stops, carrying text at all while
+// nothing else about it moves. Two things in stock unison do exactly that: a Label whose title is cleared while an
+// application-set name or a LabeledBy keeps it in the tree, and a Field toggled between plain and Protected. Neither
+// is multiline on either side and the text events only describe an edit to text present on both sides, so without
+// this event an adapter that turns carrying text into something a client caches — AT-SPI's SINGLE_LINE and
+// SELECTABLE_TEXT states and its Text interface, UI Automation's Text pattern availability — would never be told to
+// grant or retract it.
+func TestDiffTextGainedOrLost(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	withText := fieldTree("hello", 0, 0)
+	without := fieldTree("hello", 0, 0)
+	without.Node(2).Text = nil
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(without, withText))
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(withText, without),
+		"losing the text altogether is as much a change as gaining it")
+	c.Nil(accessibility.Diff(without, without))
 }
 
 // TestDiffShortcutAloneIsReported pins the case that reaches this from stock unison: MenuItem.SetKeyBinding rebinding
@@ -631,12 +651,13 @@ func TestDiffTextSelectionOnly(t *testing.T) {
 	c.Equal([]axEvent{{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2}},
 		accessibility.Diff(fieldTree("hello", 0, 0), fieldTree("hello", 1, 3)))
 
-	// A node that has stopped carrying text, or has only just started, produces no text events at all.
+	// A node that has stopped carrying text, or has only just started, produces no text events at all: the one event
+	// is the AttributesChanged that says the text came or went, which TestDiffTextGainedOrLost pins.
 	withText := fieldTree("hello", 0, 0)
 	without := fieldTree("hello", 0, 0)
 	without.Node(2).Text = nil
-	c.Nil(accessibility.Diff(withText, without))
-	c.Nil(accessibility.Diff(without, withText))
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(withText, without))
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(without, withText))
 }
 
 // TestDiffTextSelectionCaretAndOrdering covers the two things the selection event has to get right beyond the offsets
@@ -820,4 +841,68 @@ func TestDiffURLChange(t *testing.T) {
 	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
 		accessibility.Diff(link(""), link("https://example.com/one")), "gaining a target is a change too")
 	c.Nil(accessibility.Diff(link("https://example.com/one"), link("https://example.com/one")))
+}
+
+// TestDiffDocumentComingAndGoingBesideText covers a node that carries text of its own on both sides and gains or loses
+// a DocumentInfo beside it. What such a node presents as text never moves — Node.Text is answered first — so the
+// comparison of whether it presents any text at all says nothing, yet every adapter keys what it offers on the node
+// carrying a stream at all: one refuses the text interface outright to a document, another picks which stream the node
+// hands over from the same fact, and a document is a different kind of element from a group. Nothing in the root
+// package publishes both today, which is exactly why the guarantee is pinned here.
+func TestDiffDocumentComingAndGoingBesideText(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	withText := func(composed bool) *accessibility.Tree {
+		n := &axNode{
+			ID: 2, Parent: 1, Role: role.Document, Focusable: true, Focused: true,
+			Text: &accessibility.TextInfo{Text: "hello", Multiline: true},
+		}
+		if composed {
+			n.Document = &accessibility.DocumentInfo{
+				Text: accessibility.TextInfo{Text: "hello", Multiline: true},
+			}
+		}
+		return newTree(2,
+			&axNode{ID: 1, Role: role.Window, Name: windowName, Focused: true, Children: []axID{2}}, n)
+	}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
+		accessibility.Diff(withText(false), withText(true)),
+		"gaining a stream beside text of its own moves what every adapter offers")
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
+		accessibility.Diff(withText(true), withText(false)), "and so does losing it")
+	c.Nil(accessibility.Diff(withText(true), withText(true)))
+	c.Nil(accessibility.Diff(withText(false), withText(false)))
+}
+
+// TestDiffSpansComingAndGoing covers a node whose text stands still while the objects sitting within it move. The runes
+// are the same on both sides, so the text events say nothing, and every other fact about the node is unchanged; what
+// moved is which nodes occupy which part of the text, which decides both what the container can be asked — which
+// objects are in it and where — and what each node named by a span answers about where it sits. Neither end would hear
+// anything at all without this.
+func TestDiffSpansComingAndGoing(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	spanned := func(spans ...accessibility.TextSpan) *accessibility.Tree {
+		return newTree(3,
+			&axNode{ID: 1, Role: role.Window, Name: windowName, Focused: true, Children: []axID{2}},
+			&axNode{
+				ID: 2, Parent: 1, Role: role.Paragraph, ReadOnly: true, Children: []axID{3},
+				Text: &accessibility.TextInfo{Text: "see the guide", Spans: spans},
+			},
+			&axNode{ID: 3, Parent: 2, Role: role.Link, Name: "the guide"},
+		)
+	}
+	link := accessibility.TextSpan{Node: 3, Start: 4, End: 13}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
+		accessibility.Diff(spanned(), spanned(link)), "a paragraph gaining its first span")
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
+		accessibility.Diff(spanned(link), spanned()), "and losing its last one")
+	// Where a span sits is not an attribute of the paragraph: offsets move with every edit ahead of them, which the text
+	// events already report, and a client asks for them fresh each time. Only which node a span names is compared.
+	moved := accessibility.TextSpan{Node: 3, Start: 0, End: 9}
+	c.Nil(accessibility.Diff(spanned(link), spanned(moved)), "a span that covers a different stretch of the same text")
+	other := accessibility.TextSpan{Node: 4, Start: 4, End: 13}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
+		accessibility.Diff(spanned(link), spanned(other)), "and one that names a different node")
+	c.Nil(accessibility.Diff(spanned(link), spanned(link)))
 }

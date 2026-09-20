@@ -21,8 +21,9 @@ import (
 // cursor on the focused element and, from a window in which nothing holds the focus, its scan mode, heading and link
 // navigation all stay on the window's own element, while its item navigation alone reaches the content — and only by
 // stepping through the title bar's buttons and the menu bar first. From any element inside the window, all of them
-// move through the rest of it freely.
-const axReadersFollowFocus = true
+// move through the rest of it freely. It is a var rather than a const so that a test can pin either answer on
+// whichever platform it runs on.
+var axReadersFollowFocus = true
 
 // axCaretBlockReportsFocus reports whether the block of a document that holds the reading caret publishes the focus as
 // well as the document itself. UI Automation has one focused element per desktop and raises
@@ -31,6 +32,16 @@ const axReadersFollowFocus = true
 // following. The caret itself is what they read there, through the Text pattern. It is a var rather than a const so
 // that a test can pin both answers on whichever platform it runs on.
 var axCaretBlockReportsFocus = false
+
+// axHeadingsTakeFocus reports whether a heading takes the keyboard focus while an assistive technology is being
+// served. Narrator and NVDA both move a cursor of their own to a heading — Narrator's scan mode with H and the digits
+// 1 through 9, NVDA's review cursor and its object navigation — and neither asks the heading to take the focus.
+// NVDA has no browse mode outside web content: its base UIA class installs no tree interceptor, so a window built
+// with this toolkit is read in its ordinary object mode, where nothing is waiting for a heading to become focused.
+// Headings that became focusable would therefore cost every keyboard user extra tab stops and buy a screen-reader
+// user nothing. It is a var rather than a const so that a test can pin either answer on whichever platform it runs
+// on.
+var axHeadingsTakeFocus = false
 
 // The Windows side of accessibility support: this file connects the snapshots the root package publishes to the UI
 // Automation provider in internal/w32, and connects the requests that come back from an assistive technology to the UI

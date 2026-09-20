@@ -648,3 +648,146 @@ func TestTextRangeNullOutParameters(t *testing.T) {
 	c.Equal(0, start, "and nothing moved the range while refusing")
 	c.Equal(5, end)
 }
+
+// fieldRangeWindow creates the adapter for a window showing the owner fixture, along with a range over part of one
+// owner's own text. The range holds the one reference its creator owns, which the test gives back when it finishes.
+func fieldRangeWindow(t *testing.T, owner accessibility.NodeID, start, end int) (w *testWindow, r *TextRange) {
+	t.Helper()
+	w = newTestWindow(t, fieldFixtureTree())
+	r = newTextRange(w.Window, owner, start, end)
+	t.Cleanup(func() { r.release() })
+	return w, r
+}
+
+// TestTextRangeFieldDispatches verifies that a range over an element's own text addresses its owner rather than any
+// document: the three write paths reach the field itself, with the offsets the range stands for.
+//
+// A label is the other case. It offers none of the text actions, so selecting it and opening a menu on it are refused
+// — a label has no caret to place and no menu to open — while ScrollIntoView still works, through the plain action
+// every node carries: a label draws one line and scrolls nowhere within itself, so bringing the whole of it on screen
+// is the whole of what "scroll this text into view" can mean for one, and it is what the client asked for.
+func TestTextRangeFieldDispatches(t *testing.T) {
+	c := check.New(t)
+	w, r := fieldRangeWindow(t, fieldID, 6, 11)
+
+	c.Equal(w32.COM_S_OK, callRangeSlot(r, 13))
+	request := requestAt(w, 0)
+	c.Equal(accessibility.SetTextSelection, request.Action)
+	c.Equal(fieldID, request.Node, "the request goes to the field, not to any document")
+	c.Equal(6, request.Start)
+	c.Equal(11, request.End)
+
+	c.Equal(w32.COM_S_OK, callRangeSlot(r, 16, 1))
+	request = requestAt(w, 1)
+	c.Equal(accessibility.ScrollRangeIntoView, request.Action)
+	c.Equal(fieldID, request.Node)
+	c.Equal(6, request.Start)
+	c.Equal(11, request.End)
+
+	c.Equal(w32.COM_S_OK, callRangeSlot(r, 18))
+	request = requestAt(w, 2)
+	c.Equal(accessibility.ShowContextMenu, request.Action)
+	c.Equal(fieldID, request.Node)
+	c.Equal(6, request.Start)
+	c.Equal(6, request.End, "the caret goes to the start of the range, not around it")
+
+	// A disabled field refuses the two write paths as not enabled — being unusable now says nothing about whether the
+	// selection could be set — while bringing it on screen is the one thing it still does.
+	disabledTree := fieldFixtureTree()
+	disabledTree.Node(fieldID).Disabled = true
+	disabled := newTestWindow(t, disabledTree)
+	disabledRange := newTextRange(disabled.Window, fieldID, 0, 5)
+	defer disabledRange.release()
+	c.Equal(E_ELEMENTNOTENABLED, callRangeSlot(disabledRange, 13))
+	c.Equal(E_ELEMENTNOTENABLED, callRangeSlot(disabledRange, 18))
+	c.Equal(0, len(disabled.recorded()))
+	c.Equal(w32.COM_S_OK, callRangeSlot(disabledRange, 16, 0))
+	c.Equal(accessibility.ScrollRangeIntoView, requestAt(disabled, 0).Action)
+
+	// A label offers no text actions at all, so it refuses both write paths and falls back to the plain
+	// ScrollIntoView, which carries no offsets because it brings the whole element into view.
+	labelWindow, labelRange := fieldRangeWindow(t, fieldCellLabelID, 0, 4)
+	c.Equal(E_INVALIDOPERATION, callRangeSlot(labelRange, 13))
+	c.Equal(E_INVALIDOPERATION, callRangeSlot(labelRange, 18))
+	c.Equal(0, len(labelWindow.recorded()))
+	c.Equal(w32.COM_S_OK, callRangeSlot(labelRange, 16, 1))
+	request = requestAt(labelWindow, 0)
+	c.Equal(accessibility.ScrollIntoView, request.Action)
+	c.Equal(fieldCellLabelID, request.Node)
+	c.Equal(0, request.Start)
+	c.Equal(0, request.End)
+
+	// An owner that can do neither refuses, rather than reporting a scroll that never happened.
+	stuckTree := fieldFixtureTree()
+	stuckTree.Node(fieldCellLabelID).Actions = accessibility.ActionSet(0)
+	stuck := newTestWindow(t, stuckTree)
+	stuckRange := newTextRange(stuck.Window, fieldCellLabelID, 0, 4)
+	defer stuckRange.release()
+	c.Equal(E_INVALIDOPERATION, callRangeSlot(stuckRange, 16, 1))
+	c.Equal(0, len(stuck.recorded()))
+}
+
+// TestTextRangeAttributesByOwner verifies the one text attribute that is the owner's rather than the run's: whether
+// the text can be typed into. A client uses it to decide whether to announce a stretch of text as editable, so a
+// field answering "read-only" would have a screen reader describe the control the caret is in as one that cannot be
+// typed in, and a label answering "writable" would invite an edit that can never happen.
+func TestTextRangeAttributesByOwner(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out := slotScratch(&pin)
+	w, field := fieldRangeWindow(t, fieldID, 0, 16)
+
+	c.Equal(w32.COM_S_OK, callRangeSlot(field, 6, uintptr(IsReadOnlyAttributeId), out.fresh()))
+	c.Equal(VT_BOOL, out.variant().VT)
+	c.Equal(attribute{Kind: attributeBoolean, Bool: false}, attributeFromVariant(out.variant()))
+	c.Equal(w32.COM_S_OK, callRangeSlot(field, 6, uintptr(IsActiveAttributeId), out.fresh()))
+	c.Equal(attribute{Kind: attributeBoolean, Bool: true}, attributeFromVariant(out.variant()),
+		"the field is where the keyboard is")
+
+	label := newTextRange(w.Window, fieldCellLabelID, 0, 4)
+	defer label.release()
+	c.Equal(w32.COM_S_OK, callRangeSlot(label, 6, uintptr(IsReadOnlyAttributeId), out.fresh()))
+	c.Equal(attribute{Kind: attributeBoolean, Bool: true}, attributeFromVariant(out.variant()))
+	c.Equal(w32.COM_S_OK, callRangeSlot(label, 6, uintptr(IsActiveAttributeId), out.fresh()))
+	c.Equal(attribute{Kind: attributeBoolean, Bool: false}, attributeFromVariant(out.variant()))
+
+	// A heading's own role is what says its text is heading text: there is no span within it to say so, and a client
+	// walking by style would otherwise never find it.
+	heading := newTextRange(w.Window, fieldHeadingID, 0, 5)
+	defer heading.release()
+	c.Equal(w32.COM_S_OK, callRangeSlot(heading, 6, uintptr(StyleIdAttributeId), out.fresh()))
+	c.Equal(VT_I4, out.variant().VT)
+	c.Equal(attribute{Kind: attributeInteger, Int: int32(StyleId_Heading2)}, attributeFromVariant(out.variant()))
+}
+
+// TestTextRangeCompareAcrossOwners verifies that two ranges over different owners in the same window are as
+// unrelated as two over different windows: there is no order between the text of one element and the text of
+// another, so comparing their endpoints or moving one to the other is an invalid argument rather than a number a
+// client would read as an ordering.
+func TestTextRangeCompareAcrossOwners(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out := slotScratch(&pin)
+	w, field := fieldRangeWindow(t, fieldID, 0, 5)
+	heading := newTextRange(w.Window, fieldHeadingID, 0, 5)
+	defer heading.release()
+
+	c.Equal(w32.COM_S_OK, callRangeSlot(field, 1, heading.this(), out.fresh()))
+	c.Equal(int32(0), out.i32(), "the same offsets in another element are not the same text")
+	c.Equal(w32.COM_E_INVALIDARG, callRangeSlot(field, 2, uintptr(TextPatternRangeEndpoint_Start), heading.this(),
+		uintptr(TextPatternRangeEndpoint_Start), out.fresh()))
+	c.Equal(w32.COM_E_INVALIDARG, callRangeSlot(field, 12, uintptr(TextPatternRangeEndpoint_End), heading.this(),
+		uintptr(TextPatternRangeEndpoint_End)))
+
+	// Two ranges over the one owner do compare, which is what makes the refusal above about the owner rather than
+	// about ranges in general.
+	same := newTextRange(w.Window, fieldID, 0, 5)
+	defer same.release()
+	c.Equal(w32.COM_S_OK, callRangeSlot(field, 1, same.this(), out.fresh()))
+	c.Equal(int32(1), out.i32())
+	c.Equal(w32.COM_S_OK, callRangeSlot(field, 2, uintptr(TextPatternRangeEndpoint_Start), same.this(),
+		uintptr(TextPatternRangeEndpoint_Start), out.fresh()))
+	c.Equal(int32(0), out.i32())
+}

@@ -275,6 +275,29 @@ func (l *List[T]) cell(row int) *Panel {
 	return l.Factory.CreateCell(l, l.rows[row], row, fg, bg, selected, focused).AsPanel()
 }
 
+// installCell attaches a cell to the list and lays it out at the row's frame, which is what it takes for the cell to
+// be asked anything about where its content sits or to be handed a request for that content: a panel with no parent
+// cannot find its window, and a panel that has not been laid out has all of its content at the origin. Drawing lays
+// the cell out at that same frame — List.DefaultDraw sets the frame and validates the layout inline before translating
+// the canvas to the row and handing the cell to Panel.Draw, which draws each child at its own frame — so what an
+// assistive technology is told about where the content sits is where the content was painted. What drawing does not
+// need is the parent, since it never has to find the window.
+func (l *List[T]) installCell(cell *Panel, rect geom.Rect) {
+	cell.SetFrameRect(rect)
+	cell.ValidateLayout()
+	cell.parent = l.AsPanel()
+}
+
+// uninstallCell detaches a cell that installCell attached. Unlike a table, a list keeps no cell: it builds one
+// whenever it needs one and throws it away again, and it has nowhere to put one that a widget inside it has just
+// handed the keyboard focus to — a list is one tab stop, the rows within it are not reachable with the keyboard, and
+// the cell holding the focus would not even be the cell the next draw creates. So nothing is adopted here; see
+// List.axPerformInCell, which puts the focus back on the list itself rather than leaving it on a panel that is about
+// to be detached.
+func (l *List[T]) uninstallCell(cell *Panel) {
+	cell.parent = nil
+}
+
 // RowRect returns the rectangle for the specified row.
 func (l *List[T]) RowRect(row int) geom.Rect {
 	if row < 0 || row >= len(l.rows) {
@@ -318,6 +341,10 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 				cellRect.Height = pref.Ceil().Height
 			}
 			cell.SetFrameRect(cellRect)
+			// Panel.Draw paints each child at its own frame, which on a cell that was just built is the zero rect, so
+			// a cell holding more than one child has to be laid out before it is painted — at the very frame
+			// installCell uses, so that what a row is described as holding and where sits where it is drawn.
+			cell.ValidateLayout()
 			y += cellRect.Height
 			r := geom.NewRect(rect.X, cellRect.Y, rect.Width, cellRect.Height)
 			paint := bg.Paint(canvas, r, paintstyle.Fill)
@@ -634,9 +661,10 @@ func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect
 	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, cellHeight)
 	for row := first; row <= last; row++ {
 		rowRect.Y = rect.Y + cellHeight*float32(row)
-		l.axAddRow(b, row, rowRect, nil)
+		l.axAddRow(b, row, rowRect, nil, false)
 	}
-	// The selected rows that were not reached above are described as well, however far out of sight they are.
+	// The selected rows that were not reached above are described as well, however far out of sight they are, but as
+	// nothing more than themselves: see axAddRow.
 	described := 0
 	for row := l.Selection.FirstSet(); row >= 0 && described < axMaxSelectedRows; row = l.Selection.NextSet(row + 1) {
 		if row >= len(l.rows) {
@@ -646,7 +674,7 @@ func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect
 			continue
 		}
 		rowRect.Y = rect.Y + cellHeight*float32(row)
-		l.axAddRow(b, row, rowRect, nil)
+		l.axAddRow(b, row, rowRect, nil, true)
 		described++
 	}
 }
@@ -668,9 +696,9 @@ func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect
 		rowRect.Height = pref.Ceil().Height
 		switch {
 		case rowRect.Intersects(reach):
-			l.axAddRow(b, row, rowRect, cell)
+			l.axAddRow(b, row, rowRect, cell, false)
 		case l.Selection.State(row) && described < axMaxSelectedRows:
-			l.axAddRow(b, row, rowRect, cell)
+			l.axAddRow(b, row, rowRect, cell, true)
 			described++
 		}
 		rowRect.Y += rowRect.Height
@@ -684,13 +712,19 @@ func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect
 
 // axAddRow describes one row of the list. cell, when not nil, is the cell that was already created for the row, whose
 // text is what the row is named by; one is created if it is nil.
-func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cell *Panel) {
+//
+// A row described with nameOnly is described as itself and nothing more: what it is, where it is and whether it is
+// selected, without what the cell drawing it is made of. That is what is left of a row nobody can see — one described
+// only because the selection holds it — and it is all an assistive technology asks of such a row, since what it does
+// with the selection is read out what is in it. Laying the cell out and walking it for every selected row of a long
+// list, over and over, is what that avoids; the table does the same thing for the same reason.
+func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cell *Panel, nameOnly bool) {
 	if cell == nil {
 		cell = l.cell(row)
 	}
 	name := axLabelText(cell)
 	selected := l.Selection.State(row)
-	b.AddVirtualChild(row, func(n *accessibility.Node) {
+	rowID := b.AddVirtualChild(row, func(n *accessibility.Node) {
 		n.Role = role.ListItem
 		n.Name = name
 		n.Bounds = rect
@@ -710,14 +744,84 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 			n.Actions = n.Actions.With(accessibility.Press)
 		}
 	})
+	if rowID == 0 || nameOnly {
+		return
+	}
+	// Whatever the factory drew the row with — a label, a check box, a box full of both — is described within the
+	// item, attached and laid out for the moment exactly as it is for drawing, so that what the row is made of can be
+	// read by line, by word and by character and can be acted on where it sits. An item with content of its own to
+	// describe has no need of that content's text as a name on top of it; an item whose cell amounts to nothing keeps
+	// the name, which is all there would otherwise be.
+	l.installCell(cell, rect)
+	b.addCellPanel(rowID, row, cell, false)
+	l.uninstallCell(cell)
+	axClearCellFocusability(b.snapshot.tree, rowID)
+	content := b.snapshot.tree.UnignoredChildren(rowID)
+	if len(content) == 0 {
+		return
+	}
+	itemNode := b.snapshot.tree.Node(rowID)
+	if itemNode == nil {
+		return
+	}
+	itemNode.Name = ""
+	if len(content) == 1 {
+		// An item holding a single widget with a state of its own reports that state as its value, so that a change to
+		// it is heard as a change to the item. What the item does with a press is not the widget's to take over,
+		// unlike a table cell: pressing a list row means opening it, which is what a double-click and the Return key
+		// stand for, and the widget within the row offers its own press where it sits.
+		itemNode.Value = axContentValue(b.snapshot.tree.Node(content[0]))
+	}
+}
+
+// axClearCellFocusability takes the keyboard focus out of the reach of everything described beneath a list row.
+// Nothing inside the cell that draws a row can hold the focus: the cell is built for the moment it takes to describe
+// it or draw it and is thrown away again, the next draw builds another, and a focus left on the panel that was
+// described is a focus the window cannot find, silently gone until the person presses Tab. So those nodes neither
+// claim to be focusable nor offer to take the focus, and List.axPerformInCell refuses a Focus request that names one
+// of them anyway for the same reason. The row's own node is left alone; only what the cell put beneath it is changed.
+//
+// A node that was only kept out of the scaffolding it otherwise is by being focusable or by offering the focus is
+// judged again once it is neither — see axIsScaffolding, which refuses to look past anything that can be focused or
+// acted on. Without that, an anonymous wrapper panel that happened to be focusable would survive as the row's only
+// unignored content: a nameless, action-less group that the row would then drop its own name for and read its value
+// from, announcing nothing in place of the widget inside it. Nothing else is reconsidered, so a node that said outright
+// it was not to be looked past keeps its say.
+//
+// The walk needs no record of where it has been: what the cell put beneath the row is a tree, so no id can be reached
+// twice.
+func axClearCellFocusability(tree *accessibility.Tree, rowID accessibility.NodeID) {
+	row := tree.Node(rowID)
+	if row == nil {
+		return
+	}
+	stack := slices.Clone(row.Children)
+	for len(stack) != 0 {
+		id := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		node := tree.Node(id)
+		if node == nil {
+			continue
+		}
+		reachable := node.Focusable || node.Actions.Has(accessibility.Focus)
+		node.Focusable = false
+		node.Actions = node.Actions.Without(accessibility.Focus)
+		if reachable && !node.Ignored && axIsScaffolding(node) {
+			node.Ignored = true
+		}
+		stack = append(stack, node.Children...)
+	}
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. Every request that reaches here names
 // one of the rows described by ProvideAccessibility, which arrives as the index that row was keyed by. Selecting a row
 // also scrolls it into view, as the arrow keys do, since an assistive technology moving through the rows selects each
 // one as it goes and expects to see where it has got to. Pressing a row opens it, which is the gesture a double-click
-// and the Return key stand for.
+// and the Return key stand for. A request aimed at something within the cell that draws a row is passed on to it.
 func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if key, isPanel := req.Key.(axCellPanelKey); isPanel {
+		return l.axPerformInCell(key, req)
+	}
 	row, ok := req.Key.(int)
 	if !ok || row < 0 || row >= len(l.rows) {
 		return false
@@ -784,6 +888,54 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 		return false
 	}
 	return true
+}
+
+// axPerformInCell carries out a request aimed at a panel inside the cell that draws one of the rows. The cell is built
+// and installed again, exactly as it is to draw it, so that the panel the request is for exists where it was described
+// and can reach its window; the panel is then found at the position within the cell it was described at.
+//
+// A Focus request is refused before any of that, without building anything. Nothing within the cell can keep the
+// focus: the panel the request names is detached again as soon as the call is done, the next draw builds another cell
+// entirely, and a focus left on a detached panel is a focus the window cannot find, silently gone until the person
+// presses Tab. A Focus request that cannot leave the focus on the node it named must be refused rather than reported
+// as carried out, so the nodes described within a row are published as neither focusable nor offering Focus, and one
+// that arrives anyway is turned away here.
+//
+// A widget that took the focus while handling one of the remaining requests — which Press does on its way to the click
+// it synthesizes — is handed straight back for that same reason. The focus goes to the list itself, which is the one
+// tab stop this widget has and where a real click on a row leaves it.
+//
+// A key naming a cell of something other than a list is refused: the key travels with the request from whatever
+// described the panel, and only the widget that put it there knows how to read it.
+func (l *List[T]) axPerformInCell(key axCellPanelKey, req accessibility.ActionRequest) bool {
+	if req.Action == accessibility.Focus {
+		return false
+	}
+	row, ok := key.Cell.(int)
+	if !ok || row < 0 || row >= len(l.rows) {
+		return false
+	}
+	// The key that brought the request here named one of the list's virtual children. What it is being handed to is a
+	// real panel, for which ActionRequest.Key is nil: an application's own action callback on a panel within a cell
+	// would otherwise be given a key it never handed out, and a widget that keys virtual children of its own would
+	// take this one for one of them.
+	req.Key = nil
+	cell := l.cell(row)
+	l.installCell(cell, l.RowRect(row))
+	handled := false
+	if target := axPanelAtPath(cell, key.Path); target != nil {
+		handled = target.axDispatchAction(req, false)
+	}
+	takeBackFocus := false
+	if wnd := l.Window(); wnd != nil && wnd.focus != nil && panelContains(cell, wnd.focus) {
+		takeBackFocus = true
+	}
+	l.uninstallCell(cell)
+	if takeBackFocus {
+		l.RequestFocus()
+	}
+	l.MarkForRedraw()
+	return handled
 }
 
 // FlashSelection flashes the current selection.

@@ -490,6 +490,21 @@ func AXAnnounce(text string) {
 func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit // one case per event kind
 	var layoutChanged []accessibility.NodeID
 	var notices []axNotice
+	// What this publish reports as an edit to a node's text has to be known before the first event is looked at, since
+	// that is what decides whether a name change on such a node is worth a notification of its own; see the
+	// NameChanged case below and axTextEditsByNode.
+	textEdits := axTextEditsByNode(events)
+	// Which nodes this publish reports a changed name for, for the same reason and in the same way: a text edit asks
+	// it before it decides whether the edit changed what the element is called; see the TextInserted case below.
+	var renamed map[accessibility.NodeID]bool
+	for _, e := range events {
+		if e.Kind == accessibility.NameChanged {
+			if renamed == nil {
+				renamed = make(map[accessibility.NodeID]bool)
+			}
+			renamed[e.Node] = true
+		}
+	}
 	// flush posts everything gathered so far and forgets it, in the order an assistive technology has to hear it:
 	// what changed about each element first, then the one notification that says the shape of the window changed.
 	flush := func() {
@@ -534,13 +549,57 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			// element deliberately does not answer accessibilityTitle — an element that answers both AXTitle and
 			// AXDescription with the same string is spoken twice — so what this notification is worth is the prompt to
 			// read the element again.
-			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyTitleChanged})
+			//
+			// A node whose name this platform reports nowhere is the exception, and a label that redrew its text is
+			// the common case of it: the snapshot builder puts the drawn text in Name as well, so the change arrives
+			// as a name change, yet the element answers that string as its value and no label at all (see axHasLabel
+			// and axTextIsValue). Telling a client that what the element is called has changed sends it to read a
+			// description that does not exist, and the edit to the text it does read is already going out as the
+			// value-changed notification the text events produce below.
+			//
+			// That last clause is the whole of the justification, so the publish has to actually carry such an edit
+			// for this node before the name change is dropped. An application that takes a name it had set back off a
+			// label — a glyph button captioned "X" that was named "Close" — changes what the element is called while
+			// the text it drew stays as it was, so the name change arrives alone: nothing else in the publish names
+			// the node, and suppressing it would leave a client speaking the description the element no longer has.
+			//
+			// Doing both at once is the case that decides this from the name the node used to have rather than from
+			// the one it has now. An application that drops the override and redraws the caption in the same publish
+			// leaves a node whose new name is its new text — no label at all — with a text edit beside it, which is
+			// the shape a label merely redrawing itself has, yet the description a client cached ("Close") has just
+			// vanished and only this notification can say so. The event carries the previous name in Old, and the
+			// previous text is what the text events of this same publish undo the node's current text back to (see
+			// axTextBefore), so the two are told apart by what the name was: a name that was already the node's own
+			// text was never a label, and dropping its change costs a client nothing, while a name that was something
+			// else was a description that is now gone.
+			if n := a.tree.Node(e.Node); n == nil || n.Text == nil || axHasLabel(n) ||
+				len(textEdits[e.Node]) == 0 || e.Old != axTextBefore(n.Text.Text, textEdits[e.Node]) {
+				notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyTitleChanged})
+			}
 		case accessibility.ValueChanged, accessibility.NumberChanged, accessibility.SortChanged:
 			notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
 		case accessibility.TextInserted, accessibility.TextDeleted:
 			// Only a node whose text this platform presents has anything to say about an edit to it; see
 			// axPresentsText. Otherwise the notification names an element that reports no value at all.
 			if axPresentsText(a.tree, e.Node) {
+				// Whether a label's name is heard at all is decided by measuring that name against the text it drew
+				// (see axHasLabel), so an edit to the text alone can hand an element a description it did not have
+				// before, or take away the one it had: a label an application named "Region:" that was drawing
+				// "Region:" reported no label, and redrawing as "Full name:" leaves the same name standing as a
+				// description a client has never been told to read. The name did not change, so nothing else in the
+				// publish says so, and the value-changed notification below sends a client no further than the value.
+				// The text the publish undoes to (see axTextBefore) is what the answer is compared against, which
+				// catches the loss as well as the gain — a drawn caption becoming equal to an override silently drops
+				// the description otherwise.
+				//
+				// A node whose name changed in this same publish is left to the NameChanged case above, which is the
+				// one that knows what the name used to be: measuring the old text against the new name would answer
+				// for a state the element was never in, and what that case decides — post, or drop the notice because
+				// the node had no description either side of the edit — is already the answer for both events.
+				if n := a.tree.Node(e.Node); !renamed[e.Node] &&
+					axHasLabelWithText(n, axTextBefore(n.Text.Text, textEdits[e.Node])) != axHasLabel(n) {
+					notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyTitleChanged})
+				}
 				notices = axAppendNotice(notices, axNotice{node: e.Node, notification: axNotifyValueChanged})
 			}
 		case accessibility.TextSelectionChanged:
@@ -607,6 +666,54 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 		}
 	}
 	flush()
+}
+
+// axTextEditsByNode returns the text insertions and deletions a published set of events reports, grouped by the node
+// each names and left in the order they arrived. postEvents gathers them before it looks at any event, because the
+// events arrive in no order that would let a name change ask whether a text event it has not reached yet names the same
+// node. Having one at all says a value-changed notification is going out for that node anyway: the only names dropped
+// are those of nodes that carry text, which is exactly what has the adapter act on a text event (see axPresentsText).
+// What the edits themselves say is what the text used to be (see axTextBefore). See the NameChanged case of postEvents,
+// the one caller.
+func axTextEditsByNode(events []accessibility.Event) map[accessibility.NodeID][]accessibility.Event {
+	var edited map[accessibility.NodeID][]accessibility.Event
+	for _, e := range events {
+		if e.Kind == accessibility.TextInserted || e.Kind == accessibility.TextDeleted {
+			if edited == nil {
+				edited = make(map[accessibility.NodeID][]accessibility.Event)
+			}
+			edited[e.Node] = append(edited[e.Node], e)
+		}
+	}
+	return edited
+}
+
+// axTextBefore returns the text a node held before this publish, given the text it holds now and the insertions and
+// deletions the publish reported against it, which it undoes in reverse order: an insertion by cutting the runes it put
+// in back out, a deletion by putting the runes it took (carried in Old) back where they were. The adapter keeps no
+// previous snapshot of its own — Publish swaps the new one in before a single notification is posted — so the events
+// are the whole of what there is to reconstruct it from, and reconstructing it is how a name change can ask what the
+// name used to be measured against. Positions are counts of runes, as every text event's are. An edit whose bounds do
+// not fit the text it is being undone against — nothing the differ produces, since it derives both from the same pair
+// of strings — leaves the text as it stands rather than guessing.
+func axTextBefore(text string, edits []accessibility.Event) string {
+	runes := []rune(text)
+	for i := len(edits) - 1; i >= 0; i-- {
+		e := edits[i]
+		switch e.Kind {
+		case accessibility.TextInserted:
+			if e.Start < 0 || e.Length < 0 || e.Start+e.Length > len(runes) {
+				continue
+			}
+			runes = append(runes[:e.Start:e.Start], runes[e.Start+e.Length:]...)
+		case accessibility.TextDeleted:
+			if e.Start < 0 || e.Start > len(runes) {
+				continue
+			}
+			runes = append(runes[:e.Start:e.Start], append([]rune(e.Old), runes[e.Start:]...)...)
+		}
+	}
+	return string(runes)
 }
 
 // axPresentsText reports whether the element serving a node answers the text protocol at all, which is what decides
@@ -889,13 +996,55 @@ func axReportable(n *accessibility.Node) bool {
 // paragraphs and code blocks are static text as well: their content is their value, and a name a widget happens to have
 // put on one would be spoken ahead of every line of it. A disclosure triangle is named by its role on this platform, so
 // a label as well would be said after it.
+//
+// A label is the one role that decides it from the node rather than from the role alone, because a label now carries
+// the very text it drew. Where its name is that same text, repeating it as the label is the double-speak this function
+// exists to prevent, so the text is all it says. Where an application set a different name on it, that name is a thing
+// the drawn text does not say — a glyph button labeled "Hide", a field's label naming what it is for — and withholding
+// it would leave the element announced as nothing but its glyph, so it is reported as the label with the drawn text as
+// the value beside it. A label that drew no text at all keeps the old answer, its name being the value (see
+// axNodeValue): a widget showing only a drawable is given the role of an image rather than this one, so what is left
+// here is a label with nothing on the screen that stayed in the tree because an application named it or because
+// something else names it, its own LabeledBy pointing at that namer — the two things that keep axDescribeStaticContent
+// from marking such a widget ignored.
 func axHasLabel(n *accessibility.Node) bool {
 	switch n.Role {
-	case role.Label, role.Paragraph, role.Code, role.DisclosureTriangle:
+	case role.Label:
+		return n.Text != nil && n.Name != "" && n.Name != n.Text.Text
+	case role.Paragraph, role.Code, role.DisclosureTriangle:
 		return false
 	default:
 		return true
 	}
+}
+
+// axHasLabelWithText answers what axHasLabel would have answered for a node holding the given text in place of the
+// text it holds now, which is how a text edit asks whether the element had a description before it. The node is
+// copied with its text swapped rather than the rule restated here, so the two answers can never drift apart. The
+// caller has already established that the node carries text; see the TextInserted case of postEvents, the one caller.
+func axHasLabelWithText(n *accessibility.Node, text string) bool {
+	swapped := *n.Text
+	swapped.Text = text
+	before := *n
+	before.Text = &swapped
+	return axHasLabel(&before)
+}
+
+// axTextIsValue reports whether the text a node holds is what it should report as its value.
+//
+// It is, unless that text has already been heard as the element's label: a heading, a column header or a table cell
+// whose name is the text it drew reports that string as its label (see axHasLabel), and reporting it as the value as
+// well has VoiceOver say it twice over, once for the description and once for the value. Everything else that carries
+// text — a field, a paragraph, a code block, a label speaking for itself, a node whose name says something the text
+// does not — reports it, since that is the content an assistive technology reads by line and by word.
+//
+// Empty text is never the thing already heard, whatever the name is, so it is always the value. Without that a field
+// with no accessible name — a toolbar search box, an editor installed in a table cell — matched the rule the moment it
+// was emptied, its name and its text both being "", and fell all the way past every case of axNodeValue to report no
+// value at all: AppKit then drops AXValue from the attribute list entirely, so an empty AXTextField stopped answering
+// the one attribute it exists to answer and started again as soon as a character was typed into it.
+func axTextIsValue(n *accessibility.Node) bool {
+	return n.Text != nil && (n.Text.Text == "" || !axHasLabel(n) || n.Name != n.Text.Text)
 }
 
 // axHelpFor returns what an element answers as its help, the AXHelp an assistive technology speaks after the label and
@@ -1200,7 +1349,7 @@ func axNodeValue(n *accessibility.Node) objc.ID {
 		return NSNumberFromInt64(int64(n.Level))
 	case axValueIsFraction(n):
 		return NSNumberFromFloat64(axFractionOf(n))
-	case n.Text != nil:
+	case axTextIsValue(n):
 		return NSStringFromGo(n.Text.Text)
 	case n.HasNumber:
 		return NSNumberFromFloat64(n.Number)
@@ -1213,7 +1362,8 @@ func axNodeValue(n *accessibility.Node) objc.ID {
 		// that the two can never disagree: a node whose name is reported as neither a label nor a value would be
 		// announced as nothing at all, while the same node says its name on both other platforms. A disclosure
 		// triangle is withheld a label too, but it never reaches this case — its Pressed flag is its value, decided
-		// above.
+		// above. A label reaches it only when it drew no text at all: any TextInfo it carries is answered by the
+		// case above, empty text included (see axTextIsValue).
 		return NSStringFromGo(n.Name)
 	default:
 		return 0

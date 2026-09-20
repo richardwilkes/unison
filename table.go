@@ -2730,9 +2730,16 @@ func (t *Table[T]) axSelectOnly(id tid.TID) {
 // attached again, exactly as it is to hand it a mouse event, so that the panel the request is for exists and can reach
 // its window; the panel is then found at the position within the cell it was described at. A widget that takes the
 // keyboard focus while handling the request stays attached as the focused cell, as one that took it from a click would.
+//
+// A key naming a cell of something other than a table — a list keys its rows by index — is refused: the key travels
+// with the request from whatever described the panel, and only the widget that put it there knows how to read it.
 func (t *Table[T]) axPerformInCell(key axCellPanelKey, req accessibility.ActionRequest) bool {
-	row := t.axRowIndexForID(key.Cell.Row)
-	col := key.Cell.Col
+	cellKey, ok := key.Cell.(accessibility.CellKey)
+	if !ok {
+		return false
+	}
+	row := t.axRowIndexForID(cellKey.Row)
+	col := cellKey.Col
 	if row < 0 || col < 0 || col >= len(t.Columns) {
 		return false
 	}

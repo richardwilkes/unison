@@ -241,6 +241,14 @@ func TestInterfaces(t *testing.T) {
 			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
 		},
 		{
+			name: "a label carrying its text hands it over to be read by line, word and character",
+			node: accessibility.Node{
+				Role: role.Label,
+				Text: &accessibility.TextInfo{Text: "Name:"},
+			},
+			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
+		},
+		{
 			name:     "a link leads somewhere",
 			node:     accessibility.Node{Role: role.Link, Name: "Home", URL: "https://example.com/"},
 			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceHyperlink},
@@ -389,9 +397,20 @@ func TestStatesOfCheckables(t *testing.T) {
 func TestStatesOfTextControls(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	field := States(&accessibility.Node{Role: role.TextField, Text: &accessibility.TextInfo{}}, true, false)
+	field := States(&accessibility.Node{
+		Role:    role.TextField,
+		Text:    &accessibility.TextInfo{},
+		Actions: accessibility.ActionSet(0).With(accessibility.SetTextSelection),
+	}, true, false)
 	c.True(field.Has(StateSingleLine))
-	c.True(field.Has(StateSelectableText))
+	c.True(field.Has(StateSelectableText), "a field offers to have a selection put in it")
+	// For a control that is typed into, SELECTABLE_TEXT is worked out from the role and the text, the way EDITABLE
+	// is, rather than from the action set: a disabled field has its actions narrowed to the ones it will still answer,
+	// and the two halves of the text state set have to move together or not at all.
+	c.True(States(&accessibility.Node{Role: role.TextField, Text: &accessibility.TextInfo{}}, true,
+		false).Has(StateSelectableText), "a field whose actions were narrowed still holds a selection")
+	c.False(States(&accessibility.Node{Role: role.ListItem, Text: &accessibility.TextInfo{}}, true,
+		false).Has(StateSelectableText), "a role nothing is read through by caret does not claim one")
 	c.True(field.Has(StateEditable))
 	c.False(field.Has(StateMultiLine))
 	locked := States(&accessibility.Node{Role: role.TextField, ReadOnly: true, Text: &accessibility.TextInfo{}}, true,
@@ -402,7 +421,11 @@ func TestStatesOfTextControls(t *testing.T) {
 	c.True(area.Has(StateMultiLine))
 	c.True(area.Has(StateEditable))
 	c.False(area.Has(StateSingleLine))
-	document := States(&accessibility.Node{Role: role.Document, Text: &accessibility.TextInfo{}}, true, false)
+	document := States(&accessibility.Node{
+		Role:    role.Document,
+		Text:    &accessibility.TextInfo{},
+		Actions: accessibility.ActionSet(0).With(accessibility.SetTextSelection),
+	}, true, false)
 	c.True(document.Has(StateMultiLine))
 	c.True(document.Has(StateSelectableText))
 	c.False(document.Has(StateEditable), "a document is never editable")
@@ -420,8 +443,9 @@ func TestStatesOfWrappingTextControls(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	wrapped := States(&accessibility.Node{
-		Role: role.TextField,
-		Text: &accessibility.TextInfo{Text: "a long line that wraps", Multiline: true},
+		Role:    role.TextField,
+		Text:    &accessibility.TextInfo{Text: "a long line that wraps", Multiline: true},
+		Actions: accessibility.ActionSet(0).With(accessibility.SetTextSelection),
 	}, true, false)
 	c.True(wrapped.Has(StateMultiLine), "a wrapping field lays its content out over more than one line")
 	c.False(wrapped.Has(StateSingleLine))
@@ -472,6 +496,45 @@ func TestStatesOfTextControlsWithNoText(t *testing.T) {
 	spin := States(&accessibility.Node{Role: role.SpinButton, Protected: true}, true, false)
 	c.False(spin.Has(StateSelectableText))
 	c.False(spin.Has(StateEditable))
+}
+
+// TestStatesOfALabelCarryingItsText covers the states of static text, which a label is: it is read by line, word and
+// character like the content of a field, but there is no caret in it and nothing about it is typed into. A label that
+// claimed EDITABLE would have Orca offer to type into a piece of the window that cannot take the focus.
+func TestStatesOfALabelCarryingItsText(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	label := &accessibility.Node{Role: role.Label, Text: &accessibility.TextInfo{Text: "Name:"}}
+	set := States(label, true, false)
+	c.True(set.Has(StateSingleLine), "a label is laid out over the one line it was drawn on")
+	c.False(set.Has(StateSelectableText), "nothing selects within a label, so it does not offer to")
+	c.False(set.Has(StateMultiLine))
+	c.False(set.Has(StateEditable), "static text is never typed into")
+	c.False(supportsEditableText(label))
+	interfaces := Interfaces(label, false)
+	c.False(slices.Contains(interfaces, InterfaceEditableText))
+	c.False(slices.Contains(interfaces, InterfaceHypertext), "a label's text is nobody's link")
+	// A label drawn by this toolkit lays its title out on one line and never reports otherwise, so nothing in the root
+	// package produces the multi-line answer today. It is asserted all the same because the states are read from the
+	// text rather than written down per role: a label that does wrap, whenever one arrives, describes itself the way
+	// every other text-bearing node does, and this is what holds that open.
+	label.Text.Multiline = true
+	c.True(States(label, true, false).Has(StateMultiLine))
+
+	// A list item is not static text: the words a reader moves through live on the label within it, so an item that
+	// happens to carry text is given no line states to describe text it does not lay out itself.
+	item := &accessibility.Node{Role: role.ListItem, Text: &accessibility.TextInfo{Text: "Item one"}}
+	c.True(slices.Contains(Interfaces(item, false), InterfaceText), "its text is still readable")
+	itemStates := States(item, true, false)
+	c.False(itemStates.Has(StateSingleLine))
+	c.False(itemStates.Has(StateMultiLine))
+	c.False(itemStates.Has(StateSelectableText))
+
+	// A label that publishes no text of its own has nothing to say about lines either.
+	plain := States(&accessibility.Node{Role: role.Label, Name: "Name:"}, true, false)
+	c.False(plain.Has(StateSingleLine))
+	c.False(plain.Has(StateMultiLine))
+	c.False(plain.Has(StateSelectableText))
 }
 
 func TestStatesOfCollections(t *testing.T) {
@@ -653,7 +716,7 @@ func TestTextInterfaceFromATextualValue(t *testing.T) {
 	}{
 		{
 			name:     "a popup button reports the item it has chosen",
-			node:     accessibility.Node{Role: role.PopupButton, Value: "Weekly"},
+			node:     accessibility.Node{Role: role.PopupButton, Value: testChosenValue},
 			expected: []string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceText},
 		},
 		{
@@ -692,7 +755,7 @@ func TestTextInterfaceFromATextualValue(t *testing.T) {
 	}
 	// The states that describe text are not claimed for a synthesized one: they describe a control the user is inside,
 	// with a caret and a selection, which a value is not.
-	set := States(&accessibility.Node{Role: role.ComboBox, Value: "Weekly"}, true, false)
+	set := States(&accessibility.Node{Role: role.ComboBox, Value: testChosenValue}, true, false)
 	c.False(set.Has(StateEditable))
 	c.False(set.Has(StateSelectableText))
 	c.False(set.Has(StateSingleLine))
@@ -827,15 +890,27 @@ func TestStatesOfReadOnlyTextBlocks(t *testing.T) {
 		{name: "a table cell", role: role.Cell},
 		{name: "a column header", role: role.ColumnHeader},
 	} {
+		// A block of a document offers the caret and the selection its reader moves through it with, which is what
+		// markdown_accessibility.go publishes on every one of them, and is what SELECTABLE_TEXT says.
 		block := accessibility.Node{
 			Role:     one.role,
 			ReadOnly: true,
 			Text:     &accessibility.TextInfo{Text: "a line of it"},
+			Actions:  accessibility.ActionSet(0).With(accessibility.SetTextSelection),
 		}
 		set := States(&block, true, false)
 		c.True(set.Has(StateSingleLine), "%s laid out over one line", one.name)
 		c.False(set.Has(StateMultiLine), "%s", one.name)
 		c.True(set.Has(StateSelectableText), "%s can have a selection put in it", one.name)
+		// For a block that is only read, the state follows the offer: a heading built out of a label and a table's
+		// column header share these roles with a document's blocks, carry text of their own, and have no caret to
+		// move, so a block without the offer claims no selection an assistive technology is then refused.
+		unselectable := block
+		unselectable.Actions = accessibility.ActionSet(0)
+		c.False(States(&unselectable, true, false).Has(StateSelectableText),
+			"%s that takes no selection does not claim it does", one.name)
+		c.False(States(&accessibility.Node{Role: one.role, ReadOnly: true}, true, false).Has(StateSelectableText),
+			"%s carrying no text has no selection to offer", one.name)
 		c.True(set.Has(StateReadOnly), "%s cannot be changed", one.name)
 		c.False(set.Has(StateEditable), "%s is not typed into", one.name)
 		c.False(supportsEditableText(&block), "%s", one.name)
@@ -844,7 +919,8 @@ func TestStatesOfReadOnlyTextBlocks(t *testing.T) {
 		wrapped := States(&block, true, false)
 		c.True(wrapped.Has(StateMultiLine), "%s laid out over several lines", one.name)
 		c.False(wrapped.Has(StateSingleLine), "%s", one.name)
-		c.Equal(stateNameMultiLine, lineStateName(&block), "%s announces the line count it has arrived at", one.name)
+		c.True(slices.Contains(textStateNames(&block), stateNameMultiLine),
+			"%s announces the line count it has arrived at", one.name)
 	}
 	// A block that carries no text has neither state, and so has a role that is text-like but holds nothing.
 	empty := States(&accessibility.Node{Role: role.Paragraph, ReadOnly: true}, true, false)
@@ -941,4 +1017,27 @@ func TestDocumentHasNoTextInterface(t *testing.T) {
 	c.False(set.Has(StateSelectableText))
 	c.False(set.Has(StateMultiLine))
 	c.False(set.Has(StateSingleLine))
+}
+
+// TestDisablingAFieldKeepsTheTextStates covers the half of the text state set that used to follow the action set. A
+// disabled node has its actions narrowed by axSnapshot to the one it will still answer, so a SELECTABLE_TEXT worked out
+// from [accessibility.SetTextSelection] was retracted by nothing more than the field being disabled, while EDITABLE —
+// which is worked out from the role and the text — stayed. No ATK toolkit sends that retraction: an insensitive
+// GtkEntry keeps both, since what has gone is the ability to reach the control at all rather than anything about the
+// text in it.
+func TestDisablingAFieldKeepsTheTextStates(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	enabled := &accessibility.Node{
+		Role: role.TextField, Text: &accessibility.TextInfo{Text: testFieldValue},
+		Actions: accessibility.ActionSet(0).With(accessibility.Focus, accessibility.SetTextSelection),
+	}
+	disabled := *enabled
+	disabled.Disabled = true
+	disabled.Actions = accessibility.ActionSet(0).With(accessibility.ScrollIntoView)
+	set := States(&disabled, true, false)
+	c.True(set.Has(StateSelectableText), "a disabled field still holds text a selection could be put in")
+	c.True(set.Has(StateEditable), "as the other half of the same set has always said")
+	c.True(set.Has(StateSingleLine))
+	c.Nil(attributeStateChanges(enabled, &disabled), "so disabling it retracts none of them")
 }
