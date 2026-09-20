@@ -335,6 +335,18 @@ func TestPatterns(t *testing.T) {
 			node:     &accessibility.Node{Role: role.ListItem, Text: &accessibility.TextInfo{Text: "one"}},
 			patterns: PatternSelectionItem,
 		},
+		// A row holding one widget with a state reports that state as its own value, which a client can only read
+		// through the Value pattern — the same bargain the cell below makes.
+		{
+			node:     &accessibility.Node{Role: role.ListItem, Value: "checked"},
+			patterns: PatternSelectionItem | PatternValue,
+		},
+		{
+			node: &accessibility.Node{
+				Role: role.ListItem, Value: "checked", Text: &accessibility.TextInfo{Text: "one"},
+			},
+			patterns: PatternSelectionItem | PatternValue,
+		},
 		{node: &accessibility.Node{Role: role.Tab}, patterns: PatternSelectionItem},
 		{node: &accessibility.Node{Role: role.Table}, patterns: PatternGrid | PatternTable | PatternSelection},
 		{node: &accessibility.Node{Role: role.Tree}, patterns: PatternGrid | PatternTable | PatternSelection},
@@ -473,10 +485,15 @@ func TestProvidedPatternsTextOwner(t *testing.T) {
 	c.Equal("", ValueString(filled.Node(fieldID)))
 }
 
-// TestNameString verifies the one place a node's name is not Node.Name: the pieces that are nothing but the text
+// TestNameString verifies the two places a node's name is not Node.Name: the pieces that are nothing but the text
 // drawn in them — a paragraph, a code block, a cell and a plain column header — whose name is their own content when
-// the widget gave them none. Narrator's item navigation walks the control view and speaks each element's name, so a
-// paragraph with no name at all would be announced as a bare "text".
+// the widget gave them none, and the list items and cells that describe what they hold as elements of their own,
+// whose name is built from those elements. Narrator's item navigation walks the control view and speaks each
+// element's name, and NVDA and JAWS speak the name and the control type and nothing else, so a paragraph with no name
+// is announced as a bare "text" and a list row with none as a bare "list item".
+//
+// The first group needs no tree, so it is asked with none, which is also what proves that a missing snapshot falls
+// back to the node's own name rather than panicking.
 func TestNameString(t *testing.T) {
 	c := check.New(t)
 	for i, one := range []struct {
@@ -524,9 +541,106 @@ func TestNameString(t *testing.T) {
 		{node: &accessibility.Node{Role: role.Paragraph, Text: &accessibility.TextInfo{}}},
 		{node: &accessibility.Node{Role: role.Button, Name: "Close"}, expected: "Close"},
 	} {
-		c.Equal(one.expected, NameString(one.node), "case %d (%s)", i, one.node.Role.Key())
+		c.Equal(one.expected, NameString(nil, one.node), "case %d (%s)", i, one.node.Role.Key())
 	}
-	c.Equal("", NameString(nil))
+	c.Equal("", NameString(nil, nil))
+
+	// A list row or a cell the widget left unnamed is read as what it holds. See contentNameTree for the shapes.
+	tree := contentNameTree()
+	for _, one := range []struct {
+		comment  string
+		id       accessibility.NodeID
+		expected string
+	}{
+		{comment: "one label", id: 3, expected: "Alpha"},
+		{comment: "a label and a check box", id: 5, expected: "Beta checked"},
+		{comment: "an anonymous group wrapping a label", id: 9, expected: "Gamma"},
+		{comment: "a name of its own wins over the content", id: 13, expected: "Explicit"},
+		{comment: "nothing but an ignored child", id: 16, expected: ""},
+		// The label names the field beside it, so it is out of the content view and the field reports its text as its
+		// own name; saying both would have the row read as "Name Name".
+		{comment: "a label naming the field beside it", id: 18, expected: "Name"},
+		{comment: "a nested list item", id: 21, expected: "Inner"},
+		{comment: "a cell holding a label", id: 27, expected: "Delta"},
+		{comment: "a cell carrying text of its own", id: 29, expected: "42"},
+	} {
+		c.Equal(one.expected, NameString(tree, tree.Node(one.id)), "node %d (%s)", one.id, one.comment)
+	}
+
+	// Without a tree there is nothing to build a name from, so the node's own name is all there is to answer with.
+	c.Equal("", NameString(nil, tree.Node(3)))
+	c.Equal("Explicit", NameString(nil, tree.Node(13)))
+}
+
+// contentNameTree builds the rows and cells the content-naming tests read:
+//
+//	1 window
+//	├─ 2 list
+//	│  ├─ 3 list-item                                  "Alpha"
+//	│  │  └─ 4 label "Alpha"
+//	│  ├─ 5 list-item                                  "Beta checked"
+//	│  │  ├─ 6 label "Beta"
+//	│  │  └─ 7 check-box [value "checked"]
+//	│  ├─ 9 list-item                                  "Gamma"
+//	│  │  └─ 10 group
+//	│  │     └─ 11 label "Gamma"
+//	│  ├─ 13 list-item "Explicit"                      "Explicit"
+//	│  │  └─ 14 label "Inner"
+//	│  ├─ 16 list-item                                 ""
+//	│  │  └─ 17 label "Hidden" [ignored]
+//	│  ├─ 18 list-item                                 "Name"
+//	│  │  ├─ 19 label "Name"
+//	│  │  └─ 20 text-field "Name" [labeled by 19]
+//	│  └─ 21 list-item                                 "Inner"
+//	│     └─ 22 list
+//	│        └─ 23 list-item                           "Inner"
+//	│           └─ 24 label "Inner"
+//	└─ 25 table
+//	   └─ 26 row
+//	      ├─ 27 cell                                   "Delta"
+//	      │  └─ 28 label "Delta"
+//	      └─ 29 cell [text "42"]                       "42"
+//
+// The ignored child of 16 is spliced away by UnignoredChildren, which leaves that row with nothing to be named by;
+// the group above 11 is anonymous, so the walk goes through it to the label inside.
+func contentNameTree() *accessibility.Tree {
+	return newTestTree(1, 0,
+		&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2, 25}},
+		&accessibility.Node{
+			ID: 2, Role: role.List, Children: []accessibility.NodeID{3, 5, 9, 13, 16, 18, 21},
+		},
+		&accessibility.Node{ID: 3, Role: role.ListItem, Children: []accessibility.NodeID{4}},
+		&accessibility.Node{ID: 4, Role: role.Label, Name: "Alpha", Text: &accessibility.TextInfo{Text: "Alpha"}},
+		&accessibility.Node{ID: 5, Role: role.ListItem, Children: []accessibility.NodeID{6, 7}},
+		&accessibility.Node{ID: 6, Role: role.Label, Name: "Beta", Text: &accessibility.TextInfo{Text: "Beta"}},
+		&accessibility.Node{ID: 7, Role: role.CheckBox, HasCheck: true, Checked: checkenum.On, Value: "checked"},
+		&accessibility.Node{ID: 9, Role: role.ListItem, Children: []accessibility.NodeID{10}},
+		&accessibility.Node{ID: 10, Role: role.Group, Children: []accessibility.NodeID{11}},
+		&accessibility.Node{ID: 11, Role: role.Label, Name: "Gamma", Text: &accessibility.TextInfo{Text: "Gamma"}},
+		&accessibility.Node{ID: 13, Role: role.ListItem, Name: "Explicit", Children: []accessibility.NodeID{14}},
+		&accessibility.Node{ID: 14, Role: role.Label, Name: "Inner", Text: &accessibility.TextInfo{Text: "Inner"}},
+		&accessibility.Node{ID: 16, Role: role.ListItem, Children: []accessibility.NodeID{17}},
+		&accessibility.Node{
+			ID: 17, Role: role.Label, Name: "Hidden", Ignored: true, Text: &accessibility.TextInfo{Text: "Hidden"},
+		},
+		&accessibility.Node{ID: 18, Role: role.ListItem, Children: []accessibility.NodeID{19, 20}},
+		&accessibility.Node{ID: 19, Role: role.Label, Name: "Name", Text: &accessibility.TextInfo{Text: "Name"}},
+		&accessibility.Node{
+			ID: 20, Role: role.TextField, Name: "Name", LabeledBy: []accessibility.NodeID{19},
+			Text: &accessibility.TextInfo{Text: "Fred"},
+		},
+		&accessibility.Node{ID: 21, Role: role.ListItem, Children: []accessibility.NodeID{22}},
+		&accessibility.Node{ID: 22, Role: role.List, Children: []accessibility.NodeID{23}},
+		&accessibility.Node{ID: 23, Role: role.ListItem, Children: []accessibility.NodeID{24}},
+		&accessibility.Node{ID: 24, Role: role.Label, Name: "Inner", Text: &accessibility.TextInfo{Text: "Inner"}},
+		&accessibility.Node{ID: 25, Role: role.Table, RowCount: 1, Children: []accessibility.NodeID{26}},
+		&accessibility.Node{ID: 26, Role: role.Row, RowIndex: 0, Children: []accessibility.NodeID{27, 29}},
+		&accessibility.Node{ID: 27, Role: role.Cell, RowIndex: 0, Children: []accessibility.NodeID{28}},
+		&accessibility.Node{ID: 28, Role: role.Label, Name: "Delta", Text: &accessibility.TextInfo{Text: "Delta"}},
+		&accessibility.Node{
+			ID: 29, Role: role.Cell, RowIndex: 0, ColumnIndex: 1, Text: &accessibility.TextInfo{Text: "42"},
+		},
+	)
 }
 
 // TestPatternSet verifies the bookkeeping around the pattern bitset: that every pattern a provider implements can be
@@ -2034,6 +2148,82 @@ func TestDecideRaisesLabelText(t *testing.T) {
 		"the pattern's arrival is reported")
 	c.True(slices.Contains(gained, raiseProperty(2, IsTextPattern2AvailablePropertyId)))
 	c.True(slices.Contains(gained, raiseProperty(2, NamePropertyId)))
+}
+
+// contentRowTree builds a list of two rows, one named by what it holds and one the widget named itself:
+//
+//	1 window [focused]
+//	└─ 2 list
+//	   ├─ 3 list-item            named "Alpha" by the label within it
+//	   │  └─ 4 label "Alpha"
+//	   └─ 5 list-item "Kept"     named by the widget, whatever it holds
+//	      └─ 6 label "Beta"
+func contentRowTree() *accessibility.Tree {
+	return newTestTree(1, 0,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Window", Focused: true, Children: []accessibility.NodeID{2},
+		},
+		&accessibility.Node{ID: 2, Role: role.List, Children: []accessibility.NodeID{3, 5}},
+		&accessibility.Node{ID: 3, Role: role.ListItem, Selectable: true, Children: []accessibility.NodeID{4}},
+		&accessibility.Node{ID: 4, Role: role.Label, Name: "Alpha", Text: &accessibility.TextInfo{Text: "Alpha"}},
+		&accessibility.Node{
+			ID: 5, Role: role.ListItem, Name: "Kept", Selectable: true, Children: []accessibility.NodeID{6},
+		},
+		&accessibility.Node{ID: 6, Role: role.Label, Name: "Beta", Text: &accessibility.TextInfo{Text: "Beta"}},
+	)
+}
+
+// TestDecideRaisesContentName verifies that a list item named by the elements it holds is reported as renamed whenever
+// those elements say something different. No event names the item — the events name the label or the child that
+// changed — so a client that cached the name would go on speaking the old row for the life of the window, which is
+// what a screen reader reads a list with.
+func TestDecideRaisesContentName(t *testing.T) {
+	c := check.New(t)
+
+	// A label's text edited beneath the row. The label reports its own rename and its own text change; the row
+	// reports the name it now makes.
+	edited := contentRowTree()
+	edited.Node(4).Name = "Renamed"
+	edited.Node(4).Text = &accessibility.TextInfo{Text: "Renamed"}
+	c.Equal([]Raise{
+		raiseProperty(4, NamePropertyId),
+		raiseEvent(4, Text_TextChangedEventId),
+		raiseProperty(3, NamePropertyId),
+	}, DecideRaises(contentRowTree(), edited, accessibility.Diff(contentRowTree(), edited)))
+
+	// The row the widget named keeps that name however its label reads, so nothing is reported about it.
+	other := contentRowTree()
+	other.Node(6).Name = "Changed"
+	other.Node(6).Text = &accessibility.TextInfo{Text: "Changed"}
+	raises := DecideRaises(contentRowTree(), other, accessibility.Diff(contentRowTree(), other))
+	c.False(slices.Contains(raises, raiseProperty(5, NamePropertyId)))
+
+	// A child arriving beneath the row adds what it says to the name. The structure change tells a client to read the
+	// children again, which says nothing at all about what the row is called.
+	grown := contentRowTree()
+	grown.Node(3).Children = []accessibility.NodeID{4, 7}
+	grown.Nodes[7] = &accessibility.Node{
+		ID: 7, Parent: 3, Role: role.Label, Name: "Extra", Text: &accessibility.TextInfo{Text: "Extra"},
+	}
+	c.Equal("Alpha Extra", NameString(grown, grown.Node(3)))
+	c.True(slices.Contains(DecideRaises(contentRowTree(), grown, accessibility.Diff(contentRowTree(), grown)),
+		raiseProperty(3, NamePropertyId)), "a child arriving renames the row")
+
+	// A publish that changed nothing beneath either row reports nothing about them, even though the batch holds an
+	// event that could have.
+	renamed := contentRowTree()
+	renamed.Node(1).Name = "Retitled"
+	c.Equal([]Raise{raiseProperty(1, NamePropertyId)},
+		DecideRaises(contentRowTree(), renamed, accessibility.Diff(contentRowTree(), renamed)))
+
+	// A row that gains a value gains the Value pattern with it, and a client that cached the availability has to be
+	// told before it will ask for IValueProvider at all. The name is unchanged, so nothing is said about it.
+	valued := contentRowTree()
+	valued.Node(3).Value = "checked"
+	c.Equal([]Raise{
+		raiseProperty(3, IsValuePatternAvailablePropertyId),
+		raiseProperty(3, ValueValuePropertyId),
+	}, DecideRaises(contentRowTree(), valued, accessibility.Diff(contentRowTree(), valued)))
 }
 
 // TestDecideRaisesDocumentText verifies the two events UI Automation has for text, which are raised on the elements

@@ -484,8 +484,23 @@ func rolePatterns(n *accessibility.Node) PatternSet {
 		return 0
 	case role.List, role.TabList:
 		return PatternSelection
-	case role.ListItem, role.Tab:
+	case role.Tab:
 		return PatternSelectionItem
+	case role.ListItem:
+		// A list row that holds a single stateful widget reports that widget's state as its own value — List.axAddRow
+		// clears such a row's name and fills in its value precisely so that a change to the widget is a change to the
+		// row — and the Value pattern is the only way a client can read it. The pattern is gated on there being a
+		// value, since a row with nothing to report through it would answer the empty string, and it is read-only: a
+		// row offers no SetValue action, which is what IsValueReadOnly answers from. A cell does the same, a few
+		// cases below.
+		//
+		// The text a list item inside a document carries grants it nothing: what a list item hands out is what it is,
+		// a thing that can be selected, and the words of its paragraph are read through the document that owns them.
+		patterns := PatternSelectionItem
+		if n.Value != "" {
+			patterns |= PatternValue
+		}
+		return patterns
 	case role.Table, role.Tree:
 		return PatternGrid | PatternTable | PatternSelection
 	case role.Row:
@@ -497,8 +512,8 @@ func rolePatterns(n *accessibility.Node) PatternSet {
 		// A cell that holds a single widget reports that widget's state as its own value — Table.axAddRow clears such a
 		// cell's name and fills in its value precisely so that a change to the widget is a change to the cell — and the
 		// Value pattern is the only way a client can read it. The pattern is gated on there being a value, since a cell
-		// whose name carries its content has nothing to report through it, and it is read-only: a cell offers no
-		// SetValue action, which is what IsValueReadOnly answers from.
+		// with nothing to report through it would answer the empty string, and it is read-only: a cell offers no
+		// SetValue action, which is what IsValueReadOnly answers from. A list row does the same, a few cases above.
 		//
 		// A cell that carries text of its own reports it through the Text pattern as well, so that a review cursor can
 		// read the cell by word and character rather than only hear it named. Nothing in the toolkit fills a cell's
@@ -600,14 +615,18 @@ func IsContentElement(t *accessibility.Tree, n *accessibility.Node) bool {
 	}
 }
 
-// NameString returns the text a node answers the Name property with. It is Node.Name for everything but the pieces
-// that are nothing but the text drawn in them — a paragraph, a code block, a table cell and a column header — whose
-// name is their own content when the widget gave them none.
+// NameString returns the text a node answers the Name property with. It is Node.Name for everything but two shapes the
+// widget left without one:
 //
-// Those need it because Narrator steps onto elements as well as reading text: its item navigation walks the control
-// view and speaks each element's name, and a paragraph with no name at all is announced as a bare "text". The content
-// is the only thing there is to say about such a block, and both other adapters say exactly that — AT-SPI reads the
-// block through its Text interface and AppKit through AXValue — so nothing is invented.
+//   - the pieces that are nothing but the text drawn in them — a paragraph, a code block, a table cell and a column
+//     header — whose name is their own content; see namedByItsText.
+//   - a list item or a table cell that describes what it holds as elements of its own, whose name is built from what
+//     those elements say; see namedByItsContent.
+//
+// The first needs it because Narrator steps onto elements as well as reading text: its item navigation walks the
+// control view and speaks each element's name, and a paragraph with no name at all is announced as a bare "text". The
+// content is the only thing there is to say about such a block, and both other adapters say exactly that — AT-SPI reads
+// the block through its Text interface and AppKit through AXValue — so nothing is invented.
 //
 // It is the name and not the value because the name is the one of the two a client reads for an element it has stepped
 // onto. None of the four hands out a Value pattern for its text — a cell's is there only while the widget filled a
@@ -616,15 +635,27 @@ func IsContentElement(t *accessibility.Tree, n *accessibility.Node) bool {
 // not a repetition of it: that is what a client reads the words *through*, character by character, rather than another
 // thing for it to speak whole.
 //
-// A block the widget did name keeps that name. A heading folds its fragments into a name of its own, and a cell that
-// holds one widget is named by the column it sits in, which is more useful than the text drawn in it. A label is not
-// among them either: it always has a name, which is the text it drew unless the application overrode it.
-func NameString(n *accessibility.Node) string {
+// A block the widget did name keeps that name, and a heading folds its fragments into a name of its own rather than
+// being renamed by what it draws. A label is not among them either: it always has a name, which is the text it drew
+// unless the application overrode it.
+func NameString(t *accessibility.Tree, n *accessibility.Node) string {
+	return nameString(t, n, 0)
+}
+
+// nameString answers NameString from a walk that has already gone depth levels deep, which is what bounds the
+// recursion through contentName: an item naming itself from a nested item asks this of that one in turn.
+func nameString(t *accessibility.Tree, n *accessibility.Node, depth int) string {
 	if n == nil {
 		return ""
 	}
-	if n.Name == "" && namedByItsText(n) {
-		return n.Text.Text
+	if n.Name == "" {
+		switch {
+		case namedByItsText(n):
+			return n.Text.Text
+		case namedByItsContent(t, n):
+			return contentName(t, n, depth)
+		default:
+		}
 	}
 	return n.Name
 }
@@ -649,6 +680,93 @@ func namedByItsText(n *accessibility.Node) bool {
 	default:
 		return false
 	}
+}
+
+// namedByItsContent reports whether a node's name is built from the elements it holds, which is what contentName
+// answers with and what makes any change beneath such a node a change of its name. A list row and a table cell are the
+// two: each describes whatever the application drew it with — a label, a check box, a box full of both — as elements
+// of its own, and each clears the name the builder gave it as soon as it has such content, so that a client reads what
+// is there rather than a summary of it stuck on top. See the cell handling in List.axAddRow and Table.axAddRow.
+//
+// This adapter has to build a name from that content because UI Automation has no accname algorithm: it never derives
+// an element's name from what lies beneath it, and NVDA, JAWS and Narrator speak the Name property and the control
+// type and nothing else for an item they step onto. Left as the snapshot has it, every list row would be read as a
+// bare "list item" and every cell holding a label as blank. Native Windows controls answer the same way this does —
+// a list-view item and a grid cell both report the text of what they hold as the item's name — so nothing here is
+// invented either. The other two adapters need none of it: AT-SPI and AppKit both have a client read the row's
+// content as children it speaks in its own right.
+//
+// A node named by its own text is answered from that text instead, which is cheaper and more exact than a walk, and a
+// name the widget gave wins over both — NameString asks this only of a node that has none.
+func namedByItsContent(t *accessibility.Tree, n *accessibility.Node) bool {
+	if t == nil || n == nil || namedByItsText(n) {
+		return false
+	}
+	switch n.Role {
+	case role.ListItem, role.Cell:
+		return true
+	default:
+		return false
+	}
+}
+
+// contentName builds the name of a list item or a cell out of the elements it holds: what each of them has to say, in
+// the order they are drawn, joined by a single space. That is the order a sighted person reads the row in, and the
+// order the native controls report their own items in.
+//
+// Each element is asked for the first thing it has of its own: its name, which for a nested item is another walk like
+// this one, then its value, then the text it draws. One that says something is not descended into, since what it said
+// is what it holds; one that says nothing is, so an anonymous box wrapping a label contributes that label. The content
+// view is what is walked, which leaves out the pieces a client is told to ignore anyway — a separator, a scroll bar, a
+// tooltip, and a label that names another element beside it, whose text that element already reports as its own name,
+// so a label and the field it names inside one row are not spoken twice. See IsContentElement.
+//
+// depth is how far the walk that reached this node had already gone. It bounds the recursion together with the set of
+// ids already visited, so that a malformed tree — one whose children form a cycle — cannot spin here forever.
+func contentName(t *accessibility.Tree, n *accessibility.Node, depth int) string {
+	return strings.Join(appendContentPieces(t, nil, n.ID, depth, make(map[accessibility.NodeID]bool)), " ")
+}
+
+// appendContentPieces appends what each element beneath the node with the given id has to say, in tree order. See
+// contentName, which is the only thing that asks for this.
+func appendContentPieces(t *accessibility.Tree, pieces []string, id accessibility.NodeID, depth int,
+	visited map[accessibility.NodeID]bool,
+) []string {
+	if depth >= maxTreeDepth || visited[id] {
+		return pieces
+	}
+	visited[id] = true
+	for _, childID := range t.UnignoredChildren(id) {
+		child := t.Node(childID)
+		if child == nil || visited[childID] {
+			continue
+		}
+		if piece := contentPiece(t, child, depth+1); piece != "" {
+			visited[childID] = true
+			pieces = append(pieces, piece)
+			continue
+		}
+		pieces = appendContentPieces(t, pieces, childID, depth+1, visited)
+	}
+	return pieces
+}
+
+// contentPiece returns what one element beneath a list item or a cell contributes to the name being built from it, or
+// the empty string when it has nothing of its own and what it holds is what should be looked at instead.
+func contentPiece(t *accessibility.Tree, n *accessibility.Node, depth int) string {
+	if !IsContentElement(t, n) {
+		return ""
+	}
+	if name := nameString(t, n, depth); name != "" {
+		return name
+	}
+	if n.Value != "" {
+		return n.Value
+	}
+	if n.Text != nil {
+		return n.Text.Text
+	}
+	return ""
 }
 
 // HasKeyboardFocus reports whether a node answers the HasKeyboardFocus property with true. At most one element of a
@@ -1081,10 +1199,15 @@ func (r Raise) String() string {
 //     label, a heading, a plain cell or column header. A client answers TextChanged by reading the text again and
 //     TextSelectionChanged by reading the selection, both through that pattern. An edit is reported through every
 //     channel the element has — the text event, the value property for an element that also hands out Value, and the
-//     name when the name is the text itself; see NameString — because which of them a client is listening to depends
-//     on how it is reading the element. An element with no Text pattern, such as a paragraph whose words a document
-//     owns, reports only the ones it has, and a caret move on it reports nothing at all, since it changes no property
-//     a client could read back.
+//     name when the name is the text itself or is built from the content that was edited; see NameString and
+//     contentNames — because which of them a client is listening to depends on how it is reading the element. An
+//     element with no Text pattern, such as a paragraph whose words a document owns, reports only the ones it has, and
+//     a caret move on it reports nothing at all, since it changes no property a client could read back.
+//   - A list item or a cell the widget left unnamed is named by the elements it holds, so anything beneath it that
+//     changes what those say renames it: a label's text edited, a child arriving, leaving or ceasing to be ignored, a
+//     widget's value changing. No event reports that, since each of them names the node that changed rather than the
+//     item above it, so a batch carrying any event that could change content has the name every such item computes
+//     compared between the two snapshots; see contentNames.
 //   - Duplicates are dropped. One text edit arrives as a value change and as the deletion and the insertion that made
 //     it, and all three ask for the same value property, so without this a client would hear about one edit three
 //     times.
@@ -1124,7 +1247,37 @@ func DecideRaises(old, cur *accessibility.Tree, events []accessibility.Event) []
 	for _, event := range events {
 		d.translate(event)
 	}
+	if changesContent(events) {
+		d.contentNames()
+	}
 	return d.raises
+}
+
+// changesContent reports whether a batch holds any event that could change what a list item or a cell named by its
+// content is called. Those are the ones that alter what some element beneath such an item has to say — its name, its
+// value or its text — and the ones that alter which elements are beneath it at all: a child arriving or leaving, a
+// list of children changing, and an Ignored flag flipping, which splices a node into or out of the tree a client sees
+// without anyone's list of children changing. An attributes change is among them because it is the only event that
+// reports a relation changing, and a label that starts or stops naming another element in the row joins or leaves the
+// content view the name is built from; see IsContentElement.
+//
+// This is what keeps the comparison off the common publishes: one that only moved the focus, resized the window or
+// reported a selection pays a scan of the batch and nothing more.
+func changesContent(events []accessibility.Event) bool {
+	for _, event := range events {
+		switch event.Kind {
+		case accessibility.NameChanged, accessibility.ValueChanged, accessibility.TextInserted,
+			accessibility.TextDeleted, accessibility.ChildrenChanged, accessibility.NodeAdded,
+			accessibility.NodeRemoved, accessibility.AttributesChanged:
+			return true
+		case accessibility.StateChanged:
+			if event.State == accessibility.StateIgnored {
+				return true
+			}
+		default:
+		}
+	}
+	return false
 }
 
 // decider holds the state DecideRaises threads through the translation of one batch of events.
@@ -1339,6 +1492,42 @@ func (d *decider) patternAvailability(id accessibility.NodeID) {
 			d.property(id, info.available)
 		}
 	}
+}
+
+// contentNames records a name change on every list item and cell that is named by the elements it holds and whose
+// name those elements now make differently than they did.
+//
+// It is a comparison of the two snapshots rather than a translation of any one event because there is no event to
+// translate: such an item's name is built from everything beneath it, so a label's text being edited, a child
+// arriving or leaving, an Ignored flag flipping or a widget's value changing renames an item that no event names at
+// all. Chasing each event kind up the tree would mean knowing, for every one of them, which ancestors could be named
+// by the node it reports; asking both snapshots what the name is instead cannot miss one, and a client that cached the
+// name would otherwise go on speaking the old row for the life of the window.
+//
+// Only the items both snapshots hold are looked at, and only while at least one of the two left the name empty: an
+// item the widget names in both is answered from that name whatever lies beneath it, and one that has just arrived or
+// departed is reported structurally, with nothing cached about it to correct. An item that flipped between a name of
+// its own and a computed one is covered by that test, since one of the two sides is the empty name.
+//
+// The current snapshot is walked in tree order, so that the calls come out in the same order every time; see
+// DecideRaises, which is pure. The cost is that walk plus one name computed from each snapshot per list item and cell,
+// paid only for a batch that changesContent admits.
+func (d *decider) contentNames() {
+	if d.old == nil {
+		return
+	}
+	d.cur.Walk(func(cur *accessibility.Node) bool {
+		switch cur.Role {
+		case role.ListItem, role.Cell:
+			old := d.old.Node(cur.ID)
+			if old != nil && (old.Name == "" || cur.Name == "") &&
+				NameString(d.old, old) != NameString(d.cur, cur) {
+				d.property(cur.ID, NamePropertyId)
+			}
+		default:
+		}
+		return true
+	})
 }
 
 // event records an automation event.

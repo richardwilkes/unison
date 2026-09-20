@@ -540,10 +540,12 @@ func (p *Provider) propertyValue(tree *accessibility.Tree, node *accessibility.N
 ) {
 	switch propertyID {
 	case NamePropertyId:
-		// NameString rather than the field, so that the blocks a document is made of are named by their own content
-		// when the widget gave them none: Narrator's item navigation speaks the name of each element it steps onto, and
-		// a paragraph with no name at all is announced as a bare "text".
-		setString(value, NameString(node))
+		// NameString rather than the field, so that the elements the widget left unnamed are named by what they hold:
+		// the blocks a document is made of by their own text, and a list row or a table cell by the elements within
+		// it. Narrator's item navigation speaks the name of each element it steps onto, and neither it nor NVDA nor
+		// JAWS derives a name from an element's children, so a paragraph with no name is announced as a bare "text"
+		// and a row with none as a bare "list item".
+		setString(value, NameString(tree, node))
 	case HelpTextPropertyId:
 		// HelpText carries the watermark of a field that has no description of its own, which is the conventional place
 		// for it and the only way an unnamed search field is announced as anything but a bare "edit". Description wins
