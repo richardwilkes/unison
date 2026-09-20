@@ -31,16 +31,16 @@ import (
 // WM_GETOBJECT asking for RootObjectId, which nothing but UI Automation sends.
 var (
 	uiautomationcore                        = windows.NewLazySystemDLL("uiautomationcore.dll")
-	clientsAreListeningProc                 = uiautomationcore.NewProc("ClientsAreListening")
-	disconnectProviderProc                  = uiautomationcore.NewProc("DisconnectProvider")
-	getReservedMixedAttributeValueProc      = uiautomationcore.NewProc("GetReservedMixedAttributeValue")
-	getReservedNotSupportedValueProc        = uiautomationcore.NewProc("GetReservedNotSupportedValue")
-	hostProviderFromHwndProc                = uiautomationcore.NewProc("HostProviderFromHwnd")
-	raiseAutomationEventProc                = uiautomationcore.NewProc("RaiseAutomationEvent")
-	raiseAutomationPropertyChangedEventProc = uiautomationcore.NewProc("RaiseAutomationPropertyChangedEvent")
-	raiseNotificationEventProc              = uiautomationcore.NewProc("RaiseNotificationEvent")
-	raiseStructureChangedEventProc          = uiautomationcore.NewProc("RaiseStructureChangedEvent")
-	returnRawElementProviderProc            = uiautomationcore.NewProc("ReturnRawElementProvider")
+	clientsAreListeningProc                 = uiautomationcore.NewProc("UiaClientsAreListening")
+	disconnectProviderProc                  = uiautomationcore.NewProc("UiaDisconnectProvider")
+	getReservedMixedAttributeValueProc      = uiautomationcore.NewProc("UiaGetReservedMixedAttributeValue")
+	getReservedNotSupportedValueProc        = uiautomationcore.NewProc("UiaGetReservedNotSupportedValue")
+	hostProviderFromHwndProc                = uiautomationcore.NewProc("UiaHostProviderFromHwnd")
+	raiseAutomationEventProc                = uiautomationcore.NewProc("UiaRaiseAutomationEvent")
+	raiseAutomationPropertyChangedEventProc = uiautomationcore.NewProc("UiaRaiseAutomationPropertyChangedEvent")
+	raiseNotificationEventProc              = uiautomationcore.NewProc("UiaRaiseNotificationEvent")
+	raiseStructureChangedEventProc          = uiautomationcore.NewProc("UiaRaiseStructureChangedEvent")
+	returnRawElementProviderProc            = uiautomationcore.NewProc("UiaReturnRawElementProvider")
 )
 
 // Rect is a rectangle in screen coordinates, given as an origin plus a size rather than as two corners. Unlike
