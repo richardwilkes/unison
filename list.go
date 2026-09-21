@@ -60,6 +60,7 @@ type List[T any] struct {
 	ListTheme
 	Panel
 	anchor            int
+	lead              int
 	lastSel           int
 	allowMultiple     bool
 	pressed           bool
@@ -76,6 +77,7 @@ func NewList[T any]() *List[T] {
 		Selection:      &bitset.BitSet{},
 		savedSelection: &bitset.BitSet{},
 		anchor:         -1,
+		lead:           -1,
 		lastSel:        -1,
 		allowMultiple:  true,
 	}
@@ -132,6 +134,9 @@ func (l *List[T]) Insert(index int, values ...T) {
 	if l.anchor >= index {
 		l.anchor += len(values)
 	}
+	if l.lead >= index {
+		l.lead += len(values)
+	}
 	l.MarkForLayoutAndRedraw()
 }
 
@@ -148,6 +153,7 @@ func (l *List[T]) Clear() {
 	l.rows = nil
 	l.Selection.Reset()
 	l.anchor = -1
+	l.lead = -1
 	l.MarkForLayoutAndRedraw()
 }
 
@@ -161,6 +167,12 @@ func (l *List[T]) Remove(index int) {
 			l.anchor = -1
 		case l.anchor > index:
 			l.anchor--
+		}
+		switch {
+		case l.lead == index:
+			l.lead = -1
+		case l.lead > index:
+			l.lead--
 		}
 		for {
 			if index = l.Selection.NextSet(index); index == -1 {
@@ -184,6 +196,12 @@ func (l *List[T]) RemoveRange(from, to int) {
 			l.anchor = -1
 		case l.anchor > to:
 			l.anchor -= delta
+		}
+		switch {
+		case l.lead >= from && l.lead <= to:
+			l.lead = -1
+		case l.lead > to:
+			l.lead -= delta
 		}
 		for {
 			if from = l.Selection.NextSet(from); from == -1 {
@@ -372,6 +390,9 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods mod
 	l.lastSel = -1
 	l.wasDragged = false
 	if index, _ := l.rowAt(where.Y); index >= 0 {
+		// Every branch below acts on the selection, including the one that only notes the row for the mouse up to
+		// settle, so the row the person is on is this one whichever way the press is modified.
+		l.setLead(index)
 		switch {
 		case mods.DiscontiguousSelectionDown():
 			if l.allowMultiple {
@@ -422,6 +443,7 @@ func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mods mod.Modifiers) 
 		l.wasDragged = true
 		l.Selection.Copy(l.savedSelection)
 		if index, _ := l.rowAt(where.Y); index >= 0 {
+			l.setLead(index)
 			if l.allowMultiple {
 				if l.anchor == -1 {
 					l.anchor = index
@@ -456,6 +478,7 @@ func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 			l.Selection.Reset()
 			l.Selection.Set(l.lastSel)
 			l.anchor = l.lastSel
+			l.setLead(l.lastSel)
 			l.MarkForRedraw()
 		}
 		if l.NewSelectionCallback != nil && !l.Selection.Equal(l.savedSelection) {
@@ -483,6 +506,7 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 			first = max(l.Selection.FirstSet()-1, 0)
 		}
 		l.Select(mods.ShiftDown(), first)
+		l.setLead(first)
 		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(first))
 	case KeyDown:
@@ -491,14 +515,17 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 			last = len(l.rows) - 1
 		}
 		l.Select(mods.ShiftDown(), last)
+		l.setLead(last)
 		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(last))
 	case KeyHome:
 		l.Select(mods.ShiftDown(), 0)
+		l.setLead(0)
 		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(0))
 	case KeyEnd:
 		l.Select(mods.ShiftDown(), len(l.rows)-1)
+		l.setLead(len(l.rows) - 1)
 		SafeCall(l.NewSelectionCallback)
 		l.ScrollRectIntoView(l.RowRect(len(l.rows) - 1))
 	default:
@@ -514,7 +541,19 @@ func (l *List[T]) CanSelectAll() bool {
 
 // SelectAll selects all of the rows in the list.
 func (l *List[T]) SelectAll() {
+	keep := l.lead
 	l.SelectRange(0, len(l.rows)-1, false)
+	if len(l.rows) == 0 {
+		return
+	}
+	// The row the person is on is left where it was, since selecting everything does not move anyone: what it changes
+	// is what else is selected around them. A lead that named no row at all lands on the first row, which is where a
+	// list with everything selected and nowhere in particular to be reads from.
+	if keep >= 0 && keep < len(l.rows) && l.Selection.State(keep) {
+		l.setLead(keep)
+	} else {
+		l.setLead(0)
+	}
 }
 
 // SelectRange selects items from 'start' to 'end', inclusive. If 'add' is true, then any existing selection is added to
@@ -539,6 +578,9 @@ func (l *List[T]) SelectRange(start, end int, add bool) {
 	if l.anchor == -1 || !l.allowMultiple {
 		l.anchor = start
 	}
+	// The end of the range is where a selection made by dragging or by shift-arrowing has arrived, so that is the row
+	// the person is on.
+	l.setLead(end)
 	l.MarkForRedraw()
 }
 
@@ -556,13 +598,24 @@ func (l *List[T]) Select(add bool, index ...int) {
 		l.anchor = -1
 	}
 	maximum := len(l.rows)
+	lead := -1
 	for _, v := range index {
 		if v >= 0 && v < maximum {
 			l.Selection.Set(v)
 			if l.anchor == -1 {
 				l.anchor = v
 			}
+			lead = v
 		}
+	}
+	switch {
+	case lead != -1:
+		// The last row that was actually selected is the one the person has arrived on, which is what the row the
+		// keyboard focus is reported on is worked out from.
+		l.setLead(lead)
+	case !add:
+		// Nothing was selected and whatever had been is gone, so there is no row to be on.
+		l.setLead(-1)
 	}
 	l.MarkForRedraw()
 }
@@ -570,6 +623,25 @@ func (l *List[T]) Select(add bool, index ...int) {
 // Anchor returns the index that is the current anchor point. Will be -1 if there is no anchor point.
 func (l *List[T]) Anchor() int {
 	return l.anchor
+}
+
+// Lead returns the index of the lead row — the row the person is on, which is the last one a gesture or a call moved
+// the selection to. Will be -1 if there is no lead row. It is what the keyboard focus is reported on, so that a screen
+// reader lands on the row the person moved to rather than on the list as a whole, while it is still one of the selected
+// rows; see List.axCurrentRow.
+func (l *List[T]) Lead() int {
+	return l.lead
+}
+
+// setLead moves the row the person is on. A change to it that leaves the selection alone — an arrow key on a list where
+// the row moved to was selected already — still has to reach an assistive technology, and a window is described again
+// only once it has been drawn, so the redraw is what republishes it.
+func (l *List[T]) setLead(index int) {
+	if l.lead == index {
+		return
+	}
+	l.lead = index
+	l.MarkForRedraw()
 }
 
 // AllowMultipleSelection returns whether multiple rows may be selected at once.
@@ -641,42 +713,79 @@ func (l *List[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 		return
 	}
 	reach := axReach(b.VisibleRect())
+	current := l.axCurrentRow()
+	var currentID accessibility.NodeID
 	if cellHeight := xmath.Ceil(l.Factory.CellHeight()); cellHeight >= 1 {
-		l.axDescribeUniformRows(b, reach, cellHeight)
-		return
+		currentID = l.axDescribeUniformRows(b, reach, cellHeight, current)
+	} else {
+		currentID = l.axDescribeVaryingRows(b, reach, current)
 	}
-	l.axDescribeVaryingRows(b, reach)
+	if currentID != 0 {
+		// The keyboard focus the list holds is reported on the row the person is on, which is where every native list
+		// puts it and the only thing a screen reader follows: a container that keeps the focus to itself and says
+		// nothing but "the selection changed" leaves the reader where it was. The list keeps the focus when there is no
+		// current row, as a native empty list box does. See AccessibilityBuilder.FocusChild, which refuses the
+		// delegation unless the list really is the panel holding the focus.
+		b.FocusChild(currentID)
+	}
+}
+
+// axCurrentRow returns the row the person is on, which is the row the keyboard focus is reported on: the lead row,
+// while the list still has it and it is still selected, and otherwise the first selected row. The result is -1 when
+// nothing is selected, since the selection is what a list is "on" — an assistive technology reads the rows it holds —
+// and there is then nowhere within the list to report the focus.
+func (l *List[T]) axCurrentRow() int {
+	if l.lead >= 0 && l.lead < len(l.rows) && l.Selection.State(l.lead) {
+		return l.lead
+	}
+	if first := l.Selection.FirstSet(); first >= 0 && first < len(l.rows) {
+		return first
+	}
+	return -1
 }
 
 // axDescribeUniformRows describes the rows worth describing — those within reach of the part that can be seen (see
 // axReach), plus the selection — when every row is the same height, which is when where a row sits is arithmetic rather
 // than a walk through the rows before it.
-func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect, cellHeight float32) {
+func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect, cellHeight float32,
+	current int,
+) accessibility.NodeID {
 	rect := l.ContentRect(false)
 	first, last := 0, -1
 	if !reach.Empty() {
 		first = max(int(xmath.Floor((reach.Y-rect.Y)/cellHeight)), 0)
 		last = min(int(xmath.Ceil((reach.Bottom()-rect.Y)/cellHeight)), len(l.rows)-1)
 	}
+	var currentID accessibility.NodeID
 	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, cellHeight)
 	for row := first; row <= last; row++ {
 		rowRect.Y = rect.Y + cellHeight*float32(row)
-		l.axAddRow(b, row, rowRect, nil, false)
+		id := l.axAddRow(b, row, rowRect, nil, false)
+		if row == current {
+			currentID = id
+		}
 	}
 	// The selected rows that were not reached above are described as well, however far out of sight they are, but as
-	// nothing more than themselves: see axAddRow.
+	// nothing more than themselves: see axAddRow. The current row goes first, so that the cap on how many of them are
+	// described can never be what leaves out the one row the focus is to be reported on.
 	described := 0
+	if current >= 0 && currentID == 0 {
+		rowRect.Y = rect.Y + cellHeight*float32(current)
+		currentID = l.axAddRow(b, current, rowRect, nil, true)
+		described++
+	}
 	for row := l.Selection.FirstSet(); row >= 0 && described < axMaxSelectedRows; row = l.Selection.NextSet(row + 1) {
 		if row >= len(l.rows) {
 			break
 		}
-		if row >= first && row <= last {
+		if (row >= first && row <= last) || row == current {
 			continue
 		}
 		rowRect.Y = rect.Y + cellHeight*float32(row)
 		l.axAddRow(b, row, rowRect, nil, true)
 		described++
 	}
+	return currentID
 }
 
 // axDescribeVaryingRows describes the rows worth describing when each row's height is its own. Every row has to be
@@ -686,28 +795,42 @@ func (l *List[T]) axDescribeUniformRows(b *AccessibilityBuilder, reach geom.Rect
 // The walk stops as soon as nothing worth describing can be left: creating and laying out a panel for every row of a
 // long list, up to twenty times a second, is exactly what VisibleRect exists to avoid, and is far more than drawing
 // does, which stops at the bottom of the dirty rect.
-func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect) {
+func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect,
+	current int,
+) accessibility.NodeID {
 	rect := l.ContentRect(false)
 	rowRect := geom.NewRect(rect.X, rect.Y, rect.Width, 0)
 	described := 0
+	var currentID accessibility.NodeID
 	for row := range l.rows {
 		cell := l.cell(row)
 		_, pref, _ := cell.Sizes(geom.Size{})
 		rowRect.Height = pref.Ceil().Height
 		switch {
 		case rowRect.Intersects(reach):
-			l.axAddRow(b, row, rowRect, cell, false)
+			id := l.axAddRow(b, row, rowRect, cell, false)
+			if row == current {
+				currentID = id
+			}
+		case row == current:
+			// The row the focus is to be reported on is described however far out of sight it is and whatever the cap
+			// on selected rows has reached: it is where the person is. It is not counted against that cap, so the rest
+			// of the selection is described exactly as much as it would have been without it.
+			currentID = l.axAddRow(b, row, rowRect, cell, true)
 		case l.Selection.State(row) && described < axMaxSelectedRows:
 			l.axAddRow(b, row, rowRect, cell, true)
 			described++
 		}
 		rowRect.Y += rowRect.Height
-		if rowRect.Y > reach.Bottom() && (described >= axMaxSelectedRows || l.Selection.NextSet(row+1) < 0) {
-			// Every row from here down starts below the reach, so none of them can be seen, and either there is no
-			// selected row left to describe or as many of them as will be described have been.
+		if rowRect.Y > reach.Bottom() && row >= current &&
+			(described >= axMaxSelectedRows || l.Selection.NextSet(row+1) < 0) {
+			// Every row from here down starts below the reach, so none of them can be seen; the current row has gone
+			// by; and either there is no selected row left to describe or as many of them as will be described have
+			// been.
 			break
 		}
 	}
+	return currentID
 }
 
 // axAddRow describes one row of the list. cell, when not nil, is the cell that was already created for the row, whose
@@ -718,7 +841,12 @@ func (l *List[T]) axDescribeVaryingRows(b *AccessibilityBuilder, reach geom.Rect
 // only because the selection holds it — and it is all an assistive technology asks of such a row, since what it does
 // with the selection is read out what is in it. Laying the cell out and walking it for every selected row of a long
 // list, over and over, is what that avoids; the table does the same thing for the same reason.
-func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cell *Panel, nameOnly bool) {
+//
+// The node id of the row is returned, or zero when nothing was added, which is what ProvideAccessibility reports the
+// keyboard focus on for the current row.
+func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cell *Panel,
+	nameOnly bool,
+) accessibility.NodeID {
 	if cell == nil {
 		cell = l.cell(row)
 	}
@@ -731,7 +859,11 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 		n.RowIndex = row
 		n.Selectable = true
 		n.Selected = selected
-		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView)
+		// The rows are where the keyboard focus within a list is, as they are in a native one: the list reports the
+		// focus it holds on the row the person is on, and an assistive technology asking for the focus to be put on
+		// another row is asking to move to it, which selects it. See PerformAccessibilityAction.
+		n.Focusable = true
+		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView, accessibility.Focus)
 		if l.allowMultiple {
 			// A list that holds one row at a time has nothing to add to or take out of: Select on such a list replaces
 			// whatever was selected, so offering to add to the selection would be offering something that quietly does
@@ -745,7 +877,7 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 		}
 	})
 	if rowID == 0 || nameOnly {
-		return
+		return rowID
 	}
 	// Whatever the factory drew the row with — a label, a check box, a box full of both — is described within the
 	// item, attached and laid out for the moment exactly as it is for drawing, so that what the row is made of can be
@@ -758,11 +890,11 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 	axClearCellFocusability(b.snapshot.tree, rowID)
 	content := b.snapshot.tree.UnignoredChildren(rowID)
 	if len(content) == 0 {
-		return
+		return rowID
 	}
 	itemNode := b.snapshot.tree.Node(rowID)
 	if itemNode == nil {
-		return
+		return rowID
 	}
 	itemNode.Name = ""
 	if len(content) == 1 {
@@ -772,6 +904,7 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 		// stand for, and the widget within the row offers its own press where it sits.
 		itemNode.Value = axContentValue(b.snapshot.tree.Node(content[0]))
 	}
+	return rowID
 }
 
 // axClearCellFocusability takes the keyboard focus out of the reach of everything described beneath a list row.
@@ -817,7 +950,9 @@ func axClearCellFocusability(tree *accessibility.Tree, rowID accessibility.NodeI
 // one of the rows described by ProvideAccessibility, which arrives as the index that row was keyed by. Selecting a row
 // also scrolls it into view, as the arrow keys do, since an assistive technology moving through the rows selects each
 // one as it goes and expects to see where it has got to. Pressing a row opens it, which is the gesture a double-click
-// and the Return key stand for. A request aimed at something within the cell that draws a row is passed on to it.
+// and the Return key stand for. Putting the focus on a row moves the person onto it: the list takes the keyboard focus
+// and the row becomes the whole of the selection, which is the same thing clicking the row does, since the selection is
+// where a list's cursor is. A request aimed at something within the cell that draws a row is passed on to it.
 func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	if key, isPanel := req.Key.(axCellPanelKey); isPanel {
 		return l.axPerformInCell(key, req)
@@ -882,6 +1017,23 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 		l.anchor = row
 		l.MarkForRedraw()
 		SafeCall(l.NewSelectionCallback)
+	case accessibility.Focus:
+		// The list is the one tab stop this widget has, so the focus goes there; the row is what the list then reports
+		// it on, which the selection is what decides. Both happen for the same reason a click on the row does both.
+		// The callback is for a selection that actually changed, exactly as it is for Select above.
+		changed := !l.Selection.State(row) || l.Selection.Count() != 1
+		l.Select(false, row)
+		if changed {
+			SafeCall(l.NewSelectionCallback)
+		}
+		l.ScrollRectIntoView(l.RowRect(row))
+		l.RequestFocus()
+		if wnd := l.Window(); wnd == nil || !l.Is(wnd.CurrentFocus()) {
+			// A focus request that did not leave the focus where it said it would must be reported as refused rather
+			// than as carried out, exactly as axDispatchAction checks for a real panel: the window may decline it, and
+			// a list with no window cannot take it at all.
+			return false
+		}
 	case accessibility.ScrollIntoView:
 		l.ScrollRectIntoView(l.RowRect(row))
 	default:
@@ -899,7 +1051,8 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 // entirely, and a focus left on a detached panel is a focus the window cannot find, silently gone until the person
 // presses Tab. A Focus request that cannot leave the focus on the node it named must be refused rather than reported
 // as carried out, so the nodes described within a row are published as neither focusable nor offering Focus, and one
-// that arrives anyway is turned away here.
+// that arrives anyway is turned away here. The row itself is another matter: it does offer the focus, and the list
+// carries that out by taking the focus and selecting the row — see PerformAccessibilityAction.
 //
 // A widget that took the focus while handling one of the remaining requests — which Press does on its way to the click
 // it synthesizes — is handed straight back for that same reason. The focus goes to the list itself, which is the one

@@ -516,6 +516,21 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 		}
 	}
 	for _, e := range events {
+		// A list row or a table cell the widget left nameless is described by what it holds (see axContentName), so an
+		// edit to any of that content changes what the element is called while no event names the element at all: the
+		// events name the label, the check box or the field that changed. The title-changed notification is the nearest
+		// thing macOS has to "read this element again" — the same stand-in the NameChanged case below uses, and for the
+		// same reason — so that is what the row is told, once however many of its parts this publish touched. The
+		// Windows adapter reports the same change as a NamePropertyId raise on the same elements; see contentNames in
+		// internal/w32/uia.
+		switch e.Kind {
+		case accessibility.NameChanged, accessibility.ValueChanged, accessibility.TextInserted,
+			accessibility.TextDeleted:
+			if item := axContentNamedAncestorOf(a.tree, e.Node); item != 0 {
+				notices = axAppendNotice(notices, axNotice{node: item, notification: axNotifyTitleChanged})
+			}
+		default:
+		}
 		switch e.Kind {
 		case accessibility.NodeRemoved:
 			a.destroyElement(e.Node)
@@ -537,10 +552,13 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			// why Diff puts this event last of all. Nothing follows it in a published set, so the flush is the whole of
 			// what the publish had to say.
 			flush()
+			// The element is created if the node has never been asked about, which is the ordinary case now that a
+			// list or a table reports the focus on its current row: an arrow key moves the focus to a row a client
+			// has never been handed, and a notification posted against nothing would leave VoiceOver on the container.
 			if axTraceOn {
 				axTrace("notify %s node=%d", axNotifyFocusedUIElement, e.Node)
 			}
-			NSAccessibilityPostNotification(a.elementOrView(e.Node), AppKitString(axNotifyFocusedUIElement))
+			NSAccessibilityPostNotification(a.focusedElement(e.Node), AppKitString(axNotifyFocusedUIElement))
 		case accessibility.NameChanged:
 			// A node's name is given to the accessibility system as the element's label, which AppKit reports as
 			// AXDescription (see axHasLabel), and macOS has no notification for a changed description: the
@@ -625,12 +643,18 @@ func (a *AXAdapter) postEvents(events []accessibility.Event) { //nolint:gocognit
 			case accessibility.StateExpanded:
 				// The two notifications macOS has for this are about outline rows, so only a row may send one. A
 				// disclosure triangle, a pop-up button or a combo box opening would otherwise report a row event on an
-				// element that is not a row. Nothing is posted for them: every element answers isAccessibilityExpanded
-				// (AXExpanded) from the current snapshot, so an assistive technology that cares reads the new state
-				// back when it next asks. A disclosure triangle is also the one of the three whose Pressed flag tracks
-				// whether it is open, and that is what it reports as its value (see axNodeValue), so a change to it
-				// arrives as a StatePressed event and does post a value-changed notification.
-				if n := a.tree.Node(e.Node); n != nil && n.Role.IsRowLike() {
+				// element that is not a row. Nothing is posted for them: each of those answers isAccessibilityExpanded
+				// (AXExpanded) from the current snapshot, since each is a node that can be opened at all and so is one
+				// of the nodes the attribute is offered by (see axSelectorRules), and an assistive technology that
+				// cares reads the new state back when it next asks. A disclosure triangle is also the one of the three
+				// whose Pressed flag tracks whether it is open, and that is what it reports as its value (see
+				// axNodeValue), so a change to it arrives as a StatePressed event and does post a value-changed
+				// notification.
+				//
+				// A row sends one only while it is a row that discloses something, which is the same test the
+				// disclosure attributes themselves are offered by: a row that expands nothing answers nothing about
+				// being open, so a notification saying it has just opened names a state no client can read back.
+				if n := a.tree.Node(e.Node); n != nil && axDisclosingRow(a.tree, n) {
 					notification := axNotifyRowCollapsed
 					if n.Expanded {
 						notification = axNotifyRowExpanded
@@ -911,6 +935,27 @@ func (a *AXAdapter) elementOrView(id accessibility.NodeID) objc.ID {
 	return a.elementFor(id)
 }
 
+// focusedElement returns the element an assistive technology is handed for the node holding the keyboard focus. It is
+// what accessibilityFocusedUIElement answers and what the focus-changed notification is posted against, and it has to
+// be the same element in both: VoiceOver asks for the focused element the moment the notification reaches it, and an
+// answer naming anything else would send its cursor somewhere the notification had not pointed it.
+//
+// The node is resolved through axPresentedNode for the same reason hitTest resolves the node under the pointer. The
+// focus is no longer always a panel's own node: a panel may report the focus it holds on one of the virtual nodes it
+// added beneath itself — a list and a table report it on their current row — so it can now land on something a client
+// is never shown, and an element outside the presented hierarchy is one nothing can reach by walking the window.
+// Whatever stands in for such a node is what a client already holds, so that is what is named. A row, which is what
+// this actually happens for, is presented as it stands and resolves to itself.
+func (a *AXAdapter) focusedElement(id accessibility.NodeID) objc.ID {
+	if id == 0 || a.tree == nil || id == a.tree.Root {
+		return a.elementOrView(id)
+	}
+	if presented := axPresentedNode(a.tree, id); presented != 0 {
+		id = presented
+	}
+	return a.elementOrView(id)
+}
+
 // elementsFor returns an autoreleased NSArray of the elements serving the given nodes. It never returns nil, since
 // AppKit treats a nil children array as "ask my superclass" rather than "no children".
 func (a *AXAdapter) elementsFor(ids []accessibility.NodeID) objc.ID {
@@ -1045,6 +1090,138 @@ func axHasLabelWithText(n *accessibility.Node, text string) bool {
 // the one attribute it exists to answer and started again as soon as a character was typed into it.
 func axTextIsValue(n *accessibility.Node) bool {
 	return n.Text != nil && (n.Text.Text == "" || !axHasLabel(n) || n.Name != n.Text.Text)
+}
+
+// axNamedByItsContent reports whether a node is described by what it holds rather than by a name of its own, which is
+// what axContentName builds and what accessibilityLabel answers for such a node.
+//
+// A list row and a table cell are the two. Each describes whatever the application drew it with — a label, a check box,
+// a box full of both — as elements of its own, and each clears the name the builder gave it as soon as it has such
+// content, so that a client reads what is really there rather than a summary stuck on top; see the cell handling in
+// List.axAddRow and Table.axAddRow. That leaves the row itself with nothing to say, and VoiceOver does not say what a
+// row holds when the keyboard focus lands on the row: it speaks the element's description, its value and its position,
+// so a list row reporting neither was announced as nothing but "row 4 of 12". Building the description from the content
+// is what the Windows adapter does with the same pair for the same reason, from the same fields; see namedByItsContent
+// in internal/w32/uia.
+//
+// A cell that is stood in for is left out, since a client is never shown it: what it holds is presented in its place
+// and speaks for itself. See axStandIn.
+func axNamedByItsContent(t *accessibility.Tree, n *accessibility.Node) bool {
+	if t == nil || n == nil || n.Name != "" {
+		return false
+	}
+	switch n.Role {
+	case role.ListItem:
+		return true
+	case role.Cell:
+		return axStandIn(t, n.ID) == n.ID
+	default:
+		return false
+	}
+}
+
+// axContentName builds the description of a nameless list row or table cell out of the elements it holds: what each of
+// them has to say, in the order they are drawn, joined by a single space. That is the order a sighted person reads the
+// row in, and the order the native controls report their own items in.
+//
+// What the element already answers as its value is left out of it. A row holding a single widget with a state of its
+// own reports that state as the row's value (see List.axAddRow and axNodeValue), so a check box row says "Enable
+// backups, checked" — the description naming the widget and the value giving its state — and a row holding a field
+// whose value is the text it draws would otherwise say that text once as the description and again as the value. It is
+// the same rule axHelpFor follows for the same reason: nothing an element is already saying is said twice.
+//
+// depth is how far the walk that reached this node had already gone, which bounds the recursion: a row named from a
+// nested row asks this of that one in turn.
+func axContentName(t *accessibility.Tree, n *accessibility.Node, depth int) string {
+	spoken := n.Value
+	if axTextIsValue(n) {
+		spoken = n.Text.Text
+	}
+	var parts []string
+	for _, piece := range axAppendContentPieces(nil, t, n.ID, depth, make(map[accessibility.NodeID]bool)) {
+		if piece != spoken {
+			parts = append(parts, piece)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// axAppendContentPieces appends what each element beneath the node with the given id has to say, in the order they are
+// presented. See axContentName, which is the only thing that asks for this.
+//
+// The presented children are what is walked, so a separator is passed over and a cell holding a single thing is walked
+// as that thing, exactly as a client moving through the hierarchy would reach them; see axPresentedChildren.
+//
+// visited holds the ids already accounted for, which together with depth keeps a malformed tree — one whose children
+// form a cycle — from being walked forever.
+func axAppendContentPieces(pieces []string, t *accessibility.Tree, id accessibility.NodeID, depth int,
+	visited map[accessibility.NodeID]bool,
+) []string {
+	if depth >= axMaxTreeDepth || visited[id] {
+		return pieces
+	}
+	visited[id] = true
+	for _, childID := range axPresentedChildren(t, id) {
+		child := t.Node(childID)
+		if child == nil || visited[childID] {
+			continue
+		}
+		if piece := axContentPiece(t, child, depth+1); piece != "" {
+			visited[childID] = true
+			pieces = append(pieces, piece)
+			continue
+		}
+		pieces = axAppendContentPieces(pieces, t, childID, depth+1, visited)
+	}
+	return pieces
+}
+
+// axContentPiece returns what one element beneath a nameless list row or table cell contributes to the description
+// being built from it, or the empty string when it has nothing of its own and what it holds is what should be looked at
+// instead.
+//
+// Each element is asked for the first thing it has to say: its description, which is its name where that name is
+// reported as one at all (see axHasLabel) and which for a nested row is another walk like this one, then its value,
+// then the text it draws. One that says something is not descended into, since what it said is what it holds; one that
+// says nothing is, so an anonymous box wrapping a label contributes that label.
+func axContentPiece(t *accessibility.Tree, n *accessibility.Node, depth int) string {
+	switch {
+	case axNamedByItsContent(t, n):
+		return axContentName(t, n, depth)
+	case n.Name != "" && axHasLabel(n):
+		return n.Name
+	case n.Value != "":
+		return n.Value
+	case n.Text != nil:
+		return n.Text.Text
+	default:
+		return ""
+	}
+}
+
+// axContentNamedAncestorOf returns the nameless list row or table cell whose description is built from the node with
+// the given id, or zero when no element above it is described that way.
+//
+// The walk upwards stops at the first ancestor that has something of its own to say, because axContentName never looks
+// past such an element: a row holding a named cell is described by that cell's name, so an edit inside the cell changes
+// nothing the row says. It is the presented parent that is climbed, so that the walk is the exact inverse of the one
+// axAppendContentPieces makes downwards.
+func axContentNamedAncestorOf(t *accessibility.Tree, id accessibility.NodeID) accessibility.NodeID {
+	n := t.Node(id)
+	for depth := 0; n != nil && depth < axMaxTreeDepth; depth++ {
+		parent := t.Node(axPresentedParent(t, n))
+		if parent == nil {
+			return 0
+		}
+		if axNamedByItsContent(t, parent) {
+			return parent.ID
+		}
+		if axContentPiece(t, parent, 0) != "" {
+			return 0
+		}
+		n = parent
+	}
+	return 0
 }
 
 // axHelpFor returns what an element answers as its help, the AXHelp an assistive technology speaks after the label and
@@ -2239,7 +2416,7 @@ func axSuperAllowsSelector(self objc.ID, selector objc.SEL) bool {
 func axSelectorRules() map[objc.SEL]func(t *accessibility.Tree, n *accessibility.Node) bool {
 	axSelectorRulesOnce.Do(func() {
 		hasText := func(_ *accessibility.Tree, n *accessibility.Node) bool { return n.Text != nil }
-		isRow := func(_ *accessibility.Tree, n *accessibility.Node) bool { return n.Role.IsRowLike() }
+		isExpandable := func(_ *accessibility.Tree, n *accessibility.Node) bool { return n.Expandable }
 		can := func(actions ...accessibility.Action) func(t *accessibility.Tree, n *accessibility.Node) bool {
 			return func(_ *accessibility.Tree, n *accessibility.Node) bool {
 				for _, action := range actions {
@@ -2275,25 +2452,38 @@ func axSelectorRules() map[objc.SEL]func(t *accessibility.Tree, n *accessibility
 			Sel("setAccessibilitySelectedTextRange:"): func(_ *accessibility.Tree, n *accessibility.Node) bool {
 				return n.Text != nil && n.Actions.Has(accessibility.SetTextSelection)
 			},
-			// The rows of a container, and the disclosure of a row.
+			// The rows of a container, and the disclosure of a row. What a row has to say about being open belongs
+			// to the rows that can really be opened: an element answering isAccessibilityDisclosed from a node that
+			// discloses nothing reports AXDisclosing false, which VoiceOver speaks as "collapsed" — heard on every
+			// plain list row, which has nothing to collapse. The two attributes that describe where a row sits in a
+			// hierarchy, the row disclosing it and how deep it is, belong to the rows of an outline alone: that is
+			// the shape they describe, and the shape axRoleFor gives the AXOutlineRow subrole to.
 			Sel("accessibilityRows"):             axHoldsRows,
 			Sel("accessibilitySelectedRows"):     axHoldsRows,
 			Sel("accessibilityVisibleRows"):      axHoldsRows,
-			Sel("accessibilityDisclosedRows"):    isRow,
-			Sel("accessibilityDisclosedByRow"):   isRow,
-			Sel("isAccessibilityDisclosed"):      isRow,
+			Sel("accessibilityDisclosedRows"):    axDisclosingRow,
+			Sel("isAccessibilityDisclosed"):      axDisclosingRow,
+			Sel("accessibilityDisclosedByRow"):   axOutlineRow,
+			Sel("accessibilityDisclosureLevel"):  axOutlineRow,
 			Sel("setAccessibilitySelectedRows:"): axHoldsRows,
-			Sel("setAccessibilityDisclosed:"): func(_ *accessibility.Tree, n *accessibility.Node) bool {
-				return n.Role.IsRowLike() && (n.Actions.Has(accessibility.Expand) ||
+			Sel("setAccessibilityDisclosed:"): func(t *accessibility.Tree, n *accessibility.Node) bool {
+				return axDisclosingRow(t, n) && (n.Actions.Has(accessibility.Expand) ||
 					n.Actions.Has(accessibility.Collapse))
 			},
+			// Whether a node is open, which belongs to the nodes that can be opened at all — a pop-up button, a combo
+			// box, a menu item holding a submenu, an outline row and the triangle that opens one. Every other element
+			// answered isAccessibilityExpanded before this rule existed, and answering it at all is what has VoiceOver
+			// speak the state: a list row, a button and a label alike were announced as "collapsed".
+			Sel("isAccessibilityExpanded"): isExpandable,
 			// The settable state. A node whose value is read-only says so by refusing the setter, which is what the
 			// other two platforms report as AT-SPI's READ_ONLY and UIA's IsReadOnly.
 			Sel("setAccessibilityValue:"): func(_ *accessibility.Tree, n *accessibility.Node) bool {
 				return !n.ReadOnly && n.Actions.Has(accessibility.SetValue)
 			},
 			Sel("setAccessibilitySelected:"): can(accessibility.Select, accessibility.RemoveFromSelection),
-			Sel("setAccessibilityExpanded:"): can(accessibility.Expand, accessibility.Collapse),
+			Sel("setAccessibilityExpanded:"): func(_ *accessibility.Tree, n *accessibility.Node) bool {
+				return n.Expandable && (n.Actions.Has(accessibility.Expand) || n.Actions.Has(accessibility.Collapse))
+			},
 			// Whether AXFocused can be set is the only way this platform has of saying that a node can be given the
 			// keyboard focus, which is what the other two report as AT-SPI's STATE_FOCUSABLE and UIA's
 			// IsKeyboardFocusable. The rule is the node's action set, because that is exactly what axPerform consults
@@ -2314,6 +2504,35 @@ func axHoldsRows(t *accessibility.Tree, n *accessibility.Node) bool {
 	default:
 		return len(axRowsOf(t, n, false)) != 0
 	}
+}
+
+// axDisclosingRow reports whether a node is a row that can be opened and closed, which is what decides whether it says
+// anything about disclosure at all: whether it is disclosed, what it discloses, and whether a client may disclose it.
+//
+// A row that expands nothing has no answer to give, and an element that answers anyway gives the wrong one. AXDisclosing
+// is a BOOL, so an element offering it reports false for a row that cannot be opened, and VoiceOver speaks that false as
+// "collapsed": a plain list row was announced as "collapsed, row 4 of 12" while nothing about it was ever closed. The
+// flag rather than the action set is what decides it, since a row a hierarchical filter holds open is expandable and
+// reports itself expanded while offering neither Expand nor Collapse (see Table.axAddRow) — a state to report with no
+// way to change it, which is exactly what the setter's own rule adds the action test for.
+func axDisclosingRow(_ *accessibility.Tree, n *accessibility.Node) bool {
+	return n.Role.IsRowLike() && n.Expandable
+}
+
+// axOutlineRow reports whether a node is a row of an outline, which is what decides whether it answers the two
+// attributes that place a row in a hierarchy: AXDisclosedByRow, the row it hangs beneath, and AXDisclosureLevel, how
+// deep it sits.
+//
+// Both are attributes of an AXOutlineRow, and the subrole itself is given to a row by the container holding it rather
+// than by the row (see axRoleFor), so the same question decides both: a list row and the row of a flat table are not
+// outline rows and have no hierarchy to describe. AXDisclosureLevel is an integer, so an element offering it reports 0
+// for a row of neither kind, and VoiceOver reads a level from every element that answers one.
+func axOutlineRow(t *accessibility.Tree, n *accessibility.Node) bool {
+	if !n.Role.IsRowLike() {
+		return false
+	}
+	container := t.Node(axRowContainerOf(t, n.ID))
+	return container != nil && container.Role == role.Tree
 }
 
 // axElementLegacyAttributeMethods returns the two overrides that publish the attributes the NSAccessibility protocol
@@ -2542,10 +2761,26 @@ func axElementAttributeMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// The AXDescription an assistive technology speaks for the element: the node's name, wherever that name is
+			// reported as a description at all (see axHasLabel), and for the two shapes the widget deliberately leaves
+			// nameless — a list row and a table cell describing what they hold — the description built from that
+			// content instead (see axContentName). An element with nothing to say answers nil, which AppKit drops from
+			// the attribute list rather than reporting as an empty description.
 			Cmd: Sel("accessibilityLabel"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
-				if _, n := axElementTarget(self, cmd); n != nil && n.Name != "" && axHasLabel(n) {
-					return NSStringFromGo(n.Name)
+				a, n := axElementTarget(self, cmd)
+				if a == nil || n == nil {
+					return 0
+				}
+				switch {
+				case n.Name != "":
+					if axHasLabel(n) {
+						return NSStringFromGo(n.Name)
+					}
+				case axNamedByItsContent(a.tree, n):
+					if label := axContentName(a.tree, n, 0); label != "" {
+						return NSStringFromGo(label)
+					}
 				}
 				return 0
 			},
@@ -2982,6 +3217,9 @@ func axElementStateMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// AXFocused is read straight from the node, which is what lets a list's or a table's current row report
+			// the keyboard focus while the container holding it reports none: exactly one node in a snapshot is
+			// focused, and a panel may report the focus it holds on one of the virtual nodes it added beneath itself.
 			Cmd: Sel("isAccessibilityFocused"),
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
 				_, n := axElementTarget(self, cmd)
@@ -3818,13 +4056,15 @@ func axViewChildren(v View) (children objc.ID, ok bool) {
 }
 
 // axViewFocusedElement answers the content view's accessibilityFocusedUIElement. The view itself stands in when nothing
-// within the window holds the focus, since the view is what represents the window's root.
+// within the window holds the focus, since the view is what represents the window's root. The node named may be a
+// virtual child a panel reported its focus on rather than the panel's own node — a list's or a table's current row —
+// which is what VoiceOver follows onto the row, exactly as it follows WebKit and Chromium onto an active descendant.
 func axViewFocusedElement(v View) (element objc.ID, ok bool) {
 	a := axViewAdapter(v)
 	if a == nil || a.tree == nil {
 		return 0, false
 	}
-	return a.elementOrView(a.tree.Focus), true
+	return a.focusedElement(a.tree.Focus), true
 }
 
 // axViewHitTest answers the content view's accessibilityHitTest:.

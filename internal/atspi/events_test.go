@@ -2827,3 +2827,185 @@ func TestASpanTargetMovesTheHyperlinkInterface(t *testing.T) {
 	ta.Announce("Nothing more about the document")
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
+
+// rowFocusWindow is the window the tests about a list reporting its focus on a row publish.
+const rowFocusWindow WindowKey = 10
+
+// rowActions is what a row that reports the keyboard focus offers: the three that move a selection, plus the focus
+// request an assistive technology turns into "take me there".
+func rowActions() accessibility.ActionSet {
+	return selectionActions().With(accessibility.Focus)
+}
+
+// focusableListTree is a window holding a list that can take the keyboard focus, with nothing selected yet, which is
+// when the list itself reports the focus:
+//
+//	70 window "Chooser"            (0,0 200x100)  active
+//	└─ 71 list "Flavors"           (0,0 200x60)   2 rows, focusable, focused
+//	   ├─ 72 list item "Vanilla"   (0,0 200x20)   focusable
+//	   └─ 73 list item "Cocoa"     (0,20 200x20)  focusable
+func focusableListTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 70, Role: role.Window, Name: "Chooser", Focused: true, Bounds: geom.NewRect(0, 0, 200, 100),
+			Children: []accessibility.NodeID{71},
+		},
+		&accessibility.Node{
+			ID: 71, Parent: 70, Role: role.List, Name: "Flavors", Focusable: true, Focused: true, RowCount: 2,
+			Bounds: geom.NewRect(0, 0, 200, 60), Children: []accessibility.NodeID{72, 73},
+			Actions: accessibility.ActionSet(0).With(accessibility.Focus),
+		},
+		&accessibility.Node{
+			ID: 72, Parent: 71, Role: role.ListItem, Name: "Vanilla", RowIndex: 0, Selectable: true, Focusable: true,
+			Bounds: geom.NewRect(0, 0, 200, 20), Actions: rowActions(),
+		},
+		&accessibility.Node{
+			ID: 73, Parent: 71, Role: role.ListItem, Name: "Cocoa", RowIndex: 1, Selectable: true, Focusable: true,
+			Bounds: geom.NewRect(0, 20, 200, 20), Actions: rowActions(),
+		},
+	)
+}
+
+// listWithCurrentRow returns the same window with the list reporting the keyboard focus on one of its rows instead of
+// on itself, which is what a list does as soon as the person has arrowed to a row. generation is how many publishes
+// have gone before, so that each snapshot is newer than the last.
+func listWithCurrentRow(generation uint64, row accessibility.NodeID) *accessibility.Tree {
+	tree := focusableListTree()
+	tree.Generation += generation
+	tree.Node(71).Focused = false
+	current := tree.Node(row)
+	current.Focused = true
+	current.Selected = true
+	tree.Focus = row
+	return tree
+}
+
+// TestTheFocusMovingOntoAListsCurrentRow covers the arrangement every native list uses and every screen reader follows:
+// the list that holds the keyboard focus reports it on the row the person is on rather than on itself. The container
+// loses the state and the row gains it, along with the legacy focus event, which is what has Orca's
+// _on_focused_changed move its locus of focus to the row and present it.
+func TestTheFocusMovingOntoAListsCurrentRow(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	empty := focusableListTree()
+	ta.Publish(rowFocusWindow, empty, nil, sampleGeometry())
+	// Four cache items, the window's Create and place, the two that say it is active, and the two that say where its
+	// focus is.
+	ta.peer.nextSignals(10)
+	c.Equal(RoleListBox, MapRole(empty.Node(71)), "a list that can be used is a list box, not a list of items to read")
+
+	current := listWithCurrentRow(1, 72)
+	events := accessibility.Diff(empty, current)
+	ta.Publish(rowFocusWindow, current, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(72, stateNameSelected, true),
+		stateEvent(71, stateNameFocused, false),
+		stateEvent(72, stateNameFocused, true),
+		focusEvent(72),
+		objectEvent(71, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+	}, ta.peer.nextSignals(5))
+}
+
+// TestTheFocusMovingFromOneRowToTheNext covers every arrow key after the first: the row the person was on loses the
+// focused state and the one they are on now gains it, which is the pair an assistive technology follows. The selection
+// moves with it, and the container is still told that its selection changed.
+func TestTheFocusMovingFromOneRowToTheNext(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	first := listWithCurrentRow(0, 72)
+	ta.Publish(rowFocusWindow, first, nil, sampleGeometry())
+	ta.peer.nextSignals(10)
+
+	second := listWithCurrentRow(1, 73)
+	events := accessibility.Diff(first, second)
+	ta.Publish(rowFocusWindow, second, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(72, stateNameSelected, false),
+		stateEvent(73, stateNameSelected, true),
+		stateEvent(72, stateNameFocused, false),
+		stateEvent(73, stateNameFocused, true),
+		focusEvent(73),
+		objectEvent(71, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+	}, ta.peer.nextSignals(6))
+}
+
+// TestRowsCarryTheStatesThatSayTheFocusCanBeThere covers what the objects themselves answer, which is what a client
+// that has just been handed the hierarchy reads rather than the signals. Every row says it can take the focus, so that
+// a client honors a focus event naming one, and the current row says it has it.
+func TestRowsCarryTheStatesThatSayTheFocusCanBeThere(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	ta.Publish(rowFocusWindow, listWithCurrentRow(0, 72), nil, sampleGeometry())
+	ta.peer.nextSignals(10)
+	c.True(ta.statesOf(72).Has(StateFocusable), "the current row can take the focus")
+	c.True(ta.statesOf(72).Has(StateFocused), "and holds it")
+	c.True(ta.statesOf(73).Has(StateFocusable), "so can the row below it")
+	c.False(ta.statesOf(73).Has(StateFocused))
+	c.True(ta.statesOf(71).Has(StateFocusable), "the list is still something the focus can be given to")
+	c.False(ta.statesOf(71).Has(StateFocused), "but the focus it holds is reported on the row")
+}
+
+// TestAFocusMoveOntoARowSaysNothingInAWindowThatIsNotActive covers the one rule that overrides all of this: AT-SPI's
+// focused state belongs to the active window alone, so a list arrowed through in a window the user is not looking at
+// says nothing about where its focus is.
+func TestAFocusMoveOntoARowSaysNothingInAWindowThatIsNotActive(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	inactive := focusableListTree()
+	inactive.Node(70).Focused = false
+	ta.Publish(rowFocusWindow, inactive, nil, sampleGeometry())
+	ta.peer.nextSignals(6) // Four cache items, the window's Create and its place among the windows
+
+	current := listWithCurrentRow(1, 72)
+	current.Node(70).Focused = false
+	ta.Publish(rowFocusWindow, current, accessibility.Diff(inactive, current), sampleGeometry())
+	// The rows still say what happened to the selection — that is not the focus — but nothing says the focus moved.
+	c.Equal([]signalRecord{
+		stateEvent(72, stateNameSelected, true),
+		objectEvent(71, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+	}, ta.peer.nextSignals(2))
+	ta.Announce("Nothing about the focus")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestTheFocusMovingOntoARowOfATableThatManagesItsDescendants covers the two things a large table has to say at once.
+// The row is the focus, so it gains the focused state and the legacy focus event; and the table has told its client not
+// to walk or cache what is inside it, so it also names the row as its current descendant, which is the only way such a
+// client can follow the user through it.
+func TestTheFocusMovingOntoARowOfATableThatManagesItsDescendants(t *testing.T) {
+	t.Parallel()
+	ta := newEventAdapter(t)
+	c := ta.c
+	ledger := bigTableTree()
+	ledger.Node(51).Focusable = true
+	ledger.Node(51).Focused = true
+	ledger.Focus = 51
+	ta.Publish(tableWindow, ledger, nil, sampleGeometry())
+	// Four cache items, the window's Create and place, the two that say it is active, and the two that say the table
+	// itself holds the focus.
+	ta.peer.nextSignals(10)
+
+	moved := bigTableTree()
+	moved.Generation++
+	moved.Node(51).Focusable = true
+	moved.Node(52).Focusable = true
+	moved.Node(52).Focused = true
+	moved.Node(53).Focusable = true
+	moved.Focus = 52
+	events := accessibility.Diff(ledger, moved)
+	ta.Publish(tableWindow, moved, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(52, stateNameFocusable, true),
+		stateEvent(53, stateNameFocusable, true),
+		stateEvent(51, stateNameFocused, false),
+		stateEvent(52, stateNameFocused, true),
+		focusEvent(52),
+		objectEvent(51, signalActiveDescendantChanged, "", 0, 0, variantRef(nodeRef(52))),
+	}, ta.peer.nextSignals(6))
+	// A client that asks rather than listens is told the same thing.
+	c.Equal(ta.reference(52), ta.one(NodePath(51), InterfaceCollection, "GetActiveDescendant", ""))
+}

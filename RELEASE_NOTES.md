@@ -5,44 +5,6 @@
 - Added screen-reader support on macOS (VoiceOver), Windows (Narrator, NVDA, JAWS) and Linux (Orca). Every widget
   describes itself, so an existing application becomes largely accessible without being changed. Nothing runs until an
   assistive technology asks for it, so an application nothing is listening to pays essentially nothing.
-- Added `Panel.Accessibility`, through which an application supplies what cannot be derived from a panel: a `Name` for
-  an icon-only control, a `LabeledBy` for a control whose label is not the sibling before it, a `Role` override, and so
-  on. Set its fields individually rather than assigning the struct as a whole.
-- Custom widgets describe themselves by implementing `AccessibilityProvider` and carry out requests from an assistive
-  technology by implementing `AccessibilityActor`, both of which must be implemented by the widget type rather than the
-  embedded `Panel`. The new `accessibility` and `enums/role` packages hold the types involved.
-- Added `AnnounceForAccessibility()`, which speaks a message that no change to a window expresses, such as a background
-  task finishing. It may be called unconditionally and from any goroutine.
-- Added the `UNISON_ACCESSIBILITY` environment variable and the `NoAccessibility()` startup option to force
-  accessibility support on or off, along with `SetAccessibilityEnabled()`, `AccessibilityEnabled()` and
-  `IsAccessibilityActive()` for controlling and inspecting it at runtime.
-- Added `HeadlessScreen.AccessibilityTree()`, `AccessibilityNodeFor()`, `AccessibilityEvents()`, `Announcements()` and
-  `PerformAccessibilityAction()`, so tests can assert on what a screen reader would be told with no display involved.
-- `Slider` is now focusable, so it is usable without a mouse and takes part in the tab order. It takes the keyboard
-  focus when clicked or tabbed to, steps its value with the arrow keys and jumps to the ends of its range with Home and
-  End. While focused, its edge is drawn with the new `SliderTheme.SelectionInk`. Its reported height now includes its
-  edge thickness, so sliders using the default theme are two pixels taller.
-- While a screen reader is running, clicking a `CheckBox`, `RadioButton`, `Button`, `PopupMenu` or `Well` now moves
-  the keyboard focus to it, so the screen reader announces the control in its new state. Screen readers only speak
-  changes to the control that holds the focus, so a click that left the focus elsewhere went unannounced. Nothing
-  changes when no screen reader is running: these controls still leave the focus where it was when clicked.
-- `Markdown` now reads as a document to screen readers. Each heading, paragraph, code block and table cell carries its
-  text, with the lines it was laid out into and the styles it was drawn in; lists, list items, tables, rows, cells and
-  block quotes report what they are. On Windows the document offers the UI Automation Text pattern, so Narrator's scan
-  mode reads and navigates it and NVDA reads along the caret; on Linux, Orca enters browse mode when the document takes
-  the focus, with caret navigation, heading/link/list/table jumps (through the AT-SPI Collection interface) and say-all;
-  on macOS, VoiceOver reads each block as navigable text with links inline, and on macOS 26 and later its rotor and
-  Quick Nav jump by heading, link, list, table and bold text.
-- `Markdown` has a reading caret while it is focusable, which it is whenever a screen reader is running on Windows or
-  Linux and whenever an application asks with `SetFocusable(true)`. The arrow, Home, End and Page keys move it by
-  character, word, line and page, Shift extends a selection, Return or Space follows the link under it, and clicking,
-  dragging, double- and triple-clicking place and select with the mouse. The caret and selection are drawn while the
-  document holds the focus. Added `Markdown.CanCopy()`, `Copy()`, `CanSelectAll()`, `SelectAll()` and
-  `ShowContextMenu()`, wired to the Copy and Select All commands and to a context menu on right-click, along with the
-  `DefaultKeyDown`, `DefaultMouseDown`, `DefaultMouseDrag`, `DefaultMouseUp` and `DefaultDrawOver` callbacks.
-- Added the `Paragraph`, `BlockQuote` and `Code` roles, `AccessibilityInfo.URL` for links, and, for custom widgets that
-  present text, `accessibility.TextInfo.Runs` and `Spans`, `accessibility.Node.Document` for a widget that composes its
-  content into one stream, `accessibility.Node.URL`, and the `accessibility.ScrollRangeIntoView` action.
 
 ## Bug Fixes
 

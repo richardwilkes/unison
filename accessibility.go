@@ -171,6 +171,9 @@ type AccessibilityBuilder struct {
 	// clip is the region, in window-local coordinates, that this panel's content is visible within. A virtual child
 	// lying wholly outside it is Offscreen, exactly as a real child is.
 	clip geom.Rect
+	// delegated is the node this panel handed the keyboard focus it holds to, or zero when it has handed it to none.
+	// See FocusChild, and axSnapshot.visit, which reads it once the panel's Accessibility.Callback has run.
+	delegated accessibility.NodeID
 	// virtualUsed counts the virtual children added during this call, which is what the sweep of abandoned keys is
 	// measured against.
 	virtualUsed int
@@ -303,6 +306,74 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 	b.snapshot.targets[id] = axTarget{panel: b.panel, key: key}
 	parentNode.Children = append(parentNode.Children, id)
 	return id
+}
+
+// FocusChild reports the keyboard focus the panel holds on one of the nodes it added beneath itself instead of on its
+// own node. A list or a table uses it to report the focus on its current row, which is where every native list puts it
+// and what every screen reader follows: AppKit rows, Win32 and WPF list items and GTK4 list rows are each the focused
+// element while the person arrows through them, and a container that reports the focus on itself and announces nothing
+// but a selection change is a container a screen reader stays put on.
+//
+// Nothing is changed, and false is returned, unless the panel really is the one holding the keyboard focus within its
+// window, the panel is enabled, and id names a node of this tree that sits beneath the panel's own node and is not
+// itself disabled. Those are the conditions under which the delegation says something true: the focus a panel does not
+// have is not its to hand on, and a node an assistive technology would be refused every request about is no use as the
+// place the person is said to be.
+//
+// The node the focus is handed to reports it — Node.Focused — and Tree.Focus names it, while the panel's own node stops
+// reporting it, so exactly one node of the window still says it holds the focus. The child is also taken out of the
+// scaffolding an assistive technology skips, for the same reason axSnapshot.fallbackFocus does: the node the focus is
+// reported on is by definition one that has to be reachable. Calling this again during the same description moves the
+// delegation, and an Accessibility.Callback that puts Focused back on the panel's own node afterwards does not get to
+// keep it; see axSnapshot.visit.
+func (b *AccessibilityBuilder) FocusChild(id accessibility.NodeID) bool {
+	if id == 0 || id == b.node.ID || b.node.Disabled {
+		return false
+	}
+	if !b.node.Focused && b.delegated == 0 {
+		// The panel's node says it holds the focus until the first delegation takes it away, after which what says so
+		// is the delegation itself: a widget that changes its mind about which of its rows the person is on calls this
+		// again, and the second call is as much the panel's focus to hand on as the first was.
+		return false
+	}
+	if b.snapshot.focusPanel == nil || !b.panel.Is(b.snapshot.focusPanel) {
+		// node.Focused is set from exactly this test when the node is built, but a widget or an earlier hand of the
+		// same description may have written it, and a panel that merely says it is focused is not one whose focus there
+		// is anything to delegate.
+		return false
+	}
+	child := b.snapshot.tree.Nodes[id]
+	if child == nil || child.Disabled || !b.descendantOf(child, b.node.ID) {
+		return false
+	}
+	if prior := b.snapshot.delegatedFocus; prior != 0 && prior != id {
+		// A second call moves the delegation rather than adding to it, so whatever was handed the focus first stops
+		// reporting it: two focused nodes in one window is what the delegation exists to avoid, not something to make.
+		if priorNode := b.snapshot.tree.Nodes[prior]; priorNode != nil {
+			priorNode.Focused = false
+		}
+	}
+	b.node.Focused = false
+	child.Focused = true
+	child.Ignored = false
+	b.snapshot.focus = id
+	b.snapshot.delegatedFocus = id
+	b.delegated = id
+	return true
+}
+
+// descendantOf reports whether a node is beneath the given one, walking up the parent links the tree has built so far.
+// The walk is bounded by the number of nodes in the tree: the ids come from a widget, which may hand back one it kept
+// from an earlier description or one belonging to another panel entirely, and refusing to loop forever over whatever a
+// mistake produces costs a single counter.
+func (b *AccessibilityBuilder) descendantOf(node *accessibility.Node, ancestor accessibility.NodeID) bool {
+	nodes := b.snapshot.tree.Nodes
+	for n, steps := node, len(nodes); n != nil && n.Parent != 0 && steps > 0; n, steps = nodes[n.Parent], steps-1 {
+		if n.Parent == ancestor {
+			return true
+		}
+	}
+	return false
 }
 
 // addCellPanel describes the panel a table row handed back for one of its cells, and everything inside it, beneath the

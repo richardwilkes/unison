@@ -106,6 +106,11 @@ type axSnapshot struct {
 	// the claim. It stays nil in every window where nothing claims the focus twice, which is nearly all of them.
 	companionFocus []accessibility.NodeID
 	focus          accessibility.NodeID
+	// delegatedFocus is the virtual child a panel that holds the keyboard focus has handed the reported focus to — a
+	// list's or table's current row. It stays zero in every window where nothing delegates, which is nearly all of
+	// them. See AccessibilityBuilder.FocusChild, which is the only thing that sets it, and axSnapshot.visit, which
+	// keeps the panel that delegated from taking the focus back.
+	delegatedFocus accessibility.NodeID
 	generation     uint64
 }
 
@@ -457,10 +462,19 @@ func (s *axSnapshot) fallbackFocus() {
 // stay where it was while a menu is open — the menu simply handles keys ahead of it — but that is an implementation
 // detail of how menus work, not something to describe.
 //
-// Only the panel that holds the keyboard focus is cleared. A node inside it that reports the focus for a reading caret
-// it holds is not something a menu displaced, and what becomes of that claim is decided by
-// axSnapshot.resolveCompanionFocus.
+// A focus the panel handed to one of its virtual children is cleared with it. A list reporting the focus on its current
+// row is that panel's own focus said in another place, so a menu displaces it exactly as it displaces the focus of a
+// panel that kept it, and leaving the row focused would be the second focused object the clearing exists to prevent.
+// It comes back with the focus when the menu closes, since the row the list is on has not moved meanwhile.
+//
+// A node inside the focus panel that reports the focus for a reading caret it holds is not something a menu displaced,
+// and what becomes of that claim is decided by axSnapshot.resolveCompanionFocus.
 func (s *axSnapshot) clearDisplacedFocus(keep accessibility.NodeID) {
+	if s.delegatedFocus != 0 && s.delegatedFocus != keep {
+		if node := s.tree.Nodes[s.delegatedFocus]; node != nil {
+			node.Focused = false
+		}
+	}
 	if s.focusPanel == nil {
 		return
 	}
@@ -587,6 +601,10 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	if parentNode := s.tree.Nodes[parent]; parentNode != nil {
 		parentNode.Children = append(parentNode.Children, node.ID)
 	}
+	// Held beyond the description below so that what the widget decided about the focus is still to hand once the
+	// Accessibility.Callback has run; see AccessibilityBuilder.FocusChild and the use of builder.delegated further
+	// down.
+	var builder *AccessibilityBuilder
 	if provider, ok := p.Self.(AccessibilityProvider); ok {
 		b := &AccessibilityBuilder{
 			snapshot: s,
@@ -594,6 +612,7 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 			panel:    p,
 			clip:     visible,
 		}
+		builder = b
 		SafeCall(func() { provider.ProvideAccessibility(b) })
 		s.sweepVirtualIDs(p, b.virtualUsed)
 	}
@@ -639,6 +658,37 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		// AccessibilityBuilder.AddVirtualChildOf.
 		node.Role = role.Group
 	}
+	// A panel with no AccessibilityProvider has no builder and can have delegated nothing, since only a widget
+	// describing itself can hand the focus on.
+	var delegated accessibility.NodeID
+	if builder != nil {
+		delegated = builder.delegated
+	}
+	if delegated != 0 {
+		if child := s.tree.Nodes[delegated]; child != nil && s.isWithin(child, node.ID) {
+			switch {
+			case node.Disabled:
+				// FocusChild refuses a disabled panel, but the Accessibility.Callback runs afterwards and is entitled
+				// to say the panel is disabled — it may be the only thing that knows. A disabled node is published
+				// without the focus, and its virtual children are no more usable than it is, so the delegation is
+				// undone rather than left pointing at a row of a control the person cannot reach: the focus falls back
+				// to the nearest ancestor that can be shown, exactly as it does for any other disabled focus panel.
+				// See axSnapshot.fallbackFocus.
+				child.Focused = false
+				if s.focus == delegated {
+					s.focus = 0
+				}
+				s.delegatedFocus = 0
+				builder.delegated = 0
+			case node.Focused:
+				// The callback put the focus back on this node after the widget had handed it to the child, which
+				// would publish two focused nodes in one window. The delegation is what the widget decided and the
+				// callback is not being asked about it; what it can still do is refuse the delegation outright by
+				// disabling the panel, which is the case above.
+				node.Focused = false
+			}
+		}
+	}
 	if node.Disabled {
 		// Every request that would act on a disabled node is refused, so advertising one would offer an assistive
 		// technology something it cannot have, and a screen reader that says a greyed-out control can be pressed is
@@ -659,6 +709,8 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	}
 	switch {
 	case !node.Focused:
+		// Either the panel does not hold the focus, or it holds it and handed it to one of its virtual children, which
+		// has already been named as what the window reports the focus on.
 	case p.Is(s.focusPanel):
 		// The panel really does hold the keyboard focus, so this is the node the window reports it on.
 		if s.focus == 0 {

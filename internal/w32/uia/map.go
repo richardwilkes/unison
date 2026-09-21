@@ -781,6 +781,13 @@ func contentPiece(t *accessibility.Tree, n *accessibility.Node, depth int) strin
 // only the active window's focused element really has the keyboard — so an inactive window answers false everywhere. It
 // is the same answer IRawElementProviderFragmentRoot::GetFocus gives, including for an empty focus, which it reports as
 // a NULL element.
+//
+// The element it names is not always the panel the keyboard really goes to: a list or a table that holds the focus
+// reports it on its current row instead, so the row answers this and the container around it does not, even though
+// both are focusable. That is what the native controls report — a WPF ListBoxItem or DataGridRow claims
+// HasKeyboardFocus while the ListBox or DataGrid claims only IsKeyboardFocusable — and what a screen reader needs
+// before it will act on a focus event naming the row: NVDA's shouldAllowUIAFocusEvent drops one whose element does not
+// claim the keyboard. See AccessibilityBuilder.FocusChild, which is what moves the claim onto the row.
 func HasKeyboardFocus(t *accessibility.Tree, n *accessibility.Node) bool {
 	if t == nil || n == nil || t.Focus == 0 || !rootFocused(t) {
 		return false
@@ -1670,6 +1677,12 @@ func symmetricDifference(a, b []accessibility.NodeID) []accessibility.NodeID {
 // reports a NULL element and nothing claims HasKeyboardFocus. It reaches a real window whenever the focused panel is
 // removed or gives the focus up, and when a window becomes active with nothing inside it focused. The Linux adapter
 // reports the same two moments; see internal/atspi/events.go.
+//
+// The element the event names is whatever the snapshot's Focus does, which for a list or a table holding the focus is
+// its current row rather than the container: every arrow key moves that Focus and so raises this on the row the user
+// has landed on, which is what a screen reader follows and what the native controls raise. The selection events the
+// same key produces go out alongside it and are not a substitute for it — no screen reader treats a selection change
+// as the user having moved; see selectionItem.
 func (d *decider) focus(id accessibility.NodeID) {
 	if !d.rootFocused {
 		return

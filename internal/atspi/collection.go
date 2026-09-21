@@ -31,7 +31,7 @@ const matchRuleFields = 9
 // from whichever object it happens to be holding; a search from a leaf simply finds nothing.
 //
 // Everything is answered from the published snapshot, so a search costs one walk of the subtree with no round trips.
-// GetActiveDescendant is answered with the null reference; see [nodeObject.getActiveDescendant].
+// GetActiveDescendant answers from the focus the snapshot reports; see [nodeObject.getActiveDescendant].
 func (o *nodeObject) collectionInterface() *dbus.Interface {
 	return &dbus.Interface{
 		Name: InterfaceCollection,
@@ -118,12 +118,20 @@ func (o *nodeObject) replyWithRelativeMatches(call *dbus.Call, backwards bool) {
 }
 
 // getActiveDescendant implements org.a11y.atspi.Collection.GetActiveDescendant, which asks a container that manages its
-// own descendants which of them is the current one. Nothing here has one to report: the containers that make that
-// promise — a table or a tree large enough for [ManagesDescendants] — announce the current row through
-// object:active-descendant-changed as it moves, which is what an assistive technology honoring that state follows, and
-// the null reference is how AT-SPI says there is nothing here.
+// own descendants which of them is the current one. Only a container that makes that promise — a table or a tree large
+// enough for [ManagesDescendants] — has one, and only while the keyboard focus is inside it: a list or a table that
+// holds the focus reports it on its current row rather than on itself, so the focused descendant is the current one and
+// is exactly what [Adapter.emitActiveDescendants] has already named through object:active-descendant-changed. Answering
+// the same node here keeps a client that asks rather than listens from being told there is nothing current in a
+// container it has been told not to walk. Everything else answers with the null reference, which is how AT-SPI says
+// there is nothing here.
 func (o *nodeObject) getActiveDescendant(call *dbus.Call) {
-	call.Reply(nullReference())
+	focus := o.data.tree.Focus
+	if reportedNode(o.data, focus) == nil || managesDescendantsAncestor(o.data, focus) != o.node.ID {
+		call.Reply(nullReference())
+		return
+	}
+	call.Reply(o.a.reference(focus))
 }
 
 // relativeSearch is what one of the two searches that start somewhere within the collection was asked for.

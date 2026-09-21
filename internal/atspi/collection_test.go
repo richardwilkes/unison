@@ -735,10 +735,21 @@ func countingCandidates(walk candidates, considered *int) candidates {
 	}
 }
 
-func TestCollectionActiveDescendantIsNothing(t *testing.T) {
+// TestCollectionActiveDescendantIsOnlyForAManagingContainer covers the one container that has a current descendant to
+// report: a table or a tree large enough to manage its own descendants, while the keyboard focus is on one of its rows.
+// Everything else answers with the null reference, whatever is focused within it, since a client is expected to walk it
+// and read the focus from the rows themselves.
+func TestCollectionActiveDescendantIsOnlyForAManagingContainer(t *testing.T) {
 	t.Parallel()
 	ta := newDocumentAdapter(t)
 	ta.c.Equal(nullReference(), ta.one(NodePath(101), InterfaceCollection, "GetActiveDescendant", ""))
+
+	// A list reports the focus on its current row exactly as a large table does, but it makes no such promise about its
+	// descendants, so there is nothing for it to answer with.
+	ta.Publish(rowFocusWindow, listWithCurrentRow(0, 72), nil, sampleGeometry())
+	ta.c.Equal(nullReference(), ta.one(NodePath(71), InterfaceCollection, "GetActiveDescendant", ""))
+	ta.c.Equal(nullReference(), ta.one(NodePath(72), InterfaceCollection, "GetActiveDescendant", ""),
+		"and a row has nothing within it that could be current")
 }
 
 func TestMatchRuleDecoding(t *testing.T) {

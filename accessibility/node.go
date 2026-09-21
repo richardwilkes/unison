@@ -159,13 +159,18 @@ type Node struct {
 	// Focused reports that the node holds the keyboard focus within its window, whether or not that window is active.
 	// On the root, it instead reports that the window itself is active.
 	//
-	// Exactly one node of a window other than the root reports it, which is the node Tree.Focus names, with one
-	// deliberate exception: a node inside the panel that really holds the focus may report it as well, which is how a
-	// document whose reading caret has been moved says which of its blocks the caret is now in. That second claim is
-	// kept only on the platforms whose screen readers need it — AT-SPI carries the state per object, while UI
-	// Automation and AppKit have one focused element apiece — and only while the focus panel's own node is what
-	// Tree.Focus names, so a window whose focus an open menu has taken over carries none. A claim from anywhere else is
-	// taken away before the tree is published.
+	// Exactly one node of a window other than the root reports it, which is the node Tree.Focus names. That node is
+	// usually the panel holding the keyboard focus, but it may instead be a virtual child that panel handed the
+	// reported focus to — a list's or a table's current row, which is where every native list puts the focus and what
+	// every screen reader follows. The delegation is the panel's own focus said in another place: the panel's node
+	// stops reporting it, so the window still has exactly one node that does.
+	//
+	// There is one deliberate exception: a node inside the panel that really holds the focus may report it as well,
+	// which is how a document whose reading caret has been moved says which of its blocks the caret is now in. That
+	// second claim is kept only on the platforms whose screen readers need it — AT-SPI carries the state per object,
+	// while UI Automation and AppKit have one focused element apiece — and only while the focus panel's own node is
+	// what Tree.Focus names, so a window whose focus an open menu has taken over, or whose focus panel has handed it
+	// to a child, carries none. A claim from anywhere else is taken away before the tree is published.
 	Focused bool
 	// Selectable reports that the node can be selected within its container.
 	Selectable bool

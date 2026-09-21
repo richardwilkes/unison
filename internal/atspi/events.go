@@ -993,6 +993,18 @@ func (a *Adapter) emitFocusChanged(pub *publication, ev *accessibility.Event) {
 
 // emitFocusMoved announces that a node has taken the keyboard focus from whichever node held it before this publish,
 // and records that the publish has now said where the focus is.
+//
+// Whatever the node is, it is announced as it stands: the row of a list or a table that holds the focus is the focus
+// here, exactly as it is for a GtkListView or a GtkColumnView row, and is never swapped for a cell within it. Orca's
+// _on_focused_changed (scripts/default.py) takes the object the state arrived on and moves its locus of focus there,
+// looking past it only to a selected child it can ask for through org.a11y.atspi.Selection — which a row does not
+// implement, since [supportsSelection] hands that interface to the container alone — and then presents it with the
+// generator for its role: ATSPI_ROLE_TABLE_ROW reads the row's name and its position in the table
+// (speech_generator._generate_table_row), and ATSPI_ROLE_LIST_ITEM its text or name, the selection and the position,
+// plus the contents of a focusable item (speech_generator._generate_list_item, generator._generate_descendants). A cell
+// would be no better even where a table is read a whole row at a time: Orca's generator._combine_cell_results presents
+// a named, non-layout row as the row object itself rather than as its cells, which is the very object the focus is on
+// here, since a Unison row is named from its first column.
 func (a *Adapter) emitFocusMoved(pub *publication, id accessibility.NodeID) {
 	pub.focusAnnounced = true
 	// Which node had the focus is only in the snapshot before this one, but whether it is still worth telling anyone

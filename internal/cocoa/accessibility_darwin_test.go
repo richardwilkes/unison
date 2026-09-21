@@ -18,6 +18,7 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/role"
 )
 
@@ -2857,15 +2858,26 @@ func TestAXSelectorAllowed(t *testing.T) {
 				{selector: "accessibilitySelectedRows", allowed: axByRowContainer},
 				{selector: "accessibilityVisibleRows", allowed: axByRowContainer},
 				{selector: "setAccessibilitySelectedRows:", allowed: axByRowContainer},
+				// What a row says about being open belongs to the rows that can really be opened, which this one is:
+				// a row that discloses nothing reports AXDisclosing false, and VoiceOver speaks that as "collapsed".
 				{selector: "isAccessibilityDisclosed", allowed: axByRow},
 				{selector: "accessibilityDisclosedRows", allowed: axByRow},
-				{selector: "accessibilityDisclosedByRow", allowed: axByRow},
 				{selector: "setAccessibilityDisclosed:", allowed: axByRow},
+				// Where a row sits in a hierarchy belongs to the rows of an outline, and this row is a table's: both
+				// attributes describe the shape axRoleFor gives the AXOutlineRow subrole to, and neither has an answer
+				// for a flat table's row or a list's.
+				// TestAXOutlineRowDisclosure proves the other half of each.
+				{selector: "accessibilityDisclosedByRow", allowed: axByNoNode},
+				{selector: "accessibilityDisclosureLevel", allowed: axByNoNode},
 				// The settable state. The progress bar is the read-only node: it reports a number that nobody may
 				// set, which is what ReadOnly says and what the other two platforms report as READ_ONLY and
 				// IsReadOnly.
 				{selector: "setAccessibilityValue:", allowed: axBySettable},
 				{selector: "setAccessibilitySelected:", allowed: axByRow},
+				// Whether a node is open, and the request to open it, belong to the nodes that can be opened at all.
+				// Every element answered the getter before, reporting AXExpanded false — the "collapsed" VoiceOver
+				// speaks of a button, a label or a plain list row that has nothing to expand.
+				{selector: "isAccessibilityExpanded", allowed: axByRow},
 				{selector: "setAccessibilityExpanded:", allowed: axByRow},
 				// Whether AXFocused can be set is the only way this platform can say a node takes the keyboard focus,
 				// so it belongs to the nodes whose action set has Focus and to no others — a label, an anonymous
@@ -5722,6 +5734,604 @@ func TestAXSearchPredicate(t *testing.T) {
 			if got, want := len(axSearchAnswerElements(document, wrong)), len(axDocDocumentOrder()); got != want {
 				t.Errorf("a search whose entries hold the wrong kinds of thing answered %d elements, want %d", got,
 					want)
+			}
+		})
+	})
+}
+
+// The node ids axRowFocusTree builds.
+const (
+	axRowFocusRootID accessibility.NodeID = 1800 + iota
+	axRowFocusContainerID
+	axRowFocusRow0ID
+	axRowFocusRow1ID
+)
+
+// axRowFocusTree returns a window holding a list, a table or an outline with two rows in it, with the keyboard focus
+// on the container itself when row is -1 and on the row of that number otherwise. It is the shape a list or a table
+// that holds the focus now publishes: the container stays focusable but reports no focus, while the current row
+// reports it, is selected, and offers the focus action an assistive technology needs to move it there itself.
+func axRowFocusTree(containerRole role.Enum, row int) *accessibility.Tree {
+	rowRole := role.Row
+	if containerRole == role.List {
+		rowRole = role.ListItem
+	}
+	container := &accessibility.Node{
+		ID: axRowFocusContainerID, Parent: axRowFocusRootID,
+		Children: []accessibility.NodeID{axRowFocusRow0ID, axRowFocusRow1ID}, Role: containerRole, Name: "Rows",
+		Bounds: geom.NewRect(0, 20, 200, 40), RowCount: 2, Focusable: true, Focused: row < 0,
+		Actions: accessibility.ActionSet(0).With(accessibility.Focus),
+	}
+	tree := &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			axRowFocusRootID: {
+				ID: axRowFocusRootID, Children: []accessibility.NodeID{axRowFocusContainerID}, Role: role.Window,
+				Bounds: geom.NewRect(0, 0, 320, 240),
+			},
+			axRowFocusContainerID: container,
+		},
+		Root:       axRowFocusRootID,
+		Focus:      axRowFocusContainerID,
+		Generation: 1,
+	}
+	for i, id := range []accessibility.NodeID{axRowFocusRow0ID, axRowFocusRow1ID} {
+		tree.Nodes[id] = &accessibility.Node{
+			ID: id, Parent: axRowFocusContainerID, Role: rowRole, Name: "Row " + string(rune('A'+i)),
+			Bounds: geom.NewRect(0, float32(20+20*i), 200, 20), RowIndex: i, Level: 1, Selectable: true,
+			Selected: i == row, Focusable: true, Focused: i == row,
+			Actions: accessibility.ActionSet(0).With(accessibility.Select, accessibility.Focus),
+		}
+		if i == row {
+			tree.Focus = id
+		}
+	}
+	return tree
+}
+
+// axRowFocusPublish publishes the next snapshot and returns the focus-changed notifications it posted. Every other
+// notification is recorded too, since what this is about is which element the focus was posted against rather than
+// what else went out: the selection notifications keep going out exactly as they did.
+func axRowFocusPublish(t *testing.T, a *AXAdapter, before, after *accessibility.Tree) []axRecordedNotification {
+	t.Helper()
+	after.Generation = before.Generation + 1
+	events := accessibility.Diff(before, after)
+	var recorded []axRecordedNotification
+	stop := axRecordNotifications(&recorded)
+	a.Publish(after, events)
+	stop()
+	focus := GoStringFromNSString(AppKitString(axNotifyFocusedUIElement))
+	posted := make([]axRecordedNotification, 0, 1)
+	for _, notification := range recorded {
+		if notification.name == focus {
+			posted = append(posted, notification)
+		}
+	}
+	return posted
+}
+
+// axRowFocusCheck asserts that the row holds the focus and the container does not: the notification named the row's
+// element, the content view answers with it, and AXFocused reads back true on the row and false on the container.
+// Reading back true is what a client checks after following a focus notification, and NSTableView's rows are what
+// this is modeled on.
+func axRowFocusCheck(t *testing.T, v View, a *AXAdapter, posted []axRecordedNotification, row accessibility.NodeID) {
+	t.Helper()
+	element := a.Element(row)
+	if element == 0 {
+		t.Fatalf("no element was created for the focused row %d", row)
+	}
+	want := []axRecordedNotification{
+		{element: element, name: GoStringFromNSString(AppKitString(axNotifyFocusedUIElement))},
+	}
+	if !slices.Equal(posted, want) {
+		t.Errorf("the focus move posted %v, want %v (the row's element, not the container's)", posted, want)
+	}
+	WithPool(func() {
+		if got := objc.ID(v).Send(Sel("accessibilityFocusedUIElement")); got != element {
+			t.Errorf("the content view's focused element is %#x, want the row's element %#x", got, element)
+		}
+		if !objc.Send[bool](element, Sel("isAccessibilityFocused")) {
+			t.Error("the focused row reports AXFocused false, which is what a client checks after following the " +
+				"notification")
+		}
+		container := a.Element(axRowFocusContainerID)
+		if container != 0 && objc.Send[bool](container, Sel("isAccessibilityFocused")) {
+			t.Error("the container reports AXFocused true while its row holds the focus")
+		}
+		if !axAttributeSettable(element, "AXFocused") {
+			t.Error("the row does not report AXFocused as settable, so a client cannot move the focus onto it")
+		}
+	})
+}
+
+// TestAXFocusMovesOntoAListRow proves a list that reports the keyboard focus on its current row moves the focus
+// notification onto the row rather than the list. A list whose only notification per key press was
+// NSAccessibilitySelectedRowsChangedNotification on the list itself left the VoiceOver cursor where it was, which is
+// what was measured against a real AXUIElement client before this changed; posting the focused-element notification
+// against the row is what WebKit and Chromium do for an active descendant, and VoiceOver follows it.
+func TestAXFocusMovesOntoAListRow(t *testing.T) {
+	runOnMain(func() {
+		before := axRowFocusTree(role.List, -1)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// The container is asked about first, so that the check that it stops reporting the focus is asking a real
+		// element rather than finding none at all. Nothing has asked about the rows, though, which is the ordinary
+		// case for an arrow key: the element has to be created for the notification to name anything at all.
+		WithPool(func() { axTestChildren(t, v, 1) })
+		if a.Element(axRowFocusRow0ID) != 0 {
+			t.Fatal("a row already has an element before anything asked about one")
+		}
+		onRow0 := axRowFocusTree(role.List, 0)
+		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, before, onRow0), axRowFocusRow0ID)
+		onRow1 := axRowFocusTree(role.List, 1)
+		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow0, onRow1), axRowFocusRow1ID)
+		WithPool(func() {
+			// The row is a row of the list it sits in, which is what VoiceOver reads it as, and it names that list
+			// back: an element the focus lands on has to be reachable by walking the window as well.
+			element := a.Element(axRowFocusRow1ID)
+			wantRole := GoStringFromNSString(AppKitString(axRoleRow))
+			if got := GoStringFromNSString(element.Send(Sel("accessibilityRole"))); got != wantRole {
+				t.Errorf("the focused list item's role is %s, want %s", got, wantRole)
+			}
+			if got := element.Send(Sel("accessibilityParent")); got != a.Element(axRowFocusContainerID) {
+				t.Errorf("the focused row's parent is %#x, want the list %#x", got,
+					a.Element(axRowFocusContainerID))
+			}
+			if got := objc.Send[int64](element, Sel("accessibilityIndex")); got != 1 {
+				t.Errorf("the focused row's index is %d, want 1", got)
+			}
+			if !objc.Send[bool](element, Sel("isAccessibilitySelected")) {
+				t.Error("the focused row reports AXSelected false")
+			}
+		})
+	})
+}
+
+// TestAXFocusMovesOntoATableRow proves the same for a table's rows, which VoiceOver reaches through the table's
+// AXRows rather than as plain children.
+func TestAXFocusMovesOntoATableRow(t *testing.T) {
+	runOnMain(func() {
+		before := axRowFocusTree(role.Table, -1)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// The container is asked about first, so that the check that it stops reporting the focus is asking a real
+		// element rather than finding none at all.
+		WithPool(func() { axTestChildren(t, v, 1) })
+		onRow0 := axRowFocusTree(role.Table, 0)
+		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, before, onRow0), axRowFocusRow0ID)
+		onRow1 := axRowFocusTree(role.Table, 1)
+		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow0, onRow1), axRowFocusRow1ID)
+		WithPool(func() {
+			rows := IDsFromNSArray(a.Element(axRowFocusContainerID).Send(Sel("accessibilityRows")))
+			if len(rows) != 2 || rows[1] != a.Element(axRowFocusRow1ID) {
+				t.Errorf("the table's rows are %v, want the two rows with the focused one last", rows)
+			}
+		})
+	})
+}
+
+// TestAXFocusMovesOntoAnOutlineRow proves the same for an outline's rows, which carry the outline row subrole and a
+// disclosure level VoiceOver speaks when it lands on one.
+func TestAXFocusMovesOntoAnOutlineRow(t *testing.T) {
+	runOnMain(func() {
+		before := axRowFocusTree(role.Tree, -1)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// The container is asked about first, so that the check that it stops reporting the focus is asking a real
+		// element rather than finding none at all.
+		WithPool(func() { axTestChildren(t, v, 1) })
+		onRow0 := axRowFocusTree(role.Tree, 0)
+		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, before, onRow0), axRowFocusRow0ID)
+		onRow1 := axRowFocusTree(role.Tree, 1)
+		onRow1.Nodes[axRowFocusRow1ID].Level = 2
+		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow0, onRow1), axRowFocusRow1ID)
+		WithPool(func() {
+			element := a.Element(axRowFocusRow1ID)
+			wantSubrole := GoStringFromNSString(AppKitString(axSubroleOutlineRow))
+			if got := GoStringFromNSString(element.Send(Sel("accessibilitySubrole"))); got != wantSubrole {
+				t.Errorf("the focused outline row's subrole is %s, want %s", got, wantSubrole)
+			}
+			if got := objc.Send[int64](element, Sel("accessibilityDisclosureLevel")); got != 1 {
+				t.Errorf("the focused outline row's disclosure level is %d, want 1", got)
+			}
+		})
+	})
+}
+
+// TestAXFocusBackOffARow proves a list that loses its selection reports the focus on itself again, which is what an
+// empty list box does: the notification names the list, and the row it named before reports AXFocused false.
+func TestAXFocusBackOffARow(t *testing.T) {
+	runOnMain(func() {
+		before := axRowFocusTree(role.List, 0)
+		v, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		after := axRowFocusTree(role.List, -1)
+		posted := axRowFocusPublish(t, a, before, after)
+		list := a.Element(axRowFocusContainerID)
+		want := []axRecordedNotification{
+			{element: list, name: GoStringFromNSString(AppKitString(axNotifyFocusedUIElement))},
+		}
+		if !slices.Equal(posted, want) {
+			t.Errorf("the focus leaving the row posted %v, want %v (the list itself)", posted, want)
+		}
+		WithPool(func() {
+			if got := objc.ID(v).Send(Sel("accessibilityFocusedUIElement")); got != list {
+				t.Errorf("the content view's focused element is %#x, want the list %#x", got, list)
+			}
+			if objc.Send[bool](a.Element(axRowFocusRow0ID), Sel("isAccessibilityFocused")) {
+				t.Error("the row the focus left still reports AXFocused true")
+			}
+		})
+	})
+}
+
+// The node ids axDisclosureTree builds.
+const (
+	axDiscRootID accessibility.NodeID = 2700 + iota
+	axDiscListID
+	axDiscListRowID
+	axDiscOutlineID
+	axDiscOutlineRowID
+	axDiscPopupID
+	axDiscButtonID
+)
+
+// axDisclosureTree returns a window holding a plain list with one row, an outline with one row that can be opened, a
+// pop-up button and an ordinary button: one element of each kind that has something to say about being open, and two
+// that have nothing.
+func axDisclosureTree() *accessibility.Tree {
+	return &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			axDiscRootID: {
+				ID: axDiscRootID, Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
+				Children: []accessibility.NodeID{axDiscListID, axDiscOutlineID, axDiscPopupID, axDiscButtonID},
+			},
+			axDiscListID: {
+				ID: axDiscListID, Parent: axDiscRootID, Children: []accessibility.NodeID{axDiscListRowID},
+				Role: role.List, Name: "Names", Bounds: geom.NewRect(0, 0, 200, 20), RowCount: 1,
+			},
+			// A plain list row: selectable, nothing to open, and nothing beneath it.
+			axDiscListRowID: {
+				ID: axDiscListRowID, Parent: axDiscListID, Role: role.ListItem, Name: "Alpha",
+				Bounds: geom.NewRect(0, 0, 200, 20), RowIndex: 0, Selectable: true,
+				Actions: accessibility.ActionSet(0).With(accessibility.Select),
+			},
+			axDiscOutlineID: {
+				ID: axDiscOutlineID, Parent: axDiscRootID, Children: []accessibility.NodeID{axDiscOutlineRowID},
+				Role: role.Tree, Name: "Folders", Bounds: geom.NewRect(0, 20, 200, 20), RowCount: 1,
+			},
+			// An outline row two levels down that is open, which is the one row here with a hierarchy to describe.
+			axDiscOutlineRowID: {
+				ID: axDiscOutlineRowID, Parent: axDiscOutlineID, Role: role.Row, Name: "Branch",
+				Bounds: geom.NewRect(0, 20, 200, 20), RowIndex: 0, Level: 3, Expandable: true, Expanded: true,
+				Actions: accessibility.ActionSet(0).With(accessibility.Expand, accessibility.Collapse),
+			},
+			axDiscPopupID: {
+				ID: axDiscPopupID, Parent: axDiscRootID, Role: role.PopupButton, Name: "Choose",
+				Bounds: geom.NewRect(0, 40, 100, 20), Expandable: true,
+				Actions: accessibility.ActionSet(0).With(accessibility.Press, accessibility.Expand,
+					accessibility.Collapse),
+			},
+			axDiscButtonID: {
+				ID: axDiscButtonID, Parent: axDiscRootID, Role: role.Button, Name: "OK",
+				Bounds:  geom.NewRect(0, 60, 80, 24),
+				Actions: accessibility.ActionSet(0).With(accessibility.Press),
+			},
+		},
+		Root:       axDiscRootID,
+		Generation: 1,
+	}
+}
+
+// TestAXOutlineRowDisclosure proves the attributes that say whether an element is open, and where it sits in a
+// hierarchy, are answered by the elements that have an answer and by no others.
+//
+// Both are attributes whose type has no "nothing to say": AXExpanded is a BOOL and AXDisclosureLevel an integer, so an
+// element that answers them at all reports false and 0, and VoiceOver speaks what it is given — a plain list row was
+// announced as "collapsed, row 4 of 12" while nothing about it could ever be opened, and every element in the window,
+// a button included, reported itself collapsed at level 0. Verified against a running application with an AXUIElement
+// probe before the rules below existed.
+func TestAXOutlineRowDisclosure(t *testing.T) {
+	runOnMain(func() {
+		v, a, cleanup := newAXAdapterWithTree(t, axDisclosureTree())
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			children := axTestChildren(t, v, 4)
+			listRow := IDsFromNSArray(children[0].Send(Sel("accessibilityRows")))
+			outlineRow := IDsFromNSArray(children[1].Send(Sel("accessibilityRows")))
+			if len(listRow) != 1 || len(outlineRow) != 1 {
+				t.Fatalf("the list reported %d rows and the outline %d, want 1 each", len(listRow), len(outlineRow))
+			}
+			for _, c := range []struct {
+				name            string
+				element         objc.ID
+				expanded        bool
+				disclosed       bool
+				hierarchy       bool
+				disclosureLevel int64
+			}{
+				// The row that discloses nothing says nothing about disclosure, and being a list's row it has no
+				// hierarchy to describe either.
+				{name: "list row", element: listRow[0]},
+				// The outline row is the one element here with both: it can be opened, and it sits two levels in,
+				// which AXDisclosureLevel reports as the depth below the top row rather than as Level itself.
+				{
+					name: "outline row", element: outlineRow[0], expanded: true, disclosed: true, hierarchy: true,
+					disclosureLevel: 2,
+				},
+				// A pop-up button opens, so it says whether it is open; it is no row, so it discloses nothing.
+				{name: "pop-up button", element: children[2], expanded: true},
+				// A button opens nothing at all and answers none of them.
+				{name: "button", element: children[3]},
+			} {
+				for _, sel := range []struct {
+					selector string
+					want     bool
+				}{
+					{selector: "isAccessibilityExpanded", want: c.expanded},
+					{selector: "setAccessibilityExpanded:", want: c.expanded},
+					{selector: "isAccessibilityDisclosed", want: c.disclosed},
+					{selector: "accessibilityDisclosedRows", want: c.disclosed},
+					{selector: "setAccessibilityDisclosed:", want: c.disclosed},
+					{selector: "accessibilityDisclosedByRow", want: c.hierarchy},
+					{selector: "accessibilityDisclosureLevel", want: c.hierarchy},
+				} {
+					if got := axSelectorAllowed(c.element, sel.selector); got != sel.want {
+						t.Errorf("the %s allows %s = %v, want %v", c.name, sel.selector, got, sel.want)
+					}
+				}
+				// Writing one of the two is asked about by name rather than by selector, and that question is the
+				// one an AX client's AXUIElementIsAttributeSettable is answered from, so it has to follow the same
+				// rules: an element that says nothing about being open must not offer to be opened either.
+				for _, attr := range []struct {
+					attribute string
+					want      bool
+				}{
+					{attribute: "AXExpanded", want: c.expanded},
+					{attribute: "AXDisclosing", want: c.disclosed},
+				} {
+					if got := axAttributeSettable(c.element, attr.attribute); got != attr.want {
+						t.Errorf("the %s reports %s settable = %v, want %v", c.name, attr.attribute, got, attr.want)
+					}
+				}
+				if !c.hierarchy {
+					continue
+				}
+				if got := objc.Send[int64](c.element, Sel("accessibilityDisclosureLevel")); got != c.disclosureLevel {
+					t.Errorf("the %s reports disclosure level %d, want %d", c.name, got, c.disclosureLevel)
+				}
+				if !objc.Send[bool](c.element, Sel("isAccessibilityDisclosed")) {
+					t.Errorf("the %s reports itself closed, want open", c.name)
+				}
+			}
+		})
+	})
+}
+
+// The node ids axContentNameTree builds.
+const (
+	axContentRootID accessibility.NodeID = 2800 + iota
+	axContentListID
+	axContentPlainItemID
+	axContentPlainLabelID
+	axContentCheckItemID
+	axContentCheckBoxID
+	axContentNamedItemID
+	axContentNamedLabelID
+	axContentTableID
+	axContentRowID
+	axContentWideCellID
+	axContentLeftLabelID
+	axContentRightLabelID
+	axContentSoloCellID
+	axContentSoloLabelID
+)
+
+// axContentNameTree returns a window holding the shapes a description is built from: a nameless list row drawn with a
+// single label, a nameless row drawn with a check box whose state the row reports as its value, a row the widget did
+// name, a nameless table cell holding two labels, and a cell holding one thing, which is stood in for by that thing.
+// It is the shape List.axAddRow and Table.axAddRow produce: each clears the name it gave the row as soon as the row
+// has content of its own.
+func axContentNameTree() *accessibility.Tree {
+	label := func(id, parent accessibility.NodeID, name string, bounds geom.Rect) *accessibility.Node {
+		return &accessibility.Node{
+			ID: id, Parent: parent, Role: role.Label, Name: name, Bounds: bounds,
+			Text: &accessibility.TextInfo{Text: name},
+		}
+	}
+	return &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			axContentRootID: {
+				ID: axContentRootID, Children: []accessibility.NodeID{axContentListID, axContentTableID},
+				Role: role.Window, Bounds: geom.NewRect(0, 0, 320, 240),
+			},
+			axContentListID: {
+				ID: axContentListID, Parent: axContentRootID, Role: role.List, Name: "Names",
+				Bounds: geom.NewRect(0, 0, 200, 60), RowCount: 3,
+				Children: []accessibility.NodeID{
+					axContentPlainItemID, axContentCheckItemID, axContentNamedItemID,
+				},
+			},
+			axContentPlainItemID: {
+				ID: axContentPlainItemID, Parent: axContentListID,
+				Children: []accessibility.NodeID{axContentPlainLabelID}, Role: role.ListItem,
+				Bounds: geom.NewRect(0, 0, 200, 20), RowIndex: 0,
+			},
+			axContentPlainLabelID: label(axContentPlainLabelID, axContentPlainItemID, "Uno",
+				geom.NewRect(0, 0, 200, 20)),
+			// A row drawn with a single widget that has a state of its own reports that state as the row's value,
+			// which is what List.axAddRow puts there; see axContentValue.
+			axContentCheckItemID: {
+				ID: axContentCheckItemID, Parent: axContentListID,
+				Children: []accessibility.NodeID{axContentCheckBoxID}, Role: role.ListItem, Value: "Checked",
+				Bounds: geom.NewRect(0, 20, 200, 20), RowIndex: 1,
+			},
+			axContentCheckBoxID: {
+				ID: axContentCheckBoxID, Parent: axContentCheckItemID, Role: role.CheckBox, Name: "Enable",
+				Bounds: geom.NewRect(0, 20, 200, 20), HasCheck: true, Checked: check.On,
+			},
+			axContentNamedItemID: {
+				ID: axContentNamedItemID, Parent: axContentListID,
+				Children: []accessibility.NodeID{axContentNamedLabelID}, Role: role.ListItem, Name: "Overview",
+				Bounds: geom.NewRect(0, 40, 200, 20), RowIndex: 2,
+			},
+			axContentNamedLabelID: label(axContentNamedLabelID, axContentNamedItemID, "Three",
+				geom.NewRect(0, 40, 200, 20)),
+			axContentTableID: {
+				ID: axContentTableID, Parent: axContentRootID, Children: []accessibility.NodeID{axContentRowID},
+				Role: role.Table, Name: "Records", Bounds: geom.NewRect(0, 60, 200, 20), RowCount: 1, ColumnCount: 2,
+			},
+			axContentRowID: {
+				ID: axContentRowID, Parent: axContentTableID,
+				Children: []accessibility.NodeID{axContentWideCellID, axContentSoloCellID}, Role: role.Row,
+				Name: "Row", Bounds: geom.NewRect(0, 60, 200, 20), RowIndex: 0, Level: 1,
+			},
+			axContentWideCellID: {
+				ID: axContentWideCellID, Parent: axContentRowID,
+				Children: []accessibility.NodeID{axContentLeftLabelID, axContentRightLabelID}, Role: role.Cell,
+				Bounds: geom.NewRect(0, 60, 100, 20), RowIndex: 0, ColumnIndex: 0,
+			},
+			axContentLeftLabelID: label(axContentLeftLabelID, axContentWideCellID, "Left",
+				geom.NewRect(0, 60, 50, 20)),
+			axContentRightLabelID: label(axContentRightLabelID, axContentWideCellID, "Right",
+				geom.NewRect(50, 60, 50, 20)),
+			// A cell holding exactly one thing is stood in for by that thing, so a client is never shown the cell
+			// itself; see axStandIn.
+			axContentSoloCellID: {
+				ID: axContentSoloCellID, Parent: axContentRowID,
+				Children: []accessibility.NodeID{axContentSoloLabelID}, Role: role.Cell,
+				Bounds: geom.NewRect(100, 60, 100, 20), RowIndex: 0, ColumnIndex: 1,
+			},
+			axContentSoloLabelID: label(axContentSoloLabelID, axContentSoloCellID, "Solo",
+				geom.NewRect(100, 60, 100, 20)),
+		},
+		Root:       axContentRootID,
+		Generation: 1,
+	}
+}
+
+// TestAXContentNamedItems proves a list row or a table cell the widget left nameless is described by what it holds.
+//
+// VoiceOver speaks an element's description, its value and its position when the keyboard focus lands on it, and does
+// not read what an AXRow holds, so a row that answers neither was announced as nothing but "row 4 of 12" — which is
+// what the focus moving onto a list's current row produces for every row of every list. The Windows adapter builds the
+// same description from the same content for the same reason; see namedByItsContent in internal/w32/uia.
+func TestAXContentNamedItems(t *testing.T) {
+	runOnMain(func() {
+		tree := axContentNameTree()
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			for _, c := range []struct {
+				what  string
+				label string
+				value string
+				node  accessibility.NodeID
+			}{
+				// The row drawn with one label says what that label says, and has no value of its own to add.
+				{what: "the row drawn with a label", node: axContentPlainItemID, label: "Uno"},
+				// The row drawn with a check box names the widget and leaves the state to the value, which is the
+				// pairing VoiceOver speaks as "Enable, Checked".
+				{
+					what: "the row drawn with a check box", node: axContentCheckItemID, label: "Enable",
+					value: "Checked",
+				},
+				// A row the widget named keeps that name: the description is built only where there is none.
+				{what: "the named row", node: axContentNamedItemID, label: "Overview"},
+				// A cell drawn with two labels says both, in the order they are drawn.
+				{what: "the cell holding two labels", node: axContentWideCellID, label: "Left Right"},
+				// A cell that is stood in for is left alone, since a client is never shown it; what it holds speaks
+				// for itself, as a label always has.
+				{what: "the stood-in cell", node: axContentSoloCellID},
+				{what: "the label standing in for it", node: axContentSoloLabelID, value: "Solo"},
+			} {
+				// The element is asked for directly rather than walked to, since the stood-in cell is one a client
+				// is never handed and this is about what each node itself answers.
+				element := a.elementFor(c.node)
+				if element == 0 {
+					t.Fatalf("%s has no element", c.what)
+				}
+				got := GoStringFromNSString(element.Send(Sel("accessibilityLabel")))
+				if element.Send(Sel("accessibilityLabel")) == 0 {
+					got = ""
+				}
+				if got != c.label {
+					t.Errorf("%s reports the description %q, want %q", c.what, got, c.label)
+				}
+				value := ""
+				if raw := element.Send(Sel("accessibilityValue")); raw != 0 {
+					value = GoStringFromNSString(raw)
+				}
+				if value != c.value {
+					t.Errorf("%s reports the value %q, want %q", c.what, value, c.value)
+				}
+			}
+		})
+	})
+}
+
+// TestAXContentNameEditPostsTitleChanged proves an edit inside a nameless list row tells the row that what it is
+// called has changed. No event names the row — the events name the label that was edited — and the title-changed
+// notification is the only prompt macOS has to read an element again, the same stand-in a name change uses. Without
+// it, a client that had already read the row goes on speaking the row the list no longer shows.
+func TestAXContentNameEditPostsTitleChanged(t *testing.T) {
+	runOnMain(func() {
+		before := axContentNameTree()
+		_, a, cleanup := newAXAdapterWithTree(t, before)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// Nothing is posted about an element nothing has asked about, so the row has to have been read once, which
+		// is the state a client that has already spoken the row is in.
+		item := a.elementFor(axContentPlainItemID)
+		if item == 0 {
+			t.Fatal("the nameless row has no element")
+		}
+		after := axContentNameTree()
+		after.Generation = 2
+		label := after.Node(axContentPlainLabelID)
+		label.Name = "Beta"
+		label.Text = &accessibility.TextInfo{Text: "Beta"}
+		events := accessibility.Diff(before, after)
+		if len(events) == 0 {
+			t.Fatal("the edit produced no events for the adapter to translate")
+		}
+		var recorded []axRecordedNotification
+		stop := axRecordNotifications(&recorded)
+		a.Publish(after, events)
+		stop()
+		want := GoStringFromNSString(AppKitString(axNotifyTitleChanged))
+		titles := 0
+		for _, p := range recorded {
+			if p.name == want && p.element == item {
+				titles++
+			}
+		}
+		if titles != 1 {
+			t.Errorf("the edit posted %d title-changed notifications against the row, want 1 (posted %v)", titles,
+				recorded)
+		}
+		WithPool(func() {
+			if got := GoStringFromNSString(item.Send(Sel("accessibilityLabel"))); got != "Beta" {
+				t.Errorf("the row now reports the description %q, want %q", got, "Beta")
 			}
 		})
 	})

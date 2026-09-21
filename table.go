@@ -139,6 +139,7 @@ type Table[T TableRowConstraint[T]] struct {
 	header                   *TableHeader[T]
 	selMap                   map[tid.TID]bool
 	selAnchor                tid.TID
+	lead                     tid.TID
 	lastSel                  tid.TID
 	hitRects                 []tableHitRect
 	rowCache                 []tableCache[T]
@@ -1033,6 +1034,9 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		}
 		rowData := t.rowCache[row].row
 		id := rowData.ID()
+		// Every branch below acts on the selection, including the one that only notes the row for the mouse up to
+		// settle, so the row the person is on is this one whichever way the press is modified.
+		t.setLead(id)
 		switch {
 		case mods&mod.Shift != 0: // Extend selection from anchor
 			selAnchorIndex := -1
@@ -1147,6 +1151,7 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 		t.ClearSelection()
 		t.selMap[t.lastSel] = true
 		t.selAnchor = t.lastSel
+		t.setLead(t.lastSel)
 		t.MarkForRedraw()
 		t.notifyOfSelectionChange()
 	}
@@ -1269,6 +1274,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			t.ClearSelection()
 		}
 		t.SelectByIndex(i)
+		t.setLeadByIndex(i)
 		t.ScrollRowCellIntoView(i, 0)
 	case KeyDown:
 		i := min(t.LastSelectedRowIndex()+1, len(t.rowCache)-1)
@@ -1276,6 +1282,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			t.ClearSelection()
 		}
 		t.SelectByIndex(i)
+		t.setLeadByIndex(i)
 		t.ScrollRowCellIntoView(i, 0)
 	case KeyHome:
 		if mods.ShiftDown() && t.HasSelection() {
@@ -1284,6 +1291,10 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			t.ClearSelection()
 			t.SelectByIndex(0)
 		}
+		// The row the keys arrived at is the first one, whether the selection was replaced or extended back to it:
+		// SelectRange leaves the lead at the end of the range it was given, which for an extension is where the
+		// selection already was.
+		t.setLeadByIndex(0)
 		t.ScrollRowCellIntoView(0, 0)
 	case KeyEnd:
 		if mods.ShiftDown() && t.HasSelection() {
@@ -1292,6 +1303,7 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			t.ClearSelection()
 			t.SelectByIndex(len(t.rowCache) - 1)
 		}
+		t.setLeadByIndex(len(t.rowCache) - 1)
 		t.ScrollRowCellIntoView(len(t.rowCache)-1, 0)
 	default:
 		return false
@@ -1445,6 +1457,7 @@ func (t *Table[T]) PruneSelectionOfUndisclosedNodes() {
 		}
 	}
 	t.selMap = selMap
+	t.pruneLead()
 	if len(selMap) != oldLen {
 		t.notifyOfSelectionChange()
 	}
@@ -1474,6 +1487,58 @@ func (t *Table[T]) LastSelectedRowIndex() int {
 		}
 	}
 	return -1
+}
+
+// LeadRowIndex returns the index of the lead row — the row the person is on, which is the last one a gesture or a call
+// moved the selection to. Will be -1 if there is no lead row or the table is no longer showing it. It is what the
+// keyboard focus is reported on, so that a screen reader lands on the row the person moved to rather than on the table
+// as a whole, while it is still one of the selected rows; see Table.axCurrentRow.
+func (t *Table[T]) LeadRowIndex() int {
+	if t.lead == "" {
+		return -1
+	}
+	return t.axRowIndexForID(t.lead)
+}
+
+// setLead moves the row the person is on. A change to it that leaves the selection alone — an arrow key onto a row that
+// was selected already — still has to reach an assistive technology, and a window is described again only once it has
+// been drawn, so the redraw is what republishes it.
+func (t *Table[T]) setLead(id tid.TID) {
+	if t.lead == id {
+		return
+	}
+	t.lead = id
+	t.MarkForRedraw()
+}
+
+// setLeadByIndex moves the row the person is on to the row at the given index, and does nothing when the index names no
+// row the table is showing.
+func (t *Table[T]) setLeadByIndex(index int) {
+	if index >= 0 && index < len(t.rowCache) {
+		t.setLead(t.rowCache[index].row.ID())
+	}
+}
+
+// pruneLead lets go of a lead row the table is no longer showing or no longer holds in the selection. Keeping a stale
+// one would do no harm — axCurrentRow tests both before the focus is reported on it — but the row cache has just been
+// rebuilt or walked here, so this is where it costs nothing.
+func (t *Table[T]) pruneLead() {
+	if t.lead != "" && (!t.selMap[t.lead] || t.axRowIndexForID(t.lead) < 0) {
+		t.setLead("")
+	}
+}
+
+// axCurrentRow returns the index of the row the person is on, which is the row the keyboard focus is reported on: the
+// lead row, while the table is still showing it and it is still selected, and otherwise the first selected row. The
+// result is -1 when nothing is selected, since the selection is what a table is "on" — an assistive technology reads
+// the rows it holds — and there is then nowhere within the table to report the focus.
+func (t *Table[T]) axCurrentRow() int {
+	if t.lead != "" && t.selMap[t.lead] {
+		if row := t.axRowIndexForID(t.lead); row >= 0 {
+			return row
+		}
+	}
+	return t.FirstSelectedRowIndex()
 }
 
 // IsRowOrAnyParentSelected returns true if the specified row index or any of its parents are selected.
@@ -1554,6 +1619,7 @@ func (t *Table[T]) ClearSelection() {
 	t.selMap = make(map[tid.TID]bool)
 	t.selNeedsPrune = false
 	t.selAnchor = ""
+	t.setLead("")
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
 }
@@ -1570,6 +1636,16 @@ func (t *Table[T]) SelectAll() {
 			t.selAnchor = id
 		}
 	}
+	// The row the person is on is left where it was, since selecting everything does not move anyone: what it changes
+	// is what else is selected around them. A lead that named no row the table is showing lands on the first row, which
+	// is where a table with everything selected and nowhere in particular to be reads from.
+	if !t.selMap[t.lead] {
+		var first tid.TID
+		if len(t.rowCache) != 0 {
+			first = t.rowCache[0].row.ID()
+		}
+		t.setLead(first)
+	}
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
 }
@@ -1578,14 +1654,18 @@ func (t *Table[T]) SelectAll() {
 // selection exists.
 func (t *Table[T]) SelectByIndex(indexes ...int) {
 	for _, index := range indexes {
-		if index >= 0 && index < len(t.rowCache) {
-			id := t.rowCache[index].row.ID()
-			t.selMap[id] = true
-			t.selNeedsPrune = true
-			if t.selAnchor == "" {
-				t.selAnchor = id
-			}
+		if index < 0 || index >= len(t.rowCache) {
+			continue
 		}
+		id := t.rowCache[index].row.ID()
+		t.selMap[id] = true
+		t.selNeedsPrune = true
+		if t.selAnchor == "" {
+			t.selAnchor = id
+		}
+		// The last row actually selected is the one the person has arrived on, which is what the row the keyboard
+		// focus is reported on is worked out from.
+		t.setLead(id)
 	}
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
@@ -1607,6 +1687,9 @@ func (t *Table[T]) SelectRange(start, end int) {
 			t.selAnchor = id
 		}
 	}
+	// The end of the range is where a selection made by dragging or by shift-arrowing has arrived, so that is the row
+	// the person is on.
+	t.setLeadByIndex(end)
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
 }
@@ -1727,6 +1810,9 @@ func (t *Table[T]) SyncToModel() {
 		j = t.buildRowCacheEntry(row, -1, j, 0)
 	}
 	t.selNeedsPrune = true
+	// The row cache was just thrown away and rebuilt, so the row the person was on may no longer be among the rows the
+	// table shows — a row that was filtered out, or whose container was closed.
+	t.pruneLead()
 	_, pref, _ := t.DefaultSizes(geom.Size{})
 	rect := t.FrameRect()
 	rect.Size = pref
@@ -2344,6 +2430,14 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	if t.focusedCell != nil {
 		focusedRow = t.focusedCellRowIndex
 	}
+	// The row the keyboard focus is reported on, which is where the person is. While a cell holds the focus there is
+	// nothing to report on a row: the panel inside that cell really does hold it and is described as holding it by the
+	// ordinary path, so the table asks for no delegation at all.
+	currentRow := -1
+	if t.focusedCell == nil {
+		currentRow = t.axCurrentRow()
+	}
+	var currentID accessibility.NodeID
 	reach := axReach(b.VisibleRect())
 	// The rows are walked in order, accumulating the y coordinate as their heights go by, since asking each row where
 	// it is would walk the rows before it all over again. Nothing is described until the walk reaches the rows worth
@@ -2383,7 +2477,19 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			if outOfSequence {
 				t.axAddRowAncestors(b, row, depthTops)
 			}
-			t.axAddRow(b, row, rect, false)
+			id := t.axAddRow(b, row, rect, false)
+			if row == currentRow {
+				currentID = id
+			}
+			last = row
+		case row == currentRow:
+			// The row the focus is to be reported on is described however far out of sight it is and whatever the cap
+			// on selected rows has reached: it is where the person is. It is not counted against that cap, so the rest
+			// of the selection is described exactly as much as it would have been without it.
+			if outOfSequence {
+				t.axAddRowAncestors(b, row, depthTops)
+			}
+			currentID = t.axAddRow(b, row, rect, true)
 			last = row
 		case selected && described < axMaxSelectedRows:
 			if outOfSequence {
@@ -2397,12 +2503,21 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 		if t.ShowRowDivider {
 			rect.Y++
 		}
-		if rect.Y > reach.Bottom() && row >= focusedRow &&
+		if rect.Y > reach.Bottom() && row >= focusedRow && row >= currentRow &&
 			(selectedLeft <= 0 || described >= axMaxSelectedRows) {
-			// Every row from here down starts below the reach, so none of them can be seen; the focused row has gone
-			// by; and either the selection holds nothing further or as much of it as will be described has been.
+			// Every row from here down starts below the reach, so none of them can be seen; the focused row and the
+			// row the person is on have gone by; and either the selection holds nothing further or as much of it as
+			// will be described has been.
 			break
 		}
+	}
+	if currentID != 0 {
+		// The keyboard focus the table holds is reported on the row the person is on, which is where every native
+		// table puts it and the only thing a screen reader follows: a container that keeps the focus to itself and says
+		// nothing but "the selection changed" leaves the reader where it was. The table keeps the focus when there is
+		// no current row, as a native table with nothing selected does. See AccessibilityBuilder.FocusChild, which
+		// refuses the delegation unless the table really is the panel holding the focus.
+		b.FocusChild(currentID)
 	}
 }
 
@@ -2493,7 +2608,11 @@ type axDisclosureKey struct {
 // and it is all an assistive technology asks of such a row, since what it does with the selection is read out what is
 // in it. Building the rest would mean asking the model for a panel per column, laying each one out and walking it,
 // over and over: several hundred panels on every description of a table where everything has just been selected.
-func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, nameOnly bool) {
+//
+// The node id of the row is returned, or zero when nothing was added — which is what a row that has already been
+// described during this description answers with — and is what ProvideAccessibility reports the keyboard focus on for
+// the current row.
+func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, nameOnly bool) accessibility.NodeID {
 	entry := t.rowCache[row]
 	id := entry.row.ID()
 	depth := entry.depth
@@ -2523,8 +2642,12 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 		n.Selected = selected
 		n.Expandable = expandable
 		n.Expanded = expanded
+		// The rows are where the keyboard focus within a table is, as they are in a native one: the table reports the
+		// focus it holds on the row the person is on, and an assistive technology asking for the focus to be put on
+		// another row is asking to move to it, which selects it. See PerformAccessibilityAction.
+		n.Focusable = true
 		n.Actions = n.Actions.With(accessibility.Select, accessibility.AddToSelection,
-			accessibility.RemoveFromSelection, accessibility.ScrollIntoView)
+			accessibility.RemoveFromSelection, accessibility.ScrollIntoView, accessibility.Focus)
 		if toggleable {
 			n.Actions = n.Actions.With(accessibility.Expand, accessibility.Collapse)
 		}
@@ -2535,7 +2658,7 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 		}
 	})
 	if rowID == 0 || nameOnly {
-		return
+		return rowID
 	}
 	// The triangle that opens and closes a row is drawn by the table rather than by any cell, so it is described here
 	// as the row's first child: something a screen reader can land on and press, as a person can click it.
@@ -2592,6 +2715,7 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 			}
 		}
 	}
+	return rowID
 }
 
 // axContentValue returns the value a cell reports for the one widget it holds: the state of a check box or radio
@@ -2633,7 +2757,10 @@ func axDescendantOffers(tree *accessibility.Tree, id accessibility.NodeID, actio
 // under; acting on a cell acts on the row it belongs to, apart from scrolling, which brings the cell itself into view.
 // Selecting a row also scrolls it into view, as the arrow keys do, since an assistive technology moving through the
 // rows selects each one as it goes and expects to see where it has got to. Pressing a row opens it, which is the
-// gesture a double-click and the Return key stand for.
+// gesture a double-click and the Return key stand for. Putting the focus on a row moves the person onto it: the table
+// takes the keyboard focus and the row becomes the whole of the selection, exactly as an arrow key onto that row would
+// leave things, since the selection is where a table's cursor is. Only a row offers the focus; a cell does not, since
+// the table is the one tab stop and a cell is not a place the keyboard can be left.
 func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	var id tid.TID
 	col := -1
@@ -2686,6 +2813,26 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 			// As above: a row that is not selected has nothing to be taken out of the selection, and the row is left
 			// exactly as it was asked to be.
 			t.DeselectByIndex(row)
+		}
+	case accessibility.Focus:
+		if col >= 0 {
+			// A cell is not somewhere the focus can be put: a cell that holds a widget the keyboard can work in
+			// publishes that widget as the real panel it is, and the focus goes there through the ordinary path. Cells
+			// are not described as offering this, but this method is exported and the dispatcher does not check that an
+			// action was advertised, so one that arrives anyway is refused here.
+			return false
+		}
+		// Replacing the selection with the row, rather than adding to it, is what the arrow keys do, and this stands
+		// for the same movement; SelectByIndex is also what puts the row the focus is reported on onto this one.
+		t.ClearSelection()
+		t.SelectByIndex(row)
+		t.ScrollRowCellIntoView(row, 0)
+		t.RequestFocusWithoutScroll()
+		if wnd := t.Window(); wnd == nil || !t.Is(wnd.CurrentFocus()) {
+			// A focus request that did not leave the focus where it said it would must be reported as refused rather
+			// than as carried out, exactly as axDispatchAction checks for a real panel: the window may decline it, and
+			// a table with no window cannot take it at all.
+			return false
 		}
 	case accessibility.Expand:
 		return t.axSetRowOpen(row, true)

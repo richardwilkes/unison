@@ -616,3 +616,426 @@ func TestTableAccessibilityCellTooltipDoesNotDescribeTheTable(t *testing.T) {
 	c.False(axHasEvent(screen.AccessibilityEvents(wnd), accessibility.DescriptionChanged, tableID))
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// axTableWindow is what the focus tests below drive: a table, another control to move the focus away to, and a menu
+// bar with one menu, which is what the displacement test opens.
+type axTableWindow struct {
+	screen  *unison.HeadlessScreen
+	wnd     *unison.Window
+	table   *unison.Table[*tableTestRow]
+	other   *unison.Panel
+	tableID accessibility.NodeID
+}
+
+// newAXTableWindow starts a session showing the given rows in a table, with nothing selected and nothing holding the
+// keyboard focus yet.
+func newAXTableWindow(t *testing.T, title string, rows ...*tableTestRow) *axTableWindow {
+	t.Helper()
+	const (
+		menuID = unison.UserBaseID + iota
+		cutID
+	)
+	out := &axTableWindow{}
+	out.screen = startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			out.table = axNewTable(rows...)
+			out.other = axFocusablePanel("Other")
+			out.wnd = newHeadlessWindow(t, title, geom.NewRect(10, 10, 400, 400),
+				axColumn(out.table, out.other))
+			if out.wnd == nil {
+				return
+			}
+			unison.DefaultMenuFactory().BarForWindow(out.wnd, func(bar unison.Menu) {
+				f := bar.Factory()
+				edit := f.NewMenu(menuID, "Edit", nil)
+				edit.InsertItem(-1, f.NewItem(cutID, "Cut", unison.KeyBinding{}, nil, nil))
+				bar.InsertMenu(-1, edit)
+			})
+			out.wnd.ToFront()
+		}))
+	out.screen.Sync()
+	out.screen.EnableAccessibility()
+	if node := out.screen.AccessibilityNodeFor(out.table); node != nil {
+		out.tableID = node.ID
+	}
+	return out
+}
+
+// tree describes the window as it is now.
+func (a *axTableWindow) tree() *accessibility.Tree {
+	return a.screen.AccessibilityTree(a.wnd)
+}
+
+// rowNode returns the node describing the row with the given name in the given tree, or nil if it was not described.
+func (a *axTableWindow) rowNode(tree *accessibility.Tree, name string) *accessibility.Node {
+	return axTableRows(tree, tree.Node(a.tableID))[name]
+}
+
+// axTableRowPoint returns the screen point to aim at to hit a row well inside its first column. The center of a row
+// falls on a column divider, which a press starts a column resize from rather than reaching the row at all.
+func axTableRowPoint(screen *unison.HeadlessScreen, table *unison.Table[*tableTestRow], row int) geom.Point {
+	var offset geom.Point
+	screen.Do(func() {
+		frame := table.RowFrame(row)
+		offset = geom.NewPoint(frame.X+10, frame.CenterY()).Sub(table.ContentRect(false).Point)
+	})
+	return screen.PanelPoint(table, offset)
+}
+
+// TestTableAccessibilityFocusFollowsTheCurrentRow verifies that a table reports the keyboard focus on the row the
+// person is on, and moves it with every gesture that moves the selection. Reporting it on the table itself and
+// publishing nothing but a selection change per arrow key is what left a screen reader sitting on the table, silent,
+// while the person moved through it.
+func TestTableAccessibilityFocusFollowsTheCurrentRow(t *testing.T) {
+	c := check.New(t)
+	a := newAXTableWindow(t, "table focus", flatRows(6)...)
+	c.NotNil(a.wnd)
+	if a.wnd == nil {
+		return
+	}
+	a.screen.Do(func() { a.table.RequestFocus() })
+	tree := a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	c.Equal(a.tableID, tree.Focus, "a table with nothing selected keeps the focus on itself")
+
+	// Down with nothing selected lands on the first row, which is where the person now is.
+	previous := tree
+	a.screen.KeyPress(unison.KeyDown, mod.None)
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	row := a.rowNode(tree, "r0")
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.Equal(row.ID, tree.Focus, "the focus must be reported on the row the arrow key landed on")
+	c.True(row.Focused)
+	c.True(row.Focusable)
+	c.True(row.Selected)
+	c.True(row.Actions.Has(accessibility.Focus), "a row that can be moved to has to offer the move")
+	c.False(tree.Node(a.tableID).Focused, "the table itself stops reporting the focus it handed to the row")
+	c.Equal(1, axFocusedCount(tree), "exactly one node other than the root may report the focus")
+	c.True(axHasEvent(accessibility.Diff(previous, tree), accessibility.FocusChanged, row.ID),
+		"the move has to reach an assistive technology as a focus change naming the row")
+	var lead int
+	a.screen.Do(func() { lead = a.table.LeadRowIndex() })
+	c.Equal(0, lead)
+
+	// And again, to the row after it.
+	a.screen.KeyPress(unison.KeyDown, mod.None)
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	row = a.rowNode(tree, "r1")
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.Equal(row.ID, tree.Focus)
+	c.True(a.rowNode(tree, "r0") != nil && !a.rowNode(tree, "r0").Focused, "the row that was left gives the focus up")
+
+	// Shift-Down adds the row below to the selection and moves the person onto it.
+	a.screen.KeyPress(unison.KeyDown, mod.Shift)
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	c.Equal([]int{1, 2}, axTableSelectedIndexes(a.screen, a.table), "shift-down extends the selection")
+	row = a.rowNode(tree, "r2")
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.Equal(row.ID, tree.Focus, "the row the selection was extended onto is where the person is")
+
+	// A click puts the person on the row that was clicked.
+	a.screen.Click(axTableRowPoint(a.screen, a.table, 4))
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	c.Equal([]int{4}, axTableSelectedIndexes(a.screen, a.table))
+	row = a.rowNode(tree, "r4")
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.Equal(row.ID, tree.Focus, "a click moves the reported focus onto the row it landed on")
+
+	// With the selection gone there is no row to be on, so the table takes the focus back.
+	a.screen.Do(func() { a.table.ClearSelection() })
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	c.Equal(a.tableID, tree.Focus, "with nothing selected the focus goes back to the table")
+	c.True(tree.Node(a.tableID).Focused)
+	c.Equal(1, axFocusedCount(tree))
+	a.screen.Do(func() { lead = a.table.LeadRowIndex() })
+	c.Equal(-1, lead, "clearing the selection leaves no row to be on")
+	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
+}
+
+// TestTableAccessibilityFocusActionSelectsTheRow verifies that a request to put the focus on a row does what an arrow
+// key onto that row does: the table takes the keyboard focus and the row becomes the whole of the selection, which is
+// what the focus being reported on a row means.
+func TestTableAccessibilityFocusActionSelectsTheRow(t *testing.T) {
+	c := check.New(t)
+	a := newAXTableWindow(t, "table focus action", flatRows(6)...)
+	c.NotNil(a.wnd)
+	if a.wnd == nil {
+		return
+	}
+	a.screen.Do(func() {
+		a.table.SelectByIndex(0)
+		a.wnd.SetFocus(a.other)
+	})
+	tree := a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	row := a.rowNode(tree, "r3")
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.True(row.Actions.Has(accessibility.Focus))
+	c.True(a.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   row.ID,
+		Action: accessibility.Focus,
+	}), "a row offering the focus must be able to take it")
+	c.Equal([]int{3}, axTableSelectedIndexes(a.screen, a.table),
+		"moving onto a row makes it the whole of the selection")
+	var holdsFocus bool
+	a.screen.Do(func() { holdsFocus = a.table.Is(a.wnd.CurrentFocus()) })
+	c.True(holdsFocus, "the table is the one tab stop, so the keyboard focus goes there")
+
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	row = a.rowNode(tree, "r3")
+	c.True(row != nil && row.Focused)
+	if row != nil {
+		c.Equal(row.ID, tree.Focus)
+	}
+	c.Equal(1, axFocusedCount(tree))
+
+	// A cell is not somewhere the keyboard can be left, so it neither offers the focus nor takes one.
+	cells := axChildNodes(tree, row)
+	c.True(len(cells) != 0)
+	if len(cells) != 0 {
+		c.False(cells[0].Actions.Has(accessibility.Focus), "a cell is not a place the focus can be put")
+		var handled bool
+		a.screen.Do(func() {
+			handled = a.table.PerformAccessibilityAction(accessibility.ActionRequest{
+				Key:    accessibility.CellKey{Row: "r3", Col: 0},
+				Action: accessibility.Focus,
+			})
+		})
+		c.False(handled, "a focus request naming a cell must be refused rather than acted on as the row")
+	}
+	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
+}
+
+// TestTableAccessibilityFocusDisplacedByAnOpenMenu verifies that an open menu takes the focus away from a table's
+// current row exactly as it takes it away from any other control.
+func TestTableAccessibilityFocusDisplacedByAnOpenMenu(t *testing.T) {
+	c := check.New(t)
+	a := newAXTableWindow(t, "table focus menu", flatRows(6)...)
+	c.NotNil(a.wnd)
+	if a.wnd == nil {
+		return
+	}
+	a.screen.Do(func() {
+		a.table.SelectByIndex(1)
+		a.table.RequestFocus()
+	})
+	tree := a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	row := a.rowNode(tree, "r1")
+	c.True(row != nil && row.Focused)
+	title := axNamed(tree, "Edit")
+	c.True(title != nil)
+	if title == nil {
+		return
+	}
+
+	a.screen.Click(axScreenPoint(a.screen, a.wnd, title))
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	row = a.rowNode(tree, "r1")
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.False(row.Focused, "an open menu displaces the focus a table handed to its row")
+	c.False(tree.Node(a.tableID).Focused)
+	c.True(tree.Focus != row.ID && tree.Focus != a.tableID, "the focus must be reported within the menu")
+	c.Equal(1, axFocusedCount(tree))
+	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
+}
+
+// TestTableAccessibilityFocusFallsBackWhenTheCurrentRowGoes verifies what happens to the row the focus is reported on
+// when the table stops showing it — its container was closed, or the model no longer holds it: the first row of what
+// is still selected takes over, and the focus is never left on a row that is not there.
+func TestTableAccessibilityFocusFallsBackWhenTheCurrentRowGoes(t *testing.T) {
+	c := check.New(t)
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), newTableTestRow("c1")})
+	parent.SetOpen(true)
+	a := newAXTableWindow(t, "table focus fallback", parent, newTableTestRow("r9"))
+	c.NotNil(a.wnd)
+	if a.wnd == nil {
+		return
+	}
+	a.screen.Do(func() {
+		a.table.SelectByIndex(0, 2)
+		a.table.RequestFocus()
+	})
+	tree := a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	child := a.rowNode(tree, "c1")
+	c.True(child != nil)
+	if child == nil {
+		return
+	}
+	c.Equal(child.ID, tree.Focus, "the last row selected is the one the person is on")
+
+	// Closing the container takes the row the focus was on out of the table entirely.
+	a.screen.Do(func() {
+		parent.SetOpen(false)
+		a.table.SyncToModel()
+	})
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	c.True(a.rowNode(tree, "c1") == nil, "a row the table no longer shows is not described")
+	parentNode := a.rowNode(tree, "p")
+	c.True(parentNode != nil)
+	if parentNode == nil {
+		return
+	}
+	c.Equal(parentNode.ID, tree.Focus, "the focus falls back to the first row still selected")
+	var lead int
+	a.screen.Do(func() { lead = a.table.LeadRowIndex() })
+	c.Equal(-1, lead, "the row the person was on is let go of once the table stops showing it")
+
+	// And the same when the model itself stops holding the row.
+	a.screen.Do(func() {
+		a.table.SelectByIndex(1)
+		a.table.Model.SetRootRows([]*tableTestRow{parent})
+		a.table.SyncToModel()
+	})
+	tree = a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	c.True(a.rowNode(tree, "r9") == nil)
+	parentNode = a.rowNode(tree, "p")
+	c.True(parentNode != nil)
+	if parentNode == nil {
+		return
+	}
+	c.Equal(parentNode.ID, tree.Focus, "the focus falls back to the first row still selected")
+	c.Equal(1, axFocusedCount(tree))
+	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
+}
+
+// TestTableAccessibilityDisabledTableReportsNoRow verifies that a disabled table hands the focus to nothing: every
+// request about one of its rows would be refused, so a row is no place to say the person is.
+func TestTableAccessibilityDisabledTableReportsNoRow(t *testing.T) {
+	c := check.New(t)
+	a := newAXTableWindow(t, "table focus disabled", flatRows(4)...)
+	c.NotNil(a.wnd)
+	if a.wnd == nil {
+		return
+	}
+	a.screen.Do(func() {
+		a.table.SelectByIndex(1)
+		a.table.RequestFocus()
+		a.table.SetEnabled(false)
+	})
+	tree := a.tree()
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	row := a.rowNode(tree, "r1")
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.True(row.Disabled, "the rows of a disabled table are disabled too")
+	c.False(row.Focused, "a row of a disabled table is no place to report the focus")
+	c.False(row.Actions.Has(accessibility.Focus), "and nothing may be asked of it")
+	c.True(tree.Focus != row.ID)
+	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
+}
+
+// TestTableAccessibilityEditedCellReportsTheEditor verifies that while a cell is being edited the focus is reported on
+// the widget the person is actually typing in, rather than on a row: that widget is a real panel of the table for as
+// long as it holds the focus, and it is described as holding it by the ordinary path.
+func TestTableAccessibilityEditedCellReportsTheEditor(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(4, 2, "typed", false)
+			wnd, _ = newEditWindow(t, e, false)
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	var focused bool
+	screen.Do(func() {
+		e.table.SelectByIndex(0)
+		focused = e.table.FocusCell(2, 1)
+	})
+	c.True(focused, "the field in the cell should have taken the focus")
+
+	tree := screen.AccessibilityTree(wnd)
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	field := screen.AccessibilityNodeFor(e.fields[2][1])
+	c.True(field != nil)
+	if field == nil {
+		return
+	}
+	c.Equal(field.ID, tree.Focus, "the widget being typed in is where the person is")
+	c.True(field.Focused)
+	for _, row := range axNodesWithRole(tree, role.Row) {
+		c.False(row.Focused, "no row may claim a focus the cell's own widget holds: %s", row.Name)
+	}
+	c.Equal(1, axFocusedCount(tree))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

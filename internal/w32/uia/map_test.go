@@ -1398,6 +1398,189 @@ func TestDecideRaisesFocusCleared(t *testing.T) {
 	}))
 }
 
+// rowFocusTree builds the shape a list and a table publish while one of them holds the keyboard focus: the container
+// is focusable but not focused, and the row the person is on is the node the tree's Focus names. That is what every
+// native control on Windows reports — a WPF ListBoxItem or DataGridRow answers HasKeyboardFocus and
+// IsKeyboardFocusable, not the ListBox or the DataGrid around it — and what NVDA requires before it will act on a
+// focus event, since shouldAllowUIAFocusEvent drops one whose element does not claim the keyboard.
+//
+// The focus starts on the list itself, which is what a list with nothing selected reports when it is tabbed into.
+func rowFocusTree() *accessibility.Tree {
+	row := func(id accessibility.NodeID, r role.Enum, name string, index int) *accessibility.Node {
+		return &accessibility.Node{
+			ID:         id,
+			Role:       r,
+			Name:       name,
+			Selectable: true,
+			Focusable:  true,
+			RowIndex:   index,
+			Actions:    accessibility.ActionSet(0).With(accessibility.Focus),
+		}
+	}
+	return newTestTree(1, 2,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Name: "Window", Focused: true,
+			Children: []accessibility.NodeID{2, 5},
+		},
+		&accessibility.Node{
+			ID: 2, Role: role.List, Name: "Fruit", Focusable: true, Focused: true, RowCount: 2,
+			Children: []accessibility.NodeID{3, 4},
+		},
+		row(3, role.ListItem, "Apple", 0),
+		row(4, role.ListItem, "Banana", 1),
+		&accessibility.Node{
+			ID: 5, Role: role.Table, Name: "Files", Focusable: true, RowCount: 2,
+			Children: []accessibility.NodeID{6, 7},
+		},
+		row(6, role.Row, "First", 0),
+		row(7, role.Row, "Second", 1),
+	)
+}
+
+// focusRow moves the keyboard focus a container holds onto one of its rows, and selects that row, which is what
+// AccessibilityBuilder.FocusChild plus the list's or table's selection does for every arrow key.
+func focusRow(tree *accessibility.Tree, container, row accessibility.NodeID) {
+	for _, n := range tree.Nodes {
+		if n.Parent == container {
+			n.Selected = n.ID == row
+			n.Focused = n.ID == row
+		}
+	}
+	tree.Node(container).Focused = false
+	tree.Focus = row
+}
+
+// TestHasKeyboardFocusOnRow verifies that a list's or a table's current row is what claims the keyboard, and that the
+// container around it claims nothing. Both are focusable — the container is what the tab order lands on and the row is
+// what a client may ask to focus — but only the one the tree's Focus names holds the keyboard, which is the pairing
+// every native list box reports and the one NVDA's shouldAllowUIAFocusEvent insists on.
+func TestHasKeyboardFocusOnRow(t *testing.T) {
+	c := check.New(t)
+	tree := rowFocusTree()
+	c.True(HasKeyboardFocus(tree, tree.Node(2)), "the list itself, while it reports the focus")
+	c.False(HasKeyboardFocus(tree, tree.Node(3)))
+
+	focusRow(tree, 2, 3)
+	c.True(HasKeyboardFocus(tree, tree.Node(3)), "the row the tree's Focus names")
+	c.False(HasKeyboardFocus(tree, tree.Node(2)), "the list that handed the focus to the row")
+	c.False(HasKeyboardFocus(tree, tree.Node(4)), "another row of the same list")
+	c.True(tree.Node(2).Focusable, "the container stays in the tab order")
+	c.True(ReportsProperty(tree, tree.Node(3), HasKeyboardFocusPropertyId))
+	c.True(ReportsProperty(tree, tree.Node(3), IsKeyboardFocusablePropertyId))
+
+	table := rowFocusTree()
+	focusRow(table, 5, 7)
+	c.True(HasKeyboardFocus(table, table.Node(7)), "the table row the tree's Focus names")
+	c.False(HasKeyboardFocus(table, table.Node(5)))
+	c.False(HasKeyboardFocus(table, table.Node(6)))
+
+	// An inactive window holds the keyboard nowhere, row or not.
+	inactive := rowFocusTree()
+	focusRow(inactive, 2, 3)
+	inactive.Node(1).Focused = false
+	c.False(HasKeyboardFocus(inactive, inactive.Node(3)))
+}
+
+// TestRowPositionInSet verifies that a focused row still reports where it sits, which is the "3 of 12" a screen reader
+// speaks alongside the row it has just been moved onto. The numbers come from what the widget recorded rather than
+// from counting siblings, since a table publishes only the rows in its viewport.
+func TestRowPositionInSet(t *testing.T) {
+	c := check.New(t)
+	tree := rowFocusTree()
+	focusRow(tree, 2, 4)
+	position, size := PositionInSet(tree, tree.Node(4))
+	c.Equal(2, position)
+	c.Equal(2, size)
+	focusRow(tree, 5, 6)
+	position, size = PositionInSet(tree, tree.Node(6))
+	c.Equal(1, position)
+	c.Equal(2, size)
+}
+
+// TestDecideRaisesRowFocus verifies that a list handing the focus it holds to its current row is reported as a focus
+// change on the row and on nothing else. A screen reader moves its cursor to the element a focus event names, so the
+// row has to be named: raising it on the list would leave the user hearing the list again for every arrow key, which
+// is the behavior this whole change replaces. The selection events go out alongside it, unchanged.
+func TestDecideRaisesRowFocus(t *testing.T) {
+	c := check.New(t)
+	old := rowFocusTree()
+	cur := rowFocusTree()
+	focusRow(cur, 2, 3)
+	raises := DecideRaises(old, cur, accessibility.Diff(old, cur))
+	c.Equal([]Raise{
+		raiseProperty(3, SelectionItemIsSelectedPropertyId),
+		raiseEvent(3, SelectionItem_ElementSelectedEventId),
+		raiseEvent(3, AutomationFocusChangedEventId),
+	}, raises)
+	c.False(slices.Contains(raises, raiseEvent(2, AutomationFocusChangedEventId)),
+		"the list reports no focus change of its own")
+}
+
+// TestDecideRaisesRowFocusMoved verifies that an arrow key moving from one row to the next reports the focus on the
+// new row. Nothing else tells a client the user moved: the deselection and the selection are what the rows' states
+// did, and no screen reader treats either as "the user is here now".
+func TestDecideRaisesRowFocusMoved(t *testing.T) {
+	c := check.New(t)
+	old := rowFocusTree()
+	focusRow(old, 2, 3)
+	cur := rowFocusTree()
+	focusRow(cur, 2, 4)
+	raises := DecideRaises(old, cur, accessibility.Diff(old, cur))
+	c.Equal([]Raise{
+		raiseProperty(3, SelectionItemIsSelectedPropertyId),
+		raiseProperty(4, SelectionItemIsSelectedPropertyId),
+		raiseEvent(4, SelectionItem_ElementSelectedEventId),
+		raiseEvent(4, AutomationFocusChangedEventId),
+	}, raises)
+	c.False(slices.Contains(raises, raiseEvent(3, AutomationFocusChangedEventId)),
+		"the row that lost the focus reports no focus change")
+}
+
+// TestDecideRaisesTableRowFocus verifies that a table's row is reported exactly as a list's item is. A DataGridRow is
+// what Windows puts the focus on, and NVDA and Narrator both read the row they are moved onto.
+func TestDecideRaisesTableRowFocus(t *testing.T) {
+	c := check.New(t)
+	old := rowFocusTree()
+	focusRow(old, 5, 6)
+	cur := rowFocusTree()
+	focusRow(cur, 5, 7)
+	c.Equal([]Raise{
+		raiseProperty(6, SelectionItemIsSelectedPropertyId),
+		raiseProperty(7, SelectionItemIsSelectedPropertyId),
+		raiseEvent(7, SelectionItem_ElementSelectedEventId),
+		raiseEvent(7, AutomationFocusChangedEventId),
+	}, DecideRaises(old, cur, accessibility.Diff(old, cur)))
+}
+
+// TestDecideRaisesRowFocusInactiveWindow verifies that a row taking the focus inside a window that is not the active
+// one is not raised at all, while everything else about the row still is. Pointing a screen reader at a row of a
+// background window drags the user away from the window they are actually in.
+func TestDecideRaisesRowFocusInactiveWindow(t *testing.T) {
+	c := check.New(t)
+	old := rowFocusTree()
+	old.Node(1).Focused = false
+	cur := rowFocusTree()
+	cur.Node(1).Focused = false
+	focusRow(cur, 2, 3)
+	raises := DecideRaises(old, cur, accessibility.Diff(old, cur))
+	c.Equal([]Raise{
+		raiseProperty(3, SelectionItemIsSelectedPropertyId),
+		raiseEvent(3, SelectionItem_ElementSelectedEventId),
+	}, raises)
+}
+
+// TestDecideRaisesRowFocusable verifies that a row becoming focusable is reported through IsKeyboardFocusable, which
+// is the property a client reads to decide whether it may ask the row for the focus. Rows gained the flag with this
+// change: a list that publishes its rows as focusable is what lets a client move the user onto one.
+func TestDecideRaisesRowFocusable(t *testing.T) {
+	c := check.New(t)
+	old := rowFocusTree()
+	old.Node(3).Focusable = false
+	cur := rowFocusTree()
+	c.Equal([]Raise{raiseProperty(3, IsKeyboardFocusablePropertyId)},
+		DecideRaises(old, cur, accessibility.Diff(old, cur)))
+}
+
 // TestDecideRaisesWindowOpened verifies that the first publish of a window announces that it opened, which is how a
 // screen reader knows to read a dialog out as it appears.
 //
