@@ -6336,3 +6336,487 @@ func TestAXContentNameEditPostsTitleChanged(t *testing.T) {
 		})
 	})
 }
+
+// The node ids axCellFocusTree builds.
+const (
+	axCellRootID accessibility.NodeID = 2900 + iota
+	axCellScrollID
+	axCellHeaderID
+	axCellCol0ID
+	axCellCol1ID
+	axCellTableID
+	axCellRow0ID
+	axCellRow1ID
+	axCellR0C0ID
+	axCellR0LabelID
+	axCellR0C1ID
+	axCellR1C0ID
+	axCellR1LabelID
+	axCellR1C1ID
+)
+
+// axCellFocusTree returns a window holding an outline of two rows of two cells each, with the cell cursor on the cell
+// at the given row and column — or on the row itself when col is -1, which is where a table stands until the person
+// moves across into a cell.
+//
+// It is the shape Table publishes for the cell cursor: the row that holds the cursor carries the whole row's name and
+// reports no focus of its own while the cursor is in one of its cells, and the cell reports it instead. Column 0 of
+// each row holds nothing, which is what an empty cell is, and is presented as the cell itself; column 1 holds a label,
+// which is what an ordinary text cell holds and what stands in for the cell on this platform (see axStandIn). Both
+// have to answer for the cursor.
+func axCellFocusTree(row, col int) *accessibility.Tree {
+	tree := &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			axCellRootID: {
+				ID: axCellRootID, Children: []accessibility.NodeID{axCellScrollID}, Role: role.Window,
+				Bounds: geom.NewRect(0, 0, 320, 240),
+			},
+			axCellScrollID: {
+				ID: axCellScrollID, Parent: axCellRootID,
+				Children: []accessibility.NodeID{axCellHeaderID, axCellTableID}, Role: role.Group,
+				Bounds: geom.NewRect(0, 0, 200, 60),
+			},
+			axCellHeaderID: {
+				ID: axCellHeaderID, Parent: axCellScrollID,
+				Children: []accessibility.NodeID{axCellCol0ID, axCellCol1ID}, Role: role.TableHeader,
+				Bounds: geom.NewRect(0, 0, 200, 20), ColumnCount: 2,
+			},
+			axCellCol0ID: {
+				ID: axCellCol0ID, Parent: axCellHeaderID, Role: role.ColumnHeader, Name: "Title",
+				Bounds: geom.NewRect(0, 0, 100, 20), ColumnIndex: 0,
+			},
+			axCellCol1ID: {
+				ID: axCellCol1ID, Parent: axCellHeaderID, Role: role.ColumnHeader, Name: "Bytes",
+				Bounds: geom.NewRect(100, 0, 100, 20), ColumnIndex: 1,
+			},
+			axCellTableID: {
+				ID: axCellTableID, Parent: axCellScrollID,
+				Children: []accessibility.NodeID{axCellRow0ID, axCellRow1ID}, Role: role.Tree, Name: "Documents",
+				Bounds: geom.NewRect(0, 20, 200, 40), RowCount: 2, ColumnCount: 2, Focusable: true,
+				Actions: accessibility.ActionSet(0).With(accessibility.Focus),
+			},
+		},
+		Root:       axCellRootID,
+		Focus:      axCellTableID,
+		Generation: 1,
+	}
+	cells := [][3]accessibility.NodeID{
+		{axCellRow0ID, axCellR0C0ID, axCellR0C1ID},
+		{axCellRow1ID, axCellR1C0ID, axCellR1C1ID},
+	}
+	labels := []accessibility.NodeID{axCellR0LabelID, axCellR1LabelID}
+	names := []string{"report.docx, Size 35 KB", "notes.txt, Size 2 KB"}
+	for i, ids := range cells {
+		rowID, c0, c1 := ids[0], ids[1], ids[2]
+		top := float32(20 + 20*i)
+		tree.Nodes[rowID] = &accessibility.Node{
+			ID: rowID, Parent: axCellTableID, Children: []accessibility.NodeID{c0, c1}, Role: role.Row,
+			Name: names[i], Bounds: geom.NewRect(0, top, 200, 20), RowIndex: i, Level: 1, Selectable: true,
+			Selected: i == row, Focusable: true, Focused: i == row && col < 0,
+			Actions: accessibility.ActionSet(0).With(accessibility.Select, accessibility.Focus),
+		}
+		for c, cellID := range []accessibility.NodeID{c0, c1} {
+			tree.Nodes[cellID] = &accessibility.Node{
+				ID: cellID, Parent: rowID, Role: role.Cell, Bounds: geom.NewRect(float32(100*c), top, 100, 20),
+				RowIndex: i, ColumnIndex: c, Focusable: true,
+				Focused: i == row && c == col,
+				Actions: accessibility.ActionSet(0).With(accessibility.ScrollIntoView, accessibility.Focus),
+			}
+			if i == row && c == col {
+				tree.Focus = cellID
+			}
+		}
+		// Column 0 is an empty cell, which keeps the text it was named with and is presented as itself; column 1
+		// holds a label, which is the cell's whole content and is what is presented in the cell's place. The column
+		// holding the label is deliberately not the first one, since a cell presented as its content answers for a
+		// column it is not itself in.
+		tree.Nodes[c0].Name = strings.Split(names[i], ",")[0]
+		tree.Nodes[c1].Children = []accessibility.NodeID{labels[i]}
+		size := "35 KB"
+		if i == 1 {
+			size = "2 KB"
+		}
+		tree.Nodes[labels[i]] = &accessibility.Node{
+			ID: labels[i], Parent: c1, Role: role.Label, Name: size, Bounds: geom.NewRect(100, top, 100, 20),
+		}
+		if i == row && col < 0 {
+			tree.Focus = rowID
+		}
+	}
+	return tree
+}
+
+// axCellFocusElement returns the element a client is handed for a cell: whatever stands in for it, which for a cell
+// holding a single label is that label. It is what the focus notification names and what accessibilityFocusedUIElement
+// has to answer with, since a cell that is stood in for is never handed out.
+func axCellFocusElement(a *AXAdapter, cell accessibility.NodeID) objc.ID {
+	return a.Element(axStandIn(a.tree, cell))
+}
+
+// axCellElementFor is axCellFocusElement for the tests that are not about which elements a notification created: it
+// makes the element if nothing has asked about the cell yet.
+func axCellElementFor(a *AXAdapter, cell accessibility.NodeID) objc.ID {
+	return a.elementFor(axStandIn(a.tree, cell))
+}
+
+// axCellFocusCheck asserts that the cell holds the keyboard focus and that the row and the table do not: the focus
+// notification named the cell's element, the content view answers with the same element, and AXFocused reads back true
+// on it and false on the row above it. Reading it back is what a client does after following the notification, and an
+// element that reports false there is one VoiceOver leaves its cursor away from.
+func axCellFocusCheck(t *testing.T, v View, a *AXAdapter, posted []axRecordedNotification,
+	cell, row accessibility.NodeID,
+) {
+	t.Helper()
+	element := axCellFocusElement(a, cell)
+	if element == 0 {
+		t.Fatalf("no element was created for the focused cell %d", cell)
+	}
+	want := []axRecordedNotification{
+		{element: element, name: GoStringFromNSString(AppKitString(axNotifyFocusedUIElement))},
+	}
+	if !slices.Equal(posted, want) {
+		t.Errorf("the cursor move posted %v, want %v (the cell's element, not the row's)", posted, want)
+	}
+	WithPool(func() {
+		if got := objc.ID(v).Send(Sel("accessibilityFocusedUIElement")); got != element {
+			t.Errorf("the content view's focused element is %#x, want the cell's element %#x", got, element)
+		}
+		if !objc.Send[bool](element, Sel("isAccessibilityFocused")) {
+			t.Error("the focused cell reports AXFocused false, which is what a client checks after following the " +
+				"notification")
+		}
+		if !objc.Send[bool](element, Sel("isAccessibilityEnabled")) {
+			t.Error("the focused cell reports AXEnabled false")
+		}
+		if !axAttributeSettable(element, "AXFocused") {
+			t.Error("the focused cell does not report AXFocused as settable, so a client cannot move the cursor " +
+				"onto it itself")
+		}
+		if rowElement := a.Element(row); rowElement != 0 &&
+			objc.Send[bool](rowElement, Sel("isAccessibilityFocused")) {
+			t.Error("the row reports AXFocused true while the cursor is in one of its cells")
+		}
+		if table := a.Element(axCellTableID); table != 0 && objc.Send[bool](table, Sel("isAccessibilityFocused")) {
+			t.Error("the table reports AXFocused true while the cursor is in one of its cells")
+		}
+	})
+}
+
+// TestAXFocusMovesOntoATableCell proves the cell cursor moves the keyboard focus onto the cell: from the row into a
+// cell of it, across to the next cell of the same row, and on into a cell of the next row. Each move posts the
+// focused-element notification against the element standing for that cell and against nothing else, which is what
+// VoiceOver follows; the row keeps reporting the selection change beneath it.
+func TestAXFocusMovesOntoATableCell(t *testing.T) {
+	runOnMain(func() {
+		onRow := axCellFocusTree(0, -1)
+		v, a, cleanup := newAXAdapterWithTree(t, onRow)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		// The row is asked about first, so that the check that it stops reporting the focus asks a real element rather
+		// than finding none at all.
+		WithPool(func() {
+			if !objc.Send[bool](a.elementFor(axCellRow0ID), Sel("isAccessibilityFocused")) {
+				t.Error("the current row reports AXFocused false before the cursor has moved into a cell")
+			}
+		})
+		// Right from the row moves the cursor into the first cell, which here is a cell that holds nothing and is
+		// presented as itself.
+		onR0C0 := axCellFocusTree(0, 0)
+		axCellFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow, onR0C0), axCellR0C0ID, axCellRow0ID)
+		// Right again moves it across the row, onto a cell holding a label, which stands in for it.
+		onR0C1 := axCellFocusTree(0, 1)
+		axCellFocusCheck(t, v, a, axRowFocusPublish(t, a, onR0C0, onR0C1), axCellR0C1ID, axCellRow0ID)
+		WithPool(func() {
+			if objc.Send[bool](axCellFocusElement(a, axCellR0C0ID), Sel("isAccessibilityFocused")) {
+				t.Error("the cell the cursor left still reports AXFocused true")
+			}
+		})
+		// Down keeps the column and changes the row, which moves the focus and the selection at once: the focus goes
+		// to the cell, and the table is still told its selected rows changed.
+		onR1C1 := axCellFocusTree(1, 1)
+		onR1C1.Generation = onR0C1.Generation + 1
+		var recorded []axRecordedNotification
+		stop := axRecordNotifications(&recorded)
+		a.Publish(onR1C1, accessibility.Diff(onR0C1, onR1C1))
+		stop()
+		focus := GoStringFromNSString(AppKitString(axNotifyFocusedUIElement))
+		selected := GoStringFromNSString(AppKitString(axNotifySelectedRowsChanged))
+		var posted []axRecordedNotification
+		rows := 0
+		for _, notification := range recorded {
+			switch {
+			case notification.name == focus:
+				posted = append(posted, notification)
+			case notification.name == selected && notification.element == a.Element(axCellTableID):
+				rows++
+			}
+		}
+		if rows != 1 {
+			t.Errorf("the row change posted %d selected-rows-changed notifications against the table, want 1 "+
+				"(posted %v)", rows, recorded)
+		}
+		axCellFocusCheck(t, v, a, posted, axCellR1C1ID, axCellRow1ID)
+	})
+}
+
+// TestAXFocusedCellAttributes proves a cell the cursor is on is presented as a cell of the table it sits in: where it
+// is in the grid, what it hangs beneath, which window it belongs to and which column header describes it. They are
+// what VoiceOver reads alongside the cell's own content when it lands on one, and a cell presented as a label with
+// none of them is read as a bare string.
+//
+// Both kinds of cell are asked: the empty one, which is presented as itself, and the one holding a label, which is
+// presented as that label. What a client holds for the second is the label, so the label has to answer every one of
+// these for the cell it hides — including which column it is in, which is not the column the label would be counted
+// into among its own siblings.
+func TestAXFocusedCellAttributes(t *testing.T) {
+	runOnMain(func() {
+		tree := axCellFocusTree(0, 0)
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			for _, c := range []struct {
+				cell   accessibility.NodeID
+				header accessibility.NodeID
+				column uint64
+			}{
+				{cell: axCellR0C0ID, header: axCellCol0ID, column: 0},
+				{cell: axCellR0C1ID, header: axCellCol1ID, column: 1},
+			} {
+				element := axCellElementFor(a, c.cell)
+				if got := objc.Send[NSRange](element, Sel("accessibilityRowIndexRange")); got !=
+					(NSRange{Length: 1}) {
+					t.Errorf("cell %d reports the row index range %v, want {0 1}", c.cell, got)
+				}
+				if got := objc.Send[NSRange](element, Sel("accessibilityColumnIndexRange")); got !=
+					(NSRange{Location: c.column, Length: 1}) {
+					t.Errorf("cell %d reports the column index range %v, want {%d 1}", c.cell, got, c.column)
+				}
+				if got := objc.Send[int64](element, Sel("accessibilityIndex")); got != int64(c.column) {
+					t.Errorf("cell %d reports the index %d, want its column %d", c.cell, got, c.column)
+				}
+				if got := element.Send(Sel("accessibilityParent")); got != a.elementFor(axCellRow0ID) {
+					t.Errorf("cell %d names %#x as its parent, want the row %#x", c.cell, got,
+						a.elementFor(axCellRow0ID))
+				}
+				if got := element.Send(Sel("accessibilityWindow")); got == 0 {
+					t.Errorf("cell %d names no window", c.cell)
+				}
+				if got := element.Send(Sel("accessibilityTopLevelUIElement")); got !=
+					element.Send(Sel("accessibilityWindow")) {
+					t.Errorf("cell %d names a top level element that is not its window", c.cell)
+				}
+				headers := IDsFromNSArray(element.Send(Sel("accessibilityColumnHeaderUIElements")))
+				if len(headers) != 1 || headers[0] != a.elementFor(c.header) {
+					t.Errorf("cell %d names the column headers %v, want the one for its own column %#x", c.cell,
+						headers, a.elementFor(c.header))
+				}
+			}
+			// The empty cell is the one presented as a cell; the one holding a label is presented as the label, which
+			// is the whole point of standing in for it.
+			wantRole := GoStringFromNSString(AppKitString(axRoleCell))
+			if got := GoStringFromNSString(axCellElementFor(a, axCellR0C0ID).Send(Sel("accessibilityRole"))); got !=
+				wantRole {
+				t.Errorf("the empty cell's role is %s, want %s", got, wantRole)
+			}
+			// The cursor is not a selection: a table whose cells are never marked selected reports none, so no client
+			// mistakes where the person is standing for what they have chosen.
+			if got := NSArrayCount(a.elementFor(axCellTableID).Send(Sel("accessibilitySelectedCells"))); got != 0 {
+				t.Errorf("the table reports %d selected cells while only the cursor is in one, want 0", got)
+			}
+			rows := IDsFromNSArray(a.elementFor(axCellTableID).Send(Sel("accessibilitySelectedRows")))
+			if len(rows) != 1 || rows[0] != a.elementFor(axCellRow0ID) {
+				t.Errorf("the table reports the selected rows %v, want the row the cursor is in %#x", rows,
+					a.elementFor(axCellRow0ID))
+			}
+		})
+	})
+}
+
+// TestAXFocusRequestedOnACellNamesTheCell proves a client that asks for the keyboard focus on the element it was handed
+// for a cell moves the cell cursor: the request names the cell, whatever is presented in the cell's place. A label
+// cannot take the focus itself, so a request naming it would be refused and the cursor would never move.
+func TestAXFocusRequestedOnACellNamesTheCell(t *testing.T) {
+	defer func() { AccessibilityActionCallback = nil }()
+	runOnMain(func() {
+		tree := axCellFocusTree(0, -1)
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var requests []accessibility.ActionRequest
+		AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
+			requests = append(requests, req)
+		}
+		WithPool(func() {
+			for _, cell := range []accessibility.NodeID{axCellR0C0ID, axCellR0C1ID} {
+				element := axCellElementFor(a, cell)
+				if !axAttributeSettable(element, "AXFocused") {
+					t.Errorf("cell %d does not report AXFocused as settable", cell)
+				}
+				element.Send(Sel("setAccessibilityFocused:"), true)
+			}
+		})
+		want := []accessibility.ActionRequest{
+			{Node: axCellR0C0ID, Action: accessibility.Focus},
+			{Node: axCellR0C1ID, Action: accessibility.Focus},
+		}
+		if !slices.Equal(requests, want) {
+			t.Errorf("focusing the cells asked for %v, want %v", requests, want)
+		}
+	})
+}
+
+// TestAXFocusRequestedOnCellContentThatTakesItNamesTheContent proves the other half of the rule axFocusTarget follows:
+// a cell whose single content can take the keyboard focus itself — a field, a check box, a button — keeps the request
+// for itself rather than having it redirected onto the cell. Focusing the widget is what putting the keyboard into that
+// cell means for a widget, and the table follows it there (see Table.adoptCellIfFocused), so redirecting would ask for
+// the cursor to move without ever reaching the thing the person wants to type into or press.
+func TestAXFocusRequestedOnCellContentThatTakesItNamesTheContent(t *testing.T) {
+	defer func() { AccessibilityActionCallback = nil }()
+	runOnMain(func() {
+		tree := axCellFocusTree(0, 1)
+		// The label standing in for the second cell becomes something that can take the focus of its own, which is what
+		// a check box or a field in a cell looks like to this side of the adapter.
+		content := tree.Nodes[axCellR0LabelID]
+		content.Focusable = true
+		content.Actions = content.Actions.With(accessibility.Focus)
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var requests []accessibility.ActionRequest
+		AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
+			requests = append(requests, req)
+		}
+		WithPool(func() {
+			axCellElementFor(a, axCellR0C1ID).Send(Sel("setAccessibilityFocused:"), true)
+			// The cell beside it holds nothing that can take the focus, so its request is still the cell's own.
+			axCellElementFor(a, axCellR0C0ID).Send(Sel("setAccessibilityFocused:"), true)
+		})
+		want := []accessibility.ActionRequest{
+			{Node: axCellR0LabelID, Action: accessibility.Focus},
+			{Node: axCellR0C0ID, Action: accessibility.Focus},
+		}
+		if !slices.Equal(requests, want) {
+			t.Errorf("focusing the cells asked for %v, want %v", requests, want)
+		}
+	})
+}
+
+// The node ids axCellIndexTree builds.
+const (
+	axIndexRootID accessibility.NodeID = 3000 + iota
+	axIndexTableID
+	axIndexRowID
+	axIndexC0ID
+	axIndexC1ID
+	axIndexLabelID
+	axIndexC2ID
+	axIndexC3ID
+)
+
+// axCellIndexTree returns a table of one row whose cells are published the way application code and widgets that are
+// not this package's Table publish them: three cells that carry no column information at all, and one that carries an
+// index of its own. The second of the three holds a single label, so it is presented as that label (see axStandIn) and
+// the label has to answer for the cell's place in the row.
+func axCellIndexTree() *accessibility.Tree {
+	cells := []accessibility.NodeID{axIndexC0ID, axIndexC1ID, axIndexC2ID, axIndexC3ID}
+	tree := &accessibility.Tree{
+		Nodes: map[accessibility.NodeID]*accessibility.Node{
+			axIndexRootID: {
+				ID: axIndexRootID, Children: []accessibility.NodeID{axIndexTableID}, Role: role.Window,
+				Bounds: geom.NewRect(0, 0, 320, 240),
+			},
+			axIndexTableID: {
+				ID: axIndexTableID, Parent: axIndexRootID, Children: []accessibility.NodeID{axIndexRowID},
+				Role: role.Table, Name: "Documents", Bounds: geom.NewRect(0, 0, 400, 20), RowCount: 1,
+				ColumnCount: 4,
+			},
+			axIndexRowID: {
+				ID: axIndexRowID, Parent: axIndexTableID, Children: cells, Role: role.Row, Name: "Row",
+				Bounds: geom.NewRect(0, 0, 400, 20), RowIndex: 0,
+			},
+			axIndexLabelID: {
+				ID: axIndexLabelID, Parent: axIndexC1ID, Role: role.Label, Name: "35 KB",
+				Bounds: geom.NewRect(100, 0, 100, 20),
+			},
+		},
+		Root:       axIndexRootID,
+		Generation: 1,
+	}
+	for i, cellID := range cells {
+		tree.Nodes[cellID] = &accessibility.Node{
+			ID: cellID, Parent: axIndexRowID, Role: role.Cell, Name: "Cell",
+			Bounds: geom.NewRect(float32(100*i), 0, 100, 20), RowIndex: 0,
+		}
+	}
+	tree.Nodes[axIndexC1ID].Children = []accessibility.NodeID{axIndexLabelID}
+	tree.Nodes[axIndexC1ID].Name = ""
+	// Only the last cell says which column it is in, and it says a column past the ones the others would be counted
+	// into, so an index taken from the node and one counted from the siblings cannot be confused for one another.
+	tree.Nodes[axIndexC3ID].ColumnIndex = 3
+	return tree
+}
+
+// TestAXCellIndexWithoutColumnInformation proves a cell that carries no column index is given its place among its
+// sibling cells rather than the first column: accessibility.Node.ColumnIndex has no marker for being unset, so
+// answering from it straight would have every cell of such a row report itself the first one. A cell that does carry an
+// index answers from it, and content presented in a cell's place answers for the cell it hides.
+func TestAXCellIndexWithoutColumnInformation(t *testing.T) {
+	runOnMain(func() {
+		_, a, cleanup := newAXAdapterWithTree(t, axCellIndexTree())
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			for i, cellID := range []accessibility.NodeID{
+				axIndexC0ID, axIndexC1ID, axIndexC2ID, axIndexC3ID,
+			} {
+				element := axCellElementFor(a, cellID)
+				if got := objc.Send[int64](element, Sel("accessibilityIndex")); got != int64(i) {
+					t.Errorf("cell %d reports the index %d, want %d", cellID, got, i)
+				}
+			}
+			// The label is the element a client holds for the cell it stands in for, so it has to be the one that
+			// answers with that cell's place.
+			if got := objc.Send[int64](a.elementFor(axIndexLabelID), Sel("accessibilityIndex")); got != 1 {
+				t.Errorf("the label standing in for the second cell reports the index %d, want 1", got)
+			}
+		})
+	})
+}
+
+// TestAXRowSpeaksItsWholeName proves the name a table now puts on a row — the whole row, column by column — is what the
+// row's element reports as its description, and that nothing repeats it: the row reports no value beside it, and it is
+// not described by its cells the way a nameless row is (see axContentName). VoiceOver speaks an AXRow's description
+// when the focus lands on it and does not read the row's children, so the description is the whole of what is heard on
+// Up and Down.
+func TestAXRowSpeaksItsWholeName(t *testing.T) {
+	runOnMain(func() {
+		tree := axCellFocusTree(0, -1)
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		WithPool(func() {
+			element := a.elementFor(axCellRow0ID)
+			if got := GoStringFromNSString(element.Send(Sel("accessibilityLabel"))); got !=
+				"report.docx, Size 35 KB" {
+				t.Errorf("the row reports the description %q, want the whole row", got)
+			}
+			if got := element.Send(Sel("accessibilityValue")); got != 0 {
+				t.Errorf("the row reports the value %q as well as its description, which is spoken twice",
+					GoStringFromNSString(got))
+			}
+		})
+	})
+}

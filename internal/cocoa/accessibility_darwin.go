@@ -1472,6 +1472,13 @@ func axTraceNode(what string, n *accessibility.Node) {
 // the action at all. The answer is optimistic: the request is carried out later, on the UI thread.
 func axPerform(self objc.ID, action accessibility.Action) bool {
 	a, n := axElementTarget(self, 0)
+	return axPerformOn(a, n, action)
+}
+
+// axPerformOn is axPerform with the node spelled out, for the one request that may name a node other than the one the
+// element speaks for: the focus, which a cell that is stood in for holds while the element a client was handed is the
+// content standing in for it. See axFocusTarget.
+func axPerformOn(a *AXAdapter, n *accessibility.Node, action accessibility.Action) bool {
 	if a == nil || n == nil || !n.Actions.Has(action) || AccessibilityActionCallback == nil {
 		if axTraceOn {
 			axTraceNode("action "+action.String()+" refused", n)
@@ -1685,6 +1692,42 @@ func axCellStoodInFor(t *accessibility.Tree, n *accessibility.Node) *accessibili
 		return parent
 	}
 	return nil
+}
+
+// axFocused reports whether an element holds the keyboard focus. That is its own node's flag, unless the node stands in
+// for a cell (see axStandIn): a table's cell cursor puts the keyboard focus on the cell it is on, and the element a
+// client is handed for such a cell is the label, check box or field standing in for it, so the content has to answer
+// the cell's focus as well as its own — an element the focus notification names and that then reports AXFocused false
+// is exactly what a client checks for and disbelieves.
+//
+// The content's own focus still counts, and is what is asked first: an editor installed in a cell holds the focus
+// itself while it is being typed into, and the cell behind it does not.
+func axFocused(t *accessibility.Tree, n *accessibility.Node) bool {
+	if n.Focused {
+		return true
+	}
+	cell := axCellStoodInFor(t, n)
+	return cell != nil && cell.Focused
+}
+
+// axFocusTarget returns the node a request to give an element the keyboard focus names: the node itself whenever it can
+// take the focus, and otherwise the cell it stands in for.
+//
+// A label standing in for a table cell cannot take the focus and the cell it hides can — moving the cell cursor onto it
+// is what that means (see Table.PerformAccessibilityAction) — and the cell is not an element any client holds, so a
+// request naming the content is the only way such a cell can be asked for at all. Content that can take the focus
+// itself is left to answer for itself: every focusable panel is described with the Focus action, so a cell holding a
+// field, a check box or a button keeps its own request, and focusing that widget is what putting the keyboard into its
+// cell means for a widget. The table then follows the widget rather than the other way about: content taking the
+// keyboard focus makes its cell's row the whole of the selection and the lead row and puts the cell cursor on that cell
+// (see Table.adoptCellIfFocused), so a client that asked for the widget lands the person on that row as well.
+func axFocusTarget(t *accessibility.Tree, n *accessibility.Node) *accessibility.Node {
+	if !n.Actions.Has(accessibility.Focus) {
+		if cell := axCellStoodInFor(t, n); cell != nil && cell.Actions.Has(accessibility.Focus) {
+			return cell
+		}
+	}
+	return n
 }
 
 // axPresentedChildren returns the children an assistive technology is shown beneath a node: its unignored children,
@@ -2488,7 +2531,9 @@ func axSelectorRules() map[objc.SEL]func(t *accessibility.Tree, n *accessibility
 			// keyboard focus, which is what the other two report as AT-SPI's STATE_FOCUSABLE and UIA's
 			// IsKeyboardFocusable. The rule is the node's action set, because that is exactly what axPerform consults
 			// before it will dispatch the request; see uiaFragmentSetFocus in internal/w32 for the same refusal.
-			Sel("setAccessibilityFocused:"): can(accessibility.Focus),
+			Sel("setAccessibilityFocused:"): func(t *accessibility.Tree, n *accessibility.Node) bool {
+				return axFocusTarget(t, n).Actions.Has(accessibility.Focus)
+			},
 		}
 	})
 	return axSelectorRuleMap
@@ -3125,14 +3170,35 @@ func axElementAttributeMethods() []objc.MethodDef {
 			},
 		},
 		{
+			// Where an element sits among the ones beside it: a row's row number, a cell's column number, and the
+			// position among its like-roled siblings for everything else.
+			//
+			// A cell answers from its own column index for the same reason a row answers from its row number: a table
+			// describes only the rows that can be seen, and the content that stands in for a cell (see axStandIn)
+			// hangs off the cell rather than the row, so counting siblings would have every such cell report itself
+			// the first and only one of its row.
+			//
+			// Only a column past the first is taken from the index, since accessibility.Node.ColumnIndex has no
+			// marker for being unset: a cell published without column information — by application code, or by a
+			// widget that is not a table — would otherwise have every cell of its row answer 0. Falling through
+			// gives column 0 of a real cell the same answer anyway, since accessibility.Tree.PositionInSet counts the
+			// unignored siblings sharing the cell's role, a row's cells are described in column order and the
+			// disclosure triangle that may precede them is a role of its own (see Table.axAddRow); and it gives a cell
+			// that carries no column information its place among its sibling cells rather than the first column.
 			Cmd: Sel("accessibilityIndex"),
 			Fn: func(self objc.ID, cmd objc.SEL) int64 {
 				a, n := axElementTarget(self, cmd)
 				if a == nil || n == nil {
 					return 0
 				}
+				if cell := axCellStoodInFor(a.tree, n); cell != nil {
+					n = cell
+				}
 				if n.Role.IsRowLike() {
 					return int64(n.RowIndex)
+				}
+				if n.Role == role.Cell && n.ColumnIndex > 0 {
+					return int64(n.ColumnIndex)
 				}
 				if pos, _ := a.tree.PositionInSet(n.ID); pos > 0 {
 					return int64(pos - 1)
@@ -3222,15 +3288,19 @@ func axElementStateMethods() []objc.MethodDef {
 			// focused, and a panel may report the focus it holds on one of the virtual nodes it added beneath itself.
 			Cmd: Sel("isAccessibilityFocused"),
 			Fn: func(self objc.ID, cmd objc.SEL) bool {
-				_, n := axElementTarget(self, cmd)
-				return n != nil && n.Focused
+				a, n := axElementTarget(self, cmd)
+				return a != nil && n != nil && axFocused(a.tree, n)
 			},
 		},
 		{
 			Cmd: Sel("setAccessibilityFocused:"),
-			Fn: func(self objc.ID, _ objc.SEL, focused bool) {
+			Fn: func(self objc.ID, cmd objc.SEL, focused bool) {
 				if focused {
-					axPerform(self, accessibility.Focus)
+					a, n := axElementTarget(self, cmd)
+					if a == nil || n == nil {
+						return
+					}
+					axPerformOn(a, axFocusTarget(a.tree, n), accessibility.Focus)
 				}
 			},
 		},

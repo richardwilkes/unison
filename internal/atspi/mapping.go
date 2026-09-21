@@ -312,8 +312,17 @@ func supportsText(n *accessibility.Node) bool {
 // one to the next, so a document that also handed over text of any kind would have everything read twice and Orca's
 // caret would never leave the document object. The whole point of [accessibility.DocumentInfo] being a type of its own
 // is that an adapter has to opt into presenting a document as text, and this one does not.
+//
+// A table cell that holds a single check box is left out as well. Such a cell carries the check's state and, so that
+// the platforms which report a check through a value have something to read, the words for that state — "Checked" or
+// "Unchecked" — which say nothing the state has not already said. Orca reads the state off a toggleable cell for
+// itself, so handing those words over as the cell's text would have them spoken on top of the state, and in place of
+// the check box's own label, which Orca looks for in the cell's descendants only when the cell has no text of its own.
+// Any other checkable node keeps whatever value it carries: a check box, menu item or toggle button whose application
+// filled in a value of its own — a toggle reporting "3 of 5" — is saying something the state does not, and that value
+// is reported on macOS and Windows.
 func textualValue(n *accessibility.Node) string {
-	if n == nil || n.HasNumber || n.Text != nil || n.Protected || n.Document != nil {
+	if n == nil || n.HasNumber || n.Text != nil || n.Protected || n.Document != nil || cellMirrorsCheck(n) {
 		return ""
 	}
 	return n.Value
@@ -491,6 +500,14 @@ func ManagesDescendants(n *accessibility.Node) bool {
 // [Adapter.emitStateChanged] sends cannot drift apart.
 func checkable(n *accessibility.Node) bool {
 	return n != nil && (n.HasCheck || pressedIsChecked(n))
+}
+
+// cellMirrorsCheck reports whether a node is a table cell that mirrors the check box it holds. Table.axAddRow gives a
+// cell whose content is a single check box the check's own state together with a value spelling that state out, for the
+// platforms that report a check through a value, so such a cell is the one node whose value restates its state and has
+// nothing of its own to say; see [textualValue].
+func cellMirrorsCheck(n *accessibility.Node) bool {
+	return n != nil && n.Role == role.Cell && n.HasCheck
 }
 
 // pressedIsChecked reports whether [roleStates] derives ATSPI_STATE_CHECKED from a node's Pressed flag, which is how

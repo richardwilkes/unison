@@ -518,7 +518,7 @@ func TestTableCellFieldSelectAllStaysInField(t *testing.T) {
 	s = e.snapshot(c, screen, 1, 0)
 	c.Equal("alpha", s.selectedText, "the command should have selected the field's text")
 	c.Equal(1, s.tableSelCount, "the table's own Select All must not have run")
-	c.Equal(0, s.firstSelected)
+	c.Equal(1, s.firstSelected, "the click into the field made its row the whole of the selection")
 	c.Equal(1, s.focusRow)
 	c.Equal(0, s.focusCol)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
@@ -911,5 +911,107 @@ func TestTableCellFocusedCellUsesPlainInks(t *testing.T) {
 	c.True(got.selected)
 	c.True(got.fg == plain.fg && got.bg == plain.bg, "the focused cell of an unbanded row should get the background inks")
 	c.False(got.bg == sel.bg)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableFocusCellSelectsTheRow verifies that the focus arriving in a cell of a row that is not selected takes the
+// person to that cell: the row becomes the whole of the selection and the cursor lands on the column, so that Tab
+// carries both along with the focus and Escape hands the focus back to the table on the cell that was being edited.
+// Leaving the selection where it was left the ring and the cursor on some other row, and Escape then landed on a cell
+// nobody was in.
+func TestTableFocusCellSelectsTheRow(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	var wnd *unison.Window
+	changes := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(3, 2, "abc", false)
+			wnd, _ = newEditWindow(t, e, false)
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+
+	// The person starts on the second cell of the middle row, with the selection counting from there.
+	var focused bool
+	c.True(screen.Do(func() {
+		c.True(e.table.SetLeadCell(1, 1))
+		e.table.SelectionChangedCallback = func() { changes++ }
+		focused = e.table.FocusCell(2, 0)
+	}))
+	c.True(focused)
+	var indexes []int
+	var row, col int
+	c.True(screen.Do(func() {
+		indexes = selectedTableIndexes(e.table)
+		row = e.table.LeadRowIndex()
+		col = e.table.LeadColumnIndex()
+	}))
+	c.Equal([]int{2}, indexes, "the row whose cell took the focus becomes the whole of the selection")
+	c.Equal(2, row)
+	c.Equal(0, col)
+	c.Equal(1, changes, "and the application hears of the one change that really happened")
+
+	// Tab moves the focus along the row, and the cursor goes with it.
+	screen.KeyPress(unison.KeyTab, 0)
+	s := e.snapshot(c, screen, 2, 1)
+	c.True(s.fieldFocused)
+	c.Equal(2, s.focusRow)
+	c.Equal(1, s.focusCol)
+	c.True(screen.Do(func() {
+		indexes = selectedTableIndexes(e.table)
+		col = e.table.LeadColumnIndex()
+	}))
+	c.Equal(1, col, "the cursor follows the focus across the row")
+	c.Equal([]int{2}, indexes)
+	c.Equal(1, changes, "a move within the row that was already the whole of the selection changes nothing")
+
+	// Escape ends the editing and leaves the person standing on the cell they were working in.
+	screen.KeyPress(unison.KeyEscape, 0)
+	s = e.snapshot(c, screen, 2, 1)
+	c.True(s.tableFocused, "Escape hands the focus back to the table")
+	c.Equal(-1, s.focusCol, "the editing session is over")
+	c.True(screen.Do(func() {
+		row = e.table.LeadRowIndex()
+		col = e.table.LeadColumnIndex()
+	}))
+	c.Equal(2, row)
+	c.Equal(1, col, "the cursor is left on the cell that was being edited")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableCellFieldClickSelectsTheRow verifies the same thing for the gesture that starts most editing sessions: a
+// click into a Field in a row that is not selected selects that row and puts the cell cursor on the cell that was
+// clicked, which is where Escape from the editor leaves the person.
+func TestTableCellFieldClickSelectsTheRow(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(3, 2, "abc", false)
+			e.table.SelectByIndex(0)
+			wnd, _ = newEditWindow(t, e, false)
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+
+	screen.Click(cellCenter(screen, e.table, 2, 1))
+	s := e.snapshot(c, screen, 2, 1)
+	c.True(s.fieldFocused, "the click should have put the focus into the field")
+	var indexes []int
+	var row, col int
+	c.True(screen.Do(func() {
+		indexes = selectedTableIndexes(e.table)
+		row = e.table.LeadRowIndex()
+		col = e.table.LeadColumnIndex()
+	}))
+	c.Equal([]int{2}, indexes, "clicking into a widget a cell holds selects the row it belongs to")
+	c.Equal(2, row)
+	c.Equal(1, col, "and puts the cursor on the cell being worked in")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

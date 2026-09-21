@@ -394,6 +394,41 @@ func TestStatesOfCheckables(t *testing.T) {
 	c.False(up.Has(StatePressed))
 }
 
+// TestACheckableCellCarriesTheStateAndNotTheWordsForIt verifies that a table cell mirroring the check box within it —
+// a value of "Checked" alongside HasCheck — reports the check through its states and hands over no text: Orca reads the
+// state off a cell that can be toggled, and text on the cell would be spoken on top of it and in place of the check
+// box's own label.
+func TestACheckableCellCarriesTheStateAndNotTheWordsForIt(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	cell := &accessibility.Node{Role: role.Cell, Value: "Checked", HasCheck: true, Checked: checkenum.On}
+	states := States(cell, true, false)
+	c.True(states.Has(StateCheckable))
+	c.True(states.Has(StateChecked))
+	c.False(supportsText(cell), "the words for the state are not text of the cell's own")
+	c.Equal("", textualValue(cell))
+	c.False(slices.Contains(Interfaces(cell, false), InterfaceText), "and so advertises no text interface")
+	plain := &accessibility.Node{Role: role.Cell, Value: "35 KB"}
+	c.True(supportsText(plain), "a cell whose value is its content still reports it as text")
+	c.False(States(plain, true, false).Has(StateCheckable))
+}
+
+// TestACheckableControlKeepsAValueOfItsOwn verifies that the words a checkable node other than a mirroring cell carries
+// are still reported. An application that fills in a value from its callback — a check box or a toggle button saying
+// how much of something is on — is saying what the check state does not, and Linux would be the only platform to drop
+// it.
+func TestACheckableControlKeepsAValueOfItsOwn(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	box := &accessibility.Node{Role: role.CheckBox, Value: "3 of 5", HasCheck: true, Checked: checkenum.Mixed}
+	c.True(supportsText(box), "a check box carrying a value of its own reports it")
+	c.Equal("3 of 5", textualValue(box))
+	toggle := &accessibility.Node{Role: role.ToggleButton, Value: "3 of 5", Pressed: true}
+	c.True(States(toggle, true, false).Has(StateCheckable), "a toggle button is checkable without a check of its own")
+	c.True(supportsText(toggle), "which does not take its value away")
+	c.Equal("3 of 5", textualValue(toggle))
+}
+
 func TestStatesOfTextControls(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)

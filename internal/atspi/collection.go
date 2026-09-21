@@ -120,11 +120,16 @@ func (o *nodeObject) replyWithRelativeMatches(call *dbus.Call, backwards bool) {
 // getActiveDescendant implements org.a11y.atspi.Collection.GetActiveDescendant, which asks a container that manages its
 // own descendants which of them is the current one. Only a container that makes that promise — a table or a tree large
 // enough for [ManagesDescendants] — has one, and only while the keyboard focus is inside it: a list or a table that
-// holds the focus reports it on its current row rather than on itself, so the focused descendant is the current one and
-// is exactly what [Adapter.emitActiveDescendants] has already named through object:active-descendant-changed. Answering
-// the same node here keeps a client that asks rather than listens from being told there is nothing current in a
-// container it has been told not to walk. Everything else answers with the null reference, which is how AT-SPI says
-// there is nothing here.
+// holds the focus reports it on the row the person is on, or on the cell their cell cursor is on, rather than on
+// itself, so the focused descendant is the current one and is exactly what [Adapter.emitActiveDescendants] has already
+// named through object:active-descendant-changed. Answering the same node here keeps a client that asks rather than
+// listens from being told there is nothing current in a container it has been told not to walk. Everything else answers
+// with the null reference, which is how AT-SPI says there is nothing here.
+//
+// A cell is as good an answer as a row. Orca reads the reference out of the event's any_data and moves its locus of
+// focus straight onto it (scripts/default.py._on_active_descendant_changed), presenting whatever arrives with the
+// generator for its role, and takes the event as presentable so long as the source or that descendant carries
+// ATSPI_STATE_FOCUSED, which the focused cell does (ax_utilities_event.is_presentable_active_descendant_change).
 func (o *nodeObject) getActiveDescendant(call *dbus.Call) {
 	focus := o.data.tree.Focus
 	if reportedNode(o.data, focus) == nil || managesDescendantsAncestor(o.data, focus) != o.node.ID {

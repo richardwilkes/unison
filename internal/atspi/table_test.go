@@ -464,3 +464,221 @@ func atspiInterfacesIn(xml string) []string {
 	}
 	return found
 }
+
+// tableCursorTree returns the table window with the keyboard focus where a Unison table puts it: on the row the person
+// is on, or, once they have moved the cell cursor out along that row, on one of its cells. focus names the row or the
+// cell holding it. generation is how many publishes have gone before, so that each snapshot is newer than the last.
+//
+// Every row and every cell can take the focus and offers the request that moves the person to it, which is what a table
+// publishes whether or not the cursor is out at the moment; only where the focus is reported changes. The row the focus
+// is in is the selected one, since a cell cursor never exists without a selected lead row.
+func tableCursorTree(generation uint64, focus accessibility.NodeID) *accessibility.Tree {
+	tree := tableTree()
+	tree.Generation += generation
+	tree.Node(61).Focusable = true
+	for _, id := range []accessibility.NodeID{62, 66} {
+		row := tree.Node(id)
+		row.Focusable = true
+		row.Actions = row.Actions.With(accessibility.Focus)
+		row.Focused = false
+		row.Selected = false
+	}
+	for _, id := range []accessibility.NodeID{64, 65, 67, 68} {
+		cell := tree.Node(id)
+		cell.Focusable = true
+		cell.Actions = cell.Actions.With(accessibility.ScrollIntoView, accessibility.Focus)
+	}
+	node := tree.Node(focus)
+	node.Focused = true
+	tree.Focus = focus
+	row := node
+	if node.Role == role.Cell {
+		row = tree.Node(node.Parent)
+	}
+	row.Selected = true
+	return tree
+}
+
+// drainSignals reads everything the publishes so far have sent, which is what a test that is only about the next
+// publish wants. The announcement is a marker: it is queued behind them all, so reaching it means they have all been
+// read.
+func (ta *testAdapter) drainSignals(marker string) {
+	ta.Announce(marker)
+	for ta.peer.nextSignal().member != signalAnnouncement {
+		// Everything sent before the marker is passed over.
+	}
+}
+
+// TestTheCellTheCursorIsOnIsTheFocus covers what a client is handed when the person has moved the cell cursor out along
+// a row: the cell says it can take the focus and holds it, the row it sits in says it can take the focus and does not,
+// and the cell answers the half of the table protocol that says where it is. Orca reads all of this off the object
+// after its locus of focus has been moved there, so a cell that says nothing about its place would be presented with no
+// idea which column the person had arrowed onto.
+func TestTheCellTheCursorIsOnIsTheFocus(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	ta.Publish(tableWindow, tableCursorTree(0, 65), nil, sampleGeometry())
+
+	c.True(ta.statesOf(65).Has(StateFocusable), "the cell the cursor is on can take the focus")
+	c.True(ta.statesOf(65).Has(StateFocused), "and holds it")
+	c.True(ta.statesOf(64).Has(StateFocusable), "so can the cell beside it")
+	c.False(ta.statesOf(64).Has(StateFocused))
+	c.True(ta.statesOf(62).Has(StateFocusable), "the row is still something the focus can be given to")
+	c.False(ta.statesOf(62).Has(StateFocused), "but the focus it holds is reported on the cell")
+	c.True(ta.statesOf(62).Has(StateSelected), "the row the cursor is in is the selected one")
+	c.False(ta.statesOf(61).Has(StateFocused))
+
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent, InterfaceTableCell},
+		ta.one(NodePath(65), InterfaceAccessible, "GetInterfaces", ""),
+		"moving to a cell and scrolling it into view are asked for through Component, not through Action")
+	c.Equal(true, ta.one(NodePath(65), InterfaceComponent, "GrabFocus", ""),
+		"a cell the person can be moved to accepts being asked to take the focus")
+	c.Equal(accessibility.ActionRequest{Node: 65, Action: accessibility.Focus}, ta.nextRequest(t))
+	c.Equal(dbus.Struct{int32(1), int32(1)}, ta.peer.getProperty(NodePath(65), InterfaceTableCell, "Position"),
+		"the cell says which row and column it is in")
+	c.Equal(nodeRef(61), ta.peer.getProperty(NodePath(65), InterfaceTableCell, "Table"))
+	c.Equal(nodeRefs(71), ta.peer.getProperty(NodePath(65), InterfaceTableCell, "ColumnHeaderCells"),
+		"and which header describes the column, which is what Orca announces as the cursor crosses into it")
+	c.Equal(nodeRef(65), ta.one(NodePath(61), InterfaceTable, "GetAccessibleAt", "ii", int32(1), int32(1)),
+		"and the table finds the same cell from the other end")
+}
+
+// TestTheCellCursorMovingIsAFocusMoveOntoEachCell covers the three moves the cursor makes: out of the row onto a cell,
+// across to the next cell of the same row, and down to a cell of another row. Each is the plain pair of signals that
+// says the focus left one object and arrived at another, since that is what Orca follows; the row that had the focus
+// gives up the state as the first cell takes it, and the selection moves with the cursor when it changes rows.
+func TestTheCellCursorMovingIsAFocusMoveOntoEachCell(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	onRow := tableCursorTree(0, 62)
+	ta.Publish(tableWindow, onRow, nil, sampleGeometry())
+	ta.drainSignals("The table is up")
+
+	// Right at row level puts the cursor on the first cell of the row.
+	firstCell := tableCursorTree(1, 64)
+	events := accessibility.Diff(onRow, firstCell)
+	c.Equal([]accessibility.Event{{Kind: accessibility.FocusChanged, Node: 64}}, events,
+		"the cursor moving out along the row is nothing but a focus move")
+	ta.Publish(tableWindow, firstCell, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(62, stateNameFocused, false),
+		stateEvent(64, stateNameFocused, true),
+		focusEvent(64),
+	}, ta.peer.nextSignals(3))
+
+	// Right again moves it to the next column of the same row, which is a different object each time, since a cell's
+	// node id is its own.
+	nextCell := tableCursorTree(2, 65)
+	events = accessibility.Diff(firstCell, nextCell)
+	ta.Publish(tableWindow, nextCell, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(64, stateNameFocused, false),
+		stateEvent(65, stateNameFocused, true),
+		focusEvent(65),
+	}, ta.peer.nextSignals(3))
+
+	// Down keeps the column and takes the selection to the row below, so the two rows say what happened to them and the
+	// table is told its selection moved, all around the same focus move.
+	rowBelow := tableCursorTree(3, 68)
+	events = accessibility.Diff(nextCell, rowBelow)
+	ta.Publish(tableWindow, rowBelow, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(62, stateNameSelected, false),
+		stateEvent(66, stateNameSelected, true),
+		stateEvent(65, stateNameFocused, false),
+		stateEvent(68, stateNameFocused, true),
+		focusEvent(68),
+		objectEvent(61, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+	}, ta.peer.nextSignals(6))
+	ta.Announce("Nothing more about the cell cursor")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+}
+
+// TestALargeTableNamesTheFocusedCellAsItsCurrentDescendant covers the one route left to a client that has been told not
+// to walk or cache what is inside a table: the cell the cursor is on is named as the table's current descendant, both
+// in the signal and to a client that asks instead of listening. Orca moves its locus of focus straight onto whatever
+// the event carries, so a cell is as good an answer here as a row.
+func TestALargeTableNamesTheFocusedCellAsItsCurrentDescendant(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	large := tableCursorTree(0, 64)
+	large.Node(61).RowCount = manageDescendantsRowThreshold + 100
+	ta.Publish(tableWindow, large, nil, sampleGeometry())
+	ta.drainSignals("The large table is up")
+	c.True(ManagesDescendants(large.Node(61)), "a table this large manages its own descendants")
+	c.Equal(ta.reference(64), ta.one(NodePath(61), InterfaceCollection, "GetActiveDescendant", ""),
+		"the cell the cursor is on is the current descendant")
+
+	moved := tableCursorTree(1, 65)
+	moved.Node(61).RowCount = manageDescendantsRowThreshold + 100
+	events := accessibility.Diff(large, moved)
+	ta.Publish(tableWindow, moved, events, sampleGeometry())
+	c.Equal([]signalRecord{
+		stateEvent(64, stateNameFocused, false),
+		stateEvent(65, stateNameFocused, true),
+		focusEvent(65),
+		// The index is the cell's place among its own parent's children, which is what ATK's bridge sends: the
+		// disclosure triangle is the row's first child, so the second column's cell is its third.
+		objectEvent(61, signalActiveDescendantChanged, "", 2, 0, variantRef(nodeRef(65))),
+	}, ta.peer.nextSignals(4))
+	ta.Announce("Nothing more about the current descendant")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+	c.Equal(ta.reference(65), ta.one(NodePath(61), InterfaceCollection, "GetActiveDescendant", ""))
+}
+
+// wholeRowName is what a Unison row is called once every column has been folded into it: the first column on its own,
+// then each further column announced with the title of its header.
+const wholeRowName = "Alpha, Count 10"
+
+// TestARowIsNamedByTheWholeRowAndNothingIsInventedForACellsContent covers the naming half of the cell cursor, which is
+// the half that decides how often the person hears a row read out.
+//
+// The row's name is published exactly as the table composed it. Orca's speech_generator._generate_table_row reads a
+// row's name and its position and never walks the row's cells, so the whole row is spoken once as the person arrows
+// down the table; and generator._combine_cell_results presents a named, non-layout row as the row object itself rather
+// than as its cells whenever the row has changed, so arrowing down at cell level says the same thing rather than a
+// second, cell-by-cell version of it. Neither would hold if the row were left nameless, which is why nothing here
+// strips or shortens the name and why the row carries no text of its own for a client to read a second copy from.
+//
+// A cell whose content is described within it keeps the empty name the table gave it. The other two adapters name such
+// a cell from its content; this one must not, since Orca takes the words from the descendant holding them
+// (generator._generate_real_active_descendant_displayed_text, ax_utilities.active_descendant) and a name here would be
+// a second copy of the same words.
+func TestARowIsNamedByTheWholeRowAndNothingIsInventedForACellsContent(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	const countText = "10"
+	tree := tableCursorTree(0, 65)
+	tree.Node(62).Name = wholeRowName
+	described := tree.Node(65)
+	described.Name = ""
+	described.Children = []accessibility.NodeID{72}
+	tree.Nodes[72] = &accessibility.Node{
+		ID: 72, Parent: 65, Role: role.Label, Name: countText, Bounds: geom.NewRect(160, 20, 140, 20),
+		Text: &accessibility.TextInfo{
+			Text:  countText,
+			Lines: []accessibility.Line{{End: len(countText), Bounds: geom.NewRect(0, 0, 20, 20)}},
+		},
+	}
+	ta.Publish(tableWindow, tree, nil, sampleGeometry())
+
+	c.Equal(wholeRowName, ta.peer.getProperty(NodePath(62), InterfaceAccessible, "Name"),
+		"the row is called the whole of what is in it, word for word")
+	c.Equal([]string{InterfaceAccessible, InterfaceCollection, InterfaceComponent},
+		ta.one(NodePath(62), InterfaceAccessible, "GetInterfaces", ""),
+		"a row carries no text of its own, so its name is the only place the words are")
+	c.Equal(nodeRefs(63, 64, 65), ta.one(NodePath(62), InterfaceAccessible, "GetChildren", ""),
+		"the cells are still there for the cursor to land on, whatever the row is called")
+
+	c.Equal("", ta.peer.getProperty(NodePath(65), InterfaceAccessible, "Name"),
+		"a cell whose content speaks for itself is left nameless rather than named from that content")
+	c.Equal("Alpha", ta.peer.getProperty(NodePath(64), InterfaceAccessible, "Name"),
+		"a cell with nothing inside it keeps the text the table sorts it by")
+	c.Equal(nodeRefs(72), ta.one(NodePath(65), InterfaceAccessible, "GetChildren", ""))
+	c.Equal(countText, ta.one(NodePath(72), InterfaceText, "GetText", "ii", int32(0), int32(-1)),
+		"the words are on the object inside the cell, which is where Orca reads them from")
+}

@@ -834,19 +834,57 @@ func TestTableAccessibilityFocusActionSelectsTheRow(t *testing.T) {
 	}
 	c.Equal(1, axFocusedCount(tree))
 
-	// A cell is not somewhere the keyboard can be left, so it neither offers the focus nor takes one.
+	// A cell is where the person is whenever the cell cursor is on it, so it offers the focus and takes one: doing so
+	// puts the cursor on that cell, which is what the left and right arrows do.
 	cells := axChildNodes(tree, row)
 	c.True(len(cells) != 0)
 	if len(cells) != 0 {
-		c.False(cells[0].Actions.Has(accessibility.Focus), "a cell is not a place the focus can be put")
+		c.True(cells[1].Focusable, "a cell the cursor can stand on has to be focusable")
+		c.True(cells[1].Actions.Has(accessibility.Focus), "a cell the cursor can stand on has to offer the move")
 		var handled bool
 		a.screen.Do(func() {
 			handled = a.table.PerformAccessibilityAction(accessibility.ActionRequest{
-				Key:    accessibility.CellKey{Row: "r3", Col: 0},
+				Key:    accessibility.CellKey{Row: "r3", Col: 1},
 				Action: accessibility.Focus,
 			})
 		})
-		c.False(handled, "a focus request naming a cell must be refused rather than acted on as the row")
+		c.True(handled, "a focus request naming a cell must move the cursor onto it")
+		var leadRow, leadCol int
+		a.screen.Do(func() {
+			leadRow = a.table.LeadRowIndex()
+			leadCol = a.table.LeadColumnIndex()
+		})
+		c.Equal(3, leadRow)
+		c.Equal(1, leadCol)
+		c.Equal([]int{3}, axTableSelectedIndexes(a.screen, a.table), "the row named by the cell is the selection")
+
+		// And the focus is now reported on the cell rather than on the row it belongs to.
+		tree = a.tree()
+		c.True(tree != nil)
+		if tree == nil {
+			return
+		}
+		row = a.rowNode(tree, "r3")
+		c.True(row != nil)
+		if row == nil {
+			return
+		}
+		cells = axChildNodes(tree, row)
+		c.Equal(2, len(cells))
+		if len(cells) == 2 {
+			c.Equal(cells[1].ID, tree.Focus, "the cell the cursor is on is where the person is")
+			c.True(cells[1].Focused)
+			c.False(row.Focused, "the row gives the focus up to the cell within it")
+			c.Equal(1, axFocusedCount(tree))
+		}
+
+		// Putting the focus back on the row puts the person back at row level.
+		c.True(a.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+			Node:   row.ID,
+			Action: accessibility.Focus,
+		}))
+		a.screen.Do(func() { leadCol = a.table.LeadColumnIndex() })
+		c.Equal(-1, leadCol, "moving onto the row leaves the cells of it")
 	}
 	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
 }
@@ -1037,5 +1075,204 @@ func TestTableAccessibilityEditedCellReportsTheEditor(t *testing.T) {
 		c.False(row.Focused, "no row may claim a focus the cell's own widget holds: %s", row.Name)
 	}
 	c.Equal(1, axFocusedCount(tree))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityRowNameIsTheWholeRow verifies what a row is called: the whole of it, column by column, with
+// each column after the first announced with the title of the header standing over it, so that a person arrowing down
+// the rows hears everything the row shows rather than only its first column. A column holding nothing for the row is
+// left out, and a table with no header attached has no titles to give.
+func TestTableAccessibilityRowNameIsTheWholeRow(t *testing.T) {
+	c := check.New(t)
+	var withHeader, bare *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	data := func(col int) string {
+		switch col {
+		case 0:
+			return "report.docx"
+		case 1:
+			return "9/1/2024"
+		default:
+			return ""
+		}
+	}
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			named := newTableTestRow("r0")
+			named.cellData = data
+			withHeader = newTestTable(named)
+			withHeader.Columns = []unison.ColumnInfo{
+				{ID: 0, Current: 100},
+				{ID: 1, Current: 100},
+				{ID: 2, Current: 100},
+			}
+			withHeader.SyncToModel()
+			unison.NewTableHeader(withHeader,
+				unison.TableColumnHeader[*tableTestRow](unison.NewTableColumnHeader[*tableTestRow]("Name", "", nil)),
+				unison.NewTableColumnHeader[*tableTestRow]("Modified", "", nil),
+				unison.NewTableColumnHeader[*tableTestRow]("Size", "", nil))
+
+			plain := newTableTestRow("r1")
+			plain.cellData = data
+			bare = newTestTable(plain)
+			bare.Columns = []unison.ColumnInfo{
+				{ID: 0, Current: 100},
+				{ID: 1, Current: 100},
+				{ID: 2, Current: 100},
+			}
+			bare.SyncToModel()
+
+			wnd = newHeadlessWindow(t, "row names", geom.NewRect(10, 10, 500, 400), axColumn(withHeader, bare))
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+
+	tree := screen.AccessibilityTree(wnd)
+	rows := axChildNodes(tree, axMustNode(c, screen.AccessibilityNodeFor(withHeader)))
+	c.Equal(1, len(rows))
+	if len(rows) == 1 {
+		c.Equal("report.docx, Modified 9/1/2024", rows[0].Name,
+			"the first column stands alone and the rest are announced with their titles; an empty column is left out")
+	}
+	rows = axChildNodes(tree, axMustNode(c, screen.AccessibilityNodeFor(bare)))
+	c.Equal(1, len(rows))
+	if len(rows) == 1 {
+		c.Equal("report.docx, 9/1/2024", rows[0].Name,
+			"a table with no header has no titles to announce its columns with")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityCursorFocusesTheCellOutOfView verifies that a row the person is on, however far out of sight it
+// is, is described with the cells it holds while the cell cursor is on one of them, and that the focus is reported on
+// that cell: a cursor the reader cannot be pointed at is a cursor nothing reads out.
+func TestTableAccessibilityCursorFocusesTheCellOutOfView(t *testing.T) {
+	c := check.New(t)
+	const (
+		rowCount = 400
+		onRow    = 300
+	)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			rows := make([]*tableTestRow, rowCount)
+			for i := range rows {
+				rows[i] = newTableTestRow("r" + strconv.Itoa(i))
+			}
+			table = axNewTable(rows...)
+			wnd = newHeadlessWindow(t, "cursor out of view", geom.NewRect(10, 10, 400, 400),
+				axColumn(axScroller(table, geom.NewSize(300, 100))))
+			if wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	screen.Do(func() {
+		table.RequestFocus()
+		// Put the person on a row far below the view port without scrolling to it, so that the row the cursor stands
+		// on is one nobody can see.
+		table.SelectByIndex(onRow)
+		table.SetLeadCell(onRow, 1)
+		table.ScrollRowIntoView(0)
+	})
+
+	tree := screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(table))
+	row := axTableRows(tree, node)["r"+strconv.Itoa(onRow)]
+	c.True(row != nil, "the row the person is on is described however far out of sight it is")
+	if row == nil {
+		return
+	}
+	c.True(row.Offscreen)
+	cells := axChildNodes(tree, row)
+	c.Equal(2, len(cells), "the row the cursor is in has to be described with its cells for the cursor to land on one")
+	if len(cells) != 2 {
+		return
+	}
+	c.Equal(cells[1].ID, tree.Focus, "the focus is reported on the cell the cursor is on")
+	c.True(cells[1].Focused)
+	c.False(row.Focused, "the row hands the focus on to the cell within it")
+	c.Equal(1, axFocusedCount(tree), "exactly one node other than the root may report the focus")
+
+	// Back out to the row, and the focus is reported on the row again. Putting the cursor on the row scrolls to it, so
+	// the view is taken back to the top to leave the row out of sight, which is where it is described by name alone.
+	screen.Do(func() {
+		table.SetLeadCell(onRow, -1)
+		table.ScrollRowIntoView(0)
+	})
+	tree = screen.AccessibilityTree(wnd)
+	row = axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(table)))["r"+strconv.Itoa(onRow)]
+	c.True(row != nil)
+	if row != nil {
+		c.Equal(row.ID, tree.Focus, "at row level the row is where the person is")
+		c.True(row.Focused)
+		c.Equal(0, len(row.Children), "a row nobody can see is described by name alone again")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilityFocusInCellSelectsTheRow verifies the route a screen reader takes into an editable cell: it
+// asks for the focus on the widget the cell holds rather than on the cell itself, which reaches the widget through the
+// table and leaves it holding the keyboard focus. That is the person moving into that cell, so the row it belongs to
+// becomes the whole of the selection and the cell cursor lands on the column, exactly as a click into the widget or a
+// call to FocusCell does.
+func TestTableAccessibilityFocusInCellSelectsTheRow(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(3, 2, "abc", false)
+			e.table.SelectByIndex(0)
+			wnd, _ = newEditWindow(t, e, false)
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	screen.EnableAccessibility()
+
+	tree := screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(e.table))
+	rows := axChildNodes(tree, node)
+	c.Equal(3, len(rows))
+	if len(rows) != 3 {
+		return
+	}
+	cells := axChildNodes(tree, rows[2])
+	c.Equal(3, len(cells), "each row is described with one node per column")
+	if len(cells) != 3 {
+		return
+	}
+	content := axChildNodes(tree, cells[1])
+	c.Equal(1, len(content), "the field the cell holds is described within it")
+	if len(content) != 1 {
+		return
+	}
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   content[0].ID,
+		Action: accessibility.Focus,
+	}))
+	s := e.snapshot(c, screen, 2, 1)
+	c.True(s.fieldFocused, "the request should have left the field holding the focus")
+	c.Equal(2, s.focusRow)
+	c.Equal(1, s.focusCol)
+	var indexes []int
+	var row, col int
+	c.True(screen.Do(func() {
+		indexes = selectedTableIndexes(e.table)
+		row = e.table.LeadRowIndex()
+		col = e.table.LeadColumnIndex()
+	}))
+	c.Equal([]int{2}, indexes, "the row the cell belongs to becomes the whole of the selection")
+	c.Equal(2, row)
+	c.Equal(1, col, "and the cursor stands on the cell being worked in")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

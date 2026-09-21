@@ -551,21 +551,8 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			break
 		}
 		panel := header.AsPanel()
-		// A column header built around a label — the library's own is, and so is a custom one written the way the
-		// documentation describes, by embedding a *Label and pointing Self at itself — is named by that label's text.
-		// Asking a label for its text is not the same as asking a panel for it: every panel answers String() with the
-		// name of its own type, so a header built around anything else with a title of its own would be announced as
-		// the name of the Go type it was written as. Anything that is not a label is read from the labels it is built
-		// out of, and then, failing that, from whatever its content turns out to be called.
 		label := axLabelOf(panel)
-		name := panel.Accessibility.Name
-		if name == "" {
-			if label != nil {
-				name = label.String()
-			} else {
-				name = axLabelText(panel)
-			}
-		}
+		name := axColumnHeaderName(panel, label)
 		description := axTooltipText(panel)
 		if description == name {
 			description = ""
@@ -607,6 +594,27 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			}
 		}
 	}
+}
+
+// axColumnHeaderName returns what a column header is called, which is the title of the column standing beneath it. A
+// name set on the panel itself wins, as it does everywhere. Failing that, a column header built around a label — the
+// library's own is, and so is a custom one written the way the documentation describes, by embedding a *Label and
+// pointing Self at itself — is named by that label's text. Asking a label for its text is not the same as asking a
+// panel for it: every panel answers String() with the name of its own type, so a header built around anything else with
+// a title of its own would be announced as the name of the Go type it was written as. Anything that is not a label is
+// read from the labels it is built out of, and then, failing that, from whatever its content turns out to be called.
+//
+// label is what axLabelOf made of the panel, which the caller has usually had to work out already.
+//
+// This is also where a table gets the titles it announces the columns of a row with; see Table.axColumnTitle.
+func axColumnHeaderName(panel *Panel, label *Label) string {
+	if name := panel.Accessibility.Name; name != "" {
+		return name
+	}
+	if label != nil {
+		return label.String()
+	}
+	return axLabelText(panel)
 }
 
 // axDescribeColumnHeaderText gives the node standing for a column that is nothing but a title the text of that title,

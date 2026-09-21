@@ -612,12 +612,15 @@ func TestListAccessibilityPressInCellTakesTheFocusBack(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// axTableRows returns the row nodes of a table's description, keyed by the name each row reports.
+// axTableRows returns the row nodes of a table's description, keyed by what the first column of each row holds. A row
+// is named by the whole of itself — every column that has something in it, joined with ", " — so the first field of
+// that name is the piece the tests here build their rows around and identify them by.
 func axTableRows(tree *accessibility.Tree, node *accessibility.Node) map[string]*accessibility.Node {
 	rows := make(map[string]*accessibility.Node)
 	for _, child := range axChildNodes(tree, node) {
 		if child.Role == role.Row {
-			rows[child.Name] = child
+			name, _, _ := strings.Cut(child.Name, ", ")
+			rows[name] = child
 		}
 	}
 	return rows
@@ -680,7 +683,8 @@ func TestTableAccessibility(t *testing.T) {
 	}
 	first := rowNodes[0]
 	c.Equal(role.Row, first.Role)
-	c.Equal("row 0 col 0", first.Name, "a row is named by the data of its first column")
+	c.Equal("row 0 col 0, row 0 col 1", first.Name,
+		"a row is named by the whole of itself, column by column, so that a person moving down the rows hears it all")
 	c.Equal(0, first.RowIndex)
 	c.Equal(1, first.Level, "a row with no ancestors is at the top level")
 	c.True(first.Selectable)
@@ -2324,7 +2328,10 @@ func TestTableAccessibilityCellContent(t *testing.T) {
 	// A screen reader treats the cell as the unit: it presses the cell, and it reports what changed by reading the
 	// cell's value again, so the check box's state is the cell's value and a change to it is reported on the cell.
 	c.Equal("Unchecked", cells[0].Value, "a cell holding one check box reports its state as its value")
+	c.True(cells[0].HasCheck, "and carries the check state itself, which is what a reader standing on the cell reads")
+	c.Equal(checkenum.Off, cells[0].Checked)
 	c.Equal("", cells[1].Value, "a button has no state to report")
+	c.False(cells[1].HasCheck)
 	screen.AccessibilityEvents(wnd)
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   cells[0].ID,

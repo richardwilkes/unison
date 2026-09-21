@@ -1415,3 +1415,55 @@ func TestPublishKeepsProviders(t *testing.T) {
 	w.Publish(nil, nil)
 	c.Equal(next, w.Tree())
 }
+
+// TestGetFocusOnCell verifies that a table with its cell cursor on a cell points a client at that cell, that the cell
+// answers the two focus properties the way the element the user is on must, and that asking the cell for the focus
+// reaches the widget. NVDA follows a focus event by asking the element whether it really has the keyboard —
+// shouldAllowUIAFocusEvent — and a client that lost track asks the fragment root instead, so the two have to agree.
+func TestGetFocusOnCell(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	out, outAddress := pinnedOut[uintptr](&pin)
+	value, valueAddress := pinnedOut[VARIANT](&pin)
+	tree := cellCursorTree()
+	focusCell(tree, 6, 7, 9)
+	w := newTestWindow(t, tree)
+	this := w.rootProvider().ifacePtr(ifaceFragmentRoot)
+
+	c.Equal(w32.COM_S_OK, fragmentRootGetFocus(this, outAddress))
+	c.Equal(w.providerFor(9).ifacePtr(ifaceFragment), *out, "the cell the cursor is on")
+	c.Equal(uintptr(1), w.providerFor(9).release())
+
+	property := func(node accessibility.NodeID, id PropertyID) *VARIANT {
+		p := w.providerFor(node)
+		c.NotNil(p)
+		c.Equal(w32.COM_S_OK, simpleGetPropertyValue(p.ifacePtr(ifaceSimple), uintptr(id), valueAddress))
+		return value
+	}
+	c.Equal(VT_BOOL, property(9, HasKeyboardFocusPropertyId).VT)
+	c.True(variantBool(value))
+	value.Clear()
+	c.Equal(VT_BOOL, property(9, IsKeyboardFocusablePropertyId).VT)
+	c.True(variantBool(value))
+	value.Clear()
+	c.Equal(VT_BOOL, property(7, HasKeyboardFocusPropertyId).VT)
+	c.False(variantBool(value), "the row that handed the focus on to the cell claims nothing")
+	value.Clear()
+
+	// Asking the cell for the focus is asking to move the cursor onto it, which the widget is told to do.
+	c.Equal(w32.COM_S_OK, fragmentSetFocus(w.providerFor(9).ifacePtr(ifaceFragment)))
+	requests := w.recorded()
+	c.Equal(1, len(requests))
+	c.Equal(accessibility.NodeID(9), requests[0].Node)
+	c.Equal(accessibility.Focus, requests[0].Action)
+
+	// Moving the cursor to the next column moves what the fragment root reports along with it.
+	next := cellCursorTree()
+	focusCell(next, 6, 7, 8)
+	next.Generation = 2
+	w.Publish(next, nil)
+	c.Equal(w32.COM_S_OK, fragmentRootGetFocus(this, outAddress))
+	c.Equal(w.providerFor(8).ifacePtr(ifaceFragment), *out)
+	c.Equal(uintptr(1), w.providerFor(8).release())
+}

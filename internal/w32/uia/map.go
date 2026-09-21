@@ -515,6 +515,18 @@ func rolePatterns(n *accessibility.Node) PatternSet {
 		// with nothing to report through it would answer the empty string, and it is read-only: a cell offers no
 		// SetValue action, which is what IsValueReadOnly answers from. A list row does the same, a few cases above.
 		//
+		// A cell holding one check box carries that check box's check state as well as the words for it —
+		// Table.axAddRow mirrors HasCheck and Checked onto the cell so that a screen reader standing on the cell can
+		// read the state there — but on this platform the state reaches a client only as those words in the cell's
+		// value. A cell hands out no Toggle pattern, so ToggleStateOf is never asked about one and decider.state's
+		// check branch finds neither Toggle nor SelectionItem and records nothing; the check box beneath the cell
+		// carries its own Toggle pattern, which is where a client that wants the state as a state reads it. The cell is
+		// deliberately left without one: a cell that reported both a toggle state and a value saying "Checked" invites
+		// a doubled announcement. What keeps a flip audible here instead is that Table.axContentValue gives every check
+		// state a different word, so each toggle is also a change of value and raises ValueValuePropertyId on the cell.
+		// The words must therefore stay in the cell's value on this platform, since dropping them would take the check
+		// state away from a Windows client altogether.
+		//
 		// A cell that carries text of its own reports it through the Text pattern as well, so that a review cursor can
 		// read the cell by word and character rather than only hear it named. Nothing in the toolkit fills a cell's
 		// text in: a table cell's words live on the Label inside it, which carries and reports them itself, so the
@@ -783,11 +795,13 @@ func contentPiece(t *accessibility.Tree, n *accessibility.Node, depth int) strin
 // a NULL element.
 //
 // The element it names is not always the panel the keyboard really goes to: a list or a table that holds the focus
-// reports it on its current row instead, so the row answers this and the container around it does not, even though
-// both are focusable. That is what the native controls report — a WPF ListBoxItem or DataGridRow claims
-// HasKeyboardFocus while the ListBox or DataGrid claims only IsKeyboardFocusable — and what a screen reader needs
-// before it will act on a focus event naming the row: NVDA's shouldAllowUIAFocusEvent drops one whose element does not
-// claim the keyboard. See AccessibilityBuilder.FocusChild, which is what moves the claim onto the row.
+// reports it on its current row instead, and a table whose cell cursor has been moved across into the cells reports it
+// on the cell the cursor is on, so the row or the cell answers this and the container around it never does, even
+// though all of them are focusable. That is what the native controls report — a WPF ListBoxItem, DataGridRow or
+// DataGridCell claims HasKeyboardFocus while the ListBox or DataGrid claims only IsKeyboardFocusable — and what a
+// screen reader needs before it will act on a focus event naming the row or the cell: NVDA's shouldAllowUIAFocusEvent
+// drops one whose element does not claim the keyboard. See AccessibilityBuilder.FocusChild, which is what moves the
+// claim onto the row, and onto the cell beneath it once the person has arrowed into the cells.
 func HasKeyboardFocus(t *accessibility.Tree, n *accessibility.Node) bool {
 	if t == nil || n == nil || t.Focus == 0 || !rootFocused(t) {
 		return false
@@ -835,6 +849,10 @@ func Orientation(n *accessibility.Node) OrientationType {
 // ToggleStateOf returns the state an element that supports the Toggle pattern reports. A toggle button's state is
 // whether it is pressed; everything else checkable reports its check state, where a mixed check becomes
 // ToggleState_Indeterminate.
+//
+// A checkable role.Cell never reaches here. A cell is given no Toggle pattern — see the role.Cell branch of
+// rolePatterns — so the check state Table.axAddRow mirrors onto a cell holding one check box travels to a client as the
+// words in the cell's value instead, and the check box beneath the cell answers this for itself.
 func ToggleStateOf(n *accessibility.Node) ToggleState {
 	if n == nil {
 		return ToggleState_Off
@@ -1679,10 +1697,11 @@ func symmetricDifference(a, b []accessibility.NodeID) []accessibility.NodeID {
 // reports the same two moments; see internal/atspi/events.go.
 //
 // The element the event names is whatever the snapshot's Focus does, which for a list or a table holding the focus is
-// its current row rather than the container: every arrow key moves that Focus and so raises this on the row the user
-// has landed on, which is what a screen reader follows and what the native controls raise. The selection events the
-// same key produces go out alongside it and are not a substitute for it — no screen reader treats a selection change
-// as the user having moved; see selectionItem.
+// its current row rather than the container, and for a table whose cell cursor has been moved across into the cells is
+// the cell the cursor is on rather than the row: every arrow key moves that Focus and so raises this on the row, or on
+// the cell, the user has landed on, which is what a screen reader follows and what the native controls raise. The
+// container itself never holds it. The selection events the same key produces go out alongside it and are not a
+// substitute for it — no screen reader treats a selection change as the user having moved; see selectionItem.
 func (d *decider) focus(id accessibility.NodeID) {
 	if !d.rootFocused {
 		return
@@ -1785,6 +1804,9 @@ func (d *decider) state(event accessibility.Event) {
 			// A radio button has no toggle state: being checked is being the selected one of its group.
 			d.selectionItem(n, n.Checked == check.On)
 		default:
+			// A cell mirroring the check state of the one check box it holds lands here with neither pattern, and
+			// nothing is recorded for it on purpose: a cell carries that state only as the words in its value, so the
+			// value change the same flip produces is what tells a client. See the role.Cell branch of rolePatterns.
 		}
 	case accessibility.StateReadOnly:
 		switch {
