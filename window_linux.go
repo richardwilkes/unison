@@ -448,6 +448,10 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 func (w *Window) nativeCancelMouseCapture() {
 }
 
+func (w *Window) nativeUpdateFrameTheme() {
+	// The window manager owns the frame on Linux, so there is nothing to do here.
+}
+
 func (w *Window) nativeVisible() bool {
 	return x11Conn.IsWindowVisible(w.wnd.id)
 }

@@ -273,8 +273,8 @@ func finishStartup() {
 
 // ThemeChanged marks dynamic colors for rebuilding, rebuilds the built-in cursors if the cursor settings they were
 // built with have changed (notifying any registered cursor change callbacks), calls any installed theme change
-// callback, and then refreshes the cursor of and redraws all windows. This is normally called automatically for you,
-// however, it has been made public to allow you to trigger it on demand.
+// callback, and then refreshes the cursor and system frame theme of, and redraws, all windows. This is normally
+// called automatically for you, however, it has been made public to allow you to trigger it on demand.
 func ThemeChanged() {
 	MarkDynamicColorsForRebuild() // first, so the GetColor() calls during cursor sync observe the new dark-mode state
 	syncBuiltInCursors()
@@ -285,6 +285,7 @@ func ThemeChanged() {
 		// cursor. The refresh is a no-op when the resolved cursor is unchanged.
 		if wnd.IsValid() {
 			wnd.UpdateCursorNow()
+			wnd.apiUpdateFrameTheme()
 		}
 		wnd.MarkForRedraw()
 	}

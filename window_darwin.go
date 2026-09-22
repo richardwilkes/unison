@@ -382,6 +382,10 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 func (w *Window) nativeCancelMouseCapture() {
 }
 
+func (w *Window) nativeUpdateFrameTheme() {
+	// macOS windows follow the application appearance, so there is nothing to do here.
+}
+
 func (w *Window) nativeVisible() bool {
 	return w.wnd.wnd.Visible()
 }
