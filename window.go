@@ -80,6 +80,7 @@ type Window struct {
 	surface                     *surface
 	glCtx                       *apiGLContext
 	root                        *rootPanel
+	ax                          *windowAccessibility
 	focus                       *Panel
 	cursor                      *Cursor
 	lastDropTarget              *Panel
@@ -121,8 +122,16 @@ type Window struct {
 	inMouseDown                 bool
 	cursorHiddenUntilMouseMoves bool
 	cursorHidden                bool
+	dropRunes                   bool
 	minimized                   bool
 	maximized                   bool
+	// axGeneration counts the accessibility snapshots taken of this window and is what accessibility.Tree.Generation
+	// carries. It is held here rather than with the rest of the window's accessibility state, which is dropped when the
+	// window is withdrawn from what an assistive technology holds (see Window.axWindowHidden), because the count must
+	// not restart: the generation is what an adapter tells a stale tree from a current one by, so a window that is
+	// hidden and shown again has to go on counting rather than hand out numbers it has already used. Last in the
+	// struct, where it costs no more padding than it would among the other eight-byte fields. UI thread only.
+	axGeneration uint64
 }
 
 // WindowOption holds an option for window creation.
@@ -319,6 +328,9 @@ func (w *Window) gainedFocus() {
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
+	// A window may become the active one without anything in it drawing differently — it may hold nothing that can take
+	// the focus at all — and an assistive technology has to be told which window the person is now in.
+	w.axMarkForPublish()
 	SafeCall(w.GainedFocusCallback)
 	w.mouseEnter(w.MouseLocation(), 0)
 	if w.apiCursorInContentArea() {
@@ -333,6 +345,9 @@ func (w *Window) lostFocus() {
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
+	// As in gainedFocus: the window no longer being the active one is worth describing whether or not anything in it
+	// looks any different for it.
+	w.axMarkForPublish()
 	SafeCall(w.LostFocusCallback)
 	w.root.postLostFocus(w)
 	if len(w.pressedKeys) != 0 {
@@ -467,6 +482,12 @@ func (w *Window) destroy() {
 	if w == nil {
 		return
 	}
+	if w.ax != nil {
+		// Before the platform window goes away, since an adapter's teardown talks to it. One nil check is all this
+		// costs a window no assistive technology ever asked about.
+		w.apiAccessibilityShutdown()
+		w.ax = nil
+	}
 	if w == wndWithCurrentCtx {
 		w.releaseGLCtxCurrent()
 	}
@@ -488,6 +509,11 @@ func (w *Window) SetTitle(title string) {
 		w.title = title
 		if w.IsValid() {
 			w.apiSetTitle(title)
+			// The title is the accessible name of the window itself, and nothing about setting it repaints the window:
+			// every platform's nativeSetTitle only talks to the window manager. Without this a screen reader would go
+			// on reporting the name from before the title changed until something unrelated happened to redraw. See
+			// Window.axMarkForPublish.
+			w.axMarkForPublish()
 		}
 	}
 }
@@ -754,6 +780,10 @@ func (w *Window) SetFocus(target Paneler) {
 				SafeCall(newFocus.GainedFocusCallback)
 			}
 			w.notifyOfFocusChangeInHierarchy(oldFocus, newFocus)
+			// Where the focus is is the single most important thing an assistive technology is told, and a panel is
+			// under no obligation to draw itself differently for holding it, so the window is described again whether
+			// or not anything repainted. See Window.axMarkForPublish.
+			w.axMarkForPublish()
 		}
 	}
 }
@@ -764,6 +794,8 @@ func (w *Window) removeFocus() {
 		SafeCall(oldFocus.LostFocusCallback)
 		w.focus = nil
 		w.notifyOfFocusChangeInHierarchy(oldFocus, nil)
+		// The focus going nowhere has to be described as surely as it moving does. See Window.axMarkForPublish.
+		w.axMarkForPublish()
 	}
 }
 
@@ -782,41 +814,114 @@ func (w *Window) notifyOfFocusChangeInHierarchy(oldFocus, newFocus *Panel) {
 }
 
 // FocusNext moves the keyboard focus to the next focusable panel.
+//
+// When nothing holds the focus yet, the first real tab stop is preferred over anything that can take the focus only
+// for an assistive technology's sake, rather than simply taking the first panel that can take the focus at all. Those
+// differ only while an assistive technology is being served, when a heading and a document can take the focus as well
+// — see Panel.axTakesFocus. A dialog whose first element is a title heading or an explanatory document should still
+// open with the person in its first field, where what they type goes somewhere. Only when there is no real tab stop
+// does a document win: it is exactly where a screen reader has to begin, since with nothing in the window holding the
+// focus Narrator's cursor stays on the window's own element, from which it will not move into the content. A window
+// holding nothing but headings falls back to the first of them, since something in it has to be where a screen reader
+// starts. See seedFocus, which Panel.FirstFocusableChild matches tier for tier.
 func (w *Window) FocusNext() {
 	if w.root.contentPanel != nil {
 		current := w.focus
-		if current == nil {
+		seeding := current == nil
+		if seeding {
 			current = w.root.contentPanel
 		}
 		i, focusables := collectFocusables(w.root.contentPanel, current, nil)
 		if len(focusables) > 0 {
-			i++
-			if i >= len(focusables) {
-				i = 0
+			if seeding {
+				current = seedFocus(dropSeedingCandidate(focusables, i), false)
+			} else {
+				i++
+				if i >= len(focusables) {
+					i = 0
+				}
+				current = focusables[i]
 			}
-			current = focusables[i]
 		}
 		w.SetFocus(current)
 	}
 }
 
-// FocusPrevious moves the keyboard focus to the previous focusable panel.
+// FocusPrevious moves the keyboard focus to the previous focusable panel. When nothing holds the focus yet, the same
+// rule FocusNext documents decides where the person is put, applied from the other end.
 func (w *Window) FocusPrevious() {
 	if w.root.contentPanel != nil {
 		current := w.focus
-		if current == nil {
+		seeding := current == nil
+		if seeding {
 			current = w.root.contentPanel
 		}
 		i, focusables := collectFocusables(w.root.contentPanel, current, nil)
 		if len(focusables) > 0 {
-			i--
-			if i < 0 {
-				i = len(focusables) - 1
+			if seeding {
+				current = seedFocus(dropSeedingCandidate(focusables, i), true)
+			} else {
+				i--
+				if i < 0 {
+					i = len(focusables) - 1
+				}
+				current = focusables[i]
 			}
-			current = focusables[i]
 		}
 		w.SetFocus(current)
 	}
+}
+
+// dropSeedingCandidate returns the panels a window with nothing focused may seed the focus into, which is everything
+// that can take it except the content panel itself at index i. The content panel is what the traversal started from,
+// and an application that made it focusable meant it as the backstop the keyboard falls through to, not as the place
+// the person is put when the window opens; the walk that a move from a real focus does passes over it for the same
+// reason. It is kept when it is the only thing in the window that can take the focus at all, since the alternative is
+// focusing nothing.
+func dropSeedingCandidate(focusables []*Panel, i int) []*Panel {
+	if i < 0 || len(focusables) < 2 {
+		return focusables
+	}
+	return slices.Delete(focusables, i, i+1)
+}
+
+// seedFocus returns the panel a window with nothing focused hands the focus to, chosen from everything in it that can
+// take the focus and scanned in the direction the move runs, so that FocusNext and FocusPrevious cannot drift apart on
+// the rule. Panel.FirstFocusableChild and Panel.LastFocusableChild, which is how Window.SetFocus resolves a container,
+// choose by the same rule within the subtree they are asked about.
+//
+// Three tiers are tried in turn. A panel that is a tab stop in its own right comes first: the keyboard belongs there,
+// and a dialog whose first element is a Markdown explanation above its fields must still open with the person in the
+// first field rather than in the document, where what they type would go nowhere. Next comes one that asked for the
+// focus for an assistive technology's sake through Panel.axFocusable — a document, which is where a screen reader has
+// to begin reading, and which is the right answer for a window that holds nothing but content. Last comes anything
+// else, which is a heading that can take the focus only through the other arm of Panel.axTakesFocus; when there is
+// nothing but headings, the first one the scan reaches is used anyway, since something in the window has to be where a
+// screen reader starts. The scan records the best of the later tiers as it goes, so the list is walked once.
+func seedFocus(focusables []*Panel, backward bool) *Panel {
+	if len(focusables) == 0 {
+		return nil
+	}
+	var reader *Panel
+	for i := range focusables {
+		p := focusables[i]
+		if backward {
+			p = focusables[len(focusables)-1-i]
+		}
+		if p.focusable {
+			return p
+		}
+		if reader == nil && p.axFocusable {
+			reader = p
+		}
+	}
+	if reader != nil {
+		return reader
+	}
+	if backward {
+		return focusables[len(focusables)-1]
+	}
+	return focusables[0]
 }
 
 func collectFocusables(current, target *Panel, focusables []*Panel) (match int, result []*Panel) {
@@ -855,6 +960,14 @@ func (w *Window) IsTransparent() bool {
 func (w *Window) Show() {
 	if w.IsValid() {
 		w.apiShow()
+		// As in Hide, but the other way round: a window that is back on the screen has to be described again, since a
+		// platform that withdrew it while it was off the screen holds nothing about it at all. The mark is made after
+		// the platform call rather than before it because Linux draws the window inline at the end of nativeShow, and
+		// the filtered wait it does first discards the wake-up an earlier mark would have posted: marking here leaves
+		// that inline draw to publish what it painted — every draw does, see Window.draw — and still has a redraw
+		// pending afterwards, so a platform whose show paints nothing describes the window on the next pass instead.
+		// See Window.axMarkForPublish.
+		w.axMarkForPublish()
 	}
 }
 
@@ -863,6 +976,9 @@ func (w *Window) Show() {
 func (w *Window) Hide() {
 	if w.IsValid() {
 		w.apiHide()
+		// A window that has gone off the screen has to be taken out of what an assistive technology has been told, and
+		// the event loop does that for the windows it finds it cannot draw. See Window.axMarkForPublish.
+		w.axMarkForPublish()
 	}
 }
 
@@ -919,6 +1035,9 @@ func (w *Window) IsMinimized() bool {
 func (w *Window) Minimize() {
 	if w.IsValid() {
 		w.apiMinimize()
+		// As in Hide: a window that has just been minimized, or restored, is described again rather than being left as
+		// whatever it was last said to be.
+		w.axMarkForPublish()
 	}
 }
 
@@ -986,6 +1105,16 @@ func (w *Window) Draw(c *Canvas) {
 	}
 }
 
+// draw paints the window and then describes what it painted to an assistive technology.
+//
+// The publish lives here rather than at the event loop's redraw call site because that is not the only path that
+// paints a window: Window.FlushDrawing draws on the spot, and so does every platform's own paint notification —
+// WM_PAINT on Windows, AppKit's update and redraw callbacks on macOS, the X11 Expose and the inline draw at the end of
+// nativeShow on Linux. Each of them begins by taking the window out of redrawSet, so a description that was riding on
+// that pending redraw — a name that changed, a panel that came or went — would simply be dropped by any of them if
+// only the event loop published. It is gated on the window being on the screen, as the event loop's own call site is,
+// because FlushDrawing will paint a window that is hidden or minimized. An application no assistive technology is
+// watching pays one atomic load for each window it draws and nothing else.
 func (w *Window) draw() {
 	delete(redrawSet, w)
 	RebuildDynamicColors()
@@ -1008,11 +1137,34 @@ func (w *Window) draw() {
 		w.lastDrawDuration = time.Since(start)
 		if pixels := w.surface.rasterPixmap(); pixels != nil {
 			// The window may have a live GL context even though rendering fell back to the CPU (the fallback was
-			// triggered while preparing this window's canvas). Destroy it so it cannot obscure the CPU-rendered content.
+			// triggered while preparing this window's canvas). Destroy it so it cannot obscure the CPU-rendered
+			// content.
 			w.discardGLCtx()
 			w.apiPresentCPUPixels(pixels)
 		} else {
 			w.glCtx.apiSwapBuffers()
+		}
+		if accessibilityActive.Load() {
+			if w.IsVisible() {
+				// Last, and only for a draw that got as far as putting something on the screen, so that what is
+				// described is what was just painted. The description is built from the panels rather than from the
+				// canvas, so nothing here depends on the rendering state this leaves behind, and a panel that marks
+				// itself for redraw while being described is simply drawn again on the next pass, exactly as one that
+				// does it from its DrawCallback is.
+				w.publishAccessibility()
+			} else {
+				// A window that is not on the screen is described no more, whatever painted it. The event loop never
+				// reaches here for one — it withdraws the window instead, see finishProcessingEvents — but
+				// Window.FlushDrawing draws whatever is in redrawSet with no visibility test of its own, and a window
+				// that is hidden or minimized is a permanent resident of that set. Publishing from there would put back
+				// the description that was just withdrawn and leave it standing, which on AT-SPI, where the application
+				// lists its own windows, is a window a person cannot see reported as showing and visible.
+				//
+				// The redraw goes back so that the withdrawal branch sees the window again on the next pass, since the
+				// delete above has just taken it out of the set the branch works from, and so that the window is drawn
+				// and described afresh when it is shown again.
+				redrawSet[w] = struct{}{}
+			}
 		}
 	}
 }
@@ -1037,15 +1189,27 @@ func (w *Window) LastDrawDuration() time.Duration {
 }
 
 // MarkForRedraw marks this window for drawing at the next update. Does nothing if the window has been disposed.
+//
+// The event loop may be blocked waiting for something to happen, so a request made when nothing else is going on has
+// to wake it, or the window would sit unpainted until an unrelated event arrived. One wake-up is posted per pass of
+// the loop: redrawWakePending records that this pass has already asked for the next one, and finishProcessingEvents
+// clears it as each pass begins. Whether the window was already in the set says nothing about whether a wake-up is
+// coming — a window that is valid but not on the screen is put straight back into redrawSet by every pass and is
+// therefore a permanent resident of it, so a request that finds one there is still a request nothing has posted for.
+//
+// X11 is the one place where a posted wake-up can be thrown away rather than delivered: a filtered wait — what shows a
+// window, transfers a selection or asks the window manager for a window's frame — drains the event queue looking for
+// the event it is after and discards the wake-up token along with everything else it is not interested in. Every call
+// that can enter one of those waits repairs the bookkeeping on its way out, so that the flag never goes on claiming a
+// wake-up that nothing will deliver. See x11FilteredWaitDone.
 func (w *Window) MarkForRedraw() {
 	if !w.IsValid() {
 		return
 	}
-	if _, exists := redrawSet[w]; !exists {
-		redrawSet[w] = struct{}{}
-		if len(redrawSet) == 1 {
-			apiPostEmptyEvent()
-		}
+	redrawSet[w] = struct{}{}
+	if !redrawWakePending {
+		redrawWakePending = true
+		apiPostEmptyEvent()
 	}
 }
 
@@ -1108,8 +1272,13 @@ func (w *Window) updateTooltip(target *Panel, where geom.Point) {
 		if target.UpdateTooltipCallback != nil {
 			SafeCall(func() { avoid = target.UpdateTooltipCallback(target.PointFromRoot(where), avoid) })
 		}
-		if target.Tooltip != nil {
+		// A tooltip the panel has borrowed on behalf of something that is not a panel of its own — the table cell or
+		// the column header the pointer is over — comes first, since that is what is actually under the pointer. See
+		// Panel.borrowedTooltip.
+		if tip = target.borrowedTooltip; tip == nil {
 			tip = target.Tooltip
+		}
+		if tip != nil {
 			tip.TooltipImmediate = target.TooltipImmediate
 			break
 		}
@@ -1396,6 +1565,7 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 		return
 	}
 	w.lastKeyModifiers = mods
+	w.dropRunes = false
 	repeat := w.pressedKeys[key]
 	w.pressedKeys[key] = true
 	if w.root.preKeyDown(w, key, mods, repeat) {
@@ -1419,6 +1589,12 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 				SafeCall(func() { stop = panel.KeyDownCallback(key, mods, repeat) })
 				if stop {
 					w.lastKeyDownPanel = panel
+					// A panel that took the key and moved the focus elsewhere in doing so -- a table opening its
+					// selection in a new editor in response to Space, say -- has used up the keystroke. The platforms
+					// deliver the runes a key produces after its key down, so without this they would land in whatever
+					// now holds the focus, typically a text field that would then replace its content with a space the
+					// person never meant for it. The next key down or key up ends the suppression.
+					w.dropRunes = w.CurrentFocus() != focus
 					return
 				}
 			}
@@ -1438,6 +1614,9 @@ func (w *Window) runeTyped(ch rune) {
 	if !w.okToProcess() {
 		// See the comment in keyPressed.
 		modalStack[len(modalStack)-1].runeTyped(ch)
+		return
+	}
+	if w.dropRunes {
 		return
 	}
 	if w.root.preRuneTyped(w, ch) {
@@ -1471,6 +1650,7 @@ func (w *Window) runeTyped(ch rune) {
 
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
+	w.dropRunes = false
 	pressed := w.pressedKeys[key]
 	delete(w.pressedKeys, key)
 	if !w.okToProcess() {

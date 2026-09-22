@@ -177,11 +177,11 @@ func (obj *DataObject) Release() {
 }
 
 func (obj *DataObject) addRef() uintptr {
-	return comAddRef(&obj.refCount)
+	return ComAddRef(&obj.refCount)
 }
 
 func (obj *DataObject) release() uintptr {
-	remaining, final := comRelease(&obj.refCount)
+	remaining, final := ComRelease(&obj.refCount)
 	if final {
 		for i := range obj.entries {
 			obj.entries[i].releaseMedium()
@@ -203,7 +203,7 @@ func (obj *DataObject) findEntry(cf uint16) (*dragDataEntry, bool) {
 
 func dataObjQueryInterface(this, riid, ppvObject uintptr) uint64 {
 	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
-	if *guid == iidUnknown || *guid == iidIDataObject {
+	if *guid == IIDUnknown || *guid == iidIDataObject {
 		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		dataObjAddRef(this)
 		return COM_S_OK

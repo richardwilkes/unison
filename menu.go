@@ -16,6 +16,7 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 var _ Menu = &menu{}
@@ -268,8 +269,11 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	p.Self = p
 	if forBar {
 		p.SetBorder(DefaultMenuTheme.BarBorder)
+		p.Accessibility.Role = role.MenuBar
 	} else {
 		p.SetBorder(DefaultMenuTheme.MenuBorder)
+		p.Accessibility.Role = role.Menu
+		p.Accessibility.Name = m.Title()
 	}
 	content := NewPanel()
 	if m.updater != nil {
@@ -355,6 +359,11 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	content.SetLayout(lay)
 	content.Pack()
 	s := NewScrollPanel()
+	// The scroll panel is how a menu too tall for its window is shown, and nothing more: an assistive technology
+	// walking a menu must find the items in it, not an anonymous scroll area holding them. Hiding the panel itself
+	// leaves the items as the menu's own children, while the scroll bar within it is still described when there is
+	// something to scroll.
+	s.Accessibility.Role = role.None
 	s.SetContent(content, behavior.Follow, behavior.Fill)
 	s.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,

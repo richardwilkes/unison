@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 var (
@@ -208,6 +209,17 @@ func (s *ScrollPanel) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	canvas.DrawRect(r, paint)
 }
 
+// ProvideAccessibility describes the scroll panel to assistive technologies. Nothing else is needed: the snapshot
+// builder confines every node to what its ancestors leave visible, and since a scroll panel shows its content through a
+// view port that is a panel in its own right, the part of the content that has been scrolled out of sight is already
+// clipped away and reported as offscreen. A widget with more rows than it can show reads the visible region back with
+// AccessibilityBuilder.VisibleRect.
+func (s *ScrollPanel) ProvideAccessibility(b *AccessibilityBuilder) {
+	if node := b.Node(); node.Role == role.Auto {
+		node.Role = role.ScrollArea
+	}
+}
+
 // Sync the headers and content with the current scroll state.
 func (s *ScrollPanel) Sync() {
 	if !s.syncing {
@@ -279,20 +291,17 @@ func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ mod.Modifiers) bo
 	return true
 }
 
-// DefaultScrollRectIntoView provides the default scroll rect into contentView handling.
+// DefaultScrollRectIntoView provides the default scroll rect into view handling. The rect arrives in this panel's own
+// coordinate space, which is the space the content view's frame is expressed in, and the layout has already placed that
+// frame below the column header and to the right of the row header. The two are therefore compared directly. Setting
+// the headers aside a second time here, as this once did, shrank the region taken to be visible by the height of the
+// column header along the bottom of the view, so that a row sitting in that strip — in plain sight — was scrolled up
+// out of it whenever it was selected, and an assistive technology that had just read where the row was found it had
+// moved.
 func (s *ScrollPanel) DefaultScrollRectIntoView(rect geom.Rect) bool {
 	viewRect := s.contentView.FrameRect()
-	viewRect.X = 0
-	viewRect.Y = 0
-	if s.columnHeaderView != nil {
-		height := s.columnHeaderView.FrameRect().Height
-		viewRect.Y += height
-		viewRect.Height -= height
-	}
-	if s.rowHeaderView != nil {
-		width := s.rowHeaderView.FrameRect().Width
-		viewRect.X += width
-		viewRect.Width -= width
+	if border := s.contentView.Border(); border != nil {
+		viewRect = viewRect.Inset(border.Insets())
 	}
 	hAdj := computeScrollAdj(rect.X, viewRect.X, rect.Right(), viewRect.Right())
 	vAdj := computeScrollAdj(rect.Y, viewRect.Y, rect.Bottom(), viewRect.Bottom())

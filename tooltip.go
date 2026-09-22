@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // DefaultTooltipTheme holds the default TooltipTheme values for Tooltips. Modifying this data will not alter existing
@@ -59,6 +60,9 @@ type tooltipSequencer struct {
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
+	// A tooltip panel becomes part of a window's description only while it is showing, and what it is then is a tooltip
+	// rather than the anonymous group a bare panel would be taken for.
+	tip.Accessibility.Role = role.Tooltip
 	tip.DrawCallback = func(canvas *Canvas, _ geom.Rect) {
 		r := tip.ContentRect(true)
 		paint := DefaultTooltipTheme.BackgroundInk.Paint(canvas, r, paintstyle.Fill)
@@ -70,6 +74,10 @@ func NewTooltipBase() *Panel {
 // NewTooltipWithText creates a standard text tooltip panel.
 func NewTooltipWithText(text string) *Panel {
 	tip := NewTooltipBase()
+	// Naming the tooltip panel rather than leaving its text to be gathered from the labels below means a panel's
+	// accessible description is the text as it was written, complete with the line breaks a label per line would have
+	// thrown away.
+	tip.Accessibility.Name = text
 	tip.SetLayout(&FlexLayout{
 		Columns:  1,
 		HSpacing: StdHSpacing,
@@ -78,6 +86,9 @@ func NewTooltipWithText(text string) *Panel {
 	for str := range strings.SplitSeq(text, "\n") {
 		l := NewLabel()
 		l.LabelTheme = DefaultTooltipTheme.Label
+		// The tooltip has already said the whole of the text, so a label per line of it would only have an assistive
+		// technology say the same thing again, a line at a time.
+		l.Accessibility.Role = role.None
 		l.SetTitle(str)
 		tip.AddChild(l)
 	}
@@ -89,6 +100,16 @@ func NewTooltipWithText(text string) *Panel {
 func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 	tip := NewTooltipWithText(primary)
 	if secondary != "" {
+		// The secondary text is part of what the tooltip says, so it is part of the tooltip's name, exactly as the
+		// second line of a two-line primary text would be. Keeping it apart from the name would put it somewhere
+		// nothing could reach: the panel a tooltip belongs to takes its accessible description from the tooltip's name,
+		// and the labels the text is drawn with say nothing of their own, so the secondary line would be heard only in
+		// the moment the tooltip itself happened to be showing.
+		if tip.Accessibility.Name == "" {
+			tip.Accessibility.Name = secondary
+		} else {
+			tip.Accessibility.Name += "\n" + secondary
+		}
 		font := DefaultTooltipTheme.SecondaryTextFont
 		if font == nil {
 			desc := DefaultTooltipTheme.Label.Font.Descriptor()
@@ -99,6 +120,9 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 			l := NewLabel()
 			l.LabelTheme = DefaultTooltipTheme.Label
 			l.Font = font
+			// The secondary text is already part of the tooltip's name, so its labels are hidden for the same reason
+			// the primary text's are.
+			l.Accessibility.Role = role.None
 			l.SetTitle(str)
 			tip.AddChild(l)
 		}

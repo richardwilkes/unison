@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/slant"
 	"github.com/richardwilkes/unison/enums/spacing"
@@ -44,7 +45,9 @@ func NewFontPanel() *FontPanel {
 	}
 	p.Self = p
 
+	// A font panel is a row of controls with no labels beside them, so each one has to say what it is itself.
 	p.fontSizeField = NewField()
+	p.fontSizeField.Accessibility.Name = i18n.Text("Font Size")
 	p.fontSizeField.SetText(formatFloat32(p.fontDescriptor.Size))
 	p.fontSizeField.Watermark = formatFloat32(p.DefaultFontSize)
 	p.fontSizeField.MinimumTextWidth = 30
@@ -56,6 +59,7 @@ func NewFontPanel() *FontPanel {
 	p.AddChild(p.fontSizeField)
 
 	p.fontFamilyPopup = NewPopupMenu[string]()
+	p.fontFamilyPopup.Accessibility.Name = i18n.Text("Font Family")
 	p.fontFamilyPopup.AddItem(FontFamilies()...)
 	p.fontFamilyPopup.Select(p.fontDescriptor.Family)
 	p.fontFamilyPopup.SelectionChangedCallback = func(popup *PopupMenu[string]) {
@@ -70,6 +74,7 @@ func NewFontPanel() *FontPanel {
 	p.AddChild(p.fontFamilyPopup)
 
 	p.fontWeightPopup = NewPopupMenu[weight.Enum]()
+	p.fontWeightPopup.Accessibility.Name = i18n.Text("Font Weight")
 	p.fontWeightPopup.AddItem(weight.All...)
 	p.fontWeightPopup.Select(p.fontDescriptor.Weight)
 	p.fontWeightPopup.SelectionChangedCallback = func(popup *PopupMenu[weight.Enum]) {
@@ -84,6 +89,7 @@ func NewFontPanel() *FontPanel {
 	p.AddChild(p.fontWeightPopup)
 
 	p.fontSlantPopup = NewPopupMenu[slant.Enum]()
+	p.fontSlantPopup.Accessibility.Name = i18n.Text("Font Slant")
 	p.fontSlantPopup.AddItem(slant.All...)
 	p.fontSlantPopup.Select(p.fontDescriptor.Slant)
 	p.fontSlantPopup.SelectionChangedCallback = func(popup *PopupMenu[slant.Enum]) {
@@ -98,6 +104,7 @@ func NewFontPanel() *FontPanel {
 	p.AddChild(p.fontSlantPopup)
 
 	p.fontSpacingPopup = NewPopupMenu[spacing.Enum]()
+	p.fontSpacingPopup.Accessibility.Name = i18n.Text("Font Spacing")
 	p.fontSpacingPopup.AddItem(spacing.All...)
 	p.fontSpacingPopup.Select(p.fontDescriptor.Spacing)
 	p.fontSpacingPopup.SelectionChangedCallback = func(popup *PopupMenu[spacing.Enum]) {
@@ -119,6 +126,10 @@ func NewFontPanel() *FontPanel {
 	})
 	return p
 }
+
+// The panel itself needs no description of its own: it is a group of controls, which is what a panel with children and
+// nothing to say for itself is already taken for, and since it lays them out in a row with no labels beside them, each
+// of those names itself.
 
 // FontDescriptor returns the font descriptor.
 func (p *FontPanel) FontDescriptor() FontDescriptor {

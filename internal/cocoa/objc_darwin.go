@@ -107,6 +107,10 @@ var (
 	msgSendSuper2Func func(super *objcSuper, cmd objc.SEL, args ...any) objc.ID
 	selCache          sync.Map // map[string]objc.SEL
 	clsCache          sync.Map // map[string]objc.Class
+	appKitStringCache sync.Map // map[string]objc.ID
+	axNotifyOnce      sync.Once
+	axPostNotify      func(element, notification objc.ID)
+	axPostNotifyInfo  func(element, notification, userInfo objc.ID)
 )
 
 // LoadFramework loads the named macOS system framework (e.g. "AppKit") into the process, making its symbols and
@@ -143,6 +147,19 @@ func NSStringConstant(framework, symbol string) objc.ID {
 		panic(fmt.Errorf("cocoa: unable to resolve %s in %s: %w", symbol, framework, err))
 	}
 	return *xruntime.PtrFromUintptr[objc.ID](ptr)
+}
+
+// AppKitString returns the value of an exported AppKit NSString* constant — a role, subrole or notification name, say —
+// caching it on first use so that a symbol consulted on every query from an assistive technology is resolved once
+// rather than dlsym'd over and over. The constants are immortal objects owned by AppKit, so the cached value stays
+// valid for the life of the process. It panics if the symbol does not exist, since the names are compile-time known.
+func AppKitString(symbol string) objc.ID {
+	if v, ok := appKitStringCache.Load(symbol); ok {
+		return v.(objc.ID) //nolint:errcheck // There is only one thing it can be
+	}
+	v := NSStringConstant("AppKit", symbol)
+	appKitStringCache.Store(symbol, v)
+	return v
 }
 
 // Sel returns the selector for name, caching the result since objc.RegisterName takes the global Objective-C
@@ -364,6 +381,55 @@ func IDsFromNSArray(array objc.ID) []objc.ID {
 	return ids
 }
 
+// NSDictionaryFromPairs returns an autoreleased NSDictionary built from alternating keys and values, as an
+// Objective-C @{key: value} literal would be. A trailing key with no value is dropped, and no pairs at all yields an
+// empty dictionary rather than nil, since AppKit's userInfo parameters reject nil.
+func NSDictionaryFromPairs(pairs ...objc.ID) objc.ID {
+	count := len(pairs) / 2
+	if count == 0 {
+		return objc.ID(Cls("NSDictionary")).Send(Sel("dictionary"))
+	}
+	keys := make([]objc.ID, count)
+	objects := make([]objc.ID, count)
+	for i := range count {
+		keys[i] = pairs[i*2]
+		objects[i] = pairs[i*2+1]
+	}
+	return objc.ID(Cls("NSDictionary")).Send(Sel("dictionaryWithObjects:forKeys:count:"),
+		unsafe.Pointer(&objects[0]), unsafe.Pointer(&keys[0]), uint64(count))
+}
+
+// ensureAXNotifyFuncs binds the two NSAccessibility notification functions on first use, so a process that never
+// serves an assistive technology never resolves them.
+func ensureAXNotifyFuncs() {
+	axNotifyOnce.Do(func() {
+		lib := LoadFramework("AppKit")
+		purego.RegisterLibFunc(&axPostNotify, lib, "NSAccessibilityPostNotification")
+		purego.RegisterLibFunc(&axPostNotifyInfo, lib, "NSAccessibilityPostNotificationWithUserInfo")
+	})
+}
+
+// NSAccessibilityPostNotification tells the accessibility system that something about element has changed. A nil
+// element or notification is ignored, since AppKit raises on those. Must be called on the main thread.
+func NSAccessibilityPostNotification(element, notification objc.ID) {
+	if element == 0 || notification == 0 {
+		return
+	}
+	ensureAXNotifyFuncs()
+	axPostNotify(element, notification)
+}
+
+// NSAccessibilityPostNotificationWithUserInfo is NSAccessibilityPostNotification for the notifications that carry
+// additional information, such as the text of an announcement. A nil element or notification is ignored. Must be
+// called on the main thread.
+func NSAccessibilityPostNotificationWithUserInfo(element, notification, userInfo objc.ID) {
+	if element == 0 || notification == 0 {
+		return
+	}
+	ensureAXNotifyFuncs()
+	axPostNotifyInfo(element, notification, userInfo)
+}
+
 // NSNumberFromInt64 returns an autoreleased NSNumber holding the given value.
 func NSNumberFromInt64(value int64) objc.ID {
 	return objc.ID(Cls("NSNumber")).Send(Sel("numberWithLongLong:"), value)
@@ -377,6 +443,13 @@ func Int64FromNSNumber(num objc.ID) int64 {
 	return objc.Send[int64](num, Sel("longLongValue"))
 }
 
+// NSNumberFromBool returns an autoreleased NSNumber holding the given boolean. It is not the same thing as
+// NSNumberFromInt64 of 0 or 1: an NSNumber made this way is a boolean rather than an integer, and bridges to the
+// CFBoolean that the accessibility attributes documented as holding one expect.
+func NSNumberFromBool(value bool) objc.ID {
+	return objc.ID(Cls("NSNumber")).Send(Sel("numberWithBool:"), value)
+}
+
 // NSNumberFromFloat64 returns an autoreleased NSNumber holding the given value.
 func NSNumberFromFloat64(value float64) objc.ID {
 	return objc.ID(Cls("NSNumber")).Send(Sel("numberWithDouble:"), value)
@@ -388,6 +461,117 @@ func Float64FromNSNumber(num objc.ID) float64 {
 		return 0
 	}
 	return objc.Send[float64](num, Sel("doubleValue"))
+}
+
+// NSDictionaryObjectForKey returns the object an NSDictionary holds for a key, or 0 when it holds none. A nil
+// dictionary or key yields 0, so a caller reading an optional entry out of a dictionary an assistive technology handed
+// it does not have to check either first.
+func NSDictionaryObjectForKey(dict, key objc.ID) objc.ID {
+	if dict == 0 || key == 0 {
+		return 0
+	}
+	return dict.Send(Sel("objectForKey:"), key)
+}
+
+// GoStringsFromNSArray returns the elements of an NSArray of NSStrings as Go strings. A nil or empty array yields nil,
+// and an element that is not a string is skipped rather than turned into an empty entry, since an array handed over by
+// another process may hold anything at all.
+func GoStringsFromNSArray(array objc.ID) []string {
+	count := NSArrayCount(array)
+	if count == 0 {
+		return nil
+	}
+	strs := make([]string, 0, count)
+	for i := range count {
+		obj := NSArrayObjectAt(array, i)
+		if obj == 0 || !objc.Send[bool](obj, Sel("isKindOfClass:"), Cls("NSString")) {
+			continue
+		}
+		strs = append(strs, GoStringFromNSString(obj))
+	}
+	return strs
+}
+
+// NewNSMutableAttributedString returns an autoreleased NSMutableAttributedString holding the contents of s and no
+// attributes.
+func NewNSMutableAttributedString(s string) objc.ID {
+	return Autorelease(objc.ID(Cls("NSMutableAttributedString")).Send(Sel("alloc")).Send(Sel("initWithString:"),
+		NSStringFromGo(s)))
+}
+
+// NSMutableAttributedStringSetAttributes gives a range of an NSMutableAttributedString the attributes of a dictionary,
+// replacing whatever attributes that range carried. The range is clamped to the string, and one beginning past its end
+// sets nothing at all: setAttributes:range: raises NSRangeException for a range reaching past the content, and an
+// Objective-C exception raised inside a Go callback cannot be caught and takes the process with it.
+//
+// It is deliberately this whole-dictionary setter rather than addAttribute:value:range:, which would place the 16-byte
+// NSRange after four integer-register arguments and run into the purego amd64 struct-straddle bug documented at the top
+// of this file. Here the range follows only three — self, the selector and the dictionary — so it is passed in
+// registers the ABI agrees on. A caller wanting several attributes over one range builds the dictionary and sets them
+// together, which is a single message rather than one per attribute anyway.
+func NSMutableAttributedStringSetAttributes(str, attributes objc.ID, r NSRange) {
+	if str == 0 || attributes == 0 {
+		return
+	}
+	length := objc.Send[uint64](str, Sel("length"))
+	if r.Location > length {
+		return
+	}
+	if r.Length > length-r.Location {
+		r.Length = length - r.Location
+	}
+	str.Send(Sel("setAttributes:range:"), attributes, r)
+}
+
+// NSAttributedStringAttributesAtIndex returns the attributes in force at a UTF-16 index of an NSAttributedString, or 0
+// for a nil string or an index at or past its end — attributesAtIndex:effectiveRange: raises NSRangeException for one,
+// and an exception raised inside a Go callback cannot be caught. It exists for the tests, which read back what the
+// adapter wrote.
+func NSAttributedStringAttributesAtIndex(str objc.ID, index uint64) objc.ID {
+	if str == 0 || index >= objc.Send[uint64](str, Sel("length")) {
+		return 0
+	}
+	var effective NSRange
+	return str.Send(Sel("attributesAtIndex:effectiveRange:"), index, unsafe.Pointer(&effective))
+}
+
+// nsRangeEncoding is the Objective-C type encoding an NSValue holding an NSRange answers with, which is how one is told
+// apart from an NSValue holding something else — an NSNumber, notably, which is an NSValue too and whose rangeValue
+// raises. Only the prefix is compared, since the two fields are spelled by whichever integer type the range was made
+// from.
+const nsRangeEncoding = "{_NSRange="
+
+// NSRangeFromNSValue returns the range an NSValue holds, and false for a nil object, an object that is not an NSValue,
+// or an NSValue holding anything but a range. The type is checked through objCType, which every NSValue answers with
+// the encoding of what it holds: asking one of another type for its range raises an Objective-C exception, which inside
+// a Go callback cannot be caught and takes the process with it, and a value that arrived from another process cannot be
+// taken on trust.
+func NSRangeFromNSValue(value objc.ID) (r NSRange, ok bool) {
+	if value == 0 || !objc.Send[bool](value, Sel("isKindOfClass:"), Cls("NSValue")) {
+		return NSRange{}, false
+	}
+	if !strings.HasPrefix(GoStringFromCString(objc.Send[*byte](value, Sel("objCType"))), nsRangeEncoding) {
+		return NSRange{}, false
+	}
+	return objc.Send[NSRange](value, Sel("rangeValue")), true
+}
+
+// BoolFromNSNumber returns the value of an NSNumber as a bool. A nil NSNumber yields false, which is what an absent
+// flag in a dictionary an assistive technology handed over means.
+func BoolFromNSNumber(num objc.ID) bool {
+	if num == 0 {
+		return false
+	}
+	return objc.Send[bool](num, Sel("boolValue"))
+}
+
+// NSURLFromString returns an autoreleased NSURL for the given string, or 0 when NSURL cannot parse it as one — which is
+// the answer for an empty string and for anything else that is not a URL.
+func NSURLFromString(url string) objc.ID {
+	if url == "" {
+		return 0
+	}
+	return objc.ID(Cls("NSURL")).Send(Sel("URLWithString:"), NSStringFromGo(url))
 }
 
 // NSURLFromFilePath returns an autoreleased file NSURL for the given path.

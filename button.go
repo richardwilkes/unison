@@ -13,8 +13,11 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/side"
 )
 
@@ -70,8 +73,8 @@ type Button struct {
 	Drawable      Drawable
 	Text          *Text
 	group         *Group
-	Panel
 	ButtonTheme
+	Panel
 	Pressed bool
 }
 
@@ -227,11 +230,13 @@ func (b *Button) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling.
+// DefaultMouseUp provides the default mouse up handling. A click that lands takes the keyboard focus while an assistive
+// technology is being served, so that the change it makes is announced; see Panel.axFocusOnClick.
 func (b *Button) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	b.Pressed = false
 	b.MarkForRedraw()
 	if where.In(b.ContentRect(false)) {
+		b.axFocusOnClick()
 		b.group.Select(b)
 		SafeCall(b.ClickCallback)
 	}
@@ -253,4 +258,71 @@ func (b *Button) DefaultUpdateCursor(_ geom.Point) *Cursor {
 		return ArrowCursor()
 	}
 	return PointingCursor()
+}
+
+// ProvideAccessibility describes the button to assistive technologies. A sticky button that belongs to a group stays
+// drawn in the state a click puts it in, and clicking another button of the group is what takes it out of that state
+// again, which is a radio button in everything but appearance: it is reported as one, with its check saying whether it
+// is the group's selection and a selection request to make it so. A sticky button with no group latches nothing —
+// DefaultDraw keeps it drawn pressed only while the group has it selected, and it has no group to be selected by — so
+// it is a plain button, as is any button that is merely grouped without being sticky.
+//
+// The name is the button's own text; an icon button has none, so it falls back to whatever name has been set for it and
+// then to its tooltip, which is the only thing such a button usually has to say what it does.
+func (b *Button) ProvideAccessibility(builder *AccessibilityBuilder) {
+	node := builder.Node()
+	latching := b.Sticky && b.group != nil
+	if node.Role == role.Auto {
+		if latching {
+			node.Role = role.RadioButton
+		} else {
+			node.Role = role.Button
+		}
+	}
+	if latching {
+		node.HasCheck = true
+		if b.group.Selected(b) {
+			node.Checked = check.On
+		} else {
+			node.Checked = check.Off
+		}
+		node.Actions = node.Actions.With(accessibility.Select)
+	}
+	// The same condition DefaultDraw uses to decide whether to draw the button in its selected state, so that a button
+	// an application has asked to have reported as a toggle — the one role that reads its state from this rather than
+	// from the check — says what is on the screen.
+	node.Pressed = b.Pressed || (b.Sticky && b.group.Selected(b))
+	if node.Name == "" {
+		node.Name = b.Text.String()
+	}
+	if node.Name == "" {
+		node.Name = axTooltipText(b.AsPanel())
+	}
+	node.Actions = node.Actions.With(accessibility.Press)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing the button clicks it, which
+// runs the same animation and callback that a person's click would have. Selecting one makes it the selection of the
+// group it latches within and then runs ClickCallback, exactly as selecting one radio button of a set does; a button
+// that latches nothing has no selection to be.
+//
+// The click animation is skipped for a selection, since nothing was clicked and the wait it spends showing the button
+// pressed would only hold up the answer to the request, but the callback is not: a person who moves the selection with
+// an assistive technology has made exactly the change a click makes, and an application never told of it would go on
+// acting on a value that no longer matches what is on the screen.
+func (b *Button) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press:
+		b.Click()
+		return true
+	case accessibility.Select:
+		if !b.Sticky || b.group == nil {
+			return false
+		}
+		b.group.Select(b)
+		SafeCall(b.ClickCallback)
+		return true
+	default:
+		return false
+	}
 }

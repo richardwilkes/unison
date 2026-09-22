@@ -114,7 +114,7 @@ func newEnumFORMATETC(obj *DataObject, pos int) *enumFORMATETC {
 
 func enumQueryInterface(this, riid, ppvObject uintptr) uint64 {
 	guid := xruntime.PtrFromUintptr[windows.GUID](riid)
-	if *guid == iidUnknown || *guid == iidIEnumFORMATETC {
+	if *guid == IIDUnknown || *guid == iidIEnumFORMATETC {
 		*xruntime.PtrFromUintptr[uintptr](ppvObject) = this
 		enumAddRef(this)
 		return COM_S_OK
@@ -125,12 +125,12 @@ func enumQueryInterface(this, riid, ppvObject uintptr) uint64 {
 
 func enumAddRef(this uintptr) uintptr {
 	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
-	return comAddRef(&e.refCount)
+	return ComAddRef(&e.refCount)
 }
 
 func enumRelease(this uintptr) uintptr {
 	e := xruntime.PtrFromUintptr[enumFORMATETC](this)
-	remaining, final := comRelease(&e.refCount)
+	remaining, final := ComRelease(&e.refCount)
 	if final {
 		obj := e.obj
 		e.obj = nil

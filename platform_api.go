@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 )
@@ -497,6 +498,83 @@ func (w *Window) apiPresentCPUPixels(pixels *raster.Pixmap) {
 		return
 	}
 	w.nativePresentCPUPixels(pixels)
+}
+
+// Accessibility. The per-window wrappers dispatch on the window's own hw field, as the rest of the window wrappers do,
+// so a window goes on talking to the backend it was created with. apiAccessibilityAnnounce has no window to ask, since
+// what it speaks belongs to the application rather than to any one window, so it dispatches on the active session.
+
+func (w *Window) apiAccessibilityPublish(tree *accessibility.Tree, events []accessibility.Event) {
+	if hw := w.wnd.hw; hw != nil {
+		hw.accessibilityPublish(tree, events)
+		return
+	}
+	w.nativeAccessibilityPublish(tree, events)
+}
+
+// apiAccessibilityGeometryChanged is called by the platform window code when the window has moved, resized or changed
+// backing scale without anything being redrawn, since the screen coordinates an assistive technology is given depend on
+// all three.
+func (w *Window) apiAccessibilityGeometryChanged() {
+	if hw := w.wnd.hw; hw != nil {
+		hw.accessibilityGeometryChanged()
+		return
+	}
+	w.nativeAccessibilityGeometryChanged()
+}
+
+func (w *Window) apiAccessibilityShutdown() {
+	if hw := w.wnd.hw; hw != nil {
+		hw.accessibilityShutdown()
+		return
+	}
+	w.nativeAccessibilityShutdown()
+}
+
+// apiAccessibilityWindowHidden is called by the event loop when a window it has described is found hidden or minimized.
+// It reports whether the window was withdrawn from what an assistive technology holds, which is a platform's decision:
+// one where the application itself lists its windows has to take a window that is no longer on the screen out of that
+// list, while one where the system lists them keeps what was built so that the window is still known when it is shown
+// again. A window that was withdrawn is described afresh when it is next drawn.
+//
+// This is the one place the headless backend does not stand in for all three platforms, since there is no answer that
+// would. It withdraws, as Linux does and as macOS and Windows do not, because withdrawing is the behavior with
+// something to assert on: a test can watch the description go and come back, where the other answer is the absence of
+// any change at all. An application's own headless test therefore pins what Linux does with a hidden window rather
+// than what every platform does, and a test of that behavior should say which platform it is about.
+func (w *Window) apiAccessibilityWindowHidden() bool {
+	if hw := w.wnd.hw; hw != nil {
+		hw.accessibilityShutdown()
+		return true
+	}
+	return w.nativeAccessibilityWindowHidden()
+}
+
+// apiAccessibilityAnnounce hands text to whatever is speaking for the session. Every path to an announcement arrives
+// here — AnnounceForAccessibility's direct call from the UI thread and the task it queues from any other goroutine —
+// which is why the promise that nothing is spoken while no assistive technology is being served is kept here rather
+// than only where the announcement was made: a task queued a moment before SetAccessibilityEnabled(false), or before
+// the platform adapter was torn down, runs after both, and the headless adapter would record it while macOS would post
+// it to an element that no longer exists.
+func apiAccessibilityAnnounce(text string) {
+	if !accessibilityActive.Load() {
+		return
+	}
+	if hs := activeHeadless(); hs != nil {
+		hs.accessibilityAnnounce(text)
+		return
+	}
+	nativeAccessibilityAnnounce(text)
+}
+
+// apiAccessibilityEnabledChanged tells the platform that SetAccessibilityEnabled has refused accessibility support or
+// lifted that refusal, for a platform that has to stop or restart something of its own in response. A headless session
+// has nothing of the kind.
+func apiAccessibilityEnabledChanged(enabled bool) {
+	if activeHeadless() != nil {
+		return
+	}
+	nativeAccessibilityEnabledChanged(enabled)
 }
 
 // OpenGL contexts. The native methods are defined on *nativeGLContext and reached here through the embedded field. Each

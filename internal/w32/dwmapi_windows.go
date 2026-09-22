@@ -39,5 +39,5 @@ type DWM_BLURBEHIND struct {
 func DwmEnableBlurBehindWindow(hwnd windows.HWND, blurBehind *DWM_BLURBEHIND) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := dwmEnableBlurBehindWindowProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(blurBehind)))
-	return hresultSucceeded(ret)
+	return HResultSucceeded(ret)
 }

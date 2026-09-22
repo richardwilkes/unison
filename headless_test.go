@@ -1210,6 +1210,56 @@ func TestHeadlessKeyDownAndUp(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestHeadlessKeyDownThatMovesFocusDropsItsRune verifies that a key down taken by a panel that moves the focus in
+// response -- a table opening its selection in a new editor when Space is pressed, say -- uses up the whole keystroke.
+// The rune the key produces arrives after the key down, and it must not land in the field that now holds the focus,
+// where it would replace the field's selected content. The keystrokes that follow are delivered as usual.
+func TestHeadlessKeyDownThatMovesFocusDropsItsRune(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var field *unison.Field
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			content := unison.NewPanel()
+			content.SetLayout(&unison.FlexLayout{Columns: 1})
+			opener := unison.NewPanel()
+			opener.SetFocusable(true)
+			opener.SetLayoutData(&unison.FlexLayoutData{MinSize: geom.NewSize(50, 50)})
+			field = unison.NewField()
+			field.SetText("name")
+			opener.KeyDownCallback = func(code unison.KeyCode, mods mod.Modifiers, _ bool) bool {
+				if unison.IsControlAction(code, mods) {
+					field.RequestFocus()
+					return true
+				}
+				return false
+			}
+			content.AddChild(opener)
+			content.AddChild(field)
+			wnd = newHeadlessWindow(t, "opener", geom.NewRect(20, 20, 240, 160), content)
+			if wnd != nil {
+				wnd.ToFront()
+				wnd.SetFocus(opener)
+			}
+		}))
+	c.NotNil(wnd)
+
+	screen.KeyPress(unison.KeySpace, 0)
+	var text string
+	var focused bool
+	c.True(screen.Do(func() {
+		text = field.Text()
+		focused = field.Focused()
+	}))
+	c.True(focused, "the space should have moved the focus to the field")
+	c.Equal("name", text, "the space that moved the focus must not also be typed into the field")
+
+	screen.Type(" x")
+	c.True(screen.Do(func() { text = field.Text() }))
+	c.Equal(" x", text, "keystrokes after the one that moved the focus should be typed as usual")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestHeadlessPanelPoint verifies the other way of aiming at a widget: an offset into the panel's own content area is
 // taken to the same screen position a real pointer would have to be at to land there, so a click at it reaches the
 // panel at exactly that offset.

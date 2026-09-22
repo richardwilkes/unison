@@ -531,14 +531,16 @@ func TestTableKeyFromFocusedCell(t *testing.T) {
 	f.table.SelectByIndex(1)
 
 	// Arrow keys that a cell's widget didn't want are not the table's to act on: moving the selection out from under
-	// something that is being edited would be wrong, so they are ignored and the cell keeps the focus.
+	// something that is being edited would be wrong, so they are ignored and the cell keeps the focus. The focus
+	// arriving in the cell has made its row the whole of the selection, which is where the cursor now stands.
 	f.pressCell(0, 0)
 	cell := f.rows[0].cells[0]
 	c.True(f.w.CurrentFocus() == cell)
+	c.True(f.table.IsRowSelected(0), "the focus arriving in a cell selects its row")
 	f.w.keyPressed(KeyDown, 0)
 	f.w.keyPressed(KeyUp, 0)
 	c.Equal(1, f.table.SelectionCount())
-	c.True(f.table.IsRowSelected(1), "the selection must not move while a cell is focused")
+	c.True(f.table.IsRowSelected(0), "the selection must not move while a cell is focused")
 	c.True(f.w.CurrentFocus() == cell)
 
 	// Tab moves to the next focusable cell, in row-major order.

@@ -10,15 +10,18 @@
 package unison
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // TabCloser defines the methods that must be implemented to cause the tabs to show a close button.
@@ -97,6 +100,9 @@ func newDockTab(dockable Dockable) *dockTab {
 	}
 	t.SetLayout(flex)
 	t.title.LabelTheme = t.LabelTheme
+	// The tab names itself from its dockable, so the label within it would only have an assistive technology say the
+	// title a second time, marker and all.
+	t.title.Accessibility.Role = role.None
 	t.title.SetTitle(t.fullTitle())
 	t.title.Drawable = t.TitleIcon()
 	t.title.SetLayoutData(&FlexLayoutData{HGrab: true, VAlign: align.Middle})
@@ -110,6 +116,7 @@ func newDockTab(dockable Dockable) *dockTab {
 			SVG:  CircledXSVG,
 			Size: geom.NewSize(fSize, fSize),
 		}
+		t.button.Accessibility.Name = i18n.Text("Close")
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: align.End, VAlign: align.Middle})
 		t.AddChild(t.button)
 		t.button.ClickCallback = func() { t.attemptClose() }
@@ -303,4 +310,52 @@ func (t *dockTab) mouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
 	t.pressed = false
 	t.MarkForRedraw()
 	return true
+}
+
+// ProvideAccessibility describes the tab to assistive technologies. The name is the dockable's title without the marker
+// that says it has unsaved changes, since that marker is punctuation a screen reader would read out as part of the
+// title; a tab for a modified dockable is still the tab for that dockable. What the marker says is said in words
+// instead, as part of the description, since a person who cannot see the marker has no other way to learn that a
+// dockable has changes that have not been saved.
+func (t *dockTab) ProvideAccessibility(b *AccessibilityBuilder) {
+	node := b.Node()
+	if node.Role == role.Auto {
+		node.Role = role.Tab
+	}
+	if node.Name == "" {
+		node.Name = t.dockable.Title()
+	}
+	if node.Description == "" {
+		node.Description = t.dockable.Tooltip()
+	}
+	if t.dockable.Modified() {
+		if node.Description == "" {
+			node.Description = i18n.Text("Modified")
+		} else {
+			// A format string rather than a concatenation, so that a language needing the marker somewhere other than
+			// after the description it is added to, or joined with something other than a comma, can say so.
+			node.Description = fmt.Sprintf(i18n.Text("%s, Modified"), node.Description)
+		}
+	}
+	node.Selectable = true
+	if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
+		node.Selected = dc.content.axCurrent() == t.dockable
+	}
+	node.Actions = node.Actions.With(accessibility.Press, accessibility.Select)
+}
+
+// PerformAccessibilityAction carries out a request from an assistive technology. Pressing or selecting a tab brings its
+// dockable to the front of the container, which is what clicking the tab does.
+func (t *dockTab) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	switch req.Action {
+	case accessibility.Press, accessibility.Select:
+		dc := Ancestor[*DockContainer](t.dockable)
+		if dc == nil {
+			return false
+		}
+		dc.SetCurrentDockable(t.dockable)
+		return true
+	default:
+		return false
+	}
 }

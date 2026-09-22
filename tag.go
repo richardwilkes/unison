@@ -85,6 +85,26 @@ func (t *Tag) DefaultSizes(hint geom.Size) (minSize, prefSize, maxSize geom.Size
 	return prefSize, prefSize, prefSize
 }
 
+// ProvideAccessibility describes the tag to assistive technologies. A tag is a bubble around a word or two, so what
+// reaches an assistive technology is just that text: the bubble itself is decoration. Everything else about it is the
+// case Label and DrawablePanel are too; see axDescribeStaticContent.
+//
+// The text is carried as text as well as being the name, so that it is read by line, word and character like any other
+// static text; see Label.ProvideAccessibility. It is measured over the rect DefaultDraw hands to DrawLabel — the
+// content rect narrowed by the inset the bubble keeps on either side — so that where the runes are said to be is where
+// they were drawn.
+func (t *Tag) ProvideAccessibility(b *AccessibilityBuilder) {
+	axDescribeStaticContent(b, t.Text.String(), t.Drawable != nil)
+	node := b.Node()
+	if !node.Ignored && node.Role.IsText() {
+		r := t.ContentRect(false)
+		r.X += t.SideInset
+		r.Width -= t.SideInset * 2
+		_, decorations, line := axStaticTextLine(r, t.HAlign, t.VAlign, t.Font, t.Text, t.Drawable, t.Side, t.Gap)
+		node.Text = axStaticTextInfo(t.Text.String(), decorations, line)
+	}
+}
+
 // DefaultDraw provides the default drawing.
 func (t *Tag) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	r := t.ContentRect(false)
