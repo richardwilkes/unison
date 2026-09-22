@@ -18,8 +18,14 @@ import (
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
+
+// macAppAppearance is the appearance name last handed to cocoa.SetAppAppearance, so that a theme change that reaches
+// several windows sets the application's appearance once rather than once per window. The zero value matches the
+// application's initial state, which is to follow the system.
+var macAppAppearance string
 
 type nativeWindow struct {
 	// ax is the NSAccessibility adapter serving this window, or nil until an assistive technology has asked about it.
@@ -272,6 +278,7 @@ func (w *Window) nativeInit() error {
 	nw.SetTabbingMode(cocoa.WindowTabbingModeDisallowed)
 	w.wnd.wnd = nw
 	w.wnd.view = v
+	w.nativeUpdateFrameTheme()
 	return nil
 }
 
@@ -382,8 +389,30 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 func (w *Window) nativeCancelMouseCapture() {
 }
 
+// nativeUpdateFrameTheme makes the application appearance follow an explicit SetThemeMode() choice, so that the frame,
+// and with it everything else AppKit draws for the application, such as its menus and alerts, is dark or light along
+// with the content rather than with the system. thememode.Auto clears the appearance, which hands the choice back to
+// the system. The appearance belongs to the application rather than the window, so it is set only when it changes.
 func (w *Window) nativeUpdateFrameTheme() {
-	// macOS windows follow the application appearance, so there is nothing to do here.
+	name := macAppearanceNameFor(CurrentThemeMode())
+	if name == macAppAppearance {
+		return
+	}
+	macAppAppearance = name
+	cocoa.SetAppAppearance(name)
+}
+
+// macAppearanceNameFor returns the application appearance that an explicit theme mode asks for, or an empty string for
+// thememode.Auto, which leaves the appearance to the system.
+func macAppearanceNameFor(mode thememode.Enum) string {
+	switch mode {
+	case thememode.Dark:
+		return cocoa.AppearanceNameDarkAqua
+	case thememode.Light:
+		return cocoa.AppearanceNameAqua
+	default:
+		return ""
+	}
 }
 
 func (w *Window) nativeVisible() bool {

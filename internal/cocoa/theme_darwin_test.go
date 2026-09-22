@@ -57,3 +57,27 @@ func TestThemeChangedNotification(t *testing.T) {
 		t.Error("theme-change notification was not delivered")
 	}
 }
+
+// TestSetAppAppearance verifies that the application appearance can be set to each of the named appearances and read
+// back, and that an empty name clears it so the application follows the system again.
+func TestSetAppAppearance(t *testing.T) {
+	t.Cleanup(func() { runOnMain(func() { SetAppAppearance("") }) })
+	for _, name := range []string{AppearanceNameDarkAqua, AppearanceNameAqua} {
+		var got string
+		runOnMain(func() {
+			SetAppAppearance(name)
+			got = AppAppearanceName()
+		})
+		if got != name {
+			t.Errorf("expected appearance %q, got %q", name, got)
+		}
+	}
+	var got string
+	runOnMain(func() {
+		SetAppAppearance("")
+		got = AppAppearanceName()
+	})
+	if got != "" {
+		t.Errorf("expected no appearance after clearing it, got %q", got)
+	}
+}

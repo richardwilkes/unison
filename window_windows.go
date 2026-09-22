@@ -909,14 +909,7 @@ func (w *Window) nativeUpdateFrameTheme() {
 	// Windows, so there is nothing to retry until the state itself changes.
 	w.wnd.frameThemeSet = true
 	w.wnd.frameDark = dark
-	attr := uint32(w32.DWMWA_USE_IMMERSIVE_DARK_MODE)
-	if !w32IsWindows10BuildOrGreater(w32.Windows10ImmersiveDarkModeBuild) {
-		attr = w32.DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1
-	}
-	var enabled int32
-	if dark {
-		enabled = 1
-	}
+	attr, enabled := w32FrameThemeAttribute(dark, w32IsWindows10BuildOrGreater)
 	if !w32.DwmSetWindowAttribute(w.wnd.wnd, attr, unsafe.Pointer(&enabled), uint32(unsafe.Sizeof(enabled))) {
 		return
 	}
@@ -925,6 +918,21 @@ func (w *Window) nativeUpdateFrameTheme() {
 		w32.SetWindowPos(w.wnd.wnd, 0, 0, 0, 0, 0,
 			w32.SWP_NOMOVE|w32.SWP_NOSIZE|w32.SWP_NOZORDER|w32.SWP_NOACTIVATE|w32.SWP_FRAMECHANGED)
 	}
+}
+
+// w32FrameThemeAttribute works out the DwmSetWindowAttribute call that asks for a dark (or light) frame: the attribute
+// index and the BOOL to store in it. The dark mode attribute was renumbered from 19 to 20 in Windows 10 build 18985,
+// so the index depends on isBuildOrGreater, which reports whether the running system is at least a given build of
+// Windows 10. It is kept apart from the call itself so the choice can be tested without a window.
+func w32FrameThemeAttribute(dark bool, isBuildOrGreater func(build uint32) bool) (attr uint32, enabled int32) {
+	attr = w32.DWMWA_USE_IMMERSIVE_DARK_MODE
+	if !isBuildOrGreater(w32.Windows10ImmersiveDarkModeBuild) {
+		attr = w32.DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1
+	}
+	if dark {
+		enabled = 1
+	}
+	return attr, enabled
 }
 
 func (w *Window) nativeVisible() bool {

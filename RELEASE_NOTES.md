@@ -5,6 +5,7 @@
 - Added screen-reader support on macOS (VoiceOver), Windows (Narrator, NVDA, JAWS) and Linux (Orca). Every widget
   describes itself, so an existing application becomes largely accessible without being changed. Nothing runs until an
   assistive technology asks for it, so an application nothing is listening to pays essentially nothing.
+- The system-drawn title bar now matches the application's dark or light mode.
 
 ## Bug Fixes
 

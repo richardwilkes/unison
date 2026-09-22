@@ -689,6 +689,22 @@ func (s *HeadlessScreen) Cursor() *Cursor {
 	return result
 }
 
+// FrameDark reports the frame theme the given window was last asked to take: dark is true for a dark frame, and ok is
+// false if the window has never been asked or does not belong to this session. A headless window has no OS-drawn
+// frame, so this is the request itself, made when the window was created and again each time ThemeChanged() reaches
+// it, rather than anything painted.
+func (s *HeadlessScreen) FrameDark(w *Window) (dark, ok bool) {
+	s.run(func() {
+		hw := headlessWindowFor(w)
+		if hw == nil || hw.hs != s || !hw.frameThemeSet {
+			return
+		}
+		dark = hw.frameDark
+		ok = true
+	})
+	return dark, ok
+}
+
 // Capture returns what the screen would look like right now: the configured background with every visible window
 // composited onto it in z-order. The result is in device pixels, so it is the screen's logical size multiplied by the
 // backing scale. Windows that have never been drawn, and windows that are minimized, contribute nothing.

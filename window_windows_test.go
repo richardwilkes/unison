@@ -234,3 +234,32 @@ func TestW32RuneFromCharMessage(t *testing.T) {
 	c.Equal('b', r)
 	c.Equal(uint16(0), high)
 }
+
+// TestW32FrameThemeAttribute verifies the DwmSetWindowAttribute request a frame theme change turns into: the dark
+// mode attribute index moved from 19 to 20 in Windows 10 build 18985, so the old index must be used before that build
+// and the new one from it on, and the value stored is a BOOL that is 1 for dark and 0 for light.
+func TestW32FrameThemeAttribute(t *testing.T) {
+	c := check.New(t)
+	for _, one := range []struct {
+		dark            bool
+		atLeastBuild    bool
+		expectedAttr    uint32
+		expectedEnabled int32
+	}{
+		{dark: true, atLeastBuild: true, expectedAttr: w32.DWMWA_USE_IMMERSIVE_DARK_MODE, expectedEnabled: 1},
+		{dark: false, atLeastBuild: true, expectedAttr: w32.DWMWA_USE_IMMERSIVE_DARK_MODE, expectedEnabled: 0},
+		{dark: true, atLeastBuild: false, expectedAttr: w32.DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1, expectedEnabled: 1},
+		{dark: false, atLeastBuild: false, expectedAttr: w32.DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1, expectedEnabled: 0},
+	} {
+		var askedFor uint32
+		attr, enabled := w32FrameThemeAttribute(one.dark, func(build uint32) bool {
+			askedFor = build
+			return one.atLeastBuild
+		})
+		c.Equal(uint32(w32.Windows10ImmersiveDarkModeBuild), askedFor,
+			"dark=%v atLeast=%v: the build asked about should be the one the attribute was renumbered in",
+			one.dark, one.atLeastBuild)
+		c.Equal(one.expectedAttr, attr, "dark=%v atLeast=%v: attribute", one.dark, one.atLeastBuild)
+		c.Equal(one.expectedEnabled, enabled, "dark=%v atLeast=%v: value", one.dark, one.atLeastBuild)
+	}
+}

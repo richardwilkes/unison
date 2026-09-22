@@ -25,24 +25,21 @@ import (
 // headlessWindow is the stand-in for an operating system window. There are no decorations, so the frame rect and the
 // content rect are the same rectangle, expressed in the screen's logical coordinate space.
 type headlessWindow struct {
-	hs *headlessState
-	w  *Window
-	// frame holds a premultiplied copy of the pixels the window last presented, i.e. what would be on the screen. It
-	// is nil until the window has been drawn at least once.
-	frame  *image.RGBA
-	cursor *Cursor
-	// axTree is the most recent accessibility description published for this window, and axEvents the events published
-	// with it that a test has yet to read. Both stay nil for a window no assistive technology was ever served for.
-	axTree    *accessibility.Tree
-	title     string
-	icons     []*image.NRGBA
-	dragTypes []*uti.DataType
-	axEvents  []accessibility.Event
-	rect      geom.Rect
-	// restoreRect is the content rect to go back to when a maximized window is restored.
-	restoreRect geom.Rect
-	visible     bool
-	destroyed   bool
+	hs            *headlessState
+	w             *Window
+	frame         *image.RGBA
+	cursor        *Cursor
+	axTree        *accessibility.Tree
+	title         string
+	icons         []*image.NRGBA
+	dragTypes     []*uti.DataType
+	axEvents      []accessibility.Event
+	rect          geom.Rect
+	restoreRect   geom.Rect
+	visible       bool
+	destroyed     bool
+	frameDark     bool
+	frameThemeSet bool
 }
 
 // headlessWindowFor returns the headless backing of w, or nil if w has none (it belongs to the OS or was hand-built by
@@ -59,11 +56,13 @@ func headlessWindowFor(w *Window) *headlessWindow {
 // cocoa.NewWindow starts a real window at, so the first prepareCanvas is never asked for a zero-sized surface. The
 // window does not join the z-order stack until it is shown.
 func (s *headlessState) newWindow(w *Window) *headlessWindow {
-	return &headlessWindow{
+	hw := &headlessWindow{
 		hs:   s,
 		w:    w,
 		rect: geom.NewRect(0, 0, 1, 1),
 	}
+	hw.updateFrameTheme()
+	return hw
 }
 
 // destroy detaches the window from the session. It must tolerate being called more than once: finishQuit destroys
@@ -209,8 +208,12 @@ func (hw *headlessWindow) currentKeyModifiers() mod.Modifiers {
 	return hw.hs.lastMods
 }
 
+// updateFrameTheme records the frame theme the window was asked to take. There is no OS-drawn frame to apply it to, so
+// what a test can observe, through HeadlessScreen.FrameDark, is whether the request reached the window and what it
+// asked for. It is recorded for an undecorated window too, since it is the request that is under test.
 func (hw *headlessWindow) updateFrameTheme() {
-	// A headless window has no OS-drawn frame, so there is nothing to do here.
+	hw.frameDark = IsDarkModeEnabled()
+	hw.frameThemeSet = true
 }
 
 // updateCursorImage records the cursor the window resolved to. There is nothing to draw it with, so what a test can

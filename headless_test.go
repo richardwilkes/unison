@@ -26,6 +26,7 @@ import (
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/thememode"
 )
 
 // These tests drive real widgets the way a person would: they run the application's own event loop against an in-memory
@@ -661,6 +662,72 @@ func TestHeadlessDarkMode(t *testing.T) {
 	c.NotNil(img)
 	c.Equal(toNRGBAColor(unison.DefaultThemeSurface().Light), img.NRGBAAt(50, 50),
 		"the window should have been repainted with the light surface color")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHeadlessFrameTheme verifies that a window's frame is asked to match the application's dark mode state when the
+// window is created, and again whenever the state changes, whether the session's dark mode or an explicit
+// SetThemeMode() changed it, and that a window that has been disposed of is left alone.
+func TestHeadlessFrameTheme(t *testing.T) {
+	c := check.New(t)
+	var shown, hidden *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 200, Height: 200},
+		unison.StartupFinishedCallback(func() {
+			w, err := unison.NewWindow("shown")
+			if err != nil {
+				t.Errorf("unable to create window: %v", err)
+				return
+			}
+			w.SetContentRect(geom.NewRect(0, 0, 100, 100))
+			w.Show()
+			shown = w
+			// A window that is never shown is still a valid window, so a theme change must reach it too.
+			if hidden, err = unison.NewWindow("hidden", unison.UndecoratedWindowOption()); err != nil {
+				t.Errorf("unable to create window: %v", err)
+			}
+		}))
+	c.NotNil(shown)
+	c.NotNil(hidden)
+	screen.Sync()
+
+	dark, ok := screen.FrameDark(shown)
+	c.True(ok, "the frame should have been themed when the window was created")
+	c.False(dark, "the session started in light mode")
+	dark, ok = screen.FrameDark(hidden)
+	c.True(ok, "the hidden window's frame should have been themed when it was created")
+	c.False(dark, "the session started in light mode")
+
+	screen.SetDarkMode(true)
+	dark, ok = screen.FrameDark(shown)
+	c.True(ok)
+	c.True(dark, "the session's dark mode change should have reached the shown window")
+	dark, ok = screen.FrameDark(hidden)
+	c.True(ok)
+	c.True(dark, "the session's dark mode change should have reached the hidden window")
+
+	c.True(screen.Do(func() { unison.SetThemeMode(thememode.Light) }))
+	screen.Sync() // SetThemeMode queues the theme change rather than running it inline
+	dark, ok = screen.FrameDark(shown)
+	c.True(ok)
+	c.False(dark, "an explicit light mode should have reached the shown window despite the session being dark")
+	dark, ok = screen.FrameDark(hidden)
+	c.True(ok)
+	c.False(dark, "an explicit light mode should have reached the hidden window despite the session being dark")
+
+	c.True(screen.Do(func() {
+		hidden.Dispose()
+		unison.SetThemeMode(thememode.Dark)
+	}))
+	screen.Sync()
+	dark, ok = screen.FrameDark(shown)
+	c.True(ok)
+	c.True(dark, "an explicit dark mode should have reached the window that is still valid")
+	dark, ok = screen.FrameDark(hidden)
+	c.True(ok, "what a disposed window was last asked for is still on record")
+	c.False(dark, "a disposed window should not have been asked again")
+
+	_, ok = screen.FrameDark(&unison.Window{})
+	c.False(ok, "a window that does not belong to the session has no frame theme")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

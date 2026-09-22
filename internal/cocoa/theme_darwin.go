@@ -17,10 +17,43 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 )
 
+const (
+	// AppearanceNameAqua is NSAppearanceNameAqua, the light appearance.
+	AppearanceNameAqua = "NSAppearanceNameAqua"
+	// AppearanceNameDarkAqua is NSAppearanceNameDarkAqua, the dark appearance.
+	AppearanceNameDarkAqua = "NSAppearanceNameDarkAqua"
+)
+
 var (
 	systemThemeChangedCallback func()
 	themeObserverOnce          sync.Once
 )
+
+// SetAppAppearance sets the application's appearance (NSApp.appearance) to the named one, AppearanceNameAqua or
+// AppearanceNameDarkAqua, or clears it when name is empty so that the application follows the system appearance again.
+// Every window, menu and panel the application shows takes the appearance from it. It must be called on the main
+// thread.
+func SetAppAppearance(name string) {
+	WithPool(func() {
+		var appearance objc.ID
+		if name != "" {
+			appearance = objc.ID(Cls("NSAppearance")).Send(Sel("appearanceNamed:"), NSStringFromGo(name))
+		}
+		sharedApp().Send(Sel("setAppearance:"), appearance)
+	})
+}
+
+// AppAppearanceName returns the name of the appearance set on the application, or an empty string when none has been
+// set and it follows the system.
+func AppAppearanceName() string {
+	var name string
+	WithPool(func() {
+		if appearance := sharedApp().Send(Sel("appearance")); appearance != 0 {
+			name = GoStringFromNSString(appearance.Send(Sel("name")))
+		}
+	})
+	return name
+}
 
 // InstallSystemThemeChangedCallback installs f as the function invoked when the system theme (dark/light mode or
 // accent colors) changes. Distributed notifications are delivered on the run loop of the thread that first created

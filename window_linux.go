@@ -448,8 +448,10 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 func (w *Window) nativeCancelMouseCapture() {
 }
 
+// nativeUpdateFrameTheme does nothing yet. The window manager draws the frame on Linux, but a client can still ask
+// for a dark one by setting the _GTK_THEME_VARIANT window property to "dark", which GNOME's Mutter honors. Setting that
+// property to follow the application's dark mode state has been left for later.
 func (w *Window) nativeUpdateFrameTheme() {
-	// The window manager owns the frame on Linux, so there is nothing to do here.
 }
 
 func (w *Window) nativeVisible() bool {
