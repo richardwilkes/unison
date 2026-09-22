@@ -122,6 +122,7 @@ type Window struct {
 	inMouseDown                 bool
 	cursorHiddenUntilMouseMoves bool
 	cursorHidden                bool
+	dropRunes                   bool
 	minimized                   bool
 	maximized                   bool
 	// axGeneration counts the accessibility snapshots taken of this window and is what accessibility.Tree.Generation
@@ -1564,6 +1565,7 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 		return
 	}
 	w.lastKeyModifiers = mods
+	w.dropRunes = false
 	repeat := w.pressedKeys[key]
 	w.pressedKeys[key] = true
 	if w.root.preKeyDown(w, key, mods, repeat) {
@@ -1587,6 +1589,12 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 				SafeCall(func() { stop = panel.KeyDownCallback(key, mods, repeat) })
 				if stop {
 					w.lastKeyDownPanel = panel
+					// A panel that took the key and moved the focus elsewhere in doing so -- a table opening its
+					// selection in a new editor in response to Space, say -- has used up the keystroke. The platforms
+					// deliver the runes a key produces after its key down, so without this they would land in whatever
+					// now holds the focus, typically a text field that would then replace its content with a space the
+					// person never meant for it. The next key down or key up ends the suppression.
+					w.dropRunes = w.CurrentFocus() != focus
 					return
 				}
 			}
@@ -1606,6 +1614,9 @@ func (w *Window) runeTyped(ch rune) {
 	if !w.okToProcess() {
 		// See the comment in keyPressed.
 		modalStack[len(modalStack)-1].runeTyped(ch)
+		return
+	}
+	if w.dropRunes {
 		return
 	}
 	if w.root.preRuneTyped(w, ch) {
@@ -1639,6 +1650,7 @@ func (w *Window) runeTyped(ch rune) {
 
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
+	w.dropRunes = false
 	pressed := w.pressedKeys[key]
 	delete(w.pressedKeys, key)
 	if !w.okToProcess() {
