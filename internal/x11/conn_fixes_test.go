@@ -561,7 +561,9 @@ func TestParseFrameExtents(t *testing.T) {
 // against. It is not a real one — nothing is authenticated and no atoms, extensions or helper window exist — so what
 // has to hold is that a request written to it reaches the far end whole and that the reply the far end writes comes
 // back as the values the caller asked for. TranslateCoordinates is what needed it: the ConfigureNotify handling asks
-// the X server where the window manager's frame puts a window, and a test of that decision has to see the request.
+// the X server where the window manager's frame puts a window, and a test of that decision has to see the request. A
+// property change has to arrive whole as well, in one request rather than split into as many as it has bytes, since the
+// frame theme test reads the value it asks the window manager for off a single request.
 //
 // It is also the one place where the bytes that stand in for an X server can be checked, since the test that uses them
 // only builds on Linux.
@@ -580,7 +582,16 @@ func TestNewConnForTestServesRequests(t *testing.T) {
 		src, dst WindowID
 		x, y     int16
 	}
+	type propertyChange struct {
+		data         string
+		window       WindowID
+		property     Atom
+		propertyType Atom
+		format       byte
+		mode         byte
+	}
 	asked := make(chan translation, 1)
+	changed := make(chan propertyChange, 8)
 	go func() {
 		var seq uint16
 		header := make([]byte, 4)
@@ -592,6 +603,21 @@ func TestNewConnForTestServesRequests(t *testing.T) {
 			body := make([]byte, int(binary.LittleEndian.Uint16(header[2:4]))*4-len(header))
 			if _, err := io.ReadFull(server, body); err != nil {
 				return
+			}
+			if header[0] == opChangeProperty {
+				// The body is the window, the property, its type, the format (the number of bits in each unit of the
+				// data), three bytes of padding, the number of units, then the data itself, padded to a multiple of four
+				// bytes. No reply is sent, since the X server sends none.
+				size := int(binary.LittleEndian.Uint32(body[16:20])) * int(body[12]/8)
+				changed <- propertyChange{
+					data:         string(body[20 : 20+min(size, len(body)-20)]),
+					window:       WindowID(binary.LittleEndian.Uint32(body[0:4])),
+					property:     Atom(binary.LittleEndian.Uint32(body[4:8])),
+					propertyType: Atom(binary.LittleEndian.Uint32(body[8:12])),
+					format:       body[12],
+					mode:         header[1],
+				}
+				continue
 			}
 			if header[0] != opTranslateCoordinates {
 				continue // Nothing else this test sends expects an answer
@@ -617,6 +643,14 @@ func TestNewConnForTestServesRequests(t *testing.T) {
 			}
 		}
 	}()
+	const (
+		property     = Atom(301)
+		propertyType = Atom(302)
+	)
+	// Sent ahead of the TranslateCoordinates below, whose reply cannot arrive until the far end has read every request
+	// sent before it, so that the property change has been recorded, in however many requests it took, by the time the
+	// reply is back.
+	conn.ChangeProperty(parent, property, propertyType, 8, PropModeReplace, []byte("light"))
 	x, y, sameScreen, child, err := conn.TranslateCoordinates(parent, conn.RootWindow(), 10, -20)
 	c.NoError(err)
 	c.Equal(int16(311), x)
@@ -628,5 +662,23 @@ func TestNewConnForTestServesRequests(t *testing.T) {
 		c.Equal(translation{src: parent, dst: root, x: 10, y: -20}, one)
 	default:
 		t.Fatal("the request never reached the far end")
+	}
+	select {
+	case one := <-changed:
+		c.Equal(propertyChange{
+			data:         "light",
+			window:       parent,
+			property:     property,
+			propertyType: propertyType,
+			format:       8,
+			mode:         PropModeReplace,
+		}, one, "the property change should have reached the far end whole, in a single request")
+	default:
+		t.Fatal("the property change never reached the far end")
+	}
+	select {
+	case extra := <-changed:
+		t.Errorf("the property change should have taken a single request, but another followed it: %+v", extra)
+	default:
 	}
 }

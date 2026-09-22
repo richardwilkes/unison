@@ -13,6 +13,8 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/role"
+	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/atspi"
 	"github.com/richardwilkes/unison/internal/dbus"
 	"github.com/richardwilkes/unison/internal/x11"
@@ -149,6 +152,18 @@ const (
 	x11RequestErrorCode = 1
 )
 
+// x11ChangePropertyOpcode and x11DeletePropertyOpcode are the requests that set a property on a window and remove one
+// from it, which the stand-in X server records rather than answers, since the X server sends no reply to either.
+const (
+	x11ChangePropertyOpcode = 18
+	x11DeletePropertyOpcode = 19
+)
+
+// x11GetInputFocusOpcode is the request that asks which window has the keyboard focus. The connection sends one after
+// each request that can fail without a reply, such as DeleteProperty, so that the reply to it says that the request
+// before it did not fail.
+const x11GetInputFocusOpcode = 43
+
 // The windows the ConfigureNotify test works with, and where the window manager's frame sits on the root window: a
 // real ConfigureNotify carries a position relative to the frame, so the frame's own origin is what translating one
 // adds to it.
@@ -166,23 +181,38 @@ type x11Translation struct {
 	x, y     int16
 }
 
+// x11PropertyChange is one ChangeProperty or DeleteProperty request that the stand-in X server was sent. A deletion
+// carries only the window and the property.
+type x11PropertyChange struct {
+	data         string
+	window       x11.WindowID
+	property     x11.Atom
+	propertyType x11.Atom
+	format       byte
+	mode         byte
+	deleted      bool
+}
+
 // x11TestServer stands in for the X server for the length of a test: it answers the TranslateCoordinates requests the
 // event handling makes by adding the frame's origin to the position it was given, which is what a reparenting window
-// manager's frame does to a real one, and records each of them so that a test can see whether one was made at all.
-// [x11.NewConnForTest] wires the connection the platform code uses to it, and internal/x11's own
+// manager's frame does to a real one, and records each of them so that a test can see whether one was made at all. It
+// records each ChangeProperty and DeleteProperty request too, which need no answer, so that a test can see what was
+// done to a window's properties, and answers the GetInputFocus that follows a DeleteProperty with no window, since all
+// the connection wants of it is a reply. [x11.NewConnForTest] wires the connection the platform code uses to it, and internal/x11's own
 // TestNewConnForTestServesRequests is where the bytes below are checked, since nothing in this file builds anywhere but
 // Linux.
 //
-// TranslateCoordinates is the only request it serves, and the tests keep it that way by never marking a window valid:
+// Those are the only requests it serves, and the tests keep it that way by never marking a window valid:
 // ContentRect and BackingScale answer for an invalid window without asking the X server anything, which is what keeps
 // the event handling's moved() and the geometry refresh from making the GetGeometry, TranslateCoordinates and
 // ContentScale requests they would make for a real window. Any other request is a regression, and is failed and
 // answered with an error rather than ignored, since one that expects a reply would otherwise wait for it forever and
 // hang the test instead of failing it.
 type x11TestServer struct {
-	t     *testing.T
-	side  net.Conn
-	asked chan x11Translation
+	t       *testing.T
+	side    net.Conn
+	asked   chan x11Translation
+	changed chan x11PropertyChange
 }
 
 // startX11TestServer installs a connection to a stand-in X server as the one the platform code uses, putting the
@@ -198,7 +228,12 @@ func startX11TestServer(t *testing.T) *x11TestServer {
 		stop()
 		xio.CloseIgnoringErrors(serverSide)
 	})
-	s := &x11TestServer{t: t, side: serverSide, asked: make(chan x11Translation, 16)}
+	s := &x11TestServer{
+		t:       t,
+		side:    serverSide,
+		asked:   make(chan x11Translation, 16),
+		changed: make(chan x11PropertyChange, 16),
+	}
 	go s.run()
 	return s
 }
@@ -215,6 +250,29 @@ func (s *x11TestServer) run() {
 		body := make([]byte, int(binary.LittleEndian.Uint16(header[2:4]))*4-len(header))
 		if _, err := io.ReadFull(s.side, body); err != nil {
 			return
+		}
+		switch header[0] {
+		case x11ChangePropertyOpcode:
+			s.recordPropertyChange(header[1], body)
+			continue
+		case x11DeletePropertyOpcode:
+			// The body is the window and then the property.
+			s.record(x11PropertyChange{
+				window:   x11.WindowID(binary.LittleEndian.Uint32(body[0:4])),
+				property: x11.Atom(binary.LittleEndian.Uint32(body[4:8])),
+				deleted:  true,
+			})
+			continue
+		case x11GetInputFocusOpcode:
+			// A reply is 32 bytes: the code, the byte the reply's own first value occupies — here what the focus reverts
+			// to — the sequence, the count of any additional words, then the window with the focus, which is none.
+			reply := make([]byte, 32)
+			reply[0] = 1
+			binary.LittleEndian.PutUint16(reply[2:4], seq)
+			if _, err := s.side.Write(reply); err != nil {
+				return
+			}
+			continue
 		}
 		if header[0] != x11TranslateCoordinatesOpcode {
 			s.t.Errorf("the X server was sent request %d, which nothing in these tests expects it to serve", header[0])
@@ -249,6 +307,35 @@ func (s *x11TestServer) run() {
 	}
 }
 
+// recordPropertyChange records a ChangeProperty request from the mode its header carries and its body: the window, the
+// property, its type, the format (the number of bits in each unit of the data), three bytes of padding, the number of
+// units, then the data itself, padded to a multiple of four bytes.
+func (s *x11TestServer) recordPropertyChange(mode byte, body []byte) {
+	change := x11PropertyChange{
+		window:       x11.WindowID(binary.LittleEndian.Uint32(body[0:4])),
+		property:     x11.Atom(binary.LittleEndian.Uint32(body[4:8])),
+		propertyType: x11.Atom(binary.LittleEndian.Uint32(body[8:12])),
+		format:       body[12],
+		mode:         mode,
+	}
+	size := int(binary.LittleEndian.Uint32(body[16:20])) * int(change.format/8)
+	if size > len(body)-20 {
+		s.t.Errorf("a ChangeProperty request claimed %d bytes of data but carried only %d", size, len(body)-20)
+		return
+	}
+	change.data = string(body[20 : 20+size])
+	s.record(change)
+}
+
+// record keeps a property change for propertyChanges to report.
+func (s *x11TestServer) record(change x11PropertyChange) {
+	select {
+	case s.changed <- change:
+	default:
+		s.t.Errorf("more property changes were made than the stand-in X server can hold, so %+v was lost", change)
+	}
+}
+
 // writeError answers a request with a Request error, which is what a real X server sends for a request it does not
 // understand. The connection under test hands it to whoever is waiting on the request, so one that expects a reply
 // returns an error at once rather than waiting for a reply that will never come; one that expects nothing has the error
@@ -273,6 +360,30 @@ func (s *x11TestServer) nextTranslation() x11Translation {
 	case <-time.After(a11yTestTimeout):
 		s.t.Fatal("timed out waiting for the X server to be asked to translate a position")
 		return x11Translation{}
+	}
+}
+
+// propertyChanges returns the property changes the code under test has made since the last call, in the order they
+// were made, or nil if it made none. The X server takes requests in the order they were sent, and the stand-in records
+// each one before it reads the next, so the reply to a round trip made after them cannot arrive before every one of
+// them has been recorded. That is what makes it safe to say that nothing else was sent.
+func (s *x11TestServer) propertyChanges() []x11PropertyChange {
+	s.t.Helper()
+	if _, _, _, _, err := x11Conn.TranslateCoordinates(x11TestRootWindow, x11TestRootWindow, 0, 0); err != nil {
+		s.t.Fatalf("the round trip made to wait for the property changes to be recorded failed: %v", err)
+	}
+	select {
+	case <-s.asked: // The round trip's own request, which is not one the code under test made
+	default:
+	}
+	var changes []x11PropertyChange
+	for {
+		select {
+		case change := <-s.changed:
+			changes = append(changes, change)
+		default:
+			return changes
+		}
 	}
 }
 
@@ -448,4 +559,141 @@ func TestX11RefreshAccessibilityGeometryReachesTheAdapter(t *testing.T) {
 	c.Equal(dbus.Variant{Sig: "(iiii)", Value: dbus.Struct{int32(44), int32(44), int32(200), int32(150)}},
 		x11AnnouncedExtents(t, bus),
 		"a window that is not being described, or has no adapter or id, must announce nothing")
+}
+
+// TestX11FrameThemeFollowsDarkMode verifies the requests that ask the window manager for a frame that matches the
+// application's dark mode state. _GTK_THEME_VARIANT is set to "dark" or "light" whenever the state changes, with light
+// named rather than left out, since a window manager gives a window without the property the desktop's preferred
+// variant. _KDE_NET_WM_COLOR_SCHEME is set to the path of Breeze's matching scheme only while the application's state
+// differs from the desktop's, or the desktop's cannot be determined, and is removed once they match again, since KWin
+// draws a frame without it in the desktop's own scheme. A window with no frame to theme, and one with no X window, must
+// be sent nothing.
+func TestX11FrameThemeFollowsDarkMode(t *testing.T) {
+	c := check.New(t)
+	server := startX11TestServer(t)
+	priorMode, priorSchemes := CurrentThemeMode(), x11KDEColorSchemes
+	priorDark, priorTrackable := linuxDarkModeEnabled.Load(), linuxColorModeTrackable.Load()
+	t.Cleanup(func() {
+		currentThemeMode.Store(int32(priorMode))
+		x11KDEColorSchemes = priorSchemes
+		linuxDarkModeEnabled.Store(priorDark)
+		linuxColorModeTrackable.Store(priorTrackable)
+	})
+	// The stand-in connection interns no atoms, so the ones the requests name are given values they can be checked by.
+	const (
+		themeVariantAtom = x11.Atom(301)
+		colorSchemeAtom  = x11.Atom(302)
+		utf8StringAtom   = x11.Atom(303)
+		lightScheme      = "/usr/share/color-schemes/BreezeLight.colors"
+		darkScheme       = "/usr/share/color-schemes/BreezeDark.colors"
+	)
+	x11Conn.Atoms.GTKThemeVariant = themeVariantAtom
+	x11Conn.Atoms.KDENetWMColorScheme = colorSchemeAtom
+	x11Conn.Atoms.UTF8String = utf8StringAtom
+	x11KDEColorSchemes = func() (light, dark string) { return lightScheme, darkScheme }
+	variantSet := func(value string) x11PropertyChange {
+		return x11PropertyChange{
+			data:         value,
+			window:       x11TestWindowID,
+			property:     themeVariantAtom,
+			propertyType: utf8StringAtom,
+			format:       8,
+			mode:         x11.PropModeReplace,
+		}
+	}
+	schemeSet := func(path string) x11PropertyChange {
+		return x11PropertyChange{
+			data:         path,
+			window:       x11TestWindowID,
+			property:     colorSchemeAtom,
+			propertyType: x11.AtomString,
+			format:       8,
+			mode:         x11.PropModeReplace,
+		}
+	}
+	schemeRemoved := x11PropertyChange{window: x11TestWindowID, property: colorSchemeAtom, deleted: true}
+	var nothing []x11PropertyChange
+	// update puts the application in mode and the desktop in the given state, and returns what the window's frame theme
+	// update asked of the X server.
+	update := func(w *Window, mode thememode.Enum, desktopDark, desktopKnown bool) []x11PropertyChange {
+		currentThemeMode.Store(int32(mode))
+		linuxDarkModeEnabled.Store(desktopDark)
+		linuxColorModeTrackable.Store(desktopKnown)
+		w.nativeUpdateFrameTheme()
+		return server.propertyChanges()
+	}
+	w := &Window{wnd: &apiWindow{}}
+	w.wnd.id = x11TestWindowID
+
+	c.Equal([]x11PropertyChange{variantSet("light")}, update(w, thememode.Light, false, true),
+		"a light window on a light desktop needs only the theme variant, since KWin's default scheme already matches")
+	c.Equal([]x11PropertyChange{variantSet("dark"), schemeSet(darkScheme)}, update(w, thememode.Dark, false, true),
+		"a dark window on a light desktop must ask KWin for a dark scheme as well")
+	c.Equal(nothing, update(w, thememode.Dark, false, true), "nothing changed, so nothing must be sent")
+	c.Equal([]x11PropertyChange{schemeRemoved}, update(w, thememode.Dark, true, true),
+		"once the desktop is dark too, its own scheme matches, so the one asked for must be removed")
+	c.Equal([]x11PropertyChange{variantSet("light"), schemeSet(lightScheme)}, update(w, thememode.Light, true, true),
+		"a light window on a dark desktop must ask KWin for a light scheme as well")
+	c.Equal([]x11PropertyChange{schemeRemoved}, update(w, thememode.Light, false, true),
+		"once the desktop is light too, the scheme asked for must be removed")
+	c.Equal([]x11PropertyChange{schemeSet(lightScheme)}, update(w, thememode.Light, false, false),
+		"when the desktop's state is unknown, nothing says its scheme matches, so the scheme must be asked for")
+
+	// Without Breeze's schemes there is nothing to ask KWin for, so the frame is left to the desktop's scheme.
+	x11KDEColorSchemes = func() (light, dark string) { return "", "" }
+	plain := &Window{wnd: &apiWindow{}}
+	plain.wnd.id = x11TestWindowID
+	c.Equal([]x11PropertyChange{variantSet("dark")}, update(plain, thememode.Dark, false, true),
+		"without a scheme to name, only the theme variant can be set")
+
+	// A light window on a dark desktop would need both properties, so these show that nothing at all is sent for a
+	// window without a frame, or one that has no X window.
+	x11KDEColorSchemes = func() (light, dark string) { return lightScheme, darkScheme }
+	undecorated := &Window{wnd: &apiWindow{}, undecorated: true}
+	undecorated.wnd.id = x11TestWindowID
+	c.Equal(nothing, update(undecorated, thememode.Light, true, true), "a window without a frame must be sent nothing")
+	c.Equal(nothing, update(&Window{wnd: &apiWindow{}}, thememode.Light, true, true),
+		"a window that has no X window must be sent nothing")
+}
+
+// TestLinuxXDGDataDirs verifies the directories a data file is looked for in: the user's own and then the system's,
+// with the defaults the XDG Base Directory Specification gives for either that is not set, and without any relative
+// path, which the specification says to ignore.
+func TestLinuxXDGDataDirs(t *testing.T) {
+	c := check.New(t)
+	t.Setenv("XDG_DATA_HOME", "/home/someone/data")
+	t.Setenv("XDG_DATA_DIRS", "/opt/share:relative/share::/usr/share")
+	c.Equal([]string{"/home/someone/data", "/opt/share", "/usr/share"}, linuxXDGDataDirs())
+
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("XDG_DATA_DIRS", "")
+	c.Equal([]string{filepath.Join(xos.HomeDir(), ".local", "share"), "/usr/local/share", "/usr/share"},
+		linuxXDGDataDirs())
+
+	t.Setenv("XDG_DATA_HOME", "relative/data")
+	c.Equal([]string{"/usr/local/share", "/usr/share"}, linuxXDGDataDirs())
+}
+
+// TestLinuxFindDataFile verifies that a data file is taken from the first directory that holds it, so that a user's own
+// copy of a file takes the place of the system's, and that a file none of them holds is not found.
+func TestLinuxFindDataFile(t *testing.T) {
+	c := check.New(t)
+	const name = "color-schemes/BreezeDark.colors"
+	empty, user, system := t.TempDir(), t.TempDir(), t.TempDir()
+	dirs := []string{empty, user, system}
+	install := func(dir string) string {
+		p := filepath.Join(dir, name)
+		c.NoError(os.MkdirAll(filepath.Dir(p), 0o755))
+		c.NoError(os.WriteFile(p, []byte("[General]\n"), 0o644))
+		return p
+	}
+	c.Equal("", linuxFindDataFile(dirs, name), "a file none of the directories holds must not be found")
+	systemPath := install(system)
+	c.Equal(systemPath, linuxFindDataFile(dirs, name))
+	userPath := install(user)
+	c.Equal(userPath, linuxFindDataFile(dirs, name), "the user's own copy must take the place of the system's")
+	c.Equal("", linuxFindDataFile(dirs, "color-schemes/BreezeLight.colors"))
+	// A directory by the name is not the file.
+	c.NoError(os.MkdirAll(filepath.Join(empty, "color-schemes", "BreezeLight.colors"), 0o755))
+	c.Equal("", linuxFindDataFile(dirs, "color-schemes/BreezeLight.colors"), "a directory must not be taken for the file")
 }

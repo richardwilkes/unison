@@ -17,8 +17,10 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -34,7 +36,9 @@ import (
 )
 
 type nativeWindow struct {
-	dndInfo           *x11DragInfo
+	dndInfo *x11DragInfo
+	// frameColorScheme is the path _KDE_NET_WM_COLOR_SCHEME was last set to, or empty if it is not set.
+	frameColorScheme  string
 	id                x11.WindowID
 	parent            x11.WindowID
 	colorMap          x11.ColorMapID
@@ -51,6 +55,8 @@ type nativeWindow struct {
 	borderValid       bool
 	cursorWasHidden   bool
 	awaitingConfigure bool
+	frameDark         bool
+	frameThemeSet     bool
 }
 
 func x11FindWindow(id x11.WindowID) *Window {
@@ -183,6 +189,7 @@ func (w *Window) nativeInit() error {
 	x11Conn.SetSizeHints(w.wnd.id, x11.AtomWMNormalHints, &sizeHints)
 	w.nativeSetWMClass()
 	w.nativeSetTitle(w.title)
+	w.nativeUpdateFrameTheme()
 	x11Conn.Flush()
 	return nil
 }
@@ -448,10 +455,108 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 func (w *Window) nativeCancelMouseCapture() {
 }
 
-// nativeUpdateFrameTheme does nothing yet. The window manager draws the frame on Linux, but a client can still ask
-// for a dark one by setting the _GTK_THEME_VARIANT window property to "dark", which GNOME's Mutter honors. Setting that
-// property to follow the application's dark mode state has been left for later.
+// nativeUpdateFrameTheme asks the window manager to draw the frame (the title bar and its buttons) to match the current
+// dark mode state. The window manager owns the frame on Linux, so all a client can do is set a property on the window
+// that asks for one. No single property is honored by every window manager, so both of the ones in use are set, and
+// each window manager ignores the one it does not know. See x11UpdateGTKThemeVariant and x11UpdateKDEColorScheme.
 func (w *Window) nativeUpdateFrameTheme() {
+	if w.undecorated || w.wnd.id == 0 {
+		return // No window-manager-drawn frame to theme.
+	}
+	dark := IsDarkModeEnabled()
+	sentGTK := w.x11UpdateGTKThemeVariant(dark)
+	sentKDE := w.x11UpdateKDEColorScheme(dark)
+	if sentGTK || sentKDE {
+		x11Conn.Flush()
+	}
+}
+
+// x11UpdateGTKThemeVariant sets the _GTK_THEME_VARIANT property that GTK sets on its own windows. Window managers that
+// draw their frames with the GTK theme, such as Cinnamon's Muffin and GNOME's Mutter prior to version 44, draw the frame
+// with the variant of the theme that the property names. Mutter 44 and later ignore the property and draw every frame to
+// match the desktop's color scheme instead, which is what the application follows too unless SetThemeMode() has chosen
+// otherwise.
+//
+// Light is named explicitly rather than expressed by removing the property, since a window manager gives a window
+// without it the desktop's preferred variant, which is the dark one when the desktop prefers dark. A theme without a
+// "light" variant falls back to itself, which is the light look for all but the themes that are dark to begin with.
+// It returns true if a request was sent.
+func (w *Window) x11UpdateGTKThemeVariant(dark bool) bool {
+	if w.wnd.frameThemeSet && w.wnd.frameDark == dark {
+		return false
+	}
+	w.wnd.frameThemeSet = true
+	w.wnd.frameDark = dark
+	variant := "light"
+	if dark {
+		variant = "dark"
+	}
+	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.GTKThemeVariant, x11Conn.Atoms.UTF8String, 8, x11.PropModeReplace,
+		[]byte(variant))
+	return true
+}
+
+// x11UpdateKDEColorScheme sets the _KDE_NET_WM_COLOR_SCHEME property that KDE's own applications set on their windows
+// to the path of a color scheme file, and that KWin draws the frame of a window that carries it from. Without it, a
+// frame takes the colors of the desktop's own color scheme, which already match the application whenever its dark mode
+// state is the desktop's. So the property is set only when SetThemeMode() has chosen the other state, or when the
+// desktop's state cannot be determined, and is removed again once it is no longer needed. That keeps the frame in the
+// scheme the user chose for as long as it matches, rather than replacing it with a stock one. The scheme named is
+// Breeze's own light or dark one, and if that is not installed, the frame is left to the desktop's scheme. It returns
+// true if a request was sent.
+func (w *Window) x11UpdateKDEColorScheme(dark bool) bool {
+	var scheme string
+	if !nativeIsColorModeTrackingPossible() || dark != nativeIsDarkModeEnabled() {
+		light, darkScheme := x11KDEColorSchemes()
+		scheme = light
+		if dark {
+			scheme = darkScheme
+		}
+	}
+	if scheme == w.wnd.frameColorScheme {
+		return false
+	}
+	w.wnd.frameColorScheme = scheme
+	if scheme == "" {
+		x11Conn.DeleteProperty(w.wnd.id, x11Conn.Atoms.KDENetWMColorScheme)
+	} else {
+		// KWin asks for the property as a STRING, and is given nothing for one of any other type.
+		x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.KDENetWMColorScheme, x11.AtomString, 8, x11.PropModeReplace,
+			[]byte(scheme))
+	}
+	return true
+}
+
+// x11KDEColorSchemes returns the paths of Breeze's light and dark color schemes, found where KDE looks for color
+// schemes, which is the color-schemes directory within each of the XDG data directories. Either is empty if it is not
+// installed. They are looked up the first time they are needed, and not again.
+var x11KDEColorSchemes = sync.OnceValues(func() (light, dark string) {
+	dirs := linuxXDGDataDirs()
+	return linuxFindDataFile(dirs, "color-schemes/BreezeLight.colors"),
+		linuxFindDataFile(dirs, "color-schemes/BreezeDark.colors")
+})
+
+// linuxXDGDataDirs returns the XDG data directories, in the order a file is looked for in them: the user's own
+// ($XDG_DATA_HOME) and then the system's ($XDG_DATA_DIRS), with the defaults the XDG Base Directory Specification gives
+// for each that is not set. A relative path is ignored, as the specification requires.
+func linuxXDGDataDirs() []string {
+	system := os.Getenv("XDG_DATA_DIRS")
+	if system == "" {
+		system = "/usr/local/share:/usr/share"
+	}
+	dirs := append([]string{xos.AppDataDir(false)}, strings.Split(system, ":")...)
+	return slices.DeleteFunc(dirs, func(dir string) bool { return !filepath.IsAbs(dir) })
+}
+
+// linuxFindDataFile returns the path of the named file within the first of dirs that holds a readable one, or an empty
+// string if none does.
+func linuxFindDataFile(dirs []string, name string) string {
+	for _, dir := range dirs {
+		if p := filepath.Join(dir, name); xos.FileIsReadable(p) {
+			return p
+		}
+	}
+	return ""
 }
 
 func (w *Window) nativeVisible() bool {

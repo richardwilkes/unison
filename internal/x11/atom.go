@@ -109,6 +109,8 @@ type Atoms struct {
 	DnDSelection            Atom
 	DnDStatus               Atom
 	DnDTypeList             Atom
+	GTKThemeVariant         Atom
+	KDENetWMColorScheme     Atom
 	MotifWMHints            Atom
 	NetActiveWindow         Atom
 	NetCurrentDesktop       Atom
@@ -167,6 +169,8 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.DnDSelection, "XdndSelection"},
 		{&a.DnDStatus, "XdndStatus"},
 		{&a.DnDTypeList, "XdndTypeList"},
+		{&a.GTKThemeVariant, "_GTK_THEME_VARIANT"},           // The theme variant a window asks for its frame to be drawn in
+		{&a.KDENetWMColorScheme, "_KDE_NET_WM_COLOR_SCHEME"}, // The color scheme a window asks KWin to draw its frame in
 		{&a.MotifWMHints, "_MOTIF_WM_HINTS"},
 		{&a.NetActiveWindow, "_NET_ACTIVE_WINDOW"},
 		{&a.NetCurrentDesktop, "_NET_CURRENT_DESKTOP"},
