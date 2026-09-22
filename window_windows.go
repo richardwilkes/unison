@@ -54,6 +54,8 @@ type nativeWindow struct {
 	highSurrogate uint16
 	mouseTracked  bool
 	mouseCaptured bool
+	frameDark     bool
+	frameThemeSet bool
 	// uiaActivating reports that the window is in the middle of building the first snapshot its adapter will be created
 	// with. See w32AccessibilityAdapter.
 	uiaActivating bool
@@ -200,6 +202,7 @@ func (w *Window) nativeInit() error {
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYDATA, w32.MSGFLT_ALLOW, nil)
 	w32.ChangeWindowMessageFilterEx(w.wnd.wnd, w32.WM_COPYGLOBALDATA, w32.MSGFLT_ALLOW, nil)
 	w.w32UpdateFramebufferTransparency()
+	w.nativeUpdateFrameTheme()
 	var rect w32.RECT
 	w32.GetClientRect(w.wnd.wnd, &rect)
 	w.lastWidth = float32(rect.Right - rect.Left)
@@ -889,6 +892,39 @@ func (w *Window) nativeCancelMouseCapture() {
 	}
 	w.wnd.mouseCaptured = false
 	w32.ReleaseCapture()
+}
+
+// nativeUpdateFrameTheme asks DWM to draw the system frame (the title bar and its buttons) to match the current dark
+// mode state. DWM uses a light frame for every window that does not explicitly ask for a dark one, so without this a
+// dark-themed application keeps a light title bar.
+func (w *Window) nativeUpdateFrameTheme() {
+	if w.undecorated || w.wnd.wnd == 0 {
+		return // No system-drawn frame to theme.
+	}
+	dark := IsDarkModeEnabled()
+	if w.wnd.frameThemeSet && w.wnd.frameDark == dark {
+		return
+	}
+	// Recorded before the call is attempted: a failure means the attribute is unsupported on this version of
+	// Windows, so there is nothing to retry until the state itself changes.
+	w.wnd.frameThemeSet = true
+	w.wnd.frameDark = dark
+	attr := uint32(w32.DWMWA_USE_IMMERSIVE_DARK_MODE)
+	if !w32IsWindows10BuildOrGreater(w32.Windows10ImmersiveDarkModeBuild) {
+		attr = w32.DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1
+	}
+	var enabled int32
+	if dark {
+		enabled = 1
+	}
+	if !w32.DwmSetWindowAttribute(w.wnd.wnd, attr, unsafe.Pointer(&enabled), uint32(unsafe.Sizeof(enabled))) {
+		return
+	}
+	if w.nativeVisible() {
+		// Windows 10 does not repaint the frame on its own when the attribute changes on a visible window.
+		w32.SetWindowPos(w.wnd.wnd, 0, 0, 0, 0, 0,
+			w32.SWP_NOMOVE|w32.SWP_NOSIZE|w32.SWP_NOZORDER|w32.SWP_NOACTIVATE|w32.SWP_FRAMECHANGED)
+	}
 }
 
 func (w *Window) nativeVisible() bool {

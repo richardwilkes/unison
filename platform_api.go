@@ -390,6 +390,14 @@ func (w *Window) apiCurrentKeyModifiers() mod.Modifiers {
 	return w.nativeCurrentKeyModifiers()
 }
 
+func (w *Window) apiUpdateFrameTheme() {
+	if hw := w.wnd.hw; hw != nil {
+		hw.updateFrameTheme()
+		return
+	}
+	w.nativeUpdateFrameTheme()
+}
+
 func (w *Window) apiUpdateCursorImage() {
 	if hw := w.wnd.hw; hw != nil {
 		hw.updateCursorImage()

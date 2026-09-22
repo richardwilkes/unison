@@ -36,6 +36,9 @@ const (
 const (
 	Windows10AnniversaryUpdateBuild = 14393
 	Windows10CreatorsUpdateBuild    = 15063
+	// Windows10ImmersiveDarkModeBuild is the first build where the dark mode window attribute took its current
+	// index. See DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1.
+	Windows10ImmersiveDarkModeBuild = 18985
 )
 
 type OSVERSIONINFOEXW struct {

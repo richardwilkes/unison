@@ -209,6 +209,10 @@ func (hw *headlessWindow) currentKeyModifiers() mod.Modifiers {
 	return hw.hs.lastMods
 }
 
+func (hw *headlessWindow) updateFrameTheme() {
+	// A headless window has no OS-drawn frame, so there is nothing to do here.
+}
+
 // updateCursorImage records the cursor the window resolved to. There is nothing to draw it with, so what a test can
 // observe is which cursor was chosen, both per window and for the screen as a whole.
 func (hw *headlessWindow) updateCursorImage() {

@@ -18,6 +18,15 @@ import (
 var (
 	dwmapi                        = windows.NewLazySystemDLL("dwmapi.dll")
 	dwmEnableBlurBehindWindowProc = dwmapi.NewProc("DwmEnableBlurBehindWindow")
+	dwmSetWindowAttributeProc     = dwmapi.NewProc("DwmSetWindowAttribute")
+)
+
+// DWMWINDOWATTRIBUTE values https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
+const (
+	// DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1 is the attribute index the dark mode flag used prior to Windows 10
+	// build 18985. It was renumbered to DWMWA_USE_IMMERSIVE_DARK_MODE from that build onward.
+	DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1 = 19
+	DWMWA_USE_IMMERSIVE_DARK_MODE          = 20
 )
 
 // DWM Blur Behind Constants https://learn.microsoft.com/en-us/windows/win32/dwm/dwm-bb-constants
@@ -39,5 +48,12 @@ type DWM_BLURBEHIND struct {
 func DwmEnableBlurBehindWindow(hwnd windows.HWND, blurBehind *DWM_BLURBEHIND) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	ret, _, _ := dwmEnableBlurBehindWindowProc.Call(uintptr(hwnd), uintptr(unsafe.Pointer(blurBehind)))
+	return HResultSucceeded(ret)
+}
+
+// DwmSetWindowAttribute https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/nf-dwmapi-dwmsetwindowattribute
+func DwmSetWindowAttribute(hwnd windows.HWND, attr uint32, value unsafe.Pointer, size uint32) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	ret, _, _ := dwmSetWindowAttributeProc.Call(uintptr(hwnd), uintptr(attr), uintptr(value), uintptr(size))
 	return HResultSucceeded(ret)
 }
