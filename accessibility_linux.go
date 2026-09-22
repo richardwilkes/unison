@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/internal/atspi"
 	"github.com/richardwilkes/unison/internal/dbus"
 	"github.com/richardwilkes/unison/internal/x11"
@@ -28,6 +29,11 @@ import (
 // content to start from. It is a var rather than a const so that a test can pin either answer on whichever platform
 // it runs on.
 var axReadersFollowFocus = true
+
+// axFlatTableRole is the role a table whose rows cannot have children is described with: a table, which is what gives
+// the screen readers here their table navigation across rows and columns. It is a var rather than a const so that a
+// test can pin either answer on whichever platform it runs on.
+var axFlatTableRole = role.Table
 
 // axCaretBlockReportsFocus reports that the block of a document holding the reading caret publishes the focus as well
 // as the document itself, which is what makes Orca's focus mode present a caret the application moved. Orca presents a

@@ -12,6 +12,7 @@ package unison
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/internal/w32"
 	"github.com/richardwilkes/unison/internal/w32/uia"
 )
@@ -24,6 +25,11 @@ import (
 // move through the rest of it freely. It is a var rather than a const so that a test can pin either answer on
 // whichever platform it runs on.
 var axReadersFollowFocus = true
+
+// axFlatTableRole is the role a table whose rows cannot have children is described with: a table, which is what gives
+// the screen readers here their table navigation across rows and columns. It is a var rather than a const so that a
+// test can pin either answer on whichever platform it runs on.
+var axFlatTableRole = role.Table
 
 // axCaretBlockReportsFocus reports whether the block of a document that holds the reading caret publishes the focus as
 // well as the document itself. UI Automation has one focused element per desktop and raises

@@ -671,7 +671,7 @@ func TestTableAccessibility(t *testing.T) {
 
 	tree := screen.AccessibilityTree(wnd)
 	node := axMustNode(c, screen.AccessibilityNodeFor(table))
-	c.Equal(role.Table, node.Role, "a table whose rows cannot have children is a table rather than a tree")
+	c.Equal(unison.FlatTableRoleForTest(), node.Role, "a table whose rows cannot have children is not a tree")
 	c.True(node.Multiselectable)
 	c.Equal(3, node.RowCount)
 	c.Equal(2, node.ColumnCount)

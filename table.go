@@ -2689,7 +2689,7 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 		if t.hasHierarchy {
 			node.Role = role.Tree
 		} else {
-			node.Role = role.Table
+			node.Role = axFlatTableRole
 		}
 	}
 	node.Multiselectable = true

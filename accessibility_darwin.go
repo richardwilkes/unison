@@ -24,6 +24,13 @@ import (
 // const so that a test can pin either answer on whichever platform it runs on.
 var axReadersFollowFocus = false
 
+// axFlatTableRole is the role a table whose rows cannot have children is described with. VoiceOver is given the same
+// outline a table showing a hierarchy is described as, rather than a table: it follows an outline's current row, and
+// the cell cursor within it, correctly, while from a table's it went back to the first row the table showed and
+// selected that again on every arrow key. An outline whose rows disclose nothing reads exactly as a flat list of rows.
+// It is a var rather than a const so that a test can pin either answer on whichever platform it runs on.
+var axFlatTableRole = role.Tree
+
 // axCaretBlockReportsFocus reports whether the block of a document that holds the reading caret publishes the focus as
 // well as the document itself. VoiceOver reads a document through its elements and has no use for a second element
 // claiming the focus: AppKit expects exactly one focused element per window, and NSAccessibilityFocusedUIElement can
