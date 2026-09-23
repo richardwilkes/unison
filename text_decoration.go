@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"unicode"
+
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -23,6 +25,10 @@ type TextDecoration struct {
 	BaselineOffset  float32
 	Underline       bool
 	StrikeThrough   bool
+	// SmallCaps draws the runes as capitals, at whatever size the Font gives them, while the Text they belong to keeps
+	// them as they were written. It is how NewSmallCapsText renders the lowercase letters, and it leaves Text.String()
+	// -- and so what an assistive technology reads -- saying what the text says rather than shouting it.
+	SmallCaps bool
 }
 
 // Equivalent returns true if this TextDecoration is equivalent to the other.
@@ -34,8 +40,22 @@ func (d *TextDecoration) Equivalent(other *TextDecoration) bool {
 		return false
 	}
 	return d.Underline == other.Underline && d.StrikeThrough == other.StrikeThrough &&
-		d.BaselineOffset == other.BaselineOffset && d.OnBackgroundInk == other.OnBackgroundInk &&
-		d.BackgroundInk == other.BackgroundInk && d.Font.Descriptor() == other.Font.Descriptor()
+		d.SmallCaps == other.SmallCaps && d.BaselineOffset == other.BaselineOffset &&
+		d.OnBackgroundInk == other.OnBackgroundInk && d.BackgroundInk == other.BackgroundInk &&
+		d.Font.Descriptor() == other.Font.Descriptor()
+}
+
+// shownRunes returns the runes as this decoration draws them, which is the runes themselves unless SmallCaps is set,
+// in which case it is their capitals.
+func (d *TextDecoration) shownRunes(runes []rune) []rune {
+	if !d.SmallCaps {
+		return runes
+	}
+	shown := make([]rune, len(runes))
+	for i, r := range runes {
+		shown[i] = unicode.ToUpper(r)
+	}
+	return shown
 }
 
 // Clone the TextDecoration.

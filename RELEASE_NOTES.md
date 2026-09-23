@@ -7,6 +7,8 @@
   neighbor in the same words. A custom panel that declares `role.Label` and an `Accessibility.Name` now serves as such
   a label too, a popup menu titles its menu after its `Accessibility.LabeledBy` label, and an icon-only table column
   header is named by its tooltip.
+- `NewSmallCapsText` now keeps the text as it was written and capitalizes only what it draws, through the new
+  `TextDecoration.SmallCaps`, so `Text.String()` and what a screen reader is told say "Title" rather than "TITLE".
 
 ## Bug Fixes
 

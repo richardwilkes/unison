@@ -86,6 +86,9 @@ func NewSmallCapsText(text string, decoration *TextDecoration) *Text {
 			return fd
 		},
 	}
+	// The lowercase letters are kept as written and drawn as capitals by the decoration, so that the text still says
+	// what was asked for: String() answers "Title" for a label drawn TITLE, and so does an assistive technology.
+	smaller.SmallCaps = true
 	t := NewTextFromRunes(nil, decoration)
 	isLower := false
 	run := make([]rune, 0, 32)
@@ -98,7 +101,7 @@ func NewSmallCapsText(text string, decoration *TextDecoration) *Text {
 					run = make([]rune, 0, 32)
 				}
 			}
-			run = append(run, unicode.ToUpper(r))
+			run = append(run, r)
 		} else {
 			if isLower {
 				isLower = false
@@ -244,9 +247,11 @@ func (t *Text) AddRunes(runes []rune, decoration *TextDecoration) {
 	}
 	t.runes = append(t.runes, runes...)
 	face := decoration.Font.Face()
-	glyphs := decoration.Font.RunesToGlyphs(runes)
+	// Measured from the runes as they are drawn, which differ from the runes kept only for a small caps decoration.
+	shown := decoration.shownRunes(runes)
+	glyphs := decoration.Font.RunesToGlyphs(shown)
 	t.widths = append(t.widths, decoration.Font.GlyphWidths(glyphs)...)
-	for i, r := range runes {
+	for i, r := range shown {
 		t.decorations = append(t.decorations, decoration)
 		if glyphs[i] != 0 {
 			continue
@@ -301,7 +306,7 @@ func (t *Text) Draw(canvas *Canvas, pt geom.Point) {
 		// The pointer comparison is a fast path for the common case: AddRunes() hands every rune of a run the same
 		// *TextDecoration, so the far more expensive Equivalent() only has to run at a genuine pointer change.
 		if i != 0 && d != current && !current.Equivalent(d) {
-			current.DrawText(canvas, string(t.runes[start:i]), pt, nx-pt.X)
+			current.DrawText(canvas, string(current.shownRunes(t.runes[start:i])), pt, nx-pt.X)
 			current = d
 			pt.X = nx
 			start = i
@@ -309,7 +314,7 @@ func (t *Text) Draw(canvas *Canvas, pt geom.Point) {
 		nx += t.widths[i]
 	}
 	if start < len(t.decorations) {
-		current.DrawText(canvas, string(t.runes[start:]), pt, nx-pt.X)
+		current.DrawText(canvas, string(current.shownRunes(t.runes[start:])), pt, nx-pt.X)
 	}
 }
 

@@ -44,3 +44,24 @@ func TestTextEmptySliceMetricsMatchEmptyText(t *testing.T) {
 	c.Equal(ref.Baseline(), empty.Baseline())
 	c.Equal(float32(0), empty.Width())
 }
+
+// TestSmallCapsTextKeepsItsCase verifies that small caps are a matter of drawing alone: the text keeps its letters as
+// they were written, so String() -- and everything read from it, such as what an assistive technology is told a label
+// says -- answers "Title" for a label drawn TITLE, while the lowercase letters are still measured as the smaller
+// capitals they are drawn as.
+func TestSmallCapsTextKeepsItsCase(t *testing.T) {
+	c := check.New(t)
+	dec := &unison.TextDecoration{Font: unison.SystemFont, OnBackgroundInk: unison.Black}
+	text := unison.NewSmallCapsText("Title (ST)", dec)
+	c.Equal("Title (ST)", text.String())
+	c.Equal([]rune("Title (ST)"), text.Runes())
+
+	fd := unison.SystemFont.Descriptor()
+	fd.Size *= 0.75
+	smaller := &unison.TextDecoration{Font: fd.Font(), OnBackgroundInk: unison.Black}
+	drawn := unison.NewText("T", dec)
+	drawn.AddString("ITLE", smaller)
+	drawn.AddString(" (ST)", dec)
+	c.Equal(drawn.Width(), text.Width(), "the lowercase letters are measured as smaller capitals")
+	c.NotEqual(unison.NewText("Title (ST)", dec).Width(), text.Width(), "and not as the lowercase letters they hold")
+}
