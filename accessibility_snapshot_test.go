@@ -378,3 +378,102 @@ func TestAccessibilityPublishLaysTheWindowOutFirst(t *testing.T) {
 	c.Equal(frame, secondNode.Bounds, "the published bounds must be where the panel actually is")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestAccessibilitySiblingLabelReadsTheAccessibleName pins that the sibling-label convention names a control the way
+// the label names itself rather than by the text the label draws. A label drawn in small caps holds its text
+// upper-cased, and an application that gives such a label its Accessibility.Name in the original case expects the field
+// beside it to be announced in those words, not shouted.
+func TestAccessibilitySiblingLabelReadsTheAccessibleName(t *testing.T) {
+	c := check.New(t)
+	var field *Field
+	var label *Label
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 500, Height: 400},
+		StartupFinishedCallback(func() {
+			label = axTestLabel("STRENGTH (ST):")
+			label.Accessibility.Name = "Strength (ST):"
+			field = NewField()
+			content := NewPanel()
+			content.SetLayout(&FlexLayout{Columns: 2, HSpacing: StdHSpacing, VSpacing: StdVSpacing})
+			content.AddChild(label)
+			content.AddChild(field)
+			wnd = axNewTestWindow(t, "accessible label names", geom.NewRect(10, 10, 400, 300), content)
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	fieldNode := screen.AccessibilityNodeFor(field)
+	c.True(fieldNode != nil)
+	labelNode := screen.AccessibilityNodeFor(label)
+	c.True(labelNode != nil)
+	if fieldNode != nil && labelNode != nil {
+		c.Equal("Strength (ST)", fieldNode.Name, "the field is named as the label names itself, colon trimmed")
+		c.Equal([]accessibility.NodeID{labelNode.ID}, fieldNode.LabeledBy)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilitySiblingLabelAcceptsACustomLabelPanel pins which panels other than a *Label the sibling-label
+// convention will take a name from: one that declares role.Label and says what it is to be read as, which is how a
+// custom widget that draws its own text takes part. A plain panel that merely happens to carry a name is not a caption
+// for what follows it, and stays out of it.
+func TestAccessibilitySiblingLabelAcceptsACustomLabelPanel(t *testing.T) {
+	c := check.New(t)
+	var afterCustom, afterNamedGroup *Field
+	var custom *Panel
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 500, Height: 400},
+		StartupFinishedCallback(func() {
+			custom = NewPanel()
+			custom.Accessibility.Role = role.Label
+			custom.Accessibility.Name = "Weight:"
+			afterCustom = NewField()
+			namedGroup := NewPanel()
+			namedGroup.Accessibility.Name = "Not a caption"
+			afterNamedGroup = NewField()
+			content := NewPanel()
+			content.SetLayout(&FlexLayout{Columns: 2, HSpacing: StdHSpacing, VSpacing: StdVSpacing})
+			content.AddChild(custom)
+			content.AddChild(afterCustom)
+			content.AddChild(namedGroup)
+			content.AddChild(afterNamedGroup)
+			wnd = axNewTestWindow(t, "custom labels", geom.NewRect(10, 10, 400, 300), content)
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	customNode := screen.AccessibilityNodeFor(custom)
+	c.True(customNode != nil)
+	fieldNode := screen.AccessibilityNodeFor(afterCustom)
+	c.True(fieldNode != nil)
+	if fieldNode != nil && customNode != nil {
+		c.Equal("Weight", fieldNode.Name, "a panel declaring itself a label names the control beside it")
+		c.Equal([]accessibility.NodeID{customNode.ID}, fieldNode.LabeledBy)
+	}
+	groupedNode := screen.AccessibilityNodeFor(afterNamedGroup)
+	c.True(groupedNode != nil)
+	if groupedNode != nil {
+		c.Equal("", groupedNode.Name, "a named group is not a caption for the control after it")
+		c.Equal(0, len(groupedNode.LabeledBy))
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityControlNameHonorsLabeledBy pins the order axControlName resolves a popup's name in, which is the
+// order the description of the popup itself uses: an outright name, then the label it points at, then the label laid
+// out before it. A popup fixed up with LabeledBy used to title its menu after whatever sibling preceded it, or after
+// nothing at all, however clearly it had said which label was its own.
+func TestAccessibilityControlNameHonorsLabeledBy(t *testing.T) {
+	c := check.New(t)
+	elsewhere := axTestLabel("Size:")
+	preceding := axTestLabel("Ignored:")
+	popup := NewPopupMenu[string]()
+	content := NewPanel()
+	content.AddChild(preceding)
+	content.AddChild(popup)
+	c.Equal("Ignored", axControlName(popup.AsPanel()), "with nothing else said, the preceding label names it")
+	popup.Accessibility.LabeledBy = elsewhere
+	c.Equal("Size", axControlName(popup.AsPanel()), "the label it points at outranks the one before it")
+	popup.Accessibility.Name = "Font Size"
+	c.Equal("Font Size", axControlName(popup.AsPanel()), "an outright name outranks both")
+}

@@ -602,7 +602,9 @@ func (h *TableHeader[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 // pointing Self at itself — is named by that label's text. Asking a label for its text is not the same as asking a
 // panel for it: every panel answers String() with the name of its own type, so a header built around anything else with
 // a title of its own would be announced as the name of the Go type it was written as. Anything that is not a label is
-// read from the labels it is built out of, and then, failing that, from whatever its content turns out to be called.
+// read from the labels it is built out of, and then, failing that, from whatever its content turns out to be called. A
+// header with no text at all — one whose title is an icon — is named by its tooltip, which is the only thing such a
+// header has to say what the column holds, exactly as an icon button is.
 //
 // label is what axLabelOf made of the panel, which the caller has usually had to work out already.
 //
@@ -612,9 +614,13 @@ func axColumnHeaderName(panel *Panel, label *Label) string {
 		return name
 	}
 	if label != nil {
-		return label.String()
+		if text := label.String(); text != "" {
+			return text
+		}
+	} else if text := axLabelText(panel); text != "" {
+		return text
 	}
-	return axLabelText(panel)
+	return axTooltipText(panel)
 }
 
 // axDescribeColumnHeaderText gives the node standing for a column that is nothing but a title the text of that title,

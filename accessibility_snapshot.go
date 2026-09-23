@@ -821,8 +821,8 @@ func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 	}
 	if node.Name == "" && axRoleUsesSiblingLabel(node.Role) {
 		if labeler := axPrecedingLabel(p); labeler != nil {
-			node.Name = axTrimLabelText(labeler.String())
-			node.LabeledBy = append(node.LabeledBy, axIDFor(labeler.AsPanel()))
+			node.Name = axTrimLabelText(axLabelText(labeler))
+			node.LabeledBy = append(node.LabeledBy, axIDFor(labeler))
 		}
 	}
 	if node.Name == "" && (node.Role == role.Heading || node.Role == role.Label) {
@@ -860,16 +860,20 @@ func axRoleUsesSiblingLabel(r role.Enum) bool {
 	}
 }
 
-// axPrecedingLabel returns the Label immediately before p among its parent's children, or nil if there is not one. This
+// axPrecedingLabel returns the label immediately before p among its parent's children, or nil if there is not one. This
 // is the "label, then the thing it labels" convention that laying controls out in a two-column grid produces, and it is
 // used only as a last resort: a widget that knows its own label sets Accessibility.LabeledBy and never depends on it.
+// The name it yields is read with axLabelText, so a label whose Accessibility.Name says something other than what it
+// draws — one drawn in small caps, say, whose stored text is upper-cased — names its neighbor the way it names itself.
 //
 // Only a sibling that is still going to be published as static text counts. A *Label is the type several things in this
 // package are built out of rather than a promise about what any of them is — NewLink hands back one that describes
 // itself with role.Link — and a sibling that says it is something else is something a person acts on in its own right,
 // not a caption for what follows it. Naming the control after it would have an assistive technology read a hyperlink's
-// text as the name of the field beside it and hand back the link as the field's LabeledBy.
-func axPrecedingLabel(p *Panel) *Label {
+// text as the name of the field beside it and hand back the link as the field's LabeledBy. A panel of some other type
+// counts only when it says outright that it is a label and gives the name it is to be read as, which is how a custom
+// widget that draws its own text takes part in the convention.
+func axPrecedingLabel(p *Panel) *Panel {
 	parent := p.Parent()
 	if parent == nil {
 		return nil
@@ -882,14 +886,20 @@ func axPrecedingLabel(p *Panel) *Label {
 	if previous.Hidden {
 		return nil
 	}
-	if r := previous.Accessibility.Role; r != role.Auto && r != role.Label {
-		return nil
+	switch previous.Accessibility.Role {
+	case role.Auto:
+		if label, ok := previous.Self.(*Label); ok && label.String() != "" {
+			return previous
+		}
+	case role.Label:
+		if previous.Accessibility.Name != "" {
+			return previous
+		}
+		if label, ok := previous.Self.(*Label); ok && label.String() != "" {
+			return previous
+		}
 	}
-	label, ok := previous.Self.(*Label)
-	if !ok || label.String() == "" {
-		return nil
-	}
-	return label
+	return nil
 }
 
 // axLabelText returns the text of p and its descendants, joined with spaces, for a panel whose whole content is static

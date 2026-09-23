@@ -376,3 +376,41 @@ func axCheckColumnHeaderHoldsFocus(c check.Checker, screen *unison.HeadlessScree
 	c.True(inside.Focused, "the widget in the column header should be described as holding the focus")
 	c.Equal(inside.ID, tree.Focus, "the description should report where the focus is")
 }
+
+// TestTableHeaderAccessibilityNamesAnIconOnlyColumnHeaderByItsTooltip verifies that a column header with no text — one
+// whose title is an icon — is named by its tooltip, which is the only thing such a header has to say what the column
+// holds. It used to be announced with no name at all, and the tooltip was offered only as a description, so the cells
+// beneath it were read with no column title either.
+func TestTableHeaderAccessibilityNamesAnIconOnlyColumnHeaderByItsTooltip(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var header *unison.TableHeader[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table = axNewTable(flatRows(2)...)
+			iconOnly := unison.NewTableColumnHeader[*tableTestRow]("", "Equipped", nil)
+			iconOnly.Drawable = &unison.DrawableSVG{SVG: unison.CheckmarkSVG, Size: geom.NewSize(12, 12)}
+			header = unison.NewTableHeader[*tableTestRow](table,
+				unison.TableColumnHeader[*tableTestRow](iconOnly),
+				unison.NewTableColumnHeader[*tableTestRow]("Stock", "What is in stock", nil))
+			scroller := axScroller(table, geom.NewSize(300, 200))
+			scroller.SetColumnHeader(header)
+			wnd = newHeadlessWindow(t, "icon header", geom.NewRect(10, 10, 400, 400), axColumn(scroller))
+		}))
+	c.NotNil(wnd)
+
+	tree := screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(header)
+	c.True(node != nil)
+	columns := axChildNodes(tree, node)
+	c.Equal(2, len(columns))
+	if len(columns) != 2 {
+		return
+	}
+	c.Equal("Equipped", columns[0].Name, "a header with no text is named by its tooltip")
+	c.Equal("", columns[0].Description, "and the tooltip is not repeated as its description")
+	c.Equal("Stock", columns[1].Name, "a header with text keeps its text as its name")
+	c.Equal("What is in stock", columns[1].Description, "and its tooltip as its description")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

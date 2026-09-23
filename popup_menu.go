@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/check"
@@ -569,16 +570,23 @@ func (p *PopupMenu[T]) axName() string {
 }
 
 // axControlName returns the name a control is known by, which is the name it has been given outright or, failing that,
-// the text of the label the layout places before it — the same convention the description of the control itself falls
-// back to. A widget that pops a menu up passes it as the menu's title, which is what an assistive technology announces
-// as the person moves into the choices; without it the choices hang off an anonymous menu, with nothing to say which
-// control they belong to.
+// the text of the label it points at with Accessibility.LabeledBy or of the label the layout places before it — the
+// same order the description of the control itself resolves its name in. A widget that pops a menu up passes it as the
+// menu's title, which is what an assistive technology announces as the person moves into the choices; without it the
+// choices hang off an anonymous menu, with nothing to say which control they belong to.
 func axControlName(p *Panel) string {
 	if name := p.Accessibility.Name; name != "" {
 		return name
 	}
+	if !xreflect.IsNil(p.Accessibility.LabeledBy) {
+		if labeler := p.Accessibility.LabeledBy.AsPanel(); labeler != nil {
+			if name := axTrimLabelText(axLabelText(labeler)); name != "" {
+				return name
+			}
+		}
+	}
 	if labeler := axPrecedingLabel(p); labeler != nil {
-		return axTrimLabelText(labeler.String())
+		return axTrimLabelText(axLabelText(labeler))
 	}
 	return ""
 }
