@@ -64,12 +64,15 @@ jobs:
             libgl1
 
       # Linting happens once in the lint job above, so these jobs only build and test. The race detector isn't
-      # supported on windows/arm64, so run the tests without it there (--test instead of --race). Everywhere else,
-      # build.sh runs the race tests with CGO_ENABLED=1 on non-macOS platforms because Go's prebuilt race runtime
-      # requires cgo there — the runners' preinstalled C toolchains cover that; the module itself has no cgo.
+      # supported on windows/arm64, and the macos-26-intel runner is too slow to run the tests under it without
+      # tripping their deadlines, so both run the tests without it (--test instead of --race); the other platforms
+      # cover the race run for every OS. Everywhere else, build.sh runs the race tests with CGO_ENABLED=1 on
+      # non-macOS platforms because Go's prebuilt race runtime requires cgo there — the runners' preinstalled C
+      # toolchains cover that; the module itself has no cgo.
       - name: Build
         run: |
-          if [ "$RUNNER_OS" = "Windows" ] && [ "$RUNNER_ARCH" = "ARM64" ]; then
+          if { [ "$RUNNER_OS" = "Windows" ] && [ "$RUNNER_ARCH" = "ARM64" ]; } ||
+            { [ "$RUNNER_OS" = "macOS" ] && [ "$RUNNER_ARCH" = "X64" ]; }; then
             ./build.sh --test
           else
             ./build.sh --race

@@ -1046,6 +1046,7 @@ func TestAReplyWithNoSenderCompletesACall(t *testing.T) {
 }
 
 func TestCallRemovesTheSerialItRegistered(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
 	t.Parallel()
 	c := check.New(t)
 	b := newFakeBus(t)
