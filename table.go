@@ -3006,7 +3006,7 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 	}
 	for col := range t.Columns {
 		frame := t.cellFrameAtY(row, col, rect.Y)
-		text := entry.row.CellDataForSort(col)
+		text := axCellText(entry.row, col)
 		key := accessibility.CellKey{Row: id, Col: col}
 		cellID := b.AddVirtualChildOf(rowID, key, func(n *accessibility.Node) {
 			n.Role = role.Cell
@@ -3082,9 +3082,9 @@ func (t *Table[T]) axRowName(row T, titles []string) string {
 		return ""
 	}
 	var buffer strings.Builder
-	buffer.WriteString(row.CellDataForSort(0))
+	buffer.WriteString(axCellText(row, 0))
 	for col := 1; col < len(t.Columns); col++ {
-		text := row.CellDataForSort(col)
+		text := axCellText(row, col)
 		if text == "" {
 			continue
 		}
@@ -3107,6 +3107,15 @@ func (t *Table[T]) axRowName(row T, titles []string) string {
 		buffer.WriteString(text)
 	}
 	return buffer.String()
+}
+
+// axCellText returns the words an assistive technology is given for a cell: what the row says they are when it says
+// so (see TableRowAccessibleText), and otherwise the cell's sort text.
+func axCellText[T TableRowConstraint[T]](row T, col int) string {
+	if accessible, ok := any(row).(TableRowAccessibleText); ok {
+		return accessible.CellDataForAccessibility(col)
+	}
+	return row.CellDataForSort(col)
 }
 
 // axColumnTitles returns what each of the table's columns is called, by column index, as axRowName names a row from

@@ -56,6 +56,16 @@ type TableRowData[T any] interface {
 	SetOpen(open bool)
 }
 
+// TableRowAccessibleText is implemented by a row whose sort text is not what a person should hear. A table names each
+// row and cell for an assistive technology from CellDataForSort, which is usually the text the cell shows. A row that
+// puts something ahead of that text so that it sorts where it should -- a marker that groups containers first, a rank
+// that orders kinds of row -- would have that marker read out in front of every row, so such a row implements this to
+// hand back the words on their own. Where a row does not implement it, CellDataForSort is used.
+type TableRowAccessibleText interface {
+	// CellDataForAccessibility returns what an assistive technology should call the specified cell.
+	CellDataForAccessibility(col int) string
+}
+
 // TableRowConstraint defines the constraints required of the data type used for data rows in tables.
 type TableRowConstraint[T any] interface {
 	comparable

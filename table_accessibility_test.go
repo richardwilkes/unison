@@ -15,6 +15,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
@@ -1142,6 +1143,92 @@ func TestTableAccessibilityRowNameIsTheWholeRow(t *testing.T) {
 		c.Equal("report.docx, 9/1/2024", rows[0].Name,
 			"a table with no header has no titles to announce its columns with")
 	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axTextRow is a row whose sort text carries a marker ahead of the words a cell shows, as a row that must sort its
+// containers first or its kinds in a fixed order does, and which hands the bare words to an assistive technology
+// through TableRowAccessibleText.
+type axTextRow struct {
+	parent *axTextRow
+	id     tid.TID
+}
+
+func (r *axTextRow) CloneForTarget(_ unison.Paneler, newParent *axTextRow) *axTextRow {
+	return &axTextRow{id: r.id, parent: newParent}
+}
+func (r *axTextRow) ID() tid.TID                 { return r.id }
+func (r *axTextRow) Parent() *axTextRow          { return r.parent }
+func (r *axTextRow) SetParent(parent *axTextRow) { r.parent = parent }
+func (r *axTextRow) CanHaveChildren() bool       { return false }
+func (r *axTextRow) Children() []*axTextRow      { return nil }
+func (r *axTextRow) SetChildren(_ []*axTextRow)  {}
+func (r *axTextRow) IsOpen() bool                { return false }
+func (r *axTextRow) SetOpen(_ bool)              {}
+func (r *axTextRow) ColumnCell(_, _ int, _, _ unison.Ink, _, _, _ bool) unison.Paneler {
+	return unison.NewPanel()
+}
+
+func (r *axTextRow) CellDataForSort(col int) string {
+	return "1/" + r.CellDataForAccessibility(col)
+}
+
+func (r *axTextRow) CellDataForAccessibility(col int) string {
+	switch col {
+	case 0:
+		return "report.docx"
+	case 1:
+		return "9/1/2024"
+	default:
+		return ""
+	}
+}
+
+// TestTableAccessibilityRowNameComesFromAccessibleText verifies that a row which says what its cells should be called
+// (see TableRowAccessibleText) has those words used for the row and for each cell, rather than the sort text with
+// whatever ordering marker the row put ahead of it.
+func TestTableAccessibilityRowNameComesFromAccessibleText(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*axTextRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			model := &unison.SimpleTableModel[*axTextRow]{}
+			model.SetRootRows([]*axTextRow{{id: "r0"}})
+			table = unison.NewTable[*axTextRow](model)
+			table.Columns = []unison.ColumnInfo{
+				{ID: 0, Current: 100},
+				{ID: 1, Current: 100},
+				{ID: 2, Current: 100},
+			}
+			table.SyncToModel()
+			unison.NewTableHeader(table,
+				unison.TableColumnHeader[*axTextRow](unison.NewTableColumnHeader[*axTextRow]("Name", "", nil)),
+				unison.NewTableColumnHeader[*axTextRow]("Modified", "", nil),
+				unison.NewTableColumnHeader[*axTextRow]("Size", "", nil))
+			wnd = newHeadlessWindow(t, "accessible text", geom.NewRect(10, 10, 500, 400), axColumn(table))
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+
+	tree := screen.AccessibilityTree(wnd)
+	rows := axChildNodes(tree, axMustNode(c, screen.AccessibilityNodeFor(table)))
+	c.Equal(1, len(rows))
+	if len(rows) != 1 {
+		return
+	}
+	c.Equal("report.docx, Modified 9/1/2024", rows[0].Name,
+		"the row is named from the words the row hands over, not from the sort text and its marker")
+	var cells []string
+	for _, child := range axChildNodes(tree, rows[0]) {
+		if child.Role == role.Cell {
+			cells = append(cells, child.Name)
+		}
+	}
+	c.Equal([]string{"report.docx", "9/1/2024", ""}, cells,
+		"each cell is named from the words the row hands over, not from the sort text and its marker")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
