@@ -257,9 +257,10 @@ func (s *Slider) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifiers) bool
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling.
-func (s *Slider) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
-	s.DefaultMouseDrag(where, button, mods)
+// DefaultMouseUp provides the default mouse up handling. The release's position is not applied: the press and the drags
+// before it have already set the value, and a release that ends a press for a contextual menu arrives outside every
+// panel (see InputCallbacks.MouseUpCallback), where applying it would drop the value to the minimum.
+func (s *Slider) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 	s.pressed = false
 	s.MarkForRedraw()
 	return true

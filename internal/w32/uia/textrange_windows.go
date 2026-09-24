@@ -814,16 +814,13 @@ func textRangeGetChildren(this, out uintptr) uint64 {
 }
 
 // textRangeShowContextMenu implements ITextRangeProvider2::ShowContextMenu, which is what the applications key does
-// while a screen reader's reading cursor is in a stretch of text: the menu opens where the range begins rather than
-// where the mouse is.
-//
-// The caret is placed there first, which the widget does as part of the request: the menu's Copy applies to the
-// selection, so a menu opened at one place while the caret sat at another would copy the wrong text. An owner that
-// does not offer the action refuses, which is what an unfocusable Markdown view and a label both do — neither has a
-// menu to open.
+// while a screen reader's reading cursor is in a stretch of text: the request names the range, and a widget with a
+// caret selects it first and opens the menu beneath the caret, at the range's end, so that the menu's Cut and Copy
+// apply to it; see unison's axPlaceContextMenuRange. A label has no caret, so its menu opens where it does at any
+// assistive technology's request. An owner that does not offer the action refuses.
 func textRangeShowContextMenu(this uintptr) uint64 {
 	r := rangeFromThis(this)
-	doc, start, _, hr := r.resolve()
+	doc, start, end, hr := r.resolve()
 	if hr != w32.COM_S_OK {
 		return hr
 	}
@@ -834,5 +831,5 @@ func textRangeShowContextMenu(this uintptr) uint64 {
 	if !node.Actions.Has(accessibility.ShowContextMenu) {
 		return E_INVALIDOPERATION
 	}
-	return r.dispatch(accessibility.ActionRequest{Action: accessibility.ShowContextMenu, Start: start, End: start})
+	return r.dispatch(accessibility.ActionRequest{Action: accessibility.ShowContextMenu, Start: start, End: end})
 }

@@ -127,6 +127,7 @@ func NewField() *Field {
 	f.MouseDownCallback = f.DefaultMouseDown
 	f.MouseDragCallback = f.DefaultMouseDrag
 	f.MouseUpCallback = f.DefaultMouseUp
+	f.ContextMenuCallback = f.DefaultContextMenu
 	f.UpdateCursorCallback = f.DefaultUpdateCursor
 	f.KeyDownCallback = f.DefaultKeyDown
 	f.RuneTypedCallback = f.DefaultRuneTyped
@@ -471,17 +472,13 @@ func (f *Field) DefaultFocusLost() {
 	f.MarkForRedraw()
 }
 
-// DefaultMouseDown provides the default mouse down handling.
+// DefaultMouseDown provides the default mouse down handling. A right press arrives here only when the window does not
+// take it for a contextual menu: the field has no ContextMenuCallback, the press landed on an accessory panel without
+// one, or the field's window is not the active one.
 func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 	f.undoID = NextUndoID()
 	wasFocused := f.Focused()
 	f.RequestFocus()
-	if button == ButtonRight && clickCount == 1 {
-		// Claim the click so that the mouse up is delivered to this field, where the context menu will be shown. The
-		// menu cannot be popped up here, since it would swallow the mouse up event and leave the window convinced the
-		// right button was still down, causing subsequent mouse moves to be treated as drags.
-		return true
-	}
 	if button == ButtonLeft {
 		f.extendByWord = false
 		switch clickCount {
@@ -517,32 +514,39 @@ func (f *Field) DefaultMouseDown(where geom.Point, button, clickCount int, mods 
 	return false
 }
 
-// DefaultMouseUp provides the default mouse up handling.
-func (f *Field) DefaultMouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
-	if button == ButtonRight {
-		if where.In(f.ContentRect(true)) {
-			f.ShowContextMenu(where)
-		}
-		return true
-	}
+// DefaultMouseUp provides the default mouse up handling, which has nothing to do.
+func (f *Field) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 	return false
 }
 
-// ShowContextMenu displays the context menu for the field at the specified position, which should be in local
-// coordinates. Only the actions that can currently be performed (Cut, Copy, Paste, Select All) are included; if none
-// of them can be performed, no menu is shown.
-func (f *Field) ShowContextMenu(where geom.Point) {
+// DefaultContextMenu provides the default contextual menu for the field, holding whichever of Cut, Copy, Paste and
+// Select All can currently be performed, or nil when none can. The commands act on whatever holds the keyboard focus
+// in the active window, so nil is returned unless this field is that; the active window's focus is checked rather than
+// Focused, which reports the field unfocused while a transient window holds the platform focus. The window focuses the
+// field before asking, but a field that cannot take the focus, or one whose Panel.ShowContextMenu an application calls
+// without focusing it first, shows nothing. The position is unused.
+func (f *Field) DefaultContextMenu(_ geom.Point) Menu {
+	if wnd := f.Window(); wnd == nil || wnd != ActiveWindow() || !f.Is(wnd.CurrentFocus()) {
+		return nil
+	}
 	fac := DefaultMenuFactory()
 	cm := fac.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
 	cm.InsertItem(-1, CutAction().NewContextMenuItemFromAction(fac))
 	cm.InsertItem(-1, CopyAction().NewContextMenuItemFromAction(fac))
 	cm.InsertItem(-1, PasteAction().NewContextMenuItemFromAction(fac))
 	cm.InsertItem(-1, SelectAllAction().NewContextMenuItemFromAction(fac))
-	if cm.Count() > 0 {
-		where = f.PointToRoot(where)
-		cm.Popup(geom.NewRect(where.X, where.Y, 1, 1), 0)
+	if cm.Count() == 0 {
+		cm.Dispose()
+		return nil
 	}
-	cm.Dispose()
+	return cm
+}
+
+// ContextMenuAnchor implements ContextMenuAnchorer: the menu opens beneath the caret's line, brought into view first,
+// so that it neither covers the text it acts on nor opens out of sight.
+func (f *Field) ContextMenuAnchor() geom.Point {
+	caret := f.axScrollRectIntoView(axCaretRect(f.axTextLines(), f.axCaret()))
+	return geom.NewPoint(caret.X, caret.Bottom())
 }
 
 // DefaultMouseDrag provides the default mouse drag handling.
@@ -1466,8 +1470,7 @@ func (f *Field) ProvideAccessibility(b *AccessibilityBuilder) {
 	// Pressing a field is not activating it; the default behavior would synthesize a click at the center of the field,
 	// which would do no more than drop the caret there.
 	node.Actions = node.Actions.Without(accessibility.Press).
-		With(accessibility.SetValue, accessibility.SetTextSelection, accessibility.ReplaceText,
-			accessibility.ShowContextMenu)
+		With(accessibility.SetValue, accessibility.SetTextSelection, accessibility.ReplaceText)
 	if node.Protected {
 		return
 	}
@@ -1585,18 +1588,21 @@ func (f *Field) axBuildLineCache() []accessibility.Line {
 
 // axScrollRangeIntoView brings a range of the field's content into view, which is what an assistive technology asks
 // for when it moves its own reading cursor through text the person cannot see.
-//
-// A field that scrolls its own content has to be scrolled first: nothing outside it can reveal a word that the field
-// itself is holding out of sight. The edge arithmetic autoScroll uses, shifted rather than assigned and without its
-// clamp, puts the range within the content rect — horizontally always, vertically only for a field that accepts line
-// feeds — and the rectangle is shifted along with the content so that whatever the field could not reveal by itself is
-// then asked of the ancestors that can scroll.
 func (f *Field) axScrollRangeIntoView(start, end int) {
-	lines := f.axTextLines()
-	rect := axRangeRect(lines, min(start, end), max(start, end))
-	if rect.Empty() {
-		return
+	if rect := axRangeRect(f.axTextLines(), min(start, end), max(start, end)); !rect.Empty() {
+		f.axScrollRectIntoView(rect)
 	}
+}
+
+// axScrollRectIntoView brings a rectangle of the field's content, in the field's own coordinates, into view, and
+// returns where it is once the field has scrolled.
+//
+// A field that scrolls its own content has to be scrolled first: nothing outside it can reveal what the field itself is
+// holding out of sight. The edge arithmetic autoScroll uses, shifted rather than assigned and without its clamp, puts
+// the rectangle within the content rect — horizontally always, vertically only for a field that accepts line feeds —
+// and the rectangle is shifted along with the content so that whatever the field could not reveal by itself is then
+// asked of the ancestors that can scroll.
+func (f *Field) axScrollRectIntoView(rect geom.Rect) geom.Rect {
 	if f.AutoScroll {
 		content := f.ContentRect(false)
 		original := f.scrollOffset
@@ -1620,14 +1626,15 @@ func (f *Field) axScrollRangeIntoView(start, end int) {
 		}
 	}
 	f.ScrollRectIntoView(rect)
+	return rect
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology. The field's value may be replaced
 // outright, a range of it may be replaced in place — which participates in undo exactly as a paste does — the caret or
-// selection may be moved, a range of the content may be brought into view, and the field's contextual menu may be
-// shown, which takes the focus first because the menu is built out of the commands that act on whatever holds it.
-// Focusing the field is otherwise left to the default behavior. A field that obscures what it shows brings no range
-// into view, since it publishes neither that action nor the text a range would address.
+// selection may be moved, and a range of the content may be brought into view. Focusing the field and showing its
+// contextual menu are left to the default behavior; a request for the menu that names a range has the selection placed
+// on it first (see axPlaceContextMenuRange). A field that obscures what it shows brings no range into view, since it
+// publishes neither that action nor the text a range would address.
 func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.SetValue:
@@ -1653,28 +1660,23 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 		f.axScrollRangeIntoView(req.Start, req.End)
 		return true
 	case accessibility.ShowContextMenu:
-		if !axMayPopupMenu(f.AsPanel()) {
-			// The menu would be built in whatever window is active rather than in this one. See axMayPopupMenu.
-			return false
-		}
-		// The menu is built from the cut, copy, paste and select-all actions, every one of which is routed to whatever
-		// holds the focus rather than to this field, so asking an unfocused field for its menu would describe, and then
-		// operate on, whatever else the focus is in. DefaultMouseDown takes the focus before showing the menu for a
-		// right-click, and the same has to happen here.
-		f.RequestFocus()
-		// A right-click would have put the menu under the pointer; there is no pointer here, so it goes where the
-		// person's attention is, which is the caret — the end of the selection that moves, which after a backward
-		// selection made with shift+Left or shift+Home is its start rather than its end. See axCaret.
-		f.ShowContextMenu(f.FromSelectionIndex(f.axCaret()))
-		return true
+		// Declined so that the default behavior opens the menu, at the caret.
+		f.axPlaceMenuRange(req)
+		return false
 	default:
 		return false
 	}
 }
 
+// axPlaceMenuRange implements axContextMenuRangePlacer.
+func (f *Field) axPlaceMenuRange(req accessibility.ActionRequest) {
+	axPlaceContextMenuRange(f.AsPanel(), req, f.Selection, f.SetSelection)
+}
+
 // axMenuOpeningActions reports which of the field's actions would open a menu, so that a field in a window none of its
-// menus would land in is published without them rather than advertising what PerformAccessibilityAction, and the action
-// callback NewComboField installs, would then refuse. See axMenuActions.
+// menus would land in is published without them rather than advertising what the action callback NewComboField installs
+// would then refuse. See axMenuActions. The contextual menu is not named, since axSnapshot.narrowMenuActions takes it
+// from every node itself.
 //
 // Expand belongs to a combo box, which is a field the dropdown NewComboField installs describes as one; a plain field
 // never advertises it, so naming it here costs such a field nothing. It is not named while the choices are already
@@ -1682,11 +1684,10 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 // accepted as already done, with no menu opened anywhere. Collapse is never named either, since taking a menu down acts
 // on the menu that is showing rather than on whatever window is active.
 func (f *Field) axMenuOpeningActions(node *accessibility.Node) accessibility.ActionSet {
-	actions := accessibility.ActionSet(0).With(accessibility.ShowContextMenu)
-	if !node.Expanded {
-		actions = actions.With(accessibility.Expand)
+	if node.Expanded {
+		return 0
 	}
-	return actions
+	return accessibility.ActionSet(0).With(accessibility.Expand)
 }
 
 // InstallAccessoryPanel sets a panel into the field, attached to the right end. The editable text area will shrink by

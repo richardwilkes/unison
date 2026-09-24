@@ -77,7 +77,7 @@ type DockTabTheme struct {
 }
 
 type dockTab struct {
-	title    *Label
+	title    *dockTabTitle
 	button   *Button
 	dockable Dockable
 	Panel
@@ -89,9 +89,9 @@ func newDockTab(dockable Dockable) *dockTab {
 	t := &dockTab{
 		DockTabTheme: DefaultDockTabTheme,
 		dockable:     dockable,
-		title:        NewLabel(),
 	}
 	t.Self = t
+	t.title = newDockTabTitle(t)
 	t.DrawCallback = t.draw
 	t.SetBorder(t.TabBorder)
 	flex := &FlexLayout{
@@ -120,11 +120,29 @@ func newDockTab(dockable Dockable) *dockTab {
 		t.button.SetLayoutData(&FlexLayoutData{HAlign: align.End, VAlign: align.Middle})
 		t.AddChild(t.button)
 		t.button.ClickCallback = func() { t.attemptClose() }
+		// A right press is left unclaimed, so that its release cannot close the dockable, unless the button already
+		// holds a press: the window offers every press afresh, and a declined one would leave the release of the button
+		// that began the gesture reaching no panel, with the close button drawn pressed for good. The right release is
+		// ignored either way, so that it cannot click. See dockTab.mouseDown.
+		buttonDown, buttonUp := t.button.MouseDownCallback, t.button.MouseUpCallback
+		t.button.MouseDownCallback = func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
+			if button == ButtonRight {
+				return t.button.Pressed
+			}
+			return buttonDown(where, button, clickCount, mods)
+		}
+		t.button.MouseUpCallback = func(where geom.Point, button int, mods mod.Modifiers) bool {
+			if button == ButtonRight {
+				return true
+			}
+			return buttonUp(where, button, mods)
+		}
 		flex.Columns++
 	}
 	t.MouseDownCallback = t.mouseDown
 	t.MouseUpCallback = t.mouseUp
 	t.MouseDragCallback = t.mouseDrag
+	t.ContextMenuCallback = t.contextMenu
 	t.UpdateTooltipCallback = t.updateTooltip
 	t.UpdateCursorCallback = t.updateCursor
 	return t
@@ -223,12 +241,12 @@ func (t *dockTab) updateCursor(_ geom.Point) *Cursor {
 	return OpenHandCursor()
 }
 
-func (t *dockTab) mouseDown(_ geom.Point, button, clickCount int, _ mod.Modifiers) bool {
-	if button == ButtonRight && clickCount == 1 {
-		// Claim the click so that the mouse up is delivered to this tab, where the context menu will be shown. The
-		// menu cannot be popped up here, since it would swallow the mouse up event and leave the window convinced the
-		// right button was still down, causing subsequent mouse moves to be treated as drags.
-		return true
+// mouseDown leaves a right press unclaimed, so that it never brings the dockable to the front or starts a drag, unless
+// the tab already holds a press: the window offers every press afresh, and the release of the button that began the
+// gesture would otherwise reach no panel, leaving the tab drawn pressed. mouseUp ignores the right release.
+func (t *dockTab) mouseDown(_ geom.Point, button, _ int, _ mod.Modifiers) bool {
+	if button == ButtonRight {
+		return t.pressed
 	}
 	t.pressed = true
 	t.MarkForRedraw()
@@ -236,20 +254,59 @@ func (t *dockTab) mouseDown(_ geom.Point, button, clickCount int, _ mod.Modifier
 	return true
 }
 
-func (t *dockTab) showContextMenu(where geom.Point) {
-	if dc := Ancestor[*DockContainer](t.dockable); dc != nil && len(dc.Dockables()) > 1 {
-		f := DefaultMenuFactory()
-		cm := f.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
-		cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close Other Tabs"), KeyBinding{}, nil, func(MenuItem) {
-			dc.AttemptCloseAllExcept(t.dockable)
-		}))
-		cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close All Tabs"), KeyBinding{}, nil, func(MenuItem) {
-			dc.AttemptCloseAll()
-		}))
-		where = t.PointToRoot(where)
-		cm.Popup(geom.NewRect(where.X, where.Y, 1, 1), 0)
-		cm.Dispose()
+// WithholdsContextMenu implements ContextMenuWithholder: the tab has no menu while its dockable is in no container or
+// is alone in it.
+func (t *dockTab) WithholdsContextMenu() bool {
+	dc := Ancestor[*DockContainer](t.dockable)
+	return dc == nil || len(dc.Dockables()) < 2
+}
+
+// dockTabTitle is a tab's title label. A right-click on a tab most often lands on the title, and only the panel under
+// the pointer is asked for a contextual menu, so the title offers whatever menu the tab offers, through the tab's
+// current ContextMenuCallback, and withholds it exactly when the tab offers none.
+type dockTabTitle struct {
+	tab *dockTab
+	Label
+}
+
+func newDockTabTitle(tab *dockTab) *dockTabTitle {
+	l := &dockTabTitle{tab: tab}
+	l.LabelTheme = DefaultLabelTheme
+	l.Self = l
+	l.SetSizer(l.DefaultSizes)
+	l.DrawCallback = l.DefaultDraw
+	l.ContextMenuCallback = l.contextMenu
+	return l
+}
+
+// contextMenu builds the tab's menu through the tab's current ContextMenuCallback, so that one an application replaced
+// is the one a right-click on the title opens, with the position translated into the tab's coordinates.
+func (l *dockTabTitle) contextMenu(where geom.Point) Menu {
+	callback := l.tab.ContextMenuCallback
+	if callback == nil {
+		return nil
 	}
+	return callback(l.PointTo(where, l.tab.AsPanel()))
+}
+
+// WithholdsContextMenu implements ContextMenuWithholder: the title offers a menu exactly when the tab itself does.
+func (l *dockTabTitle) WithholdsContextMenu() bool {
+	return !l.tab.offersContextMenu()
+}
+
+// contextMenu builds the tab's contextual menu. It is not asked while the tab withholds its menu (see
+// WithholdsContextMenu), so dc is never nil.
+func (t *dockTab) contextMenu(_ geom.Point) Menu {
+	dc := Ancestor[*DockContainer](t.dockable)
+	f := DefaultMenuFactory()
+	cm := f.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
+	cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close Other Tabs"), KeyBinding{}, nil, func(MenuItem) {
+		dc.AttemptCloseAllExcept(t.dockable)
+	}))
+	cm.InsertItem(-1, f.NewItem(-1, i18n.Text("Close All Tabs"), KeyBinding{}, nil, func(MenuItem) {
+		dc.AttemptCloseAll()
+	}))
+	return cm
 }
 
 func (t *dockTab) mouseDrag(where geom.Point, button int, _ mod.Modifiers) bool {
@@ -288,13 +345,8 @@ func (t *dockTab) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions,
 
 func (t *dockTab) mouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
 	defer t.UpdateCursorNow()
-	if button == ButtonRight {
-		if where.In(t.ContentRect(true)) {
-			t.showContextMenu(where)
-		}
-		return true
-	}
-	if !t.pressed {
+	if !t.pressed || button == ButtonRight {
+		// A right press is only claimed on behalf of a press already held, whose own release ends it; see mouseDown.
 		return true
 	}
 	if where.In(t.ContentRect(true)) {
@@ -338,7 +390,8 @@ func (t *dockTab) ProvideAccessibility(b *AccessibilityBuilder) {
 		}
 	}
 	node.Selectable = true
-	if dc := Ancestor[*DockContainer](t.dockable); dc != nil {
+	dc := Ancestor[*DockContainer](t.dockable)
+	if dc != nil {
 		node.Selected = dc.content.axCurrent() == t.dockable
 	}
 	node.Actions = node.Actions.With(accessibility.Press, accessibility.Select)

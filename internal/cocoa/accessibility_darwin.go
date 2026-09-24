@@ -1730,6 +1730,30 @@ func axFocusTarget(t *accessibility.Tree, n *accessibility.Node) *accessibility.
 	return n
 }
 
+// axShowMenuTarget returns the node a request to show an element's contextual menu names: the node itself whenever it
+// offers the menu, and otherwise the cell it stands in for, when that cell offers one. A table with a
+// ContextMenuCallback offers the menu on each of its cells, and a cell holding nothing but a label is never handed to a
+// client, since the label stands in for it (see axStandIn); without the fallback, VO-Shift-M on such a cell would offer
+// nothing, exactly as axFocusTarget lends the content a cell's focus.
+func axShowMenuTarget(t *accessibility.Tree, n *accessibility.Node) *accessibility.Node {
+	if !n.Actions.Has(accessibility.ShowContextMenu) {
+		if cell := axCellStoodInFor(t, n); cell != nil && cell.Actions.Has(accessibility.ShowContextMenu) {
+			return cell
+		}
+	}
+	return n
+}
+
+// axPerformShowMenu hands a request to show an element's contextual menu to the action callback, naming the node
+// axShowMenuTarget gives, and reports whether that node offers the menu.
+func axPerformShowMenu(self objc.ID) bool {
+	a, n := axElementTarget(self, 0)
+	if a == nil || n == nil {
+		return axPerformOn(a, n, accessibility.ShowContextMenu)
+	}
+	return axPerformOn(a, axShowMenuTarget(a.tree, n), accessibility.ShowContextMenu)
+}
+
 // axPresentedChildren returns the children an assistive technology is shown beneath a node: its unignored children,
 // with each cell that holds exactly one thing replaced by that thing, and anything that is not reportable at all — a
 // separator — replaced by whatever it holds, exactly as Tree.UnignoredChildren splices out an ignored node.
@@ -2476,7 +2500,9 @@ func axSelectorRules() map[objc.SEL]func(t *accessibility.Tree, n *accessibility
 			Sel("accessibilityPerformConfirm"):   can(accessibility.Press),
 			Sel("accessibilityPerformIncrement"): can(accessibility.Increment),
 			Sel("accessibilityPerformDecrement"): can(accessibility.Decrement),
-			Sel("accessibilityPerformShowMenu"):  can(accessibility.ShowContextMenu),
+			Sel("accessibilityPerformShowMenu"): func(t *accessibility.Tree, n *accessibility.Node) bool {
+				return axShowMenuTarget(t, n).Actions.Has(accessibility.ShowContextMenu)
+			},
 			// Where a link leads, which belongs to the nodes that name a URL and to no others.
 			Sel("accessibilityURL"): func(_ *accessibility.Tree, n *accessibility.Node) bool { return n.URL != "" },
 			// The text protocol, which belongs to the nodes that hold text and to no others.
@@ -3420,7 +3446,7 @@ func axElementStateMethods() []objc.MethodDef {
 		},
 		{
 			Cmd: Sel("accessibilityPerformShowMenu"),
-			Fn:  func(self objc.ID, _ objc.SEL) bool { return axPerform(self, accessibility.ShowContextMenu) },
+			Fn:  func(self objc.ID, _ objc.SEL) bool { return axPerformShowMenu(self) },
 		},
 		{
 			// Offered only by a node that advertises the SetValue action and is not ReadOnly, which is what keeps
@@ -3443,13 +3469,18 @@ func axElementStateMethods() []objc.MethodDef {
 		{
 			Cmd: Sel("accessibilityActionNames"),
 			Fn: func(self objc.ID, cmd objc.SEL) objc.ID {
-				_, n := axElementTarget(self, cmd)
+				a, n := axElementTarget(self, cmd)
 				if n == nil {
 					return NSArrayFromIDs()
 				}
 				var names []objc.ID
 				for i, entry := range axActionNames {
-					if n.Actions.Has(entry.action) {
+					actions := n.Actions
+					if entry.action == accessibility.ShowContextMenu {
+						// The cell's menu, when the content standing in for it has none; see axShowMenuTarget.
+						actions = axShowMenuTarget(a.tree, n).Actions
+					}
+					if actions.Has(entry.action) {
 						names = append(names, axActionNameStrings()[i])
 					}
 				}
@@ -3467,7 +3498,11 @@ func axElementStateMethods() []objc.MethodDef {
 			Cmd: Sel("accessibilityPerformAction:"),
 			Fn: func(self objc.ID, _ objc.SEL, name objc.ID) {
 				if action, ok := axActionForName(GoStringFromNSString(name)); ok {
-					axPerform(self, action)
+					if action == accessibility.ShowContextMenu {
+						axPerformShowMenu(self)
+					} else {
+						axPerform(self, action)
+					}
 				} else if axTraceOn {
 					axTrace("action %s unknown", GoStringFromNSString(name))
 				}

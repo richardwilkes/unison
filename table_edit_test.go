@@ -223,6 +223,48 @@ func (e *editTable) texts(c check.Checker, screen *unison.HeadlessScreen) [][]st
 	return all
 }
 
+// TestTableCellFieldClickAfterACommitRemovesTheRows verifies that a click on a row while a field in another cell is
+// being edited looks the row up only once the field has committed on losing the focus, so that a click on a row the
+// commit removed selects nothing rather than panicking on a stale index.
+func TestTableCellFieldClickAfterACommitRemovesTheRows(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(3, 2, "abc", false)
+			newEditWindow(t, e, false)
+		}))
+	c.NotNil(e)
+
+	screen.Click(cellCenter(screen, e.table, 0, 0))
+	s := e.snapshot(c, screen, 0, 0)
+	c.True(s.fieldFocused, "the test needs the field focused")
+	c.Equal([]int{0}, axTableSelectedIndexes(screen, e.table))
+	// Where the last row is, before the commit removes it.
+	lastRow := cellCenter(screen, e.table, 2, 1)
+	screen.Do(func() {
+		lost := e.fields[0][0].LostFocusCallback
+		e.fields[0][0].LostFocusCallback = func() {
+			if lost != nil {
+				lost()
+			}
+			e.model.SetRootRows(e.rows[:2])
+			e.table.SyncToModel()
+		}
+	})
+	screen.Click(lastRow)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+	s = e.snapshot(c, screen, 0, 0)
+	c.False(s.fieldFocused, "the click takes the focus from the field")
+	c.True(s.tableFocused, "and gives it to the table")
+	c.Equal(1, s.lost)
+	var gone bool
+	screen.Do(func() { gone = e.table.RowToIndex(e.rows[2]) == -1 })
+	c.True(gone, "the test needs the commit to have removed the row under the pointer")
+	c.Equal([]int{0}, axTableSelectedIndexes(screen, e.table),
+		"a click where no row is any more leaves the selection as it was")
+}
+
 // TestTableCellFieldClickTypes proves the point of the whole feature: clicking a Field in a table cell puts the
 // keyboard focus into that field and leaves it there, so the keys that follow edit the cell instead of driving the
 // table, and the cell stays part of the table across the redraws that come after.

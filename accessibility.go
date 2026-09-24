@@ -146,9 +146,9 @@ type axVirtualEntry struct {
 // builder looks for it on Panel.Self, so it must be implemented by the widget type rather than by an embedded Panel.
 //
 // ProvideAccessibility is called with the node already filled in with everything that can be derived from the panel
-// alone — its bounds, whether it is enabled, focusable and focused, and the actions those imply — so an implementation
-// only sets what it knows better. It runs on the UI thread, inside SafeCall, and must not change the panel hierarchy or
-// anything else the snapshot it is part of has already looked at.
+// alone — its bounds, whether it is enabled, focusable and focused, and the actions those and its callbacks imply — so
+// an implementation only sets what it knows better. It runs on the UI thread, inside SafeCall, and must not change the
+// panel hierarchy or anything else the snapshot it is part of has already looked at.
 type AccessibilityProvider interface {
 	ProvideAccessibility(b *AccessibilityBuilder)
 }
@@ -291,6 +291,10 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 	if node.Disabled {
 		node.Actions &= axDisabledActions
 	}
+	if !b.snapshot.menusLandHere {
+		// Its menu would open in the active window rather than this one; see axSnapshot.narrowMenuActions.
+		node.Actions = node.Actions.Without(accessibility.ShowContextMenu)
+	}
 	if node.Focused {
 		// A virtual child has no panel of its own, so it can never be the panel that holds the keyboard focus: a claim
 		// on the focus from one is a second claim on top of wherever the focus actually is, exactly as a claim from a
@@ -380,7 +384,8 @@ func (b *AccessibilityBuilder) descendantOf(node *accessibility.Node, ancestor a
 // node for that cell. The panel must be attached to the table and laid out at the cell's frame, as it is for drawing,
 // for the duration of the call. See axCellContext for how the resulting nodes are identified and how requests about
 // them find their way back. A cell that stays attached to the table beyond this call — the one holding the keyboard
-// focus — is described as the real panels it is made of, under their own ids, since they persist and can be reached.
+// focus — is described as the real panels it is made of, under their own ids, since they persist and can be reached,
+// though still as borrowed panels; see axSnapshot.cellPanelMayOfferContextMenu.
 //
 // key is whatever the widget identifies the cell by — a table and a table header both use an accessibility.CellKey,
 // the header filling in only its Col, and a list the row index — and comes back to it as the Cell of the
@@ -397,11 +402,7 @@ func (b *AccessibilityBuilder) addCellPanel(parent accessibility.NodeID, key any
 	// part of this cell: identified by a key of the table's rather than by its own panel, with every request about it
 	// sent to the table.
 	defer func() { b.snapshot.cell = saved }()
-	if persistent {
-		b.snapshot.cell = nil
-	} else {
-		b.snapshot.cell = &axCellContext{builder: b, key: key}
-	}
+	b.snapshot.cell = &axCellContext{builder: b, key: key, persistent: persistent}
 	b.snapshot.visit(p, parent, b.clip)
 }
 
@@ -598,6 +599,26 @@ func deactivateAccessibility() {
 func (w *Window) axMarkForPublish() {
 	if accessibilityActive.Load() {
 		w.MarkForRedraw()
+	}
+}
+
+// axMarkActiveWindowChange marks for publishing the windows that stopped and started being ActiveWindow() over a change
+// of focus, given the answer from before it. Only the active window's nodes advertise menu actions (see
+// axSnapshot.narrowMenuActions), and the active window can change without a focus event of its own: ActiveWindow()
+// passes over a transient window, so the window behind it stays active until the focus goes on to a third window or
+// the application goes to the background, which only the windows the focus moved between hear of.
+func axMarkActiveWindowChange(before *Window) {
+	if !accessibilityActive.Load() {
+		return
+	}
+	after := ActiveWindow()
+	if after == before {
+		return
+	}
+	for _, wnd := range []*Window{before, after} {
+		if wnd != nil {
+			wnd.axMarkForPublish()
+		}
 	}
 }
 

@@ -548,3 +548,18 @@ func TestMarkdownFrameChangeCallbackChains(t *testing.T) {
 	})
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestMarkdownContextMenuAnchorWithNothingLaidOut verifies that a focusable document with nothing laid out, whose
+// reading caret has no rectangle, opens a menu given to it by the application where a panel with nothing better does,
+// in the middle of its visible part, as a document that cannot take the focus does.
+func TestMarkdownContextMenuAnchorWithNothingLaidOut(t *testing.T) {
+	c := check.New(t)
+	md := NewMarkdown(false)
+	md.SetFocusable(true)
+	md.SetFrameRect(geom.NewRect(0, 0, 200, 100))
+	c.True(axCaretRect(md.axDocument().lines, md.axCaret()).Empty(), "the test needs a document with no caret rect")
+	c.Equal(md.DefaultContextMenuAnchor(), md.ContextMenuAnchor(),
+		"a focusable document with nothing laid out falls back to the default anchor")
+	md.SetFocusable(false)
+	c.Equal(md.DefaultContextMenuAnchor(), md.ContextMenuAnchor(), "as one that cannot take the focus does")
+}

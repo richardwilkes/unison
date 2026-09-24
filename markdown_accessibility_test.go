@@ -209,7 +209,7 @@ func TestMarkdownDocumentStreamJoinsBlocks(t *testing.T) {
 	c.False(strings.HasSuffix(text, "\n"), "nothing follows the last block, so nothing joins it to anything")
 	c.True(node.Actions.Has(accessibility.SetTextSelection), "the caret can be moved anywhere in the stream")
 	c.True(node.Actions.Has(accessibility.ScrollRangeIntoView), "and any part of it can be brought into view")
-	c.True(node.Actions.Has(accessibility.ShowContextMenu), "a document that can be read offers its menu")
+	c.False(node.Actions.Has(accessibility.ShowContextMenu), "a document has no menu of its own to offer")
 	c.False(node.Actions.Has(accessibility.Press), "pressing a document is not activating it")
 	c.True(node.ReadOnly, "a document is as unwritable as every block within it")
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
@@ -1159,32 +1159,71 @@ func axMenuItemTitles(tree *accessibility.Tree) []string {
 	return titles
 }
 
-// TestMarkdownContextMenu verifies the contextual menu: a right-click within the document opens it, an assistive
-// technology may ask for it and have the caret placed where the request says first, and the request is refused while
-// the menu would open in another window entirely — which is also when the document stops offering it.
+// TestMarkdownContextMenu verifies that a document has no contextual menu of its own, so that the Menu key opens
+// nothing, an assistive technology is not offered one and a right-click on the text is an ordinary press; and that,
+// given a menu by the application, a right-click on the text is still an ordinary press, since the text is drawn with
+// panels of the document's own, while the Menu key opens the menu, an assistive technology may ask for it and have the
+// selection placed where the request says first, and the request is refused while the menu would open in another
+// window — which is also when the document stops offering it.
 func TestMarkdownContextMenu(t *testing.T) {
 	c := check.New(t)
 	f := newAXMarkdownFixture(t, markdownAXContent, 300, geom.NewSize(500, 400))
 	tree, node := f.document(c)
 	c.Equal(0, len(axNodesWithRole(tree, role.Menu)), "no menu is open to begin with")
+	c.False(node.Actions.Has(accessibility.ShowContextMenu), "a document offers no menu of its own")
+	f.screen.KeyPress(unison.KeyMenu, mod.None)
+	tree, _ = f.document(c)
+	c.Equal(0, len(axNodesWithRole(tree, role.Menu)), "and the Menu key opens nothing")
 
-	// With nothing selected there is nothing to copy, and a contextual menu holds only what can actually be done.
+	// The panel the document sits in has a menu, and is told of every right press the document is sent.
+	var outerAsked, rightPresses int
+	var outerAt geom.Point
+	f.screen.Do(func() {
+		f.wnd.Content().ContextMenuCallback = axRecordingMenu(&outerAsked, &outerAt, "Outer")
+		mdDown := f.markdown.MouseDownCallback
+		f.markdown.MouseDownCallback = func(where geom.Point, button, count int, mods mod.Modifiers) bool {
+			if button == unison.ButtonRight {
+				rightPresses++
+			}
+			if mdDown != nil {
+				return mdDown(where, button, count, mods)
+			}
+			return false
+		}
+	})
+	presses := func() int {
+		var count int
+		f.screen.Do(func() { count = rightPresses })
+		return count
+	}
 	f.screen.ClickWith(f.pointAt(c, 1), unison.ButtonRight, mod.None)
 	tree, _ = f.document(c)
-	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "a right-click opens the contextual menu")
-	c.Equal([]string{"Select All"}, axMenuItemTitles(tree))
+	c.Equal(0, len(axNodesWithRole(tree, role.Menu)),
+		"a right-click on the text of a document without a menu opens nothing")
+	c.Equal(1, presses(), "and is delivered as an ordinary press")
+	outerCount, _ := axRecorded(f.screen, &outerAsked, &outerAt)
+	c.Equal(0, outerCount, "the menu of the panel the document sits in is not the document's own")
+
+	var asked int
+	var where geom.Point
+	f.screen.Do(func() { f.markdown.ContextMenuCallback = axRecordingMenu(&asked, &where, "Custom") })
+	f.screen.ClickWith(f.pointAt(c, 1), unison.ButtonRight, mod.None)
+	tree, node = f.document(c)
+	c.Equal(0, len(axNodesWithRole(tree, role.Menu)),
+		"a right-click on the text is an ordinary press and opens nothing")
+	c.Equal(2, presses(), "the press is delivered as any other")
+	count, _ := axRecorded(f.screen, &asked, &where)
+	c.Equal(0, count, "and the document is not asked for its menu")
+	c.True(node.Actions.Has(accessibility.ShowContextMenu), "a menu the application gave the document is offered")
+	f.screen.KeyPress(unison.KeyMenu, mod.None)
+	tree, _ = f.document(c)
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "the Menu key opens the contextual menu")
+	c.Equal([]string{"Custom"}, axMenuItemTitles(tree))
+	count, _ = axRecorded(f.screen, &asked, &where)
+	c.Equal(1, count)
 	f.screen.KeyPress(unison.KeyEscape, mod.None)
 	f.screen.Sync()
 	c.Equal(0, len(axNodesWithRole(f.screen.AccessibilityTree(f.wnd), role.Menu)), "which Escape closes again")
-
-	f.screen.KeyPress(unison.KeyRight, mod.Shift)
-	f.screen.ClickWith(f.pointAt(c, 1), unison.ButtonRight, mod.None)
-	tree, _ = f.document(c)
-	c.Equal(1, len(axNodesWithRole(tree, role.Menu)))
-	c.Equal([]string{"Copy", "Select All"}, axMenuItemTitles(tree),
-		"with something selected the menu holds both of the things that can be done to text that is read")
-	f.screen.KeyPress(unison.KeyEscape, mod.None)
-	f.screen.Sync()
 
 	stream := f.stream(c)
 	at := strings.Index(stream, "Take care.")
@@ -1197,10 +1236,35 @@ func TestMarkdownContextMenu(t *testing.T) {
 		End:    offset + 4,
 	}))
 	selStart, selEnd, _ := f.caret(c)
-	c.Equal(offset, selStart, "the range the request named places the caret before the menu opens")
+	c.Equal(offset, selStart, "the range the request named is selected before the menu opens")
 	c.Equal(offset+4, selEnd)
 	tree, _ = f.document(c)
 	c.Equal(1, len(axNodesWithRole(tree, role.Menu)))
+	f.screen.KeyPress(unison.KeyEscape, mod.None)
+	f.screen.Sync()
+
+	// A request for a single position within that selection keeps it, while one for a position outside it moves the
+	// caret there.
+	c.True(f.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  offset + 2,
+		End:    offset + 2,
+	}))
+	selStart, selEnd, _ = f.caret(c)
+	c.Equal(offset, selStart, "a position within the selection keeps the selection for the menu")
+	c.Equal(offset+4, selEnd)
+	f.screen.KeyPress(unison.KeyEscape, mod.None)
+	f.screen.Sync()
+	c.True(f.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  offset + 8,
+		End:    offset + 8,
+	}))
+	selStart, selEnd, _ = f.caret(c)
+	c.Equal(offset+8, selStart, "a position outside it moves the caret there")
+	c.Equal(offset+8, selEnd)
 	f.screen.KeyPress(unison.KeyEscape, mod.None)
 	f.screen.Sync()
 
@@ -1222,5 +1286,122 @@ func TestMarkdownContextMenu(t *testing.T) {
 		Node:   node.ID,
 		Action: accessibility.ShowContextMenu,
 	}), "and refuses to open one")
+	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
+}
+
+// axRecordingMenu returns a ContextMenuCallback that counts its calls in asked and records where in at, returning a
+// menu with one item named title, or nil when title is empty.
+func axRecordingMenu(asked *int, at *geom.Point, title string) func(geom.Point) unison.Menu {
+	return func(where geom.Point) unison.Menu {
+		*asked++
+		*at = where
+		if title == "" {
+			return nil
+		}
+		f := unison.DefaultMenuFactory()
+		m := f.NewMenu(unison.PopupMenuTemporaryBaseID|unison.ContextMenuIDFlag, "", nil)
+		m.InsertItem(-1, f.NewItem(-1, title, unison.KeyBinding{}, nil, func(unison.MenuItem) {}))
+		return m
+	}
+}
+
+// axRecorded reads what axRecordingMenu recorded, on the UI thread, the only thread that writes it.
+func axRecorded(screen *unison.HeadlessScreen, asked *int, at *geom.Point) (count int, where geom.Point) {
+	screen.Do(func() {
+		count = *asked
+		where = *at
+	})
+	return count, where
+}
+
+// TestMarkdownContextMenuRequestAsksOnce verifies that an assistive technology's request for a document's menu calls
+// the callback once whether or not it returns a menu, and that a range it names places the caret first.
+func TestMarkdownContextMenuRequestAsksOnce(t *testing.T) {
+	c := check.New(t)
+	f := newAXMarkdownFixture(t, markdownAXContent, 300, geom.NewSize(500, 400))
+	var asked int
+	var at geom.Point
+	f.screen.Do(func() { f.markdown.ContextMenuCallback = axRecordingMenu(&asked, &at, "") })
+	_, node := f.document(c)
+	c.True(node.Actions.Has(accessibility.ShowContextMenu))
+	c.False(f.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  3,
+		End:    3,
+	}), "a callback with nothing to offer shows nothing")
+	count, where := axRecorded(f.screen, &asked, &at)
+	c.Equal(1, count, "and is asked once for one request")
+	_, node = f.document(c)
+	info := node.Document.Text
+	c.Equal(3, info.Caret, "the range the request named places the caret")
+	line := info.Lines[0]
+	c.True(info.Caret < line.End, "the caret is on the first line")
+	c.Equal(geom.NewPoint(line.Bounds.X+line.Advances[info.Caret-line.Start], line.Bounds.Bottom()), where,
+		"before the menu is asked for, which is asked for beneath it")
+
+	f.screen.Do(func() { f.markdown.ContextMenuCallback = axRecordingMenu(&asked, &at, "Something") })
+	c.True(f.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+	}))
+	count, _ = axRecorded(f.screen, &asked, &at)
+	c.Equal(2, count, "a callback with a menu is asked once as well")
+	tree, _ := f.document(c)
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)))
+	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
+}
+
+// TestMarkdownContextMenuAnchorBringsTheCaretIntoView verifies that a document's menu opened without a pointer scrolls
+// the reading caret back into view first and opens beneath its line.
+func TestMarkdownContextMenuAnchorBringsTheCaretIntoView(t *testing.T) {
+	c := check.New(t)
+	f := newAXMarkdownFixture(t, markdownAXContent, 300, geom.NewSize(500, 400))
+	var asked int
+	var at geom.Point
+	f.screen.Do(func() { f.markdown.ContextMenuCallback = axRecordingMenu(&asked, &at, "Custom") })
+	_, node := f.document(c)
+	c.True(f.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.SetTextSelection,
+		Start:  2,
+		End:    2,
+	}))
+	var top, scrolled float32
+	f.screen.Do(func() {
+		_, top = f.scroller.Position()
+		f.scroller.SetPosition(0, 10000)
+		_, scrolled = f.scroller.Position()
+	})
+	c.True(scrolled > top+50, "the view has to have moved well away from the caret for this to mean anything")
+
+	_, node = f.document(c)
+	c.True(f.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+	}))
+	var after float32
+	f.screen.Do(func() { _, after = f.scroller.Position() })
+	c.True(after < scrolled, "the caret is brought back into view before the menu opens")
+
+	tree, node := f.document(c)
+	menus := axNodesWithRole(tree, role.Menu)
+	c.Equal(1, len(menus))
+	if len(menus) != 1 {
+		return
+	}
+	info := node.Document.Text
+	c.Equal(2, info.Caret)
+	var expected geom.Point
+	f.screen.Do(func() {
+		for i, line := range info.Lines {
+			if i == len(info.Lines)-1 || info.Caret < info.Lines[i+1].Start {
+				local := geom.NewPoint(line.Bounds.X+line.Advances[info.Caret-line.Start], line.Bounds.Bottom())
+				expected = f.markdown.PointToRoot(local)
+				break
+			}
+		}
+	})
+	c.Equal(expected, menus[0].Bounds.Point, "the menu opens beneath the caret's line, where it can now be seen")
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
 }

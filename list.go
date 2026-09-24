@@ -382,10 +382,8 @@ func (l *List[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 }
 
 // DefaultMouseDown provides the default mouse down handling.
-func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods mod.Modifiers) bool {
-	l.suppressScroll = true
-	l.RequestFocus()
-	l.suppressScroll = false
+func (l *List[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
+	l.requestFocusWithoutScroll()
 	l.savedSelection = l.Selection.Clone()
 	l.lastSel = -1
 	l.wasDragged = false
@@ -418,11 +416,15 @@ func (l *List[T]) DefaultMouseDown(where geom.Point, _, clickCount int, mods mod
 				l.Selection.Set(index)
 			}
 		case l.Selection.State(index):
-			l.lastSel = index
+			// Only a left press is noted for the mouse up, which narrows the selection to this row on a click; any
+			// other button leaves the selection alone, as a right-click on a list with a contextual menu does.
 			l.anchor = index
-			if clickCount == 2 && l.DoubleClickCallback != nil {
-				SafeCall(l.DoubleClickCallback)
-				return true
+			if button == ButtonLeft {
+				l.lastSel = index
+				if clickCount == 2 && l.DoubleClickCallback != nil {
+					SafeCall(l.DoubleClickCallback)
+					return true
+				}
 			}
 		default:
 			l.Selection.Reset()
@@ -470,11 +472,14 @@ func (l *List[T]) DefaultMouseDrag(where geom.Point, _ int, mods mod.Modifiers) 
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling.
-func (l *List[T]) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
+// DefaultMouseUp provides the default mouse up handling. A left click on a selected row narrows the selection to that
+// row here, on the release, so that a drag that starts on it can carry the whole selection. A release outside the list
+// is not a click and leaves the selection alone: the release that ends a press for a contextual menu arrives outside
+// every panel (see Window.endPressesForContextMenu), and the menu then acts on the selection the person made.
+func (l *List[T]) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
 	if l.pressed {
 		l.pressed = false
-		if !l.wasDragged && l.lastSel != -1 {
+		if !l.wasDragged && l.lastSel != -1 && where.In(l.ContentRect(true)) {
 			l.Selection.Reset()
 			l.Selection.Set(l.lastSel)
 			l.anchor = l.lastSel
@@ -875,6 +880,10 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 			// when there is something for it to do.
 			n.Actions = n.Actions.With(accessibility.Press)
 		}
+		if l.offersContextMenu() {
+			// Each row offers the list's menu, opening it as a right-click on the row would.
+			n.Actions = n.Actions.With(accessibility.ShowContextMenu)
+		}
 	})
 	if rowID == 0 || nameOnly {
 		return rowID
@@ -952,7 +961,8 @@ func axClearCellFocusability(tree *accessibility.Tree, rowID accessibility.NodeI
 // one as it goes and expects to see where it has got to. Pressing a row opens it, which is the gesture a double-click
 // and the Return key stand for. Putting the focus on a row moves the person onto it: the list takes the keyboard focus
 // and the row becomes the whole of the selection, which is the same thing clicking the row does, since the selection is
-// where a list's cursor is. A request aimed at something within the cell that draws a row is passed on to it.
+// where a list's cursor is. Asking a row for the contextual menu does what a right-click on it would. A request aimed
+// at something within the cell that draws a row is passed on to it.
 func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	if key, isPanel := req.Key.(axCellPanelKey); isPanel {
 		return l.axPerformInCell(key, req)
@@ -1036,10 +1046,91 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 		}
 	case accessibility.ScrollIntoView:
 		l.ScrollRectIntoView(l.RowRect(row))
+	case accessibility.ShowContextMenu:
+		return l.axShowRowContextMenu(row)
 	default:
 		return false
 	}
 	return true
+}
+
+// axShowRowContextMenu opens the list's contextual menu for an assistive technology as a right-click on the row would:
+// the list takes the focus when it can hold it, since menu commands act on whatever holds it, and the row is then
+// selected for the menu, in the order ContextMenuPressed does both. The menu opens beneath the row, scrolled into view
+// first. It is refused with nothing changed when axMayShowContextMenu says so. A mouse button still held is released
+// first, since a native menu's tracking loop would swallow its release, and before the row is readied, since the
+// release may narrow the selection or change the rows. The panel losing the focus and the NewSelectionCallback may
+// change the rows or end the offer too, so both are checked again after each step. A row is known here only by its
+// index, so a change that leaves a row at the index is taken at its word.
+func (l *List[T]) axShowRowContextMenu(row int) bool {
+	if row < 0 || row >= len(l.rows) || !axMayShowContextMenu(l.AsPanel()) {
+		return false
+	}
+	// axMayShowContextMenu requires the active window, so Window is not nil.
+	l.Window().endPressesForContextMenu()
+	if row >= len(l.rows) || !axMayShowContextMenu(l.AsPanel()) {
+		return false
+	}
+	if l.Focusable() {
+		l.requestFocusWithoutScroll()
+		if row >= len(l.rows) || !axMayShowContextMenu(l.AsPanel()) {
+			return false
+		}
+	}
+	l.selectRowForContextMenu(row)
+	if row >= len(l.rows) || !axMayShowContextMenu(l.AsPanel()) {
+		return false
+	}
+	rect := l.RowRect(row)
+	l.ScrollRectIntoView(rect)
+	return l.ShowContextMenu(geom.NewPoint(rect.X, rect.Bottom()))
+}
+
+// selectRowForContextMenu readies a row for a contextual menu about to open over it: an unselected row becomes the
+// whole selection, while a selected one keeps the rest of the selection for the menu to act on. Either way it becomes
+// the anchor and the lead row. A change is reported at once, as no DefaultMouseUp follows to report it.
+func (l *List[T]) selectRowForContextMenu(row int) {
+	if !l.Selection.State(row) {
+		l.Select(false, row)
+		SafeCall(l.NewSelectionCallback)
+	}
+	l.anchor = row
+	l.setLead(row)
+}
+
+// requestFocusWithoutScroll takes the keyboard focus without DefaultFocusGained scrolling the list into view, which
+// would move the rows out from under the pointer.
+func (l *List[T]) requestFocusWithoutScroll() {
+	l.suppressScroll = true
+	l.RequestFocus()
+	l.suppressScroll = false
+}
+
+// ContextMenuPressed implements ContextMenuPressHandler: the list takes the focus without scrolling, when it can hold
+// it, and selects the row under the pointer whatever the modifiers (see selectRowForContextMenu). The press is asked
+// back should it become a drag, so that a right-drag extends the selection as on a list without a menu, except while a
+// modifier is down, since DefaultMouseDown would then toggle the row just selected or extend from the anchor just
+// moved.
+func (l *List[T]) ContextMenuPressed(where geom.Point, mods mod.Modifiers) bool {
+	if l.Focusable() {
+		l.requestFocusWithoutScroll()
+	}
+	if index, _ := l.rowAt(where.Y); index >= 0 {
+		l.selectRowForContextMenu(index)
+	}
+	return mods&mod.NonSticky == 0
+}
+
+// ContextMenuAnchor implements ContextMenuAnchorer: beneath the row the person is on, scrolled into view first, or
+// DefaultContextMenuAnchor when nothing is selected.
+func (l *List[T]) ContextMenuAnchor() geom.Point {
+	row := l.axCurrentRow()
+	if row < 0 {
+		return l.DefaultContextMenuAnchor()
+	}
+	rect := l.RowRect(row)
+	l.ScrollRectIntoView(rect)
+	return geom.NewPoint(rect.X, rect.Bottom())
 }
 
 // axPerformInCell carries out a request aimed at a panel inside the cell that draws one of the rows. The cell is built
@@ -1051,8 +1142,10 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 // entirely, and a focus left on a detached panel is a focus the window cannot find, silently gone until the person
 // presses Tab. A Focus request that cannot leave the focus on the node it named must be refused rather than reported
 // as carried out, so the nodes described within a row are published as neither focusable nor offering Focus, and one
-// that arrives anyway is turned away here. The row itself is another matter: it does offer the focus, and the list
-// carries that out by taking the focus and selecting the row — see PerformAccessibilityAction.
+// that arrives anyway is turned away here. A ShowContextMenu request is refused for the same reason, since the menu's
+// commands act on whatever holds the focus; nothing within a row offers the menu, and the list offers its own on each
+// row instead. The row itself is another matter: it does offer the focus,
+// and the list carries that out by taking the focus and selecting the row — see PerformAccessibilityAction.
 //
 // A widget that took the focus while handling one of the remaining requests — which Press does on its way to the click
 // it synthesizes — is handed straight back for that same reason. The focus goes to the list itself, which is the one
@@ -1061,7 +1154,7 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 // A key naming a cell of something other than a list is refused: the key travels with the request from whatever
 // described the panel, and only the widget that put it there knows how to read it.
 func (l *List[T]) axPerformInCell(key axCellPanelKey, req accessibility.ActionRequest) bool {
-	if req.Action == accessibility.Focus {
+	if req.Action == accessibility.Focus || req.Action == accessibility.ShowContextMenu {
 		return false
 	}
 	row, ok := key.Cell.(int)

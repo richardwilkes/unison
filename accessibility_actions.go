@@ -111,7 +111,34 @@ func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bo
 	// The widget is told which of its virtual children the request is aimed at, which is the only way it can tell one
 	// row of a table from another.
 	req.Key = target.key
+	if target.host != nil {
+		return target.panel.axDispatchBorrowedAction(target.host, req)
+	}
 	return target.panel.axDispatchAction(req, target.key != nil)
+}
+
+// axDispatchBorrowedAction asks a panel of the cell holding the keyboard focus, which host (a Table) borrowed from the
+// row and keeps attached while the focus is within it, to carry out a request, as axDispatchAction does for a panel of
+// the window's own. The host has a say only in a request for the panel's contextual menu, which is refused, with
+// nothing changed, unless the host would carry it out for a panel of any other cell (see
+// axBorrowedPanelMayShowContextMenu). That is asked before a mouse button still held is released for the menu, so that
+// a refused request leaves the press alone, and again afterwards, since the release may have disabled the host or moved
+// the focus out of the cell. What was published may still offer the menu, since the host may have been disabled since
+// the window was last described.
+func (p *Panel) axDispatchBorrowedAction(host *Panel, req accessibility.ActionRequest) bool {
+	if req.Action == accessibility.ShowContextMenu {
+		if !axMayShowContextMenu(p) || !axBorrowedPanelMayShowContextMenu(host, p) {
+			return false
+		}
+		if wnd := p.Window(); wnd != nil && wnd.inMouseDown {
+			wnd.endPressesForContextMenu()
+			if p.Window() != wnd || !panelContains(host, p) || !axMayShowContextMenu(p) ||
+				!axBorrowedPanelMayShowContextMenu(host, p) {
+				return false
+			}
+		}
+	}
+	return p.axDispatchAction(req, false)
 }
 
 // axDispatchAction asks a panel to carry out a request: through its Accessibility.ActionCallback, then through
@@ -123,6 +150,16 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 		// AccessibilityActor implementation and every default behavior alike, including the requests aimed at a
 		// virtual child of a disabled panel, which only this panel could have carried out. See axDisabledActions.
 		return false
+	}
+	if req.Action == accessibility.ShowContextMenu && !virtual && axMayShowContextMenu(p) {
+		// A held button is released before the widget readies itself for the menu (a Field placing its caret on the
+		// range named), since a native menu's tracking loop would swallow the release, and the release could move what
+		// was readied. A request aimed at a virtual child is left to the widget, which ends the press itself, as
+		// Table.axShowRowContextMenu does. Nothing is done for a request about to be refused; axShowContextMenu checks
+		// again afterwards, since the release may have ended the offer.
+		if wnd := p.Window(); wnd != nil {
+			wnd.endPressesForContextMenu()
+		}
 	}
 	handled := false
 	if p.Accessibility.ActionCallback != nil {
@@ -161,8 +198,69 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 		return true
 	case accessibility.Press:
 		return p.axSynthesizeClick()
+	case accessibility.ShowContextMenu:
+		return p.axShowContextMenu()
 	default:
 		return false
+	}
+}
+
+// axShowContextMenu opens the panel's contextual menu for an assistive technology at contextMenuAnchor, since there is
+// no pointer. The panel takes the focus first, when it can hold it, since a menu's commands act on whatever holds the
+// focus. axMayShowContextMenu is asked again here, since the release axDispatchAction delivered, or the focus change,
+// may have ended the offer.
+func (p *Panel) axShowContextMenu() bool {
+	if !axMayShowContextMenu(p) {
+		return false
+	}
+	if p.Focusable() {
+		p.RequestFocus()
+	}
+	return p.ShowContextMenu(p.contextMenuAnchor())
+}
+
+// axMayShowContextMenu reports whether an assistive technology's request for the panel's contextual menu may be carried
+// out: the panel offers a menu (see offersContextMenu) and is in the active window. A widget with something to do
+// before the default behavior opens the menu asks it first, so that a request about to be refused changes nothing.
+func axMayShowContextMenu(p *Panel) bool {
+	return p.offersContextMenu() && axMayPopupMenu(p)
+}
+
+// axContextMenuRangePlacer is implemented by a text widget that places its caret or selection on the range a request
+// for its contextual menu names, through axPlaceContextMenuRange, so that a Table standing in for a widget in one of
+// its cells can have the range placed before it gives the widget the focus: a field given the focus first would have
+// selected all of its text and had that mistaken for the person's selection. Placing is idempotent, so the widget's own
+// PerformAccessibilityAction placing the range again changes nothing.
+type axContextMenuRangePlacer interface {
+	// axPlaceMenuRange places the caret or selection on the range req names; see axPlaceContextMenuRange.
+	axPlaceMenuRange(req accessibility.ActionRequest)
+}
+
+// axPlaceContextMenuRange places a text widget's caret or selection, through place, on the range a request for its
+// contextual menu names, as UI Automation's text-range ShowContextMenu does, so that the default behavior then opens
+// the menu there and its commands act on it. Nothing is placed for a request about to be refused, nor for one naming
+// the empty range at offset zero, which cannot be told from one naming no range. A request for a single position within
+// the selection the widget already has, which selection reports, keeps that selection, since a menu opened at the caret
+// alone would have nothing to cut or copy. The selection is read before the widget takes the focus, since a field that
+// gains the focus with nothing selected selects all of its text, and the range is placed after, since that select-all
+// would replace it; a widget standing in for the text widget must not give it the focus before this runs, see
+// axContextMenuRangePlacer.
+func axPlaceContextMenuRange(p *Panel, req accessibility.ActionRequest, selection func() (start, end int),
+	place func(start, end int),
+) {
+	if (req.Start == 0 && req.End == 0) || !axMayShowContextMenu(p) {
+		return
+	}
+	keep := false
+	if req.Start == req.End {
+		start, end := selection()
+		keep = start < end && req.Start >= start && req.Start <= end
+	}
+	if p.Focusable() {
+		p.RequestFocus()
+	}
+	if !keep {
+		place(req.Start, req.End)
 	}
 }
 
@@ -244,16 +342,17 @@ func (p *Panel) axSynthesizeClick() bool {
 // Window.dispatchAccessibilityAction cannot make this check for every action, since most of them act on the panel
 // itself and are perfectly reasonable to ask of a background window; only the ones that open a menu are placed
 // somewhere else entirely. Those are also narrowed out of what a node advertises, so that nothing is offered that would
-// then be refused; see axSnapshot.narrowMenuActions.
+// then be refused; see axSnapshot.narrowMenuActions and AccessibilityBuilder.AddVirtualChildOf.
 func axMayPopupMenu(p *Panel) bool {
 	wnd := p.Window()
 	return wnd != nil && wnd == ActiveWindow()
 }
 
-// axMenuActions is implemented by a widget that advertises actions which would open a menu somewhere other than within
-// its own window: a Field and a Markdown, both of which offer a contextual menu, and a PopupMenu, whose list of choices
-// is one. The snapshot builder asks each such widget which of the actions it has just been described with are those,
-// and takes them away when a menu opened on the widget's behalf would not land where the widget is. See
+// axMenuActions is implemented by a widget that advertises actions of its own which would open a menu somewhere other
+// than within its own window: a Field that is a combo box, whose Expand opens its choices, and a PopupMenu, whose list
+// of choices is a menu. The snapshot builder asks each such widget which of the actions it has just been described with
+// are those, and takes them away when a menu opened on the widget's behalf would not land where the widget is. The
+// contextual menu is not one of them: the builder takes accessibility.ShowContextMenu from every node itself. See
 // axSnapshot.narrowMenuActions and axMayPopupMenu.
 type axMenuActions interface {
 	// axMenuOpeningActions returns the subset of the node's actions that would open a menu, given what the widget has

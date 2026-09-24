@@ -75,41 +75,51 @@ type Window struct {
 	// WillCloseCallback is called just prior to the window closing.
 	WillCloseCallback func()
 	// ContentScaleCallback is called when the backing scale of the window changes.
-	ContentScaleCallback        func(scale geom.Point)
-	wnd                         *apiWindow
-	surface                     *surface
-	glCtx                       *apiGLContext
-	root                        *rootPanel
-	ax                          *windowAccessibility
-	focus                       *Panel
-	cursor                      *Cursor
-	lastDropTarget              *Panel
-	dragSourceCleanup           func()
-	lastMouseDownPanel          *Panel
-	lastMouseOverPanel          *Panel
-	lastKeyDownPanel            *Panel
-	lastTooltip                 *Panel
-	lastTooltipShownAt          time.Time
-	lastButtonTime              time.Time
-	pressedKeys                 map[KeyCode]bool
-	pressedButtons              map[int]bool
-	data                        map[string]any
-	dragTypes                   map[string]*uti.DataType
-	title                       string
-	titleIcons                  []*Image
-	lastDrawDuration            time.Duration
-	tooltipSequence             int
-	modalResultCode             int
-	lastButton                  int
-	lastButtonCount             int
-	lastContentRect             geom.Rect
-	firstButtonLocation         geom.Point
-	dragDataLocation            geom.Point
-	lastWidth                   float32
-	lastHeight                  float32
-	lastKeyModifiers            mod.Modifiers
+	ContentScaleCallback func(scale geom.Point)
+	wnd                  *apiWindow
+	surface              *surface
+	glCtx                *apiGLContext
+	root                 *rootPanel
+	ax                   *windowAccessibility
+	focus                *Panel
+	cursor               *Cursor
+	lastDropTarget       *Panel
+	dragSourceCleanup    func()
+	lastMouseDownPanel   *Panel
+	contextMenuPanel     *Panel
+	lastMouseOverPanel   *Panel
+	lastKeyDownPanel     *Panel
+	lastTooltip          *Panel
+	lastTooltipShownAt   time.Time
+	lastButtonTime       time.Time
+	pressedKeys          map[KeyCode]bool
+	pressedButtons       map[int]bool
+	data                 map[string]any
+	dragTypes            map[string]*uti.DataType
+	title                string
+	titleIcons           []*Image
+	lastDrawDuration     time.Duration
+	tooltipSequence      int
+	modalResultCode      int
+	lastButton           int
+	lastButtonCount      int
+	contextMenuCount     int
+	lastContentRect      geom.Rect
+	firstButtonLocation  geom.Point
+	dragDataLocation     geom.Point
+	contextMenuPress     geom.Point
+	lastWidth            float32
+	lastHeight           float32
+	lastKeyModifiers     mod.Modifiers
+	contextMenuMods      mod.Modifiers
+	// contextMenuChordKey is the key of the chord that opened an in-window contextual menu, until keyReleased sees its
+	// key up, or KeyNone. It is not recorded for a native menu, whose tracking loop swallows the key up. The Windows
+	// platform code keeps such an F10 from DefWindowProc, which would otherwise open the system menu on its release.
+	contextMenuChordKey         KeyCode
 	kind                        WindowKind
 	lastDragOp                  drag.Op
+	contextMenuReplay           bool
+	rightPressTaken             bool
 	valid                       bool
 	keepHidden                  bool
 	focused                     bool
@@ -314,6 +324,7 @@ func (w *Window) gainedFocus() {
 		// then appear to trap the cursor inside the modal window.
 		return
 	}
+	wasActive := ActiveWindow()
 	w.focused = true
 	if len(windowList) != 0 && windowList[0] != w {
 		windowList = slices.DeleteFunc(windowList, func(wnd *Window) bool { return wnd == w })
@@ -329,8 +340,10 @@ func (w *Window) gainedFocus() {
 		w.focus.MarkForRedraw()
 	}
 	// A window may become the active one without anything in it drawing differently — it may hold nothing that can take
-	// the focus at all — and an assistive technology has to be told which window the person is now in.
+	// the focus at all — and an assistive technology has to be told which window the person is now in, and which
+	// window stopped being the active one, which need not be one that lost the focus.
 	w.axMarkForPublish()
+	axMarkActiveWindowChange(wasActive)
 	SafeCall(w.GainedFocusCallback)
 	w.mouseEnter(w.MouseLocation(), 0)
 	if w.apiCursorInContentArea() {
@@ -340,14 +353,16 @@ func (w *Window) gainedFocus() {
 
 func (w *Window) lostFocus() {
 	w.restoreHiddenCursor()
+	wasActive := ActiveWindow()
 	w.focused = false
 	w.ClearTooltip()
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
 	// As in gainedFocus: the window no longer being the active one is worth describing whether or not anything in it
-	// looks any different for it.
+	// looks any different for it, and so is whichever window is the active one now.
 	w.axMarkForPublish()
+	axMarkActiveWindowChange(wasActive)
 	SafeCall(w.LostFocusCallback)
 	w.root.postLostFocus(w)
 	if len(w.pressedKeys) != 0 {
@@ -1343,6 +1358,21 @@ func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 	}
 	w.inMouseDown = true
 	w.pressedButtons[button] = true
+	if button == ButtonRight && len(w.pressedButtons) > 1 && (w.focused || w.transient) &&
+		w.contextMenuOfferedAt(where) {
+		// A right press made while another button is down is not a right-click. Over a panel with a contextual menu it
+		// is ignored entirely: not counted as down, so mouseUp drops its release, nor as a click, so drags keep
+		// reporting the button that began the gesture, and not told to the window's callbacks. contextMenuOfferedAt is
+		// asked rather than contextMenuOwnerAt, which may move the focus.
+		delete(w.pressedButtons, ButtonRight)
+		return
+	}
+	// Any press ends a right-click still waiting to open a menu. A right press is delivered unless takeContextMenuPress
+	// takes it below.
+	w.forgetContextMenuPress()
+	if button == ButtonRight {
+		w.rightPressTaken = false
+	}
 	maxDelay, maxMouseDrift := DoubleClickParameters()
 	now := time.Now()
 	if button == w.lastButton && time.Since(w.lastButtonTime) <= maxDelay &&
@@ -1368,28 +1398,181 @@ func (w *Window) mouseDown(where geom.Point, button int, mods mod.Modifiers) {
 	}
 	if w.focused || w.transient {
 		w.ClearTooltip()
-		w.lastMouseDownPanel = nil
-		panel := w.root.PanelAt(where)
-		for panel != nil {
-			if panel.MouseDownCallback != nil && panel.Enabled() {
-				stop := false
-				SafeCall(func() {
-					stop = panel.MouseDownCallback(panel.PointFromRoot(where), button, w.lastButtonCount, mods)
-				})
-				if stop {
-					w.lastMouseDownPanel = panel
-					return
-				}
+		if button == ButtonRight && len(w.pressedButtons) == 1 {
+			// A right-click over a panel with a contextual menu is taken for that menu whatever its click count. One
+			// made with another button down is not passed to contextMenuOwnerAt, which may ready an owner for a menu
+			// that will not open.
+			if owner := w.contextMenuOwnerAt(where); owner != nil {
+				w.takeContextMenuPress(owner, where, mods)
+				return
 			}
-			panel = panel.parent
+		}
+		w.dispatchMouseDown(where, button, w.lastButtonCount, mods)
+	}
+}
+
+// dispatchMouseDown offers a press to the panel under it and then its ancestors until an enabled one's
+// MouseDownCallback claims it; that panel then receives the drags and the release. mouseDrag also uses it to hand back
+// a right press taken for a contextual menu once it becomes a drag. A panel that claims a press its own callback has
+// already ended, by calling Panel.ShowContextMenu, is not recorded as holding it: the release is already spent, and
+// recording it would leave the window believing a press was in progress until the next one.
+func (w *Window) dispatchMouseDown(where geom.Point, button, count int, mods mod.Modifiers) {
+	w.lastMouseDownPanel = nil
+	panel := w.root.PanelAt(where)
+	for panel != nil {
+		if panel.MouseDownCallback != nil && panel.Enabled() {
+			stop := false
+			SafeCall(func() { stop = panel.MouseDownCallback(panel.PointFromRoot(where), button, count, mods) })
+			if stop {
+				if w.pressedButtons[button] {
+					w.lastMouseDownPanel = panel
+				}
+				return
+			}
+		}
+		panel = panel.parent
+	}
+}
+
+// contextMenuOwnerAt returns the panel whose contextual menu a right press at the given window position is for, or nil.
+// An enabled contextMenuOwnerResolver under the pointer is asked first, since PanelAt cannot see the panels it draws
+// without holding them as children; otherwise it is the panel under the pointer, when that panel itself offers a menu.
+// Its ancestors are never considered in its place. Asking a resolver may ready the owner, by giving it the focus. There
+// is no owner in a window other than ActiveWindow(), where a popup menu opens (see axMayPopupMenu): taking the press
+// for a menu that could not open would swallow the click.
+func (w *Window) contextMenuOwnerAt(where geom.Point) *Panel {
+	if w != ActiveWindow() {
+		return nil
+	}
+	panel := w.root.PanelAt(where)
+	if panel == nil {
+		return nil
+	}
+	if resolver, ok := panel.Self.(contextMenuOwnerResolver); ok && panel.Enabled() {
+		var owner *Panel
+		SafeCall(func() { owner = resolver.contextMenuOwnerWithin(panel.PointFromRoot(where)) })
+		if owner != nil {
+			return owner
 		}
 	}
+	if panel.offersContextMenu() {
+		return panel
+	}
+	return nil
+}
+
+// contextMenuOfferedAt reports whether contextMenuOwnerAt would find an owner at the given window position, without
+// readying anything for a menu (finding one in a Table cell gives its widget the focus).
+func (w *Window) contextMenuOfferedAt(where geom.Point) bool {
+	if w != ActiveWindow() {
+		return false
+	}
+	panel := w.root.PanelAt(where)
+	if panel == nil {
+		return false
+	}
+	if resolver, ok := panel.Self.(contextMenuOwnerResolver); ok && panel.Enabled() {
+		offered := false
+		SafeCall(func() { offered = resolver.offersContextMenuWithin(panel.PointFromRoot(where)) })
+		if offered {
+			return true
+		}
+	}
+	return panel.offersContextMenu()
+}
+
+// focusedContextMenuOwner returns the panel holding the keyboard focus when it offers a contextual menu and this is
+// the active window, where the menu would open, or nil: in any other window, a press held on the panel would otherwise
+// be ended and the panel scrolled to its anchor for a menu that Panel.ShowContextMenu then refuses. A widget in a Table
+// cell holds the focus itself, so no resolver is needed here.
+func (w *Window) focusedContextMenuOwner() *Panel {
+	if w != ActiveWindow() {
+		return nil
+	}
+	if focus := w.CurrentFocus(); focus != nil && focus.offersContextMenu() {
+		return focus
+	}
+	return nil
+}
+
+// endPressesForContextMenu ends any mouse press in progress and gives up the pointer capture. It must be called before
+// opening a contextual menu other than on a right-click's release, since a native menu's tracking loop swallows the
+// release of any button still held, leaving the window believing that button is down. The releases are delivered at
+// offPanelPoint, outside every panel, so that the panel holding a press ends its gesture without the release counting
+// as a click the person never made; a taken right press opens no menu. A widget that readies itself for a menu, a table
+// selecting a row, calls this before doing so, since a release delivered to it may change what it is about to ready.
+func (w *Window) endPressesForContextMenu() {
+	if w.inMouseDown {
+		w.synthesizeMouseUpAt(offPanelPoint)
+		w.apiCancelMouseCapture()
+	}
+}
+
+// offPanelPoint is a position, in window coordinates, that lies outside every panel of any window, since a root panel
+// sits at the origin and nothing within it reaches that far up and to the left.
+var offPanelPoint = geom.NewPoint(-1e6, -1e6)
+
+// takeContextMenuPress takes a right-click with no other button down, over owner, for owner's contextual menu: no
+// panel is sent the press, the drags or the release, unless mouseDrag hands the press back as a drag. The owner's
+// ContextMenuPressHandler runs before the window focuses the owner, so that a widget that scrolls itself into view on
+// gaining the focus can take it first without scrolling. Pressing another button while this one is held ends the
+// right-click, but the right press stays taken, so its release still reaches no panel.
+func (w *Window) takeContextMenuPress(owner *Panel, where geom.Point, mods mod.Modifiers) {
+	w.rightPressTaken = true
+	w.lastMouseDownPanel = nil
+	replay := false
+	if handler, ok := owner.Self.(ContextMenuPressHandler); ok {
+		local := owner.PointFromRoot(where)
+		SafeCall(func() { replay = handler.ContextMenuPressed(local, mods) })
+	}
+	if owner.Focusable() {
+		owner.RequestFocus()
+	}
+	if !w.pressedButtons[ButtonRight] {
+		// The handler or the focus change ended the press (a modal opened, or the window lost the focus), so there is
+		// no right-click left to wait on.
+		return
+	}
+	w.contextMenuPanel = owner
+	w.contextMenuPress = where
+	w.contextMenuCount = w.lastButtonCount
+	w.contextMenuMods = mods
+	w.contextMenuReplay = replay
+}
+
+// forgetContextMenuPress discards a right-click waiting for its release to open a contextual menu. It leaves
+// rightPressTaken alone, so the release of a taken press still reaches no panel.
+func (w *Window) forgetContextMenuPress() {
+	w.contextMenuPanel = nil
+	w.contextMenuPress = geom.Point{}
+	w.contextMenuCount = 0
+	w.contextMenuMods = 0
+	w.contextMenuReplay = false
 }
 
 func (w *Window) mouseDrag(where geom.Point, button int, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	w.dragDataLocation = where
 	w.restoreHiddenCursor()
+	if w.contextMenuPanel != nil {
+		// A right-click that moves beyond the drift is a drag and opens no menu. The drift is measured here rather than
+		// with IsDragGesture, which also counts a press held still long enough, and a slow right-click is still one.
+		_, minMouseDrift := DragGestureParameters()
+		if press := w.contextMenuPress; xmath.Abs(press.X-where.X) > minMouseDrift ||
+			xmath.Abs(press.Y-where.Y) > minMouseDrift {
+			owner := w.contextMenuPanel
+			count, pressMods, replay := w.contextMenuCount, w.contextMenuMods, w.contextMenuReplay
+			w.forgetContextMenuPress()
+			if replay && owner.Window() == w && owner.Enabled() && w.contextMenuOwnerUnder(owner, press) {
+				// The owner asked for the press back (see ContextMenuPressHandler): deliver it as it was made, no
+				// longer taken so that its release is delivered too, and let this move carry on below as its first
+				// drag. Not when the owner has since been removed, disabled or moved from under the press, since the
+				// press would then reach a panel that was never offered it.
+				w.rightPressTaken = false
+				w.dispatchMouseDown(press, ButtonRight, count, pressMods)
+			}
+		}
+	}
 	if w.MouseDragCallback != nil {
 		stop := false
 		SafeCall(func() { stop = w.MouseDragCallback(where, button, mods) })
@@ -1404,13 +1587,43 @@ func (w *Window) mouseDrag(where geom.Point, button int, mods mod.Modifiers) {
 	}
 }
 
+// contextMenuOwnerUnder reports whether the owner of a taken right press is still under the given window position: the
+// panel under it is the owner or within the owner, or is a widget that draws the owner without holding it as a child (a
+// Table with the owner in one of its cells) and every panel from the owner up to that widget is visible and holds the
+// position within its own bounds. PanelAt descends only into children, so for a borrowed cell widget it answers with
+// the table, and a press handed back then reaches the widget through the table's own forwarding into the cell. The
+// walk up from the owner tells that apart from an owner the window cannot see any more because a container between it
+// and the panel under the position was hidden, or shrank or scrolled the position out of it, which the owner's own
+// Hidden flag and bounds say nothing about.
+func (w *Window) contextMenuOwnerUnder(owner *Panel, where geom.Point) bool {
+	hit := w.root.PanelAt(where)
+	if panelContains(owner, hit) {
+		return true
+	}
+	if hit == nil || !panelContains(hit, owner) {
+		return false
+	}
+	for p := owner; p != hit; p = p.parent {
+		if p.Hidden || !p.PointFromRoot(where).In(p.ContentRect(true)) {
+			return false
+		}
+	}
+	return true
+}
+
 func (w *Window) synthesizeMouseUp() {
+	w.synthesizeMouseUpAt(w.MouseLocation())
+}
+
+// synthesizeMouseUpAt releases every button the window believes is down, as if at the given window position.
+func (w *Window) synthesizeMouseUpAt(where geom.Point) {
+	// A synthesized release must not open the contextual menu a right press was waiting to open.
+	w.forgetContextMenuPress()
 	if len(w.pressedButtons) != 0 {
 		buttons := make([]int, 0, len(w.pressedButtons))
 		for button := range w.pressedButtons {
 			buttons = append(buttons, button)
 		}
-		where := w.MouseLocation()
 		for _, button := range buttons {
 			w.mouseUp(where, button, 0)
 		}
@@ -1423,18 +1636,33 @@ func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 	}
 	delete(w.pressedButtons, button)
 	w.inMouseDown = len(w.pressedButtons) != 0
+	// Cleared before any early return below, so that no menu is left waiting past this release.
+	menuOwner := w.contextMenuPanel
+	w.forgetContextMenuPress()
+	// The release of a taken right press reaches no panel, since none was sent the press, and does not become
+	// lastButton, so drags of a button still down keep reporting that button.
+	taken := button == ButtonRight && w.rightPressTaken
+	if button == ButtonRight {
+		w.rightPressTaken = false
+	}
+	// A gesture goes on while any of its buttons is down. A taken right press is part of none, so a gesture begun while
+	// it was held ends on the release of its own button, whether or not the right button is still down.
+	takenRightDown := w.rightPressTaken && w.pressedButtons[ButtonRight]
+	gestureGoesOn := len(w.pressedButtons) > 1 || (len(w.pressedButtons) == 1 && !takenRightDown)
 	if !w.okToProcess() {
 		// Delivery is suppressed while blocked by a modal (and, unlike key events, not rerouted to the modal, since
 		// mouse events are positional — see the comment in mouseDown), but the bookkeeping above must still happen so
 		// that a release arriving while blocked (e.g. one synthesized by lostFocus when a modal opens mid-press)
 		// cannot leave stale pressed-button state behind. Otherwise mouseMovedOrDragged, which has no modal gate,
 		// would keep feeding drag events to lastMouseDownPanel for the modal's entire lifetime.
-		if !w.inMouseDown {
+		if !gestureGoesOn {
 			w.lastMouseDownPanel = nil
 		}
 		return
 	}
-	w.lastButton = button
+	if !taken {
+		w.lastButton = button
+	}
 	w.lastKeyModifiers = mods
 	if w.MouseUpCallback != nil {
 		stop := false
@@ -1443,23 +1671,40 @@ func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 			return
 		}
 	}
-	if w.lastMouseDownPanel != nil && w.lastMouseDownPanel.MouseUpCallback != nil && w.lastMouseDownPanel.Enabled() {
+	if !taken && w.lastMouseDownPanel != nil && w.lastMouseDownPanel.MouseUpCallback != nil &&
+		w.lastMouseDownPanel.Enabled() {
 		SafeCall(func() {
 			w.lastMouseDownPanel.MouseUpCallback(w.lastMouseDownPanel.PointFromRoot(where), button, mods)
 		})
 	}
-	if w.inMouseDown {
+	if gestureGoesOn {
 		// Other buttons are still down, so the drag in progress continues and the panel it is targeting must keep
-		// receiving events until the last button is released.
+		// receiving events until the last of its buttons is released.
 		return
 	}
-	panel := w.root.PanelAt(where)
+	at := where
+	if where == offPanelPoint {
+		// A release endPressesForContextMenu delivers outside every panel brings the hover state up to date at the
+		// pointer itself, which may have been dragged since the press: mouseDrag leaves the panel under it and the
+		// cursor as they were at the press, and a platform withholds its exit while a button is held (Windows drops
+		// WM_MOUSELEAVE while the mouse is captured), so a press dragged off the panel it began on is only noticed
+		// here.
+		at = w.MouseLocation()
+	}
+	panel := w.root.PanelAt(at)
 	if !panel.Is(w.lastMouseOverPanel) {
 		w.mouseExit()
 	}
-	w.updateCursor(panel, where)
-	w.updateTooltip(w.lastMouseDownPanel, where)
+	w.updateCursor(panel, at)
+	w.updateTooltip(w.lastMouseDownPanel, at)
 	w.lastMouseDownPanel = nil
+	// The menu opens last, since a native menu does not return until dismissed, and on the release rather than the
+	// press, since a native menu's tracking loop would swallow the release. A release the owner is no longer under
+	// cancels it; see contextMenuOwnerUnder.
+	if button == ButtonRight && menuOwner != nil && menuOwner.Window() == w && menuOwner.Enabled() &&
+		w.contextMenuOwnerUnder(menuOwner, where) {
+		menuOwner.ShowContextMenu(menuOwner.PointFromRoot(where))
+	}
 }
 
 func (w *Window) mouseEnter(where geom.Point, mods mod.Modifiers) {
@@ -1580,6 +1825,33 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 	}
 	w.ClearTooltip()
 	w.lastKeyDownPanel = nil
+	if !repeat && isContextMenuKey(key, mods) {
+		// The Menu key and shift+F10 open the contextual menu of the panel holding the focus. This comes before the
+		// panels are offered the key, since a Field takes nearly every key and a fallback after the walk below would
+		// never be reached while one held the focus.
+		if owner := w.focusedContextMenuOwner(); owner != nil {
+			if w.inMouseDown {
+				// A held press is ended before the owner is asked for its menu, since a widget readies itself for the
+				// menu before building it and a release delivered after that could undo it; the release may move the
+				// focus, so the owner is looked up again. A callback that then has nothing to offer has still ended the
+				// press, and the chord goes on to the owner as an ordinary key.
+				w.endPressesForContextMenu()
+				owner = w.focusedContextMenuOwner()
+			}
+			if owner != nil && owner.ShowContextMenu(owner.contextMenuAnchor()) {
+				if len(w.root.openMenuPanels) == 0 {
+					// Only a native menu is gone by now, and its tracking loop swallowed the key up. Forget the key so
+					// the next press of the chord is not taken for a repeat; keyReleased drops a late key up.
+					delete(w.pressedKeys, key)
+				} else {
+					w.contextMenuChordKey = key
+				}
+				// lastKeyDownPanel stays nil so that the key ups of the chord, and of keys an in-window menu consumes,
+				// reach no panel that missed their key downs.
+				return
+			}
+		}
+	}
 	if focus := w.CurrentFocus(); focus != nil {
 		panel := focus
 		w.lastKeyDownPanel = panel
@@ -1651,6 +1923,9 @@ func (w *Window) runeTyped(ch rune) {
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
 	w.dropRunes = false
+	if key == w.contextMenuChordKey {
+		w.contextMenuChordKey = KeyNone
+	}
 	pressed := w.pressedKeys[key]
 	delete(w.pressedKeys, key)
 	if !w.okToProcess() {

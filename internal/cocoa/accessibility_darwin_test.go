@@ -6820,3 +6820,83 @@ func TestAXRowSpeaksItsWholeName(t *testing.T) {
 		})
 	})
 }
+
+// TestAXShowMenuRequestedOnACellNamesTheCell proves that the element a client is handed for a cell holding nothing but
+// a label, which stands in for the cell (see axStandIn), offers the cell's contextual menu through the selector, the
+// action names and the request alike, while a label with a menu of its own keeps its own request and a cell without a
+// menu offers none.
+func TestAXShowMenuRequestedOnACellNamesTheCell(t *testing.T) {
+	defer func() { AccessibilityActionCallback = nil }()
+	runOnMain(func() {
+		tree := axCellFocusTree(0, -1)
+		// The first row's cells offer the table's menu, as Table publishes them; the second row's do not.
+		for _, id := range []accessibility.NodeID{axCellR0C0ID, axCellR0C1ID} {
+			tree.Nodes[id].Actions = tree.Nodes[id].Actions.With(accessibility.ShowContextMenu)
+		}
+		// The label standing in for the second row's second cell has a menu of its own.
+		own := tree.Nodes[axCellR1LabelID]
+		own.Actions = own.Actions.With(accessibility.ShowContextMenu)
+		_, a, cleanup := newAXAdapterWithTree(t, tree)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		var requests []accessibility.ActionRequest
+		AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
+			requests = append(requests, req)
+		}
+		names := func(el objc.ID) []string {
+			ids := IDsFromNSArray(el.Send(Sel("accessibilityActionNames")))
+			out := make([]string, 0, len(ids))
+			for _, id := range ids {
+				out = append(out, GoStringFromNSString(id))
+			}
+			return out
+		}
+		WithPool(func() {
+			stoodInFor := axCellElementFor(a, axCellR0C1ID)
+			if stoodInFor != a.elementFor(axCellR0LabelID) {
+				t.Fatal("the test needs the label to stand in for its cell")
+			}
+			if !axSelectorAllowed(stoodInFor, "accessibilityPerformShowMenu") {
+				t.Error("the label standing in for a cell with a menu does not allow accessibilityPerformShowMenu")
+			}
+			if got := names(stoodInFor); !slices.Contains(got, "AXShowMenu") {
+				t.Errorf("the label standing in for a cell with a menu names %v, want AXShowMenu among them", got)
+			}
+			if !objc.Send[bool](stoodInFor, Sel("accessibilityPerformShowMenu")) {
+				t.Error("accessibilityPerformShowMenu on the label standing in for a cell with a menu = false")
+			}
+			stoodInFor.Send(Sel("accessibilityPerformAction:"), NSStringFromGo("AXShowMenu"))
+
+			// An empty cell is presented as itself and asks for its own menu.
+			if !objc.Send[bool](axCellElementFor(a, axCellR0C0ID), Sel("accessibilityPerformShowMenu")) {
+				t.Error("accessibilityPerformShowMenu on an empty cell with a menu = false")
+			}
+			// A label with a menu of its own keeps its own request.
+			if !objc.Send[bool](axCellElementFor(a, axCellR1C1ID), Sel("accessibilityPerformShowMenu")) {
+				t.Error("accessibilityPerformShowMenu on a label with a menu of its own = false")
+			}
+			// A cell without a menu, presented as itself, offers none.
+			without := axCellElementFor(a, axCellR1C0ID)
+			if axSelectorAllowed(without, "accessibilityPerformShowMenu") {
+				t.Error("a cell without a menu allows accessibilityPerformShowMenu")
+			}
+			if got := names(without); slices.Contains(got, "AXShowMenu") {
+				t.Errorf("a cell without a menu names %v, want no AXShowMenu", got)
+			}
+			if objc.Send[bool](without, Sel("accessibilityPerformShowMenu")) {
+				t.Error("accessibilityPerformShowMenu on a cell without a menu = true")
+			}
+		})
+		want := []accessibility.ActionRequest{
+			{Node: axCellR0C1ID, Action: accessibility.ShowContextMenu},
+			{Node: axCellR0C1ID, Action: accessibility.ShowContextMenu},
+			{Node: axCellR0C0ID, Action: accessibility.ShowContextMenu},
+			{Node: axCellR1LabelID, Action: accessibility.ShowContextMenu},
+		}
+		if !slices.Equal(requests, want) {
+			t.Errorf("showing the menus asked for %v, want %v", requests, want)
+		}
+	})
+}

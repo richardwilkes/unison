@@ -838,7 +838,7 @@ func TestFieldAccessibilityContextMenuTakesTheFocus(t *testing.T) {
 }
 
 // TestFieldAccessibilityContextMenuRefusedInABackgroundWindow verifies that a field in a window that is not the active
-// one refuses to show its contextual menu. The menu is not built in the field's own window: Field.ShowContextMenu goes
+// one refuses to show its contextual menu. The menu is not built in the field's own window: Panel.ShowContextMenu goes
 // through menu.Popup to menu.createPopup, which inserts the popup into ActiveWindow(), so carrying the request out
 // would have put this field's menu up in whatever window was frontmost, at coordinates translated from this one — and
 // with no window active at all it would have done nothing while reporting that it had been carried out. The mouse path
@@ -1205,5 +1205,220 @@ func TestFieldAccessibilityCaretFollowsTheSelection(t *testing.T) {
 	c.Equal(1, node.Text.SelStart)
 	c.Equal(3, node.Text.SelEnd)
 	c.Equal(3, node.Text.Caret, "a selection extended forwards has its caret at the end")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axFieldMenuRecorder records each call of a field's ContextMenuCallback: how many, where, and the field's selection at
+// the time. Only the UI thread writes it, so a test reads it through read.
+type axFieldMenuRecorder struct {
+	asked      int
+	at         geom.Point
+	start, end int
+}
+
+func (r *axFieldMenuRecorder) install(field *unison.Field) {
+	field.ContextMenuCallback = func(where geom.Point) unison.Menu {
+		r.asked++
+		r.at = where
+		r.start, r.end = field.Selection()
+		return field.DefaultContextMenu(where)
+	}
+}
+
+func (r *axFieldMenuRecorder) read(screen *unison.HeadlessScreen) axFieldMenuRecorder {
+	var result axFieldMenuRecorder
+	screen.Do(func() { result = *r })
+	return result
+}
+
+// axCaretBottom returns the bottom of the caret at offset, in the field's own coordinates, from the lines node
+// describes.
+func axCaretBottom(c check.Checker, node *accessibility.Node, offset int) geom.Point {
+	c.Helper()
+	if node.Text == nil {
+		c.Fatal("the field must describe its text")
+	}
+	lines := node.Text.Lines
+	for i, line := range lines {
+		if i == len(lines)-1 || offset < lines[i+1].Start {
+			return geom.NewPoint(line.Bounds.X+line.Advances[offset-line.Start], line.Bounds.Bottom())
+		}
+	}
+	c.Fatal("no line holds offset ", offset)
+	return geom.Point{}
+}
+
+// TestFieldAccessibilityContextMenuPlacesTheCaretForARange verifies that a ShowContextMenu request naming a range
+// focuses the field and then selects that range, rather than leaving the select-all that gaining the focus does, before
+// the menu is asked for beneath the caret, and that a request for a single position within the field's own selection
+// keeps that selection, whether or not the field held the focus already.
+func TestFieldAccessibilityContextMenuPlacesTheCaretForARange(t *testing.T) {
+	c := check.New(t)
+	var first, second *unison.Field
+	var wnd *unison.Window
+	var recorder, firstRecorder axFieldMenuRecorder
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			first = unison.NewField()
+			first.SetText("first field")
+			firstRecorder.install(first)
+			second = unison.NewField()
+			second.SetText("hello world")
+			recorder.install(second)
+			wnd = newHeadlessWindow(t, "ranged menu", geom.NewRect(10, 10, 400, 200), axColumn(first, second))
+			if wnd != nil {
+				wnd.ToFront()
+				first.RequestFocus()
+			}
+		}))
+	c.NotNil(wnd)
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(second))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  6,
+		End:    6,
+	}))
+	recorded := recorder.read(screen)
+	c.Equal(1, recorded.asked, "the menu is asked for once")
+	c.Equal(6, recorded.start, "with the caret already where the range begins")
+	c.Equal(6, recorded.end, "rather than the whole of the text the focus arriving selected")
+	var focused bool
+	screen.Do(func() { focused = second.Focused() })
+	c.True(focused, "the field whose menu was asked for holds the focus the menu's commands act on")
+
+	tree := screen.AccessibilityTree(wnd)
+	node = axMustNode(c, screen.AccessibilityNodeFor(second))
+	c.Equal(axCaretBottom(c, node, 6), recorded.at, "the menu is asked for beneath the caret it placed")
+	menus := axNodesWithRole(tree, role.Menu)
+	c.Equal(1, len(menus))
+	if len(menus) == 1 {
+		var expected geom.Point
+		screen.Do(func() { expected = second.PointToRoot(recorded.at) })
+		c.Equal(expected, menus[0].Bounds.Point, "and opens there")
+	}
+	screen.KeyPress(unison.KeyEscape, mod.None)
+
+	// A range of more than one position is selected, a position within the selection then keeps it, and a position
+	// outside it moves the caret there.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  2,
+		End:    7,
+	}))
+	recorded = recorder.read(screen)
+	c.Equal(2, recorded.asked)
+	c.Equal(2, recorded.start, "the range the request named is selected")
+	c.Equal(7, recorded.end)
+	screen.KeyPress(unison.KeyEscape, mod.None)
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  4,
+		End:    4,
+	}))
+	recorded = recorder.read(screen)
+	c.Equal(3, recorded.asked)
+	c.Equal(2, recorded.start, "a position within the selection keeps the selection for the menu to act on")
+	c.Equal(7, recorded.end)
+	screen.KeyPress(unison.KeyEscape, mod.None)
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  9,
+		End:    9,
+	}))
+	recorded = recorder.read(screen)
+	c.Equal(4, recorded.asked)
+	c.Equal(9, recorded.start, "a position outside the selection moves the caret there")
+	c.Equal(9, recorded.end)
+	screen.KeyPress(unison.KeyEscape, mod.None)
+
+	// A field that does not hold the focus keeps its selection too, when the position lies within it, rather than
+	// having it replaced by the select-all that gaining the focus does.
+	c.True(screen.Do(func() { first.SetSelection(1, 4) }))
+	var firstFocused bool
+	screen.Do(func() { firstFocused = first.Focused() })
+	c.False(firstFocused, "the test needs the first field unfocused")
+	screen.AccessibilityTree(wnd)
+	firstNode := axMustNode(c, screen.AccessibilityNodeFor(first))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   firstNode.ID,
+		Action: accessibility.ShowContextMenu,
+		Start:  3,
+		End:    3,
+	}))
+	recorded = firstRecorder.read(screen)
+	c.Equal(1, recorded.asked)
+	c.Equal(1, recorded.start, "the selection the field had is kept")
+	c.Equal(4, recorded.end)
+	screen.Do(func() { firstFocused = first.Focused() })
+	c.True(firstFocused, "and the field has the focus")
+	screen.KeyPress(unison.KeyEscape, mod.None)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldAccessibilityContextMenuBringsTheCaretIntoView verifies that a field's menu opened without a pointer scrolls
+// the caret back into view first and opens beneath it.
+func TestFieldAccessibilityContextMenuBringsTheCaretIntoView(t *testing.T) {
+	c := check.New(t)
+	var narrow *unison.Field
+	var wnd *unison.Window
+	var recorder axFieldMenuRecorder
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 500},
+		unison.StartupFinishedCallback(func() {
+			narrow = unison.NewField()
+			narrow.SetText("a considerably longer piece of text than this field can show at once")
+			narrow.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(80, 0),
+				HAlign:   align.Start,
+				VAlign:   align.Start,
+			})
+			recorder.install(narrow)
+			wnd = newHeadlessWindow(t, "caret menu", geom.NewRect(10, 10, 400, 300), axColumn(narrow))
+			if wnd != nil {
+				wnd.ToFront()
+				narrow.RequestFocus()
+				narrow.SetSelectionTo(60)
+			}
+		}))
+	c.NotNil(wnd)
+	var content geom.Rect
+	var before geom.Point
+	var outOfView bool
+	c.True(screen.Do(func() {
+		narrow.SetScrollOffset(geom.Point{})
+		before = narrow.ScrollOffset()
+		content = narrow.ContentRect(false)
+		outOfView = narrow.FromSelectionIndex(60).X > content.Right()
+	}))
+	c.True(outOfView, "the caret has to have been scrolled out of the field for this to mean anything")
+
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(narrow))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+	}))
+	recorded := recorder.read(screen)
+	c.Equal(1, recorded.asked)
+	var after geom.Point
+	screen.Do(func() { after = narrow.ScrollOffset() })
+	c.True(after.X < before.X, "the field scrolled its content to bring the caret into view")
+	c.True(recorded.at.X >= content.X && recorded.at.X <= content.Right(), "so the menu is asked for within the field")
+
+	tree := screen.AccessibilityTree(wnd)
+	node = axMustNode(c, screen.AccessibilityNodeFor(narrow))
+	c.Equal(axCaretBottom(c, node, 60), recorded.at, "beneath the caret, where it now is")
+	menus := axNodesWithRole(tree, role.Menu)
+	c.Equal(1, len(menus))
+	if len(menus) == 1 {
+		var expected geom.Point
+		screen.Do(func() { expected = narrow.PointToRoot(recorded.at) })
+		c.Equal(expected, menus[0].Bounds.Point, "and opens there")
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

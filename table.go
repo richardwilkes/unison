@@ -1033,6 +1033,11 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		// first gave it the focus, so a Field would select all of its text instead of just moving the caret to the
 		// spot that was clicked.
 		t.RequestFocusWithoutScroll()
+		// The panel that lost the focus may have changed the rows (a Field committing on losing it may remove or
+		// re-sort them), so the row and column under the press are looked up again, as ContextMenuPressed and
+		// contextMenuOwnerWithin look theirs up only after the focus has moved.
+		row = t.OverRow(where.Y)
+		col = t.OverColumn(where.X)
 	}
 	t.wasDragged = false
 	t.dividerDrag = false
@@ -1139,8 +1144,12 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 				t.selMap[id] = true
 			}
 			t.notifyOfSelectionChange()
-		case t.selMap[id]: // Sets lastClick so that on mouse up, we can treat a click and click and hold differently
-			t.lastSel = id
+		case t.selMap[id]:
+			// Only a left press is noted for the mouse up, which narrows the selection to this row on a click; any
+			// other button leaves the selection alone, as a right-click on a table with a contextual menu does.
+			if button == ButtonLeft {
+				t.lastSel = id
+			}
 		default: // If not already selected, replace selection with current row and make it the anchor
 			t.selMap = make(map[tid.TID]bool)
 			t.selMap[id] = true
@@ -1203,7 +1212,10 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 	return stop
 }
 
-// DefaultMouseUp provides the default mouse up handling.
+// DefaultMouseUp provides the default mouse up handling. A left click on a selected row narrows the selection to that
+// row here, on the release, so that a drag that starts on it can carry the whole selection. A release outside the table
+// is not a click and leaves the selection alone: the release that ends a press for a contextual menu arrives outside
+// every panel (see Window.endPressesForContextMenu), and the menu then acts on the selection the person made.
 func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifiers) bool {
 	stop := false
 	if !t.dividerDrag && button == ButtonLeft && !t.pressedHitRect.Empty() {
@@ -1219,7 +1231,7 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 		t.pressedHitRect = geom.Rect{}
 	}
 
-	if !t.wasDragged && t.lastSel != "" {
+	if !t.wasDragged && t.lastSel != "" && where.In(t.ContentRect(true)) {
 		t.ClearSelection()
 		t.selMap[t.lastSel] = true
 		t.selAnchor = t.lastSel
@@ -2968,6 +2980,11 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 			// only when there is something for it to do.
 			n.Actions = n.Actions.With(accessibility.Press)
 		}
+		if t.offersContextMenu() {
+			// Each row and each cell offers the table's menu, which a request opens for the row; see
+			// axShowRowContextMenu.
+			n.Actions = n.Actions.With(accessibility.ShowContextMenu)
+		}
 	})
 	if rowID == 0 || nameOnly {
 		return rowID
@@ -3002,6 +3019,9 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 			// that cell, exactly as the arrow keys would. See PerformAccessibilityAction and SetLeadCell.
 			n.Focusable = true
 			n.Actions = n.Actions.With(accessibility.ScrollIntoView, accessibility.Focus)
+			if t.offersContextMenu() {
+				n.Actions = n.Actions.With(accessibility.ShowContextMenu)
+			}
 		})
 		if cellID == 0 {
 			continue
@@ -3146,16 +3166,18 @@ func axDescendantOffers(tree *accessibility.Tree, id accessibility.NodeID, actio
 	return false
 }
 
-// PerformAccessibilityAction carries out a request from an assistive technology. Every request that reaches here names
-// one of the rows or cells described by ProvideAccessibility, which arrives as the key that row or cell was described
-// under; acting on a cell acts on the row it belongs to, apart from scrolling, which brings the cell itself into view.
-// Selecting a row also scrolls it into view, as the arrow keys do, since an assistive technology moving through the
-// rows selects each one as it goes and expects to see where it has got to. Pressing a row opens it, which is the
-// gesture a double-click and the Return key stand for. Putting the focus on a row moves the person onto it: the table
-// takes the keyboard focus and the row becomes the whole of the selection, exactly as an arrow key onto that row would
-// leave things, since the selection is where a table's cursor is. Putting it on a cell does the same and then puts the
-// cell cursor on that cell, which is where the left and right arrows would have taken the person; the table is still
-// the one tab stop, and the focus it takes is reported on the cell rather than on a panel of its own.
+// PerformAccessibilityAction carries out a request from an assistive technology aimed at one of the rows or cells
+// described by ProvideAccessibility, which arrives as the key that row or cell was described under; acting on a cell
+// acts on the row it belongs to, apart from scrolling, which brings the cell itself into view. Selecting a row also
+// scrolls it into view, as the arrow keys do, since an assistive technology moving through the rows selects each one as
+// it goes and expects to see where it has got to. Pressing a row opens it, which is the gesture a double-click and the
+// Return key stand for. Putting the focus on a row moves the person onto it: the table takes the keyboard focus and the
+// row becomes the whole of the selection, exactly as an arrow key onto that row would leave things, since the selection
+// is where a table's cursor is. Putting it on a cell does the same and then puts the cell cursor on that cell, which is
+// where the left and right arrows would have taken the person; the table is still the one tab stop, and the focus it
+// takes is reported on the cell rather than on a panel of its own. Asking a row or a cell for the contextual menu opens
+// the table's menu for the row, with the cell cursor on the cell or at row level; see axShowRowContextMenu. A request
+// aimed at the table itself is left to the default behavior.
 func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	var id tid.TID
 	col := -1
@@ -3233,10 +3255,240 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		} else {
 			t.ScrollRowIntoView(row)
 		}
+	case accessibility.ShowContextMenu:
+		return t.axShowRowContextMenu(id, col)
 	default:
 		return false
 	}
 	return true
+}
+
+// axShowRowContextMenu opens the table's contextual menu for an assistive technology on behalf of the row with the
+// given id, or of a cell of it when col is not negative: the table takes the focus when it can hold it, since the
+// menu's commands act on whatever holds it, selectRowForContextMenu readies the row as a right-click would, and the
+// cell cursor goes to the cell, or to row level. The menu opens beneath the row or cell, scrolled into view. Refused,
+// with nothing changed, when axMayShowContextMenu says so. A mouse button still held is released first, since a native
+// menu's tracking loop would swallow its release, and before the row is readied, since the release may narrow the
+// selection or change the rows. The row is looked up only once the focus has moved, since a Field in the focused cell
+// may commit on losing it and rebuild the rows, and again after it is readied, since a SelectionChangedCallback may
+// change the rows too; whether the menu may still open is asked again after each step as well.
+func (t *Table[T]) axShowRowContextMenu(id tid.TID, col int) bool {
+	if !axMayShowContextMenu(t.AsPanel()) {
+		return false
+	}
+	if wnd := t.Window(); wnd != nil {
+		wnd.endPressesForContextMenu()
+		if !axMayShowContextMenu(t.AsPanel()) {
+			return false
+		}
+	}
+	if t.Focusable() {
+		t.RequestFocusWithoutScroll()
+		if !axMayShowContextMenu(t.AsPanel()) {
+			return false
+		}
+	}
+	row := t.axRowIndexForID(id)
+	if row < 0 {
+		return false
+	}
+	t.selectRowForContextMenu(row)
+	if row = t.axRowIndexForID(id); row < 0 || !axMayShowContextMenu(t.AsPanel()) {
+		return false
+	}
+	if col >= len(t.Columns) {
+		col = -1
+	}
+	t.setLeadColumn(col)
+	var frame geom.Rect
+	if col >= 0 {
+		t.ScrollRowCellIntoView(row, col)
+		frame = t.CellFrame(row, col)
+	} else {
+		t.ScrollRowIntoView(row)
+		frame = t.RowFrame(row)
+	}
+	return t.ShowContextMenu(geom.NewPoint(frame.X, frame.Bottom()))
+}
+
+// selectRowForContextMenu readies the row at the given index for the contextual menu about to open over it and makes it
+// the lead row. An unselected row becomes the whole of the selection, as a left-click would make it; a selected one
+// keeps the rest of the selection, which the menu then acts on.
+func (t *Table[T]) selectRowForContextMenu(row int) {
+	id := t.rowCache[row].row.ID()
+	if !t.IsRowSelected(row) {
+		t.axSelectOnly(id)
+	}
+	t.setLead(id)
+}
+
+// ContextMenuPressed implements ContextMenuPressHandler: the table takes the focus without scrolling, when it can hold
+// it, and readies the row under the pointer whatever the modifiers (see selectRowForContextMenu), with the cell cursor
+// at row level. The press is asked back should it become a drag, so that a right-drag does what it would on a table
+// without a menu, except while a modifier is down, since DefaultMouseDown would then toggle or extend the selection
+// just made.
+func (t *Table[T]) ContextMenuPressed(where geom.Point, mods mod.Modifiers) bool {
+	if t.Focusable() {
+		t.RequestFocusWithoutScroll()
+	}
+	if row := t.OverRow(where.Y); row != -1 {
+		t.selectRowForContextMenu(row)
+		t.setLeadColumn(-1)
+		t.MarkForRedraw()
+	}
+	return mods&mod.NonSticky == 0
+}
+
+// contextMenuOwnerWithin implements contextMenuOwnerResolver for a widget in the cell under the given point that offers
+// a contextual menu of its own; see findCellContextMenuOwner. The table takes the focus first, when it can hold it,
+// unless the press lies within the focused cell, as DefaultMouseDown does: the panel losing the focus may commit and
+// change the rows, and the cell to look in is the one under the pointer once it has. The widget, or its first
+// focusable child, is then given the focus, unless the focus is already within the widget, so that the cell stays
+// attached as the focused cell until the release opens the menu. Returns nil, leaving the press to the table, when
+// there is no such widget or the widget is not within the focused cell afterwards.
+func (t *Table[T]) contextMenuOwnerWithin(where geom.Point) *Panel {
+	t.validateFocusedCell()
+	wnd := t.Window()
+	if wnd == nil {
+		return nil
+	}
+	if row, col := t.OverRow(where.Y), t.OverColumn(where.X); t.Focusable() && (t.focusedCell == nil ||
+		row != t.focusedCellRowIndex || col != t.focusedCellColumn) {
+		t.RequestFocusWithoutScroll()
+	}
+	var owner *Panel
+	t.findCellContextMenuOwner(where, func(_, menuOwner, target *Panel) {
+		owner = menuOwner
+		if !panelContains(owner, wnd.CurrentFocus()) {
+			wnd.SetFocus(target)
+		}
+	})
+	if owner == nil || t.focusedCell == nil || !panelContains(t.focusedCell, owner) {
+		// The focus did not arrive or did not stay, so the cell was handed back to its row.
+		return nil
+	}
+	return owner
+}
+
+// offersContextMenuWithin implements contextMenuOwnerResolver: it reports whether findCellContextMenuOwner finds a
+// widget under the given point, without changing the focus or the selection.
+func (t *Table[T]) offersContextMenuWithin(where geom.Point) bool {
+	t.validateFocusedCell()
+	if t.Window() == nil {
+		return false
+	}
+	return t.findCellContextMenuOwner(where, func(_, _, _ *Panel) {})
+}
+
+// findCellContextMenuOwner finds the widget whose contextual menu a right press at the given point is for: the panel
+// under it within its cell, when that panel itself offers one, along with the panel that must hold the focus to keep
+// the cell attached until the menu opens, the widget itself when it can take the focus and otherwise its first
+// focusable child. When there is one, found is called with the installed cell, the widget and that panel, and true is
+// returned; the cell is then uninstalled through uninstallCellForRow, since found may move the focus. Nothing is found:
+//
+//   - outside every cell's frame, in a hidden cell, or when the panel under the point offers no menu;
+//   - for a widget that cannot take the focus and holds nothing that can, since its cell would be handed back before
+//     the release;
+//   - outside the widget's content rect, where Window.mouseUp would open nothing;
+//   - for a widget the row does not hand back when asked for the cell again, as a draw between the press and the
+//     release asks: one the row builds afresh on every call, a wrapper built afresh around the panel to focus, or a
+//     child of a memoized cell rebuilt on every call. The draw would detach the widget before the release, which would
+//     then open nothing at all. A fresh wrapper around a memoized widget is not refused, since the widget moves into
+//     each new wrapper and the newest one is adopted as the focused cell as soon as it is handed back.
+func (t *Table[T]) findCellContextMenuOwner(where geom.Point, found func(cell, owner, target *Panel)) bool {
+	row := t.OverRow(where.Y)
+	col := t.OverColumn(where.X)
+	if row == -1 || col == -1 {
+		return false
+	}
+	rect := t.CellFrame(row, col)
+	if !where.In(rect) {
+		return false
+	}
+	id := t.rowCache[row].row.ID()
+	cell := t.cell(row, col)
+	if cell.Hidden || !cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.ContextMenuCallback != nil }) {
+		return false
+	}
+	t.installCell(cell, rect)
+	local := where.Sub(rect.Point)
+	owner := cell.PanelAt(local)
+	if !owner.offersContextMenu() {
+		owner = nil
+	}
+	target := owner
+	if owner != nil {
+		if !target.Focusable() {
+			target = owner.FirstFocusableChild()
+		}
+		if target == nil || !cell.PointTo(local, owner).In(owner.ContentRect(true)) {
+			owner = nil
+		}
+	}
+	if owner != nil {
+		// Asked again as a draw would ask, so that a widget the draw would replace is refused before being given the
+		// focus.
+		if again := t.cell(row, col); !panelContains(again, owner) {
+			owner = nil
+		} else if again != cell {
+			t.uninstallCell(cell, row, col)
+			cell = again
+			t.installCell(cell, rect)
+		}
+	}
+	if owner == nil {
+		t.uninstallCell(cell, row, col)
+		return false
+	}
+	found(cell, owner, target)
+	t.uninstallCellForRow(cell, id, col)
+	return true
+}
+
+// uninstallCellForRow detaches a cell that installCell attached for the row with the given id, as uninstallCell does,
+// once the focus may have been moved into it. The row is looked up again by its id, since the panel that lost the
+// focus may have rebuilt or re-sorted the rows, and a cell adopted at the row's old index would be tracked under
+// whichever row is there now. When the row is gone, the focus, if within the cell, is handed back to the table. When a
+// row that builds a fresh wrapper around a memoized widget on every call has handed back a new one meanwhile, moving
+// the widget out of the cell given here, the focus is on a panel that cannot reach its window, so the row is asked for
+// the cell again, which adopts the newest wrapper; see adoptCellIfFocused. The focused cell is validated last, since
+// adopting a cell selects its row and a SelectionChangedCallback may change the rows too. The caller then finds the
+// cell that holds the focus, if one does, in t.focusedCell.
+func (t *Table[T]) uninstallCellForRow(cell *Panel, id tid.TID, col int) {
+	row := t.axRowIndexForID(id)
+	if row < 0 {
+		if wnd := t.Window(); wnd != nil && panelContains(cell, wnd.focus) {
+			t.RequestFocusWithoutScroll()
+		}
+		t.uninstallCell(cell, row, col)
+		t.validateFocusedCell()
+		return
+	}
+	t.uninstallCell(cell, row, col)
+	if t.focusedCell != cell {
+		if wnd := t.Window(); wnd != nil && wnd.focus != nil && wnd.focus.Window() == nil {
+			t.cell(row, col)
+		}
+	}
+	t.validateFocusedCell()
+}
+
+// ContextMenuAnchor implements ContextMenuAnchorer, returning the point beneath the row the person is on, or beneath
+// the cell the cell cursor is on, scrolled into view first. With nothing selected, it returns DefaultContextMenuAnchor.
+func (t *Table[T]) ContextMenuAnchor() geom.Point {
+	row := t.axCurrentRow()
+	if row < 0 {
+		return t.DefaultContextMenuAnchor()
+	}
+	var frame geom.Rect
+	if leadRow, leadCol := t.leadCell(); leadRow == row && leadCol >= 0 {
+		t.ScrollRowCellIntoView(row, leadCol)
+		frame = t.CellFrame(row, leadCol)
+	} else {
+		t.ScrollRowIntoView(row)
+		frame = t.RowFrame(row)
+	}
+	return geom.NewPoint(frame.X, frame.Bottom())
 }
 
 // axSelectOnly makes the row with the given id the whole of the selection, and the anchor a later shift-click extends
@@ -3265,7 +3517,8 @@ func (t *Table[T]) axSelectOnly(id tid.TID) {
 // axPerformInCell carries out a request aimed at a panel inside one of the table's cells. The cell is built and
 // attached again, exactly as it is to hand it a mouse event, so that the panel the request is for exists and can reach
 // its window; the panel is then found at the position within the cell it was described at. A widget that takes the
-// keyboard focus while handling the request stays attached as the focused cell, as one that took it from a click would.
+// keyboard focus while handling the request stays attached as the focused cell, as one that took it from a click would,
+// at the index its row has once the panel that lost the focus has changed the rows, if it did; see uninstallCellForRow.
 //
 // A key naming a cell of something other than a table — a list keys its rows by index — is refused: the key travels
 // with the request from whatever described the panel, and only the widget that put it there knows how to read it.
@@ -3286,13 +3539,81 @@ func (t *Table[T]) axPerformInCell(key axCellPanelKey, req accessibility.ActionR
 	req.Key = nil
 	cell := t.cell(row, col)
 	t.installCell(cell, t.CellFrame(row, col))
+	target := axPanelAtPath(cell, key.Path)
+	if req.Action == accessibility.ShowContextMenu {
+		if target == nil || !axMayShowContextMenu(target) || !t.axCellPanelMayShowContextMenu(target) {
+			// Refused with nothing changed, as axShowCellPanelContextMenu would refuse it, before a press is ended.
+			t.uninstallCell(cell, row, col)
+			return false
+		}
+		if wnd := t.Window(); wnd != nil && wnd.inMouseDown {
+			// A held button is released before the row is selected (see axShowRowContextMenu), and only once the
+			// request is known not to be refused. The release may change the rows, so the row is looked up and the
+			// cell built again afterwards.
+			t.uninstallCell(cell, row, col)
+			wnd.endPressesForContextMenu()
+			if row = t.axRowIndexForID(cellKey.Row); row < 0 {
+				return false
+			}
+			cell = t.cell(row, col)
+			t.installCell(cell, t.CellFrame(row, col))
+			if target = axPanelAtPath(cell, key.Path); target == nil {
+				t.uninstallCell(cell, row, col)
+				return false
+			}
+		}
+		handled := t.axShowCellPanelContextMenu(cell, row, col, target, req)
+		t.MarkForRedraw()
+		return handled
+	}
 	handled := false
-	if target := axPanelAtPath(cell, key.Path); target != nil {
+	if target != nil {
 		handled = target.axDispatchAction(req, false)
 	}
-	t.uninstallCell(cell, row, col)
+	t.uninstallCellForRow(cell, cellKey.Row, col)
 	t.MarkForRedraw()
 	return handled
+}
+
+// axCellPanelMayShowContextMenu implements axCellContextMenus: a panel in a cell offers its menu only when it or
+// something within it can take the focus, which axShowCellPanelContextMenu needs to keep the cell attached.
+func (t *Table[T]) axCellPanelMayShowContextMenu(p *Panel) bool {
+	return p.Focusable() || p.FirstFocusableChild() != nil
+}
+
+// axShowCellPanelContextMenu carries out an assistive technology's request for the contextual menu of a panel in a
+// cell: the panel, or its first focusable child, takes the focus unless the focus is already within the panel, so that
+// the cell is adopted as the focused cell and stays attached while the menu is open, and the request is then handed to
+// the panel, whose default handling opens the menu. The cell must be installed on entry, for the row at the given
+// index; it is uninstalled here, which adopts it. Refused, with nothing changed, when axMayShowContextMenu refuses or
+// nothing in the panel can take the focus, and refused when the panel is not within the focused cell afterwards, the
+// row being gone or the focus not having stayed; see uninstallCellForRow. A text widget places its caret on the range
+// the request names before the focus moves (see axContextMenuRangePlacer), and gives itself the focus doing so, so the
+// row's id is taken first. Unlike a right-click, this opens the menu at once, so a wrapper the row builds afresh on
+// every call is not refused; Panel.ShowContextMenu works out where the menu goes before drawing replaces it.
+func (t *Table[T]) axShowCellPanelContextMenu(cell *Panel, row, col int, target *Panel,
+	req accessibility.ActionRequest,
+) bool {
+	focus := target
+	if !focus.Focusable() {
+		focus = target.FirstFocusableChild()
+	}
+	if focus == nil || !axMayShowContextMenu(target) {
+		t.uninstallCell(cell, row, col)
+		return false
+	}
+	id := t.rowCache[row].row.ID()
+	if placer, ok := target.Self.(axContextMenuRangePlacer); ok {
+		placer.axPlaceMenuRange(req)
+	}
+	if wnd := t.Window(); wnd != nil && !panelContains(target, wnd.CurrentFocus()) {
+		wnd.SetFocus(focus)
+	}
+	t.uninstallCellForRow(cell, id, col)
+	if t.focusedCell == nil || !panelContains(t.focusedCell, target) {
+		return false
+	}
+	return target.axDispatchAction(req, false)
 }
 
 // axActOnDisclosure carries out a request aimed at a row's disclosure triangle: pressing or toggling it turns the row

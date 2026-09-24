@@ -390,9 +390,9 @@ func TestTextRangeScrollIntoViewDispatches(t *testing.T) {
 }
 
 // TestTextRangeShowContextMenuDispatches verifies what the applications key does while a screen reader's reading
-// cursor is in a document: the menu opens where the range begins, and the request carries that offset at both ends so
-// that the widget places the caret there first — the menu's Copy applies to the selection, so a menu opened at one
-// place while the caret sat at another would copy the wrong text.
+// cursor is in a document: the request carries the range's own ends, so that the widget selects that range first and
+// opens the menu at its caret — the menu's Copy applies to the selection, so a menu opened while the widget's selection
+// sat elsewhere would copy the wrong text.
 func TestTextRangeShowContextMenuDispatches(t *testing.T) {
 	c := check.New(t)
 	w, r := textRangeWindow(t, 12, 16)
@@ -401,7 +401,7 @@ func TestTextRangeShowContextMenuDispatches(t *testing.T) {
 	c.Equal(accessibility.ShowContextMenu, request.Action)
 	c.Equal(textDocumentID, request.Node)
 	c.Equal(12, request.Start)
-	c.Equal(12, request.End, "the caret goes to the start of the range, not around it")
+	c.Equal(16, request.End, "the range is selected as named, not collapsed to its start")
 
 	// A document that does not advertise the action has no menu to open.
 	without := textFixtureTree()
@@ -689,7 +689,7 @@ func TestTextRangeFieldDispatches(t *testing.T) {
 	c.Equal(accessibility.ShowContextMenu, request.Action)
 	c.Equal(fieldID, request.Node)
 	c.Equal(6, request.Start)
-	c.Equal(6, request.End, "the caret goes to the start of the range, not around it")
+	c.Equal(11, request.End, "the range is selected as named, not collapsed to its start")
 
 	// A disabled field refuses the two write paths as not enabled — being unusable now says nothing about whether the
 	// selection could be set — while bringing it on screen is the one thing it still does.

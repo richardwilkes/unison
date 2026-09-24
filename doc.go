@@ -98,15 +98,29 @@
 //     It is how a fact with no field of its own, such as a heading's level, gets reported.
 //   - ActionCallback handles requests from an assistive technology for a panel that has no widget type of its own.
 //
-// A custom widget describes itself by implementing [AccessibilityProvider], and carries out what an assistive
-// technology asks of it by implementing [AccessibilityActor]. Both are looked for on Panel.Self, so they must be
-// implemented by the widget type rather than by an embedded [Panel]. ProvideAccessibility is handed an
-// [AccessibilityBuilder] whose node already holds everything derivable from the panel alone — its bounds, whether it is
-// enabled, focusable and focused, and the actions those imply — so an implementation sets only what it knows better:
-// the role, the value, the states that matter and the actions it can carry out. The builder also offers
-// [AccessibilityBuilder.VisibleRect], for a widget with more content than it can show, and
-// [AccessibilityBuilder.AddVirtualChild], for the elements a widget draws without a panel apiece, as the rows and cells
-// of [Table] and [List] do.
+// A custom widget describes itself by implementing [AccessibilityProvider], carries out what an assistive technology
+// asks of it by implementing [AccessibilityActor], says where its contextual menu opens without a pointer by
+// implementing [ContextMenuAnchorer], says when it has no contextual menu to offer at all by implementing
+// [ContextMenuWithholder], and acts on a right-click that will open its menu by implementing [ContextMenuPressHandler].
+// All five are looked for on Panel.Self, so they must be implemented by the widget type rather than by an embedded
+// [Panel]. ProvideAccessibility is handed an [AccessibilityBuilder] whose node already holds everything derivable from
+// the panel alone — its bounds, whether it is enabled, focusable and focused, and the actions those and its callbacks
+// imply — so an implementation sets only what it knows better: the role, the value, the states that matter and the
+// actions it can carry out. The builder also offers [AccessibilityBuilder.VisibleRect], for a widget with more content
+// than it can show, and [AccessibilityBuilder.AddVirtualChild], for the elements a widget draws without a panel apiece,
+// as the rows and cells of [Table] and [List] do.
+//
+// A contextual menu needs nothing beyond the menu itself. An enabled panel whose ContextMenuCallback (see
+// [InputCallbacks]) is set, and that is not withholding its menu, advertises accessibility.ShowContextMenu while its
+// window is the active one, and the default behavior carries it out: the panel takes the keyboard focus if it can hold
+// it, since a menu's commands act on whatever does, and the menu opens where the widget's [ContextMenuAnchorer] says,
+// or else at [Panel.DefaultContextMenuAnchor]. VoiceOver (VO-shift-M) and Orca (the "menu" action) can ask for the
+// menu of any such panel, apart from one inside a [List] row or a [TableHeader] column header, or one inside a [Table]
+// cell that neither can take the focus nor holds something that can, since the widget lends them its cell only for a
+// moment. UI Automation asks only through a text range, so on Windows only an unprotected field, a label or a
+// [Markdown] document is reached that way, and every other panel's menu needs the keyboard focus and the Menu
+// (Applications) key or shift+F10. The rows of a [Table] or [List] with a callback offer the menu too, selecting the
+// row first as a right-click does. See [Panel.ShowContextMenu] and [ContextMenuPressHandler].
 //
 // [AnnounceForAccessibility] speaks a message that no change to a window expresses — a background task that finished,
 // say. It does nothing when no assistive technology is being served, so it may be called unconditionally, and it is

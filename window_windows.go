@@ -267,12 +267,20 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			}
 			mods := w.CurrentKeyModifiers()
 			pressed := (lParam>>16)&w32.KF_UP == 0
+			// An F10 whose key down opened a contextual menu (shift+F10, the chord) is kept from DefWindowProc, its key
+			// up included: DefWindowProc notes an F10 press, shifted or not, and on its release sends WM_SYSCOMMAND
+			// SC_KEYMENU, whose keyboard loop would take the Down, Enter or Escape meant for the menu that just opened.
+			// The key up clears the record as it is delivered, so it is read before.
+			chordF10 := wParam == w32.VK_F10 && w.contextMenuChordKey == KeyF10
 			for _, e := range w32KeyEvents(key, wParam, pressed) {
 				if e.pressed {
 					w.keyPressed(e.key, mods)
 				} else {
 					w.keyReleased(e.key, mods)
 				}
+			}
+			if chordF10 || (wParam == w32.VK_F10 && w.contextMenuChordKey == KeyF10) {
+				return 0
 			}
 		case w32.WM_LBUTTONDOWN,
 			w32.WM_RBUTTONDOWN,

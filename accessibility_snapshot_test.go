@@ -477,3 +477,292 @@ func TestAccessibilityControlNameHonorsLabeledBy(t *testing.T) {
 	popup.Accessibility.Name = "Font Size"
 	c.Equal("Font Size", axControlName(popup.AsPanel()), "an outright name outranks both")
 }
+
+// TestAccessibilityMenuPanelStaysPutInTheBackground verifies that a background window takes ShowContextMenu away from a
+// nameless panel with a menu and from a list's rows, without the panel becoming scaffolding while it lacks the menu.
+func TestAccessibilityMenuPanelStaysPutInTheBackground(t *testing.T) {
+	c := check.New(t)
+	var content, plain *Panel
+	var list *List[string]
+	var wnd, other *Window
+	noMenu := func(geom.Point) Menu { return nil }
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 700, Height: 500},
+		StartupFinishedCallback(func() {
+			content = NewPanel()
+			content.SetLayout(&FlexLayout{Columns: 1})
+			content.ContextMenuCallback = noMenu
+			content.AddChild(axTestLabel("Inside the menu's panel"))
+			list = NewList[string]()
+			list.Factory = &DefaultCellFactory{Height: 20}
+			list.Append("First", "Second")
+			list.ContextMenuCallback = noMenu
+			content.AddChild(list)
+			plain = NewPanel()
+			plain.SetLayout(&FlexLayout{Columns: 1})
+			plain.AddChild(axTestLabel("Inside a plain panel"))
+			column := NewPanel()
+			column.SetLayout(&FlexLayout{Columns: 1})
+			column.AddChild(content)
+			column.AddChild(plain)
+			wnd = axNewTestWindow(t, "window-wide menu", geom.NewRect(10, 10, 300, 300), column)
+			other = newHeadlessTestWindow(t, "other", geom.NewRect(350, 10, 300, 200))
+		}))
+	c.NotNil(wnd)
+	c.NotNil(other)
+
+	// describe returns the nodes of the menu's panel, the plain panel and the list's first row.
+	describe := func() (menuPanel, plainPanel, row *accessibility.Node) {
+		tree := screen.AccessibilityTree(wnd)
+		c.NotNil(tree)
+		menuPanel = screen.AccessibilityNodeFor(content)
+		plainPanel = screen.AccessibilityNodeFor(plain)
+		if listNode := screen.AccessibilityNodeFor(list); tree != nil && listNode != nil {
+			for _, id := range listNode.Children {
+				if child := tree.Node(id); child != nil && child.RowIndex == 0 {
+					row = child
+					break
+				}
+			}
+		}
+		c.NotNil(menuPanel)
+		c.NotNil(plainPanel)
+		c.NotNil(row)
+		return menuPanel, plainPanel, row
+	}
+
+	c.True(screen.Do(func() { wnd.ToFront() }))
+	menuPanel, plainPanel, row := describe()
+	if menuPanel == nil || plainPanel == nil || row == nil {
+		return
+	}
+	c.True(plainPanel.Ignored, "an anonymous group with nothing to offer is scaffolding")
+	c.True(menuPanel.Actions.Has(accessibility.ShowContextMenu), "the panel offers its menu while its window is active")
+	c.False(menuPanel.Ignored, "and is part of what the window holds, since it can be acted on")
+	c.True(row.Actions.Has(accessibility.ShowContextMenu), "and so do the rows of a list with a menu")
+
+	c.True(screen.Do(func() { other.ToFront() }))
+	menuPanel, plainPanel, row = describe()
+	if menuPanel == nil || plainPanel == nil || row == nil {
+		return
+	}
+	c.False(menuPanel.Actions.Has(accessibility.ShowContextMenu),
+		"a menu that would open in another window is not offered")
+	c.False(menuPanel.Ignored, "but the panel is not looked past for that, since the menu comes back with the window")
+	c.True(plainPanel.Ignored)
+	c.False(row.Actions.Has(accessibility.ShowContextMenu), "nor is it offered on the rows of the list")
+
+	c.True(screen.Do(func() { wnd.ToFront() }))
+	menuPanel, _, row = describe()
+	if menuPanel == nil || row == nil {
+		return
+	}
+	c.True(menuPanel.Actions.Has(accessibility.ShowContextMenu), "the menu comes back with the window's activation")
+	c.False(menuPanel.Ignored)
+	c.True(row.Actions.Has(accessibility.ShowContextMenu))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityMarkdownOffersOnlyAnApplicationMenu verifies that a document offers no menu of its own and does not
+// move the caret for a request made anyway, but offers a menu the application gives it and opens it at its center while
+// the document is not focusable. axReadersFollowFocus is turned off so that the document stays unfocusable while
+// accessibility is enabled.
+func TestAccessibilityMarkdownOffersOnlyAnApplicationMenu(t *testing.T) {
+	c := check.New(t)
+	var md *Markdown
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 600, Height: 500},
+		StartupFinishedCallback(func() {
+			md = NewMarkdown(false)
+			md.SetContent("Some words to read.\n", 300)
+			wnd = axNewTestWindow(t, "no menu", geom.NewRect(10, 10, 400, 300), md)
+		}))
+	c.NotNil(wnd)
+	saved := axReadersFollowFocus
+	// Written on the UI thread, the only thread that reads it.
+	defer screen.Do(func() { axReadersFollowFocus = saved })
+	c.True(screen.Do(func() {
+		axReadersFollowFocus = false
+		wnd.ToFront()
+	}))
+	screen.EnableAccessibility()
+	var focusable bool
+	screen.Do(func() { focusable = md.Focusable() })
+	c.False(focusable, "a document nothing has asked to be read is not focusable here, even while one is being served")
+
+	screen.AccessibilityTree(wnd)
+	node := screen.AccessibilityNodeFor(md)
+	c.NotNil(node)
+	if node == nil {
+		return
+	}
+	c.False(node.Actions.Has(accessibility.ShowContextMenu), "a document offers no menu of its own")
+	var carried bool
+	var caret int
+	screen.Do(func() {
+		carried = wnd.performAccessibilityAction(accessibility.ActionRequest{
+			Node:   node.ID,
+			Action: accessibility.ShowContextMenu,
+			Start:  5,
+			End:    5,
+		})
+		caret = md.caret
+	})
+	c.False(carried, "and a request made anyway is refused")
+	c.Equal(0, caret, "without the caret being moved to the range it named")
+
+	var asked int
+	var at geom.Point
+	screen.Do(func() {
+		md.ContextMenuCallback = func(where geom.Point) Menu {
+			asked++
+			at = where
+			f := DefaultMenuFactory()
+			m := f.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
+			m.InsertItem(-1, f.NewItem(-1, "Custom", KeyBinding{}, nil, func(MenuItem) {}))
+			return m
+		}
+	})
+	screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(md)
+	c.NotNil(node)
+	if node == nil {
+		return
+	}
+	c.True(node.Actions.Has(accessibility.ShowContextMenu), "so the document offers it")
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.ShowContextMenu,
+	}), "and opens it when asked")
+	var center geom.Point
+	screen.Do(func() { center = md.DefaultContextMenuAnchor() })
+	c.Equal(1, asked, "through the application's callback, once")
+	c.Equal(center, at, "in the middle of the document, since a document that is not focusable has no caret to show")
+	var menus int
+	screen.AccessibilityTree(wnd).Walk(func(n *accessibility.Node) bool {
+		if n.Role == role.Menu {
+			menus++
+		}
+		return true
+	})
+	c.Equal(1, menus, "the menu opened within the window")
+	screen.KeyPress(KeyEscape, mod.None)
+
+	screen.Do(func() { md.ContextMenuCallback = nil })
+	screen.AccessibilityTree(wnd)
+	node = screen.AccessibilityNodeFor(md)
+	c.NotNil(node)
+	if node != nil {
+		c.False(node.Actions.Has(accessibility.ShowContextMenu), "and stops offering it once the callback is gone")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// axMenuGroupCellFactory draws each list row as a focusable, nameless group around a label, whose ContextMenuCallback
+// returns nil after counting the call in asked, when that is set.
+type axMenuGroupCellFactory struct {
+	asked *int
+}
+
+func (axMenuGroupCellFactory) CellHeight() float32 { return 20 }
+
+func (f axMenuGroupCellFactory) CreateCell(_ Paneler, element any, _ int, _, _ Ink, _, _ bool) Paneler {
+	group := NewPanel()
+	group.SetLayout(&FlexLayout{Columns: 1})
+	group.SetFocusable(true)
+	group.ContextMenuCallback = func(geom.Point) Menu {
+		if f.asked != nil {
+			*f.asked++
+		}
+		return nil
+	}
+	if text, ok := element.(string); ok {
+		group.AddChild(axTestLabel(text))
+	}
+	return group
+}
+
+// TestAccessibilityMenuInAListRowIsNotOffered verifies that a group with a menu inside a list row is not offered the
+// menu in an active or background window, is looked past in favor of its label, and has a request for its menu refused
+// without its callback being asked.
+func TestAccessibilityMenuInAListRowIsNotOffered(t *testing.T) {
+	c := check.New(t)
+	var list *List[string]
+	var wnd, other *Window
+	var asked int
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 700, Height: 500},
+		StartupFinishedCallback(func() {
+			list = NewList[string]()
+			list.Factory = axMenuGroupCellFactory{asked: &asked}
+			list.Append("First", "Second")
+			wnd = axNewTestWindow(t, "grouped rows", geom.NewRect(10, 10, 300, 300), list)
+			other = newHeadlessTestWindow(t, "other", geom.NewRect(350, 10, 300, 200))
+		}))
+	c.NotNil(wnd)
+	c.NotNil(other)
+
+	// content returns the unignored nodes beneath the list's first row, and the group's node whether ignored or not.
+	content := func() (unignored []*accessibility.Node, group *accessibility.Node) {
+		tree := screen.AccessibilityTree(wnd)
+		c.NotNil(tree)
+		listNode := screen.AccessibilityNodeFor(list)
+		c.NotNil(listNode)
+		if tree == nil || listNode == nil {
+			return nil, nil
+		}
+		for _, id := range listNode.Children {
+			if row := tree.Node(id); row != nil && row.RowIndex == 0 {
+				for _, childID := range tree.UnignoredChildren(id) {
+					unignored = append(unignored, tree.Node(childID))
+				}
+				if len(row.Children) == 1 {
+					group = tree.Node(row.Children[0])
+				}
+				break
+			}
+		}
+		c.NotNil(group)
+		return unignored, group
+	}
+	checkRow := func(when string) {
+		c.Helper()
+		unignored, group := content()
+		if group == nil {
+			return
+		}
+		c.False(group.Actions.Has(accessibility.ShowContextMenu), "the group is not offered its menu %s", when)
+		c.True(group.Ignored, "and is looked past %s, since nothing is left of it to act on", when)
+		c.Equal(1, len(unignored), "the row's content is the label within it %s", when)
+		if len(unignored) == 1 && unignored[0] != nil {
+			c.Equal(role.Label, unignored[0].Role)
+			c.Equal("First", unignored[0].Name)
+		}
+	}
+
+	c.True(screen.Do(func() { wnd.ToFront() }))
+	checkRow("while its window is active")
+	c.True(screen.Do(func() { other.ToFront() }))
+	checkRow("while its window is in the background")
+
+	// A request naming the group anyway, as from a stale description, is refused.
+	c.True(screen.Do(func() { wnd.ToFront() }))
+	var carried bool
+	screen.Do(func() {
+		carried = list.PerformAccessibilityAction(accessibility.ActionRequest{
+			Action: accessibility.ShowContextMenu,
+			Key:    axCellPanelKey{Cell: 0},
+		})
+	})
+	c.False(carried, "a request for the menu of something within a row is refused")
+	c.Equal(0, asked, "without the group being asked for one")
+	menus := 0
+	if tree := screen.AccessibilityTree(wnd); tree != nil {
+		tree.Walk(func(n *accessibility.Node) bool {
+			if n.Role == role.Menu {
+				menus++
+			}
+			return true
+		})
+	}
+	c.Equal(0, menus, "and nothing opens")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

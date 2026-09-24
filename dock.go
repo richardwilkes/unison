@@ -374,14 +374,11 @@ func (d *Dock) dragDivider(where geom.Point) {
 	}
 }
 
-// DefaultMouseUp provides the default mouse up handling.
-func (d *Dock) DefaultMouseUp(where geom.Point, _ int, _ mod.Modifiers) bool {
-	if d.dividerDragLayout != nil {
-		if d.dividerDragIsValid {
-			d.dragDivider(where)
-		}
-		d.dividerDragLayout = nil
-	}
+// DefaultMouseUp provides the default mouse up handling. The release's position is not applied to the divider: the
+// drags before it have already put the divider where the pointer was, and a release that ends a press for a contextual
+// menu arrives outside every panel (see InputCallbacks.MouseUpCallback), where applying it would collapse the divider.
+func (d *Dock) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
+	d.dividerDragLayout = nil
 	return true
 }
 

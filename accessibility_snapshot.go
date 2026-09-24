@@ -81,10 +81,14 @@ type windowAccessibility struct {
 }
 
 // axTarget is what one node was built from: the panel that described it and, for a virtual child such as a table row,
-// the key that panel identifies the child by. key is nil for a node that is a panel in its own right.
+// the key that panel identifies the child by. key is nil for a node that is a panel in its own right. host is the
+// widget that borrowed the panel, for a panel of the cell holding the keyboard focus, which stays attached to the
+// widget and is described under the panel's own id (see axCellContext and Panel.axDispatchBorrowedAction); it is nil
+// for every other node.
 type axTarget struct {
 	panel *Panel
 	key   any
+	host  *Panel
 }
 
 // axSnapshot is the state of one tree being built. It lives only for the duration of buildAccessibilityTree.
@@ -112,6 +116,8 @@ type axSnapshot struct {
 	// keeps the panel that delegated from taking the focus back.
 	delegatedFocus accessibility.NodeID
 	generation     uint64
+	// menusLandHere is axMayPopupMenu's answer for every panel of the window, worked out once.
+	menusLandHere bool
 }
 
 // axCellContext is in force while the panel a table row handed back for one of its cells, and everything inside it,
@@ -126,10 +132,50 @@ type axSnapshot struct {
 // table header both use an accessibility.CellKey, the header filling in only its Col, and a list the row index. It has
 // to be comparable, since it ends up inside the key a virtual child is registered under, and the widget the requests
 // are sent to is the one that knows how to read it again.
+//
+// The cell holding the keyboard focus, which stays attached beyond its description, is described under this context
+// with persistent set: its panels are keyed by themselves and sent their requests directly, but are still borrowed, so
+// whether one of them is offered its contextual menu is the widget's to say; see cellPanelMayOfferContextMenu.
 type axCellContext struct {
-	builder *AccessibilityBuilder
-	key     any
-	path    []int
+	builder    *AccessibilityBuilder
+	key        any
+	path       []int
+	persistent bool
+}
+
+// axCellContextMenus is implemented by a widget that borrows the panels it draws its cells with, to say whether one of
+// them is offered accessibility.ShowContextMenu, since a request for a borrowed panel's menu is carried out by, or on
+// behalf of, the widget (see Panel.axDispatchBorrowedAction). A widget that does not implement it, as List and
+// TableHeader do not, offers the menu of no borrowed panel. A Table offers it for a panel that can take the keyboard
+// focus or holds something that can, which keeps the cell attached while the menu is open. A right-click follows a
+// stricter rule, since the panel must stay attached from the press to the release, which one the row builds afresh on
+// every call cannot; see Table.findCellContextMenuOwner.
+type axCellContextMenus interface {
+	// axCellPanelMayShowContextMenu reports whether a request for the contextual menu of the given panel, which has a
+	// ContextMenuCallback and is installed for one of the widget's cells, would be carried out.
+	axCellPanelMayShowContextMenu(p *Panel) bool
+}
+
+// cellPanelMayOfferContextMenu reports whether a panel offering a contextual menu is offered it here: always for a
+// panel of the window's own, and inside a borrowed cell only when the widget that borrowed it would carry a request
+// for it out; see axBorrowedPanelMayShowContextMenu. The cell holding the focus follows the same rule as every other
+// cell, so that what a panel in it offers does not change with the focus.
+func (s *axSnapshot) cellPanelMayOfferContextMenu(p *Panel) bool {
+	if s.cell == nil {
+		return true
+	}
+	return axBorrowedPanelMayShowContextMenu(s.cell.builder.panel, p)
+}
+
+// axBorrowedPanelMayShowContextMenu reports whether host, the widget that borrowed p for one of its cells, would carry
+// out a request for p's contextual menu: the host is enabled and, implementing axCellContextMenus, says so for p. What
+// p itself has to say is axMayShowContextMenu's to report.
+func axBorrowedPanelMayShowContextMenu(host, p *Panel) bool {
+	if !host.Enabled() {
+		return false
+	}
+	cells, ok := host.Self.(axCellContextMenus)
+	return ok && cells.axCellPanelMayShowContextMenu(p)
 }
 
 // axCellPanelKey is the key under which a panel inside a table cell, a column header or a list row is registered: the
@@ -154,10 +200,14 @@ func (c *axCellContext) pathString() string {
 
 // identify returns the id a panel is described under and where requests about it are sent: the panel's own id and the
 // panel itself, or — inside a table cell — an id the table's builder allocates for the panel's position within the
-// cell, with requests sent to the table.
+// cell, with requests sent to the table. A panel of the cell holding the focus, which persists, keeps its own id and is
+// sent its requests directly, with the table recorded as the host that borrowed it.
 func (s *axSnapshot) identify(p *Panel) (accessibility.NodeID, axTarget) {
 	if s.cell == nil {
 		return axIDFor(p), axTarget{panel: p}
+	}
+	if s.cell.persistent {
+		return axIDFor(p), axTarget{panel: p, host: s.cell.builder.panel}
 	}
 	key := axCellPanelKey{Cell: s.cell.key, Path: s.cell.pathString()}
 	return s.cell.builder.virtualID(key), axTarget{panel: s.cell.builder.panel, key: key}
@@ -199,9 +249,10 @@ func (w *Window) buildAccessibilityTree() *accessibility.Tree {
 			Nodes:      make(map[accessibility.NodeID]*accessibility.Node, capacity),
 			Generation: ax.generation,
 		},
-		targets:    make(map[accessibility.NodeID]axTarget, capacity),
-		focusPanel: w.CurrentFocus(),
-		generation: ax.generation,
+		targets:       make(map[accessibility.NodeID]axTarget, capacity),
+		focusPanel:    w.CurrentFocus(),
+		generation:    ax.generation,
+		menusLandHere: w == ActiveWindow(),
 	}
 	s.buildRoot()
 	if w.ax != ax {
@@ -594,6 +645,12 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	if p.MouseDownCallback != nil && p.MouseUpCallback != nil {
 		node.Actions = node.Actions.With(accessibility.Press)
 	}
+	if p.offersContextMenu() && s.cellPanelMayOfferContextMenu(p) {
+		// Offered exactly when a request would be carried out, so that nothing is offered that would then be refused;
+		// narrowMenuActions takes it away again when the menu would open in another window. A callback that then
+		// returns nil is another matter: the request is reported as not carried out.
+		node.Actions = node.Actions.With(accessibility.ShowContextMenu)
+	}
 	// Registered before the widget is consulted, so that virtual children it adds can find their parent and so that a
 	// panic partway through still leaves a usable node behind.
 	s.tree.Nodes[node.ID] = node
@@ -701,12 +758,13 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		// anyway. The focus falls back to the nearest ancestor that can be used; see axSnapshot.fallbackFocus.
 		node.Focused = false
 	}
-	s.narrowMenuActions(p, node)
 	// Decided after the three above, so that what the node is judged on is what it finally offers and says rather than
-	// what it offered before being disabled stripped it back.
+	// what it offered before being disabled stripped it back, but before the menus are narrowed, since those come back
+	// with the window's activation and must not decide whether the node is shown at all.
 	if node.Ignored == widgetIgnored {
 		node.Ignored = widgetIgnored || axIsScaffolding(node)
 	}
+	s.narrowMenuActions(p, node)
 	switch {
 	case !node.Focused:
 		// Either the panel does not hold the focus, or it holds it and handed it to one of its virtual children, which
@@ -734,26 +792,39 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	s.visitChildren(p, node.ID, visible)
 }
 
-// narrowMenuActions takes away the actions a widget advertises that would open a menu, for a widget whose window is not
+// narrowMenuActions takes away the actions a node advertises that would open a menu, for a panel whose window is not
 // the one a menu would open in.
 //
 // A menu does not open where the widget that opened it is: menu.createPopup inserts the popup into ActiveWindow()'s
-// root, so every request that would open one from a background window is refused — see axMayPopupMenu, which
-// PopupMenu.PerformAccessibilityAction, Field.PerformAccessibilityAction, Markdown.PerformAccessibilityAction, the
-// action callback NewComboField installs and Panel.axSynthesizeClick all ask. A node that went on advertising them
-// would offer a screen-reader user an expand or a contextual menu that silently does nothing, which is the same drift
-// the narrowing of a disabled node's actions exists to prevent.
+// root, so every request that would open one from a background window is refused — see axMayPopupMenu. A node that went
+// on advertising them would offer a screen-reader user an expand or a contextual menu that silently does nothing, which
+// is the same drift the narrowing of a disabled node's actions exists to prevent. The answer is the same for every
+// panel of the window; see axSnapshot.menusLandHere.
 //
-// It is done here rather than in each of those widgets so that the rule is stated once, and after the widget and the
+// The contextual menu is taken from every such node, since any panel may have a ContextMenuCallback; the widgets that
+// advertise a menu of some other kind are then asked which of their actions open one; see axMenuActions. Virtual
+// children are narrowed as they are added; see AccessibilityBuilder.AddVirtualChildOf.
+//
+// It is done here rather than in each widget so that the rule is stated once, after the widget and the
 // Accessibility.Callback have had their say, since a combo box is a Field that is given its Expand by the callback
-// NewComboField installs. Nothing has to invalidate anything when a window's activation changes: Window.gainedFocus and
-// Window.lostFocus both mark their window for publishing, so the actions go and come back with the focus.
+// NewComboField installs, and after the node has been judged for scaffolding, since what is taken away here comes back
+// with the window's activation and must not decide whether the node is shown at all. Nothing else has to invalidate
+// anything when the activation changes: Window.gainedFocus and Window.lostFocus mark their window for publishing, and
+// the windows ActiveWindow() moved between as well (see axMarkActiveWindowChange).
+//
+// Every node the action is taken from, or given back to, is reported with an AttributesChanged on each change of
+// activation, and a Table or List with a menu has one such node per described row and cell (a 20x3 table of fields with
+// a menu measured 161 against 60 without it). That cost is accepted: it is paid only while an assistive technology is
+// attached, only on an activation change, which is deliberate and never rapid, and only for the rows on the screen,
+// whereas leaving the action advertised would offer a menu that every request is then refused.
 func (s *axSnapshot) narrowMenuActions(p *Panel, node *accessibility.Node) {
-	opener, ok := p.Self.(axMenuActions)
-	if !ok || axMayPopupMenu(p) {
+	if s.menusLandHere {
 		return
 	}
-	node.Actions &^= opener.axMenuOpeningActions(node)
+	node.Actions = node.Actions.Without(accessibility.ShowContextMenu)
+	if opener, ok := p.Self.(axMenuActions); ok {
+		node.Actions &^= opener.axMenuOpeningActions(node)
+	}
 }
 
 // markChildrenDescribed records that the children of a node have been described by the widget itself rather than being

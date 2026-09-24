@@ -1138,8 +1138,7 @@ func (d *axDocument) offsetAt(pt geom.Point) int {
 }
 
 // DefaultMouseDown provides the default mouse down handling: a click places the reading caret, a shift-click extends
-// the selection to it, a double-click takes the word and a triple-click the block, and the right button claims the
-// press so that the contextual menu can be opened by the release.
+// the selection to it, a double-click takes the word and a triple-click the block.
 //
 // Nothing happens while the document is not focusable, which is whenever no assistive technology is being served and no
 // application has asked for a document whose text can be read: an ordinary markdown is untouched by any of this. The
@@ -1148,12 +1147,6 @@ func (d *axDocument) offsetAt(pt geom.Point) int {
 func (m *Markdown) DefaultMouseDown(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 	if !m.Focusable() {
 		return false
-	}
-	if button == ButtonRight && clickCount == 1 {
-		// Claimed so that the release is delivered here, where the menu is opened. Popping it up now would swallow that
-		// release and leave the window believing the button was still down. See Field.DefaultMouseDown.
-		m.RequestFocus()
-		return true
 	}
 	if button != ButtonLeft {
 		// Any other button is not a gesture the document has anything to do with, so it is left to whatever else wants
@@ -1217,18 +1210,8 @@ func (m *Markdown) DefaultMouseDrag(where geom.Point, button int, _ mod.Modifier
 	return true
 }
 
-// DefaultMouseUp provides the default mouse up handling, which opens the contextual menu for a right-click within the
-// document.
-func (m *Markdown) DefaultMouseUp(where geom.Point, button int, _ mod.Modifiers) bool {
-	if !m.Focusable() {
-		return false
-	}
-	if button == ButtonRight {
-		if where.In(m.ContentRect(true)) {
-			m.ShowContextMenu(where)
-		}
-		return true
-	}
+// DefaultMouseUp provides the default mouse up handling, which has nothing to do.
+func (m *Markdown) DefaultMouseUp(_ geom.Point, _ int, _ mod.Modifiers) bool {
 	return false
 }
 
@@ -1261,19 +1244,19 @@ func (m *Markdown) SelectAll() {
 	m.axApplySelection(0, len(m.axDocument().text), false)
 }
 
-// ShowContextMenu displays the contextual menu for the document at the specified position, which should be in local
-// coordinates. It holds the two things that can be done to text that is read rather than edited: copying what is
-// selected, and selecting all of it.
-func (m *Markdown) ShowContextMenu(where geom.Point) {
-	fac := DefaultMenuFactory()
-	cm := fac.NewMenu(PopupMenuTemporaryBaseID|ContextMenuIDFlag, "", nil)
-	cm.InsertItem(-1, CopyAction().NewContextMenuItemFromAction(fac))
-	cm.InsertItem(-1, SelectAllAction().NewContextMenuItemFromAction(fac))
-	if cm.Count() > 0 {
-		where = m.PointToRoot(where)
-		cm.Popup(geom.NewRect(where.X, where.Y, 1, 1), 0)
+// ContextMenuAnchor implements ContextMenuAnchorer: the menu opens beneath the reading caret's line, brought into view
+// first, so that it neither covers the text it acts on nor opens out of sight. A document that is not focusable, or
+// has nothing laid out, has no usable caret and falls back to DefaultContextMenuAnchor.
+func (m *Markdown) ContextMenuAnchor() geom.Point {
+	if !m.Focusable() {
+		return m.DefaultContextMenuAnchor()
 	}
-	cm.Dispose()
+	caret := axCaretRect(m.axDocument().lines, m.axCaret())
+	if caret.Empty() {
+		return m.DefaultContextMenuAnchor()
+	}
+	m.ScrollRectIntoView(caret)
+	return geom.NewPoint(caret.X, caret.Bottom())
 }
 
 // DefaultDrawOver provides the default drawing over the content, which is the reading caret and the selection it has
@@ -1325,11 +1308,6 @@ func (m *Markdown) ProvideAccessibility(b *AccessibilityBuilder) {
 	// now does no more than drop the caret there.
 	node.Actions = node.Actions.Without(accessibility.Press).
 		With(accessibility.SetTextSelection, accessibility.ScrollRangeIntoView)
-	if m.Focusable() {
-		// The menu acts on the selection, and there is no selection to act on until the document is something a person
-		// can read from. See Markdown.ShowContextMenu.
-		node.Actions = node.Actions.With(accessibility.ShowContextMenu)
-	}
 	// A document is read, not written: the caret may be moved through it and the text may be copied out of it, and
 	// nothing an assistive technology offers may change a rune of it. Every block within it says the same.
 	node.ReadOnly = true
@@ -1365,8 +1343,9 @@ func (m *Markdown) ProvideAccessibility(b *AccessibilityBuilder) {
 }
 
 // PerformAccessibilityAction carries out a request from an assistive technology: the reading caret or the selection may
-// be moved anywhere in the stream, a range of it may be brought into view, and the contextual menu may be opened — at
-// the caret, since there is no pointer, and after placing the caret when the request named a range to open it for.
+// be moved anywhere in the stream, and a range of it may be brought into view. Showing the contextual menu is left to
+// the default behavior; a request for the menu that names a range has the selection placed on it first (see
+// axPlaceContextMenuRange).
 func (m *Markdown) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.SetTextSelection:
@@ -1381,36 +1360,17 @@ func (m *Markdown) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		}
 		return true
 	case accessibility.ShowContextMenu:
-		if !m.Focusable() {
-			return false
-		}
-		if !axMayPopupMenu(m.AsPanel()) {
-			// The menu would be built in whatever window is active rather than in this one. See axMayPopupMenu.
-			return false
-		}
-		// The menu is built from the copy and select-all actions, both of which are routed to whatever holds the focus
-		// rather than to this document, so asking an unfocused one for its menu would describe, and then act on,
-		// whatever else the focus is in. A right-click takes the focus for the same reason.
-		m.RequestFocus()
-		if req.Start != 0 || req.End != 0 {
-			// A request that named no range and one that named the empty range at the very beginning of the document are
-			// the same request here, since accessibility.ActionRequest has no way to say which of them was meant: asking
-			// for the menu on a range at offset zero opens it wherever the caret already was rather than moving it there
-			// first. Every other range moves the caret, which is what a menu shown for a range is about.
-			m.axSetSelection(req.Start, req.End)
-		}
-		m.ShowContextMenu(axCaretRect(m.axDocument().lines, m.axCaret()).Point)
-		return true
+		// Declined so that the default behavior opens the menu, at the caret.
+		m.axPlaceMenuRange(req)
+		return false
 	default:
 		return false
 	}
 }
 
-// axMenuOpeningActions reports which of the document's actions would open a menu, so that a document in a window none
-// of its menus would land in is published without them rather than advertising what PerformAccessibilityAction would
-// then refuse. See axMenuActions.
-func (m *Markdown) axMenuOpeningActions(_ *accessibility.Node) accessibility.ActionSet {
-	return accessibility.ActionSet(0).With(accessibility.ShowContextMenu)
+// axPlaceMenuRange implements axContextMenuRangePlacer.
+func (m *Markdown) axPlaceMenuRange(req accessibility.ActionRequest) {
+	axPlaceContextMenuRange(m.AsPanel(), req, m.axSelection, m.axSetSelection)
 }
 
 // ProvideAccessibility describes one block of a document's content: what kind of block it is, the whole of its text

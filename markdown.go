@@ -167,6 +167,12 @@ type drawableCacheEntry struct {
 }
 
 // Markdown provides markdown display widget.
+//
+// It has no contextual menu of its own. An application may set ContextMenuCallback; the menu then opens beneath the
+// reading caret from the keyboard or at an assistive technology's request (see ContextMenuAnchor). The text is drawn
+// with panels of the document's own, which have no menu, and only the panel under the pointer is asked for one, so a
+// right-click on the text is an ordinary press; only a right-click on a part of the document no block covers opens the
+// menu.
 type Markdown struct {
 	HTTPClient                 *http.Client // Used when retrieving data from a remote host
 	lastParent                 *Panel
@@ -242,10 +248,9 @@ func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	// them moves. Whatever was already installed is chained rather than dropped, since a caller that set a callback
 	// before the markdown was handed back is entitled to go on being told. See DefaultFrameChangeInChildHierarchy.
 	m.FrameChangeInChildHierarchyCallback = m.DefaultFrameChangeInChildHierarchy
-	// The reading caret: the keys that move it, the mouse that places it, the drawing of it and the two commands that
-	// act on what it has selected. Every one of them does nothing at all while the markdown is not focusable, which is
-	// what keeps an ordinary markdown — one no screen reader is watching and no application has opted in for — exactly
-	// as it was. See Markdown.DefaultKeyDown and Markdown.DefaultMouseDown.
+	// The reading caret: the keys that move it, the mouse that places it, the drawing of it, and the two commands that
+	// act on what it has selected. All of them do nothing while the markdown is not focusable, which keeps an ordinary
+	// markdown — one no screen reader is watching and no application has opted in for — exactly as it was.
 	m.KeyDownCallback = m.DefaultKeyDown
 	m.MouseDownCallback = m.DefaultMouseDown
 	m.MouseDragCallback = m.DefaultMouseDrag
