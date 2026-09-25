@@ -28,8 +28,8 @@ import (
 // This file is the driver: the half of HeadlessScreen a test calls from its own goroutine. Almost every method here
 // funnels its work onto the UI thread through run(), because the state it reads and writes — the window stack, the
 // focus, the rendered frames — belongs to that thread and to nothing else. The exceptions are Size, Scale, Beeps,
-// Errors, Running and Done, which answer from the configuration, an atomic, a lock or a channel and are therefore safe
-// to call from anywhere, including from a goroutine watching a session it did not start.
+// Errors, OpenedURLs, Running and Done, which answer from the configuration, an atomic, a lock or a channel and are
+// therefore safe to call from anywhere, including from a goroutine watching a session it did not start.
 
 // run performs f on the UI thread and waits for it. Returns false, without having run f, if the session ended first.
 func (s *HeadlessScreen) run(f func()) bool {
@@ -655,6 +655,16 @@ func (s *HeadlessScreen) Errors() []error {
 	s.errLock.Lock()
 	defer s.errLock.Unlock()
 	return slices.Clone(s.recorded)
+}
+
+// OpenedURLs returns and forgets the URLs OpenBrowser was asked to open since the last call, in order. A session
+// records these rather than launching a browser. Safe to call from any goroutine.
+func (s *HeadlessScreen) OpenedURLs() []string {
+	s.urlLock.Lock()
+	defer s.urlLock.Unlock()
+	urls := s.openedURLs
+	s.openedURLs = nil
+	return urls
 }
 
 // SetDarkMode sets what IsDarkModeEnabled() reports while the theme mode is thememode.Auto and runs a full theme

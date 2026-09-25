@@ -12,6 +12,7 @@ package mod
 import (
 	"bytes"
 	"strings"
+	"sync/atomic"
 )
 
 // Possible Modifiers values.
@@ -30,6 +31,20 @@ const (
 
 // Modifiers contains flags indicating which modifier keys were down when an event occurred.
 type Modifiers byte
+
+var platformNeutral atomic.Bool
+
+// SetPlatformNeutral makes OSMenuCommand() return Control and String() use the "Ctrl+Shift+" form on every platform
+// when on is true, or the platform's own convention when false (the default). A headless session turns it on for its
+// lifetime. Returns the previous setting. Safe to call from any goroutine.
+func SetPlatformNeutral(on bool) (previous bool) {
+	return platformNeutral.Swap(on)
+}
+
+// PlatformNeutral reports whether SetPlatformNeutral(true) is in effect. Safe to call from any goroutine.
+func PlatformNeutral() bool {
+	return platformNeutral.Load()
+}
 
 // ShiftDown returns true if the shift key is being pressed.
 func (m Modifiers) ShiftDown() bool {
@@ -72,9 +87,40 @@ func (m Modifiers) OSMenuCommandDown() bool {
 	return m&mask == mask
 }
 
-// String returns a text representation of these modifiers.
+// String returns a text representation of these modifiers: the macOS glyphs (⌃⌥⇧⇪⇭⌘) on macOS, or the "Ctrl+Shift+"
+// form everywhere else and while SetPlatformNeutral(true) is in effect.
 func (m Modifiers) String() string {
+	if platformNeutral.Load() {
+		return m.neutralString()
+	}
 	return m.apiString()
+}
+
+// neutralString is the "Ctrl+Shift+" form of String().
+func (m Modifiers) neutralString() string {
+	if m == 0 {
+		return ""
+	}
+	var buffer bytes.Buffer
+	if m.ControlDown() {
+		buffer.WriteString("Ctrl+")
+	}
+	if m.OptionDown() {
+		buffer.WriteString("Alt+")
+	}
+	if m.ShiftDown() {
+		buffer.WriteString("Shift+")
+	}
+	if m.CapsLockDown() {
+		buffer.WriteString("CapsLock+")
+	}
+	if m.NumLockDown() {
+		buffer.WriteString("NumLock+")
+	}
+	if m.CommandDown() {
+		buffer.WriteString("Super+")
+	}
+	return buffer.String()
 }
 
 // MarshalText implements encoding.TextMarshaler.
@@ -88,8 +134,12 @@ func (m *Modifiers) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// OSMenuCommand returns the OS's standard menu command key modifier.
+// OSMenuCommand returns the OS's standard menu command key modifier: Command on macOS, Control everywhere else and
+// while SetPlatformNeutral(true) is in effect.
 func OSMenuCommand() Modifiers {
+	if platformNeutral.Load() {
+		return Control
+	}
 	return apiOSMenuCmdModifier()
 }
 

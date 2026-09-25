@@ -556,7 +556,8 @@ func TestTableAccessibilityFlatFilterHasNoHierarchy(t *testing.T) {
 	if node == nil {
 		return
 	}
-	c.Equal(unison.FlatTableRoleForTest(), node.Role, "a filter that shows a flat list is not a tree")
+	c.Equal(role.Table, node.Role, "a filter that shows a flat list is not a tree, and a session describes it as "+
+		"Linux does wherever it runs")
 	c.Equal(2, node.RowCount, "the rows that passed are all there is")
 	row = axTableRows(tree, node)["p"]
 	c.True(row != nil)

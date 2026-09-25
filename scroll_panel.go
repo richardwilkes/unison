@@ -20,15 +20,20 @@ import (
 	"github.com/richardwilkes/unison/enums/role"
 )
 
+// platformNeutralMouseWheelMultiplier is the MouseWheelMultiplier on every platform other than macOS, and in a headless
+// session.
+const platformNeutralMouseWheelMultiplier float32 = 24
+
 var (
 	_ Layout = &ScrollPanel{}
-	// MouseWheelMultiplier is used by the default theme to multiply incoming mouse wheel event deltas.
+	// MouseWheelMultiplier is used by the default theme to multiply incoming mouse wheel event deltas. A headless
+	// session sets it to the non-macOS value for its lifetime, then puts it back.
 	MouseWheelMultiplier = func() float32 {
 		switch runtime.GOOS {
 		case xos.MacOS:
 			return 8
 		case xos.WindowsOS, xos.LinuxOS:
-			return 24
+			return platformNeutralMouseWheelMultiplier
 		default:
 			return 1
 		}

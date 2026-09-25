@@ -63,6 +63,43 @@ var (
 	axSnapshotCount uint64
 )
 
+// axPolicy is the set of per-platform accessibility answers (axReadersFollowFocus, axFlatTableRole,
+// axCaretBlockReportsFocus and axHeadingsTakeFocus), so that a headless session can pin one set and restore the host's
+// when it ends. UI thread only.
+type axPolicy struct {
+	readersFollowFocus     bool
+	flatTableRole          role.Enum
+	caretBlockReportsFocus bool
+	headingsTakeFocus      bool
+}
+
+// headlessAXPolicy returns Linux's answers, which a headless session uses on every host: they are the ones with
+// something to assert on, the same reason Window.apiAccessibilityWindowHidden picks Linux.
+func headlessAXPolicy() axPolicy {
+	return axPolicy{
+		readersFollowFocus:     true,
+		flatTableRole:          role.Table,
+		caretBlockReportsFocus: true,
+		headingsTakeFocus:      true,
+	}
+}
+
+func currentAXPolicy() axPolicy {
+	return axPolicy{
+		readersFollowFocus:     axReadersFollowFocus,
+		flatTableRole:          axFlatTableRole,
+		caretBlockReportsFocus: axCaretBlockReportsFocus,
+		headingsTakeFocus:      axHeadingsTakeFocus,
+	}
+}
+
+func (p axPolicy) apply() {
+	axReadersFollowFocus = p.readersFollowFocus
+	axFlatTableRole = p.flatTableRole
+	axCaretBlockReportsFocus = p.caretBlockReportsFocus
+	axHeadingsTakeFocus = p.headingsTakeFocus
+}
+
 // AccessibilityInfo is the information a panel exposes to assistive technologies. Every field is optional: a panel that
 // sets none of them is described by whatever its widget reports through AccessibilityProvider, or, for a plain panel,
 // by the defaults the snapshot builder derives from the panel itself.

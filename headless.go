@@ -27,10 +27,17 @@ import (
 // Rendering is forced onto the CPU raster path and the resulting pixels are kept rather than blitted to a screen, so
 // what would have been shown can be read back as an image.
 //
+// A session behaves the same way on every host. Where the platforms differ it follows the non-macOS convention: the
+// menu command key is Control and modifiers read "Ctrl+Shift+" (mod.SetPlatformNeutral), the wheel multiplier is the
+// Windows/Linux one, menus and file dialogs are the in-window ones, the application menu has no macOS-only entries,
+// the quit item is "Exit", title icons are recorded even on macOS, and accessibility follows Linux's answers
+// (headlessAXPolicy). A request to open a URL in the browser is recorded for OpenedURLs() rather than carried out.
+//
 // A session is not tied to the life of the process: Start() returns when the session ends, so one test binary can run
 // several sessions one after another. Everything a session touches that outlives it — the window list, the task queue,
-// the startup option callbacks, the theme state, the built-in cursors — is reset when it ends, so the next session
-// starts from the same clean slate the first one did.
+// the startup option callbacks, the theme state, the built-in cursors, the modifier convention, the wheel multiplier,
+// the accessibility answers — is reset when it ends, so the next session starts from the same clean slate the first one
+// did.
 //
 // One thing deliberately survives: a timer armed with InvokeTaskAfter counts down on a goroutine of its own, which no
 // teardown can reach, so it may fire after its session has ended and enqueue a task into a later one — or into none at
@@ -133,15 +140,15 @@ func headlessFinitePositive(v float32) bool {
 //     application starts itself needs none of these — Drag() is all it takes.
 //   - Running code on the UI thread: Do, Post and Sync. Anything a test wants to read out of the application, from a
 //     widget's state to the window list, must be read inside Do, since it belongs to that thread.
-//   - Looking at the result: Size, Scale, WindowAt, FocusedWindow, Cursor, Capture, CaptureWindow, Beeps and Errors,
-//     plus SetDarkMode to change what the session tells the application about the theme.
+//   - Looking at the result: Size, Scale, WindowAt, FocusedWindow, Cursor, Capture, CaptureWindow, Beeps, Errors and
+//     OpenedURLs, plus SetDarkMode to change what the session tells the application about the theme.
 //   - Ending the session: Quit, Stop, Wait, Done and Running.
 //
-// Everything other than Size, Scale, Beeps, Errors, Running and Done performs its work on the UI thread and waits for
-// it, so once the session has ended they return zero values instead of blocking — except LastDrag, which goes on
-// reporting how the final drag ended, since a session ending underneath a drag is itself one of the ways a drag ends.
-// Sessions run one at a time within a process, never side by side, and a session owns most of this package's mutable
-// globals while it runs, so tests that use one must not call t.Parallel.
+// Everything other than Size, Scale, Beeps, Errors, OpenedURLs, Running and Done performs its work on the UI thread
+// and waits for it, so once the session has ended they return zero values instead of blocking — except LastDrag, which
+// goes on reporting how the final drag ended, since a session ending underneath a drag is itself one of the ways a drag
+// ends. Sessions run one at a time within a process, never side by side, and a session owns most of this package's
+// mutable globals while it runs, so tests that use one must not call t.Parallel.
 type HeadlessScreen struct {
 	// The fields are ordered for packing rather than by role. cfg never changes once the session has been created and
 	// may therefore be read from any goroutine. The locks, channels and atomics are the cross-goroutine plumbing that
@@ -164,6 +171,8 @@ type HeadlessScreen struct {
 	stack    []*Window
 	// announcements is what AnnounceForAccessibility asked to have spoken, which Announcements() reports and drains.
 	announcements []string
+	// openedURLs is what OpenBrowser was asked to open, which OpenedURLs() reports and drains. Guarded by urlLock.
+	openedURLs []string
 	// The cursors that existed before the session started, taken out of the way by beginStartup and put back by
 	// finish(). See beginStartup for why a session must neither adopt nor destroy them.
 	priorCursors                []*Cursor
@@ -171,14 +180,18 @@ type HeadlessScreen struct {
 	priorCursorChangedCallbacks []*func()
 	priorCursorSettings         *cursorSettings
 	priorMenuFactory            MenuFactory
-	clipboard                   []drag.Data
-	lastDrag                    HeadlessDragResult
-	inputLock                   sync.Mutex
-	errLock                     sync.Mutex
-	terminated                  atomic.Bool
-	beeps                       atomic.Int32
-	pointer                     geom.Point
-	cfg                         HeadlessConfig
+	// priorStdActions holds the cached standard actions (see stdActions) from before the session, which finish() puts
+	// back.
+	priorStdActions []*Action
+	clipboard       []drag.Data
+	lastDrag        HeadlessDragResult
+	inputLock       sync.Mutex
+	errLock         sync.Mutex
+	urlLock         sync.Mutex
+	terminated      atomic.Bool
+	beeps           atomic.Int32
+	pointer         geom.Point
+	cfg             HeadlessConfig
 	// hover, capture, buttons, pointer and lastMods together make up the input router's state (headless_input.go):
 	// which window the pointer is over, which one has grabbed it for the duration of a press, which buttons are down,
 	// and where the pointer is with which modifiers held. drag, when it is not nil, takes the pointer away from all of
@@ -187,7 +200,13 @@ type HeadlessScreen struct {
 	// priorThemeMode is the theme mode in force before the session started, which beginStartup replaces with
 	// thememode.Auto and finish() puts back, so that a session neither inherits a mode set before it nor leaves its own
 	// behind.
-	priorThemeMode   thememode.Enum
+	priorThemeMode thememode.Enum
+	// priorPlatformNeutral is what mod.PlatformNeutral() reported before the session, which finish() puts back.
+	priorPlatformNeutral bool
+	// priorMouseWheelMultiplier is the MouseWheelMultiplier from before the session, which finish() puts back.
+	priorMouseWheelMultiplier float32
+	// priorAXPolicy holds the host's accessibility answers from before the session, which finish() puts back.
+	priorAXPolicy    axPolicy
 	darkMode         bool
 	prevCPURendering bool
 	readyClosed      bool
@@ -436,6 +455,19 @@ func (s *headlessState) finish() {
 	// before the session otherwise.
 	defaultMenuFactory = s.priorMenuFactory
 	s.priorMenuFactory = nil
+	// Put back the platform conventions beginStartup replaced, along with the standard actions from before the session,
+	// since the ones the session built carry its menu command key.
+	for i, p := range stdActions() {
+		if i < len(s.priorStdActions) {
+			*p = s.priorStdActions[i]
+		} else {
+			*p = nil
+		}
+	}
+	s.priorStdActions = nil
+	mod.SetPlatformNeutral(s.priorPlatformNeutral)
+	MouseWheelMultiplier = s.priorMouseWheelMultiplier
+	s.priorAXPolicy.apply()
 	// The built-in cursors a headless session hands out are inert and deliberately not recorded in cursorList, so
 	// finishQuit's teardown loop over that list never sees them and never clears the singletons that point at them.
 	// Dropping the session's own is therefore this loop's job, or the next session would keep using cursors belonging

@@ -95,12 +95,27 @@ func (s *headlessState) newDefaultMenuFactory() MenuFactory {
 	return NewInWindowMenuFactory()
 }
 
+// quitMenuTitle returns the title every platform other than macOS uses.
 func (s *headlessState) quitMenuTitle() string {
-	return i18n.Text("Quit")
+	return i18n.Text("Exit")
 }
 
 // addAppMenuEntries does nothing: the application menu it would add to is a macOS construct.
 func (s *headlessState) addAppMenuEntries(_ Menu) {
+}
+
+// headlessMaxOpenedURLs bounds the unread browser requests a session holds, as headlessMaxAXAnnouncements does the
+// announcements. The newest are kept.
+const headlessMaxOpenedURLs = 4096
+
+// openBrowser records url for OpenedURLs(). It may be called from any goroutine, as OpenBrowser may be.
+func (s *headlessState) openBrowser(url string) {
+	s.urlLock.Lock()
+	defer s.urlLock.Unlock()
+	s.openedURLs = append(s.openedURLs, url)
+	if extra := len(s.openedURLs) - headlessMaxOpenedURLs; extra > 0 {
+		s.openedURLs = append(s.openedURLs[:0], s.openedURLs[extra:]...)
+	}
 }
 
 // File dialogs use the pure-Go in-window implementations, so a test can drive them like any other window.

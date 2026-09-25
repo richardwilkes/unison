@@ -1421,6 +1421,58 @@ func TestHeadlessDriverAfterSessionEnds(t *testing.T) {
 	c.True(screen.Quit(), "a session that has already ended has nothing left to refuse the quit")
 }
 
+// TestHeadlessOpenedURLs verifies that a clicked link and a direct OpenBrowser call are recorded rather than opened,
+// and that OpenedURLs hands them back once, in order.
+func TestHeadlessOpenedURLs(t *testing.T) {
+	c := check.New(t)
+	var md *unison.Markdown
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			md = unison.NewMarkdown(false)
+			md.SetContent("Read the [Docs](https://example.com/docs) first.\n", 400)
+			wnd = newHeadlessWindow(t, "links", geom.NewRect(10, 10, 450, 300), md)
+		}))
+	c.NotNil(wnd)
+	c.Nil(screen.OpenedURLs(), "nothing has asked for the browser yet")
+
+	var link *unison.Label
+	var windows int
+	c.True(screen.Do(func() {
+		link = findLabel(md.AsPanel(), "Docs")
+		windows = len(unison.Windows())
+	}))
+	c.NotNil(link, "the document should hold the link as a label of its own")
+	screen.Click(screen.PanelCenter(link))
+	c.Equal([]string{"https://example.com/docs"}, screen.OpenedURLs(),
+		"clicking the link should have been recorded rather than handed to the host's browser")
+	c.Nil(screen.OpenedURLs(), "and handed back only once")
+
+	var err error
+	c.True(screen.Do(func() { err = unison.OpenBrowser("https://example.com/first") }))
+	c.NoError(err)
+	c.NoError(unison.OpenBrowser("https://example.com/second"), "a request from another goroutine is recorded too")
+	c.Equal([]string{"https://example.com/first", "https://example.com/second"}, screen.OpenedURLs())
+
+	var after int
+	c.True(screen.Do(func() { after = len(unison.Windows()) }))
+	c.Equal(windows, after, "no error dialog should have been put up")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// findLabel returns the first label at or below p whose text is title, or nil.
+func findLabel(p *unison.Panel, title string) *unison.Label {
+	if label, ok := p.Self.(*unison.Label); ok && label.String() == title {
+		return label
+	}
+	for _, child := range p.Children() {
+		if label := findLabel(child, title); label != nil {
+			return label
+		}
+	}
+	return nil
+}
+
 // TestHeadlessFileDialogs verifies that the file dialogs a session offers are the pure-Go in-window ones, which a test
 // can drive like any other window: the dialog opens inside a nested event loop, and Escape dismisses it.
 func TestHeadlessFileDialogs(t *testing.T) {
@@ -1509,8 +1561,9 @@ func TestHeadlessStandardMenus(t *testing.T) {
 		}
 		appItems = app.Count()
 	}))
-	c.Equal("Quit", quitTitle, "the per-window bar puts the quit item in the File menu, titled as the session says")
-	c.Equal("Quit", appQuitTitle)
+	c.Equal("Exit", quitTitle, "the per-window bar puts the quit item in the File menu, titled as it is everywhere "+
+		"other than macOS whatever the host is")
+	c.Equal("Exit", appQuitTitle)
 	c.True(appItems > 0, "the application menu should have been built")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

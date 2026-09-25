@@ -22,6 +22,12 @@ var (
 	selectAllAction *Action
 )
 
+// stdActions returns the cached standard actions, which a headless session swaps out since each bakes in the menu
+// command key at first use.
+func stdActions() []**Action {
+	return []**Action{&cutAction, &copyAction, &pasteAction, &deleteAction, &selectAllAction}
+}
+
 // Action describes an action that can be performed.
 type Action struct {
 	EnabledCallback func(*Action, any) bool // Should return true if the action can be used. Care should be made to keep this method fast to avoid slowing down the user interface. May be nil, in which case it is assumed to always be enabled.

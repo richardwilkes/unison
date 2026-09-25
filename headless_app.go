@@ -12,6 +12,7 @@ package unison
 import (
 	"time"
 
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/thememode"
 )
 
@@ -107,6 +108,19 @@ func (s *headlessState) beginStartup() error {
 	cursorChangedCallbacks = nil
 	s.priorMenuFactory = defaultMenuFactory
 	defaultMenuFactory = nil
+	// Pin the platform conventions for the session so that it behaves the same on every host (see the package comment),
+	// and take the standard actions out of the way, since any built before the session carry the host's menu command
+	// key.
+	s.priorPlatformNeutral = mod.SetPlatformNeutral(true)
+	s.priorMouseWheelMultiplier = MouseWheelMultiplier
+	MouseWheelMultiplier = platformNeutralMouseWheelMultiplier
+	s.priorAXPolicy = currentAXPolicy()
+	headlessAXPolicy().apply()
+	s.priorStdActions = make([]*Action, 0, len(stdActions()))
+	for _, p := range stdActions() {
+		s.priorStdActions = append(s.priorStdActions, *p)
+		*p = nil
+	}
 	// The in-window file dialogs, which are the only ones a headless session has, remember the directory they were last
 	// used in. The first session in a process must not inherit that from whatever ran before it.
 	lastWorkingDir = ""

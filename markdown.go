@@ -29,7 +29,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xhttp"
 	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xmath"
-	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/align"
@@ -1573,11 +1572,10 @@ func (m *Markdown) finishTextRow() {
 	m.textRow = nil
 }
 
-// DefaultMarkdownLinkHandler provides the default link handler, which handles opening a browsers for http and https
-// links.
+// DefaultMarkdownLinkHandler is the default link handler, which opens http and https links via OpenBrowser.
 func DefaultMarkdownLinkHandler(_ Paneler, target string) {
 	if HasURLPrefix(target) {
-		if err := xos.OpenBrowser(target); err != nil {
+		if err := OpenBrowser(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
 		}
 	}

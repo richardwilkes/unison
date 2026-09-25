@@ -22,8 +22,11 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
+	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/thememode"
 )
 
@@ -310,6 +313,133 @@ func TestHeadlessThemeModeRestored(t *testing.T) {
 	c.True(screen.Do(func() { SetThemeMode(thememode.Light) }))
 	c.True(screen.Quit())
 	c.Equal(thememode.Dark, CurrentThemeMode(), "the mode from before the session should have been put back")
+}
+
+// TestHeadlessPlatformNeutralModifiers verifies that a session uses the platform-neutral modifier convention, rebuilds
+// the cached standard actions with it, and puts both back when it ends.
+func TestHeadlessPlatformNeutralModifiers(t *testing.T) {
+	c := check.New(t)
+	c.False(mod.PlatformNeutral(), "nothing outside a session should have left the convention on")
+	before := CutAction()
+	c.Equal(mod.OSMenuCommand(), before.KeyBinding.Modifiers,
+		"built before the session, the action should carry the host's own menu command key")
+
+	var (
+		neutral    bool
+		menuKey    mod.Modifiers
+		cutMods    mod.Modifiers
+		text       string
+		sameAction bool
+	)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 100, Height: 100},
+		StartupFinishedCallback(func() {
+			neutral = mod.PlatformNeutral()
+			menuKey = mod.OSMenuCommand()
+			cutMods = CutAction().KeyBinding.Modifiers
+			sameAction = CutAction() == before
+			text = KeyBinding{KeyCode: KeyX, Modifiers: mod.Shift | mod.OSMenuCommand()}.String()
+		}))
+	c.True(neutral)
+	c.Equal(mod.Control, menuKey, "the session's menu command key should be Control whatever the host's is")
+	c.Equal(mod.Control, cutMods, "and the standard actions should have been rebuilt with it")
+	c.False(sameAction, "rather than kept from before the session")
+	c.Equal("Ctrl+Shift+X", text, "and modifiers should be spelled out rather than drawn as glyphs")
+	c.True(screen.Quit())
+	c.False(mod.PlatformNeutral(), "the convention from before the session should have been put back")
+	c.True(CutAction() == before, "as should the action built before it")
+}
+
+// TestHeadlessMouseWheelMultiplier verifies that a session uses the Windows/Linux wheel multiplier, that a scroll panel
+// scrolls by it, and that the prior value is put back when the session ends.
+func TestHeadlessMouseWheelMultiplier(t *testing.T) {
+	c := check.New(t)
+	found := MouseWheelMultiplier
+	t.Cleanup(func() { MouseWheelMultiplier = found })
+	MouseWheelMultiplier = 3
+
+	var (
+		inSession float32
+		scroller  *ScrollPanel
+		wnd       *Window
+	)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 300, Height: 300},
+		StartupFinishedCallback(func() {
+			inSession = MouseWheelMultiplier
+			content := NewPanel()
+			content.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+				size := geom.NewSize(100, 5000)
+				return size, size, size
+			})
+			scroller = NewScrollPanel()
+			scroller.SetContent(content, behavior.Fill, behavior.Unmodified)
+			scroller.SetLayoutData(&FlexLayoutData{
+				SizeHint: geom.NewSize(200, 200),
+				HAlign:   align.Fill,
+				VAlign:   align.Start,
+			})
+			wnd = axNewTestWindow(t, "wheel", geom.NewRect(10, 10, 250, 250), scroller)
+		}))
+	c.NotNil(wnd)
+	c.Equal(platformNeutralMouseWheelMultiplier, inSession,
+		"the session should scroll by the amount Windows and Linux do rather than inheriting the host's multiplier")
+	c.Equal(float32(24), inSession)
+
+	var before, after float32
+	c.True(screen.Do(func() { before = scroller.verticalBar.Value() }))
+	screen.Wheel(screen.PanelCenter(scroller), geom.NewPoint(0, -2), mod.None)
+	c.True(screen.Do(func() { after = scroller.verticalBar.Value() }))
+	c.Equal(before+2*platformNeutralMouseWheelMultiplier, after,
+		"a scroll panel using the default theme should have scrolled by the delta times the session's multiplier")
+
+	c.True(screen.Quit())
+	c.Equal(float32(3), MouseWheelMultiplier, "the multiplier from before the session should have been put back")
+}
+
+// TestHeadlessAccessibilityPolicyPinned verifies that a session uses Linux's accessibility answers and puts the host's
+// back when it ends.
+func TestHeadlessAccessibilityPolicyPinned(t *testing.T) {
+	c := check.New(t)
+	found := currentAXPolicy()
+	t.Cleanup(func() { found.apply() })
+	// macOS's answers differ from Linux's on every question, so a Linux host cannot pass by accident.
+	macOS := axPolicy{
+		readersFollowFocus: false, flatTableRole: role.Tree, caretBlockReportsFocus: false,
+		headingsTakeFocus: false,
+	}
+	macOS.apply()
+
+	var atStartup axPolicy
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 100, Height: 100},
+		StartupFinishedCallback(func() { atStartup = currentAXPolicy() }))
+	c.Equal(headlessAXPolicy(), atStartup, "the session should answer as Linux does rather than as the host does")
+	c.True(screen.Quit())
+	c.Equal(macOS, currentAXPolicy(), "the answers from before the session should have been put back")
+}
+
+// TestHeadlessAppMenuHasNoNativeEntries verifies that a session's application menu has none of the entries macOS adds
+// to its own.
+func TestHeadlessAppMenuHasNoNativeEntries(t *testing.T) {
+	c := check.New(t)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 100, Height: 100})
+	var (
+		count                  int
+		hide, hideOthers, show MenuItem
+		services               Menu
+	)
+	c.True(screen.Do(func() {
+		m := NewAppMenu(DefaultMenuFactory(), nil, nil, nil)
+		defer m.Dispose()
+		count = m.Count()
+		hide = m.Item(HideItemID)
+		hideOthers = m.Item(HideOthersItemID)
+		show = m.Item(ShowAllItemID)
+		services = m.Menu(ServicesMenuID)
+	}))
+	c.Nil(hide, "the Hide item is a macOS construct and should not be in a session's application menu")
+	c.Nil(hideOthers)
+	c.Nil(show)
+	c.Nil(services)
+	c.Equal(5, count, "About, a separator, Preferences, a separator and Quit are all it should hold")
 }
 
 // TestHeadlessCapture verifies that what a window drew can be read back, at the right pixel size and in the right

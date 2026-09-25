@@ -7,14 +7,11 @@
 // This Source Code Form is "Incompatible With Secondary Licenses", as
 // defined by the Mozilla Public License, version 2.0.
 
-//go:build !darwin
+package unison
 
-package mod
-
-func apiOSMenuCmdModifier() Modifiers {
-	return Control
-}
-
-func (m Modifiers) apiString() string {
-	return m.neutralString()
+// OpenBrowser asks the operating system to open url in the browser. Use it rather than xos.OpenBrowser, since a
+// headless session records the request for HeadlessScreen.OpenedURLs() instead of launching a browser. May be called
+// from any goroutine.
+func OpenBrowser(url string) error {
+	return apiOpenBrowser(url)
 }

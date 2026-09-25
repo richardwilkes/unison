@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -244,6 +245,16 @@ func apiClipboardSetData(data ...drag.Data) {
 		return
 	}
 	nativeClipboardSetData(data...)
+}
+
+// Browser.
+
+func apiOpenBrowser(url string) error {
+	if hs := activeHeadless(); hs != nil {
+		hs.openBrowser(url)
+		return nil
+	}
+	return xos.OpenBrowser(url)
 }
 
 // Menus.

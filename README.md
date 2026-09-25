@@ -110,6 +110,18 @@ once the application has settled, so the windows the `StartupFinishedCallback` c
 `Headless(cfg)` startup option instead if your code calls `Start()` itself; in headless mode `Start()` returns when the
 session ends.
 
+A session behaves the same way on every host. Where the platforms differ in convention it follows the one shared by
+everything other than macOS: the menu command key is `Control`, so `mod.OSMenuCommand()` returns it and the standard
+actions and menu items bind to it, and `Modifiers.String()` spells modifiers out as `Ctrl+Shift+` rather than drawing
+the macOS glyphs. `mod.SetPlatformNeutral()` is the switch the session turns on to get that, and it is put back when
+the session ends. A wheel event scrolls by the amount it does on Windows and Linux, `MouseWheelMultiplier` being set to
+that value for the session, the quit menu item is titled `Exit`, and the application menu gets none of the entries
+macOS adds to its own. Where the platforms' screen readers differ, what an assistive technology is handed follows
+Linux: a heading takes the focus while one is being served, a flat table is described as a table, and the block holding
+the reading caret reports the focus. A request to open a URL in the browser is recorded rather than carried out, and
+`OpenedURLs()` hands the requests back; `DefaultMarkdownLinkHandler` makes its request through `OpenBrowser()`, and an
+application's own link handlers get the same treatment by calling that rather than `xos.OpenBrowser()`.
+
 Input is injected in the screen's logical coordinate space, which is also the space window content rects are in;
 `PanelCenter()` and `PanelPoint()` convert a widget's own coordinates into it. Every injection method — `Click()`,
 `Drag()`, key presses and the rest — waits for the application to finish reacting before it returns: the callbacks have
