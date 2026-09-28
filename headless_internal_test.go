@@ -2613,3 +2613,158 @@ func TestHeadlessMenuHandlerRunsFromEventLoop(t *testing.T) {
 	c.True(screen.FocusedWindow() == wnd)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestHeadlessWheelDuringSourceDragPaintsAtOnce verifies that a wheel arriving while a drag this application started is
+// in progress paints what it changed before anything else sees the window, and that an ordinary wheel does not. On
+// macOS and Windows the drag holds the thread in the platform's own event loop, so the redraw pass that normally
+// follows the event does not run until the drop, and a view scrolled under the held drag would otherwise keep showing
+// its old content. The headless screen runs the drag as a nested loop of this package's own, which would paint the
+// window by its next pass regardless, so the check is made from the drop feedback the wheel triggers, which runs before
+// that pass.
+func TestHeadlessWheelDuringSourceDragPaintsAtOnce(t *testing.T) {
+	c := check.New(t)
+	var wnd *Window
+	var content *Panel
+	started := false
+	cleanups := 0
+	wheeled := false
+	activeDuringWheel := false
+	pendingAfterWheel := true
+	updatesAfterWheel := 0
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 200, Height: 200},
+		StartupFinishedCallback(func() {
+			wnd = newHeadlessTestWindow(t, "source", geom.NewRect(0, 0, 100, 100))
+			if wnd == nil {
+				return
+			}
+			wnd.RegisterForDragTypes(uti.UTF8PlainText)
+			content = wnd.Content()
+			content.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+			content.MouseDragCallback = func(where geom.Point, _ int, _ mod.Modifiers) bool {
+				if !started {
+					started = true
+					content.StartDrag(nil, where, func() { cleanups++ }, drag.Copy,
+						drag.Data{Type: uti.UTF8PlainText, Data: []byte("payload")})
+				}
+				return true
+			}
+			content.MouseWheelCallback = func(_, _ geom.Point, _ mod.Modifiers) bool {
+				// What a scrolled view does: change what it shows and ask to be painted.
+				wheeled = true
+				activeDuringWheel = dragSource == wnd
+				content.MarkForRedraw()
+				return true
+			}
+			content.DragEnteredCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) drag.Op { return drag.Copy }
+			content.DragUpdatedCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) drag.Op {
+				if wheeled {
+					// The drop feedback is recomputed right after the wheel is dispatched, so this sees whether the
+					// redraw the wheel asked for was painted on the spot or left for the loop's next pass.
+					wheeled = false
+					updatesAfterWheel++
+					_, pendingAfterWheel = redrawSet[wnd]
+				}
+				return drag.Copy
+			}
+			content.DropCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) bool { return true }
+		}))
+	c.NotNil(wnd)
+
+	screen.MouseDown(geom.NewPoint(50, 50), ButtonLeft, mod.None)
+	screen.MouseMove(geom.NewPoint(60, 60), mod.None) // starts the drag, returning once its loop is idle
+	var source *Window
+	c.True(screen.Do(func() { source = dragSource }))
+	c.True(source == wnd, "a drag started by the application should be recorded as in progress")
+
+	screen.Wheel(geom.NewPoint(60, 60), geom.NewPoint(0, 1), mod.None)
+	c.True(activeDuringWheel, "the wheel should arrive while the drag is recorded as in progress")
+	c.Equal(1, updatesAfterWheel, "the drop feedback should have been recomputed after the wheel")
+	c.False(pendingAfterWheel, "the redraw the wheel asked for should have been painted before the drop feedback ran")
+
+	screen.MouseUp(geom.NewPoint(60, 60), ButtonLeft, mod.None)
+	var cleaned int
+	var pendingAfterDrop bool
+	c.True(screen.Do(func() {
+		cleaned = cleanups
+		source = dragSource
+		wnd.mouseWheel(geom.NewPoint(60, 60), geom.NewPoint(0, 1), mod.None)
+		_, pendingAfterDrop = redrawSet[wnd]
+	}))
+	c.Equal(1, cleaned, "the source's cleanup should have run when the drag ended")
+	c.Nil(source, "the drag should no longer be recorded as in progress once it has ended")
+	c.True(pendingAfterDrop, "with no drag in progress the wheel's redraw should be left for the event loop's pass")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHeadlessStartDragDuringOwnDragRefused verifies that a StartDrag made while a drag this application started is
+// still being held leaves that drag exactly as it was: its cleanup is neither replaced nor run early, it stays recorded
+// as in progress, and it still drops what it was carrying. The refusal is recorded, and the refused call's own cleanup
+// runs at once, as it does for a drag the platform could not begin.
+func TestHeadlessStartDragDuringOwnDragRefused(t *testing.T) {
+	c := check.New(t)
+	var wnd *Window
+	started := false
+	firstCleanups := 0
+	secondCleanups := 0
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 200, Height: 200},
+		StartupFinishedCallback(func() {
+			wnd = newHeadlessTestWindow(t, "source", geom.NewRect(0, 0, 100, 100))
+			if wnd == nil {
+				return
+			}
+			wnd.RegisterForDragTypes(uti.UTF8PlainText)
+			content := wnd.Content()
+			content.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+			content.MouseDragCallback = func(where geom.Point, _ int, _ mod.Modifiers) bool {
+				if !started {
+					started = true
+					content.StartDrag(nil, where, func() { firstCleanups++ }, drag.Copy,
+						drag.Data{Type: uti.UTF8PlainText, Data: []byte("first")})
+				}
+				return true
+			}
+			content.DragEnteredCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) drag.Op { return drag.Copy }
+			content.DragUpdatedCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) drag.Op { return drag.Copy }
+			content.DropCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) bool { return true }
+		}))
+	c.NotNil(wnd)
+
+	screen.MouseDown(geom.NewPoint(50, 50), ButtonLeft, mod.None)
+	screen.MouseMove(geom.NewPoint(60, 60), mod.None) // starts the first drag, returning once its loop is idle
+	c.True(started)
+
+	var source *Window
+	var first, second int
+	c.True(screen.Do(func() {
+		wnd.StartDrag(nil, geom.NewPoint(10, 10), func() { secondCleanups++ }, drag.Copy,
+			drag.Data{Type: uti.UTF8PlainText, Data: []byte("second")})
+		source = dragSource
+		first = firstCleanups
+		second = secondCleanups
+	}))
+	errors := screen.Errors()
+	c.Equal(1, len(errors), "the refusal should have been recorded: %v", errors)
+	if len(errors) == 1 {
+		c.Contains(errors[0].Error(), "already in progress")
+	}
+	c.True(source == wnd, "the first drag should still be recorded as in progress")
+	c.Equal(0, first, "the first drag's cleanup should not have run while it is still being held")
+	c.Equal(1, second, "the refused call's cleanup should have run at once")
+
+	screen.MouseUp(geom.NewPoint(60, 60), ButtonLeft, mod.None)
+	c.True(screen.Do(func() {
+		source = dragSource
+		first = firstCleanups
+		second = secondCleanups
+	}))
+	c.Nil(source, "no drag should be recorded as in progress once the first has ended")
+	c.Equal(1, first, "the first drag's cleanup should have run once it ended")
+	c.Equal(1, second, "the refused call's cleanup should not have run again")
+	result := screen.LastDrag()
+	c.True(result.Dropped, "the first drag should have carried on to its drop")
+	c.True(result.Source == wnd)
+	c.Equal(1, len(result.Data))
+	if len(result.Data) == 1 {
+		c.Equal("first", string(result.Data[0].Data))
+	}
+}

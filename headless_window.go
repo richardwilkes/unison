@@ -373,15 +373,24 @@ func (hw *headlessWindow) startDrag(img *Image, origin geom.Point, opMask drag.O
 	defer hw.w.dragSourceFinished()
 	hs := hw.hs
 	if hs.drag != nil {
-		// Nothing can start a second drag: the pointer is already spoken for. The platforms cannot even be asked, so
-		// there is no established behavior to copy — record it for Errors() and leave the drag in progress alone.
-		hs.recordError(errs.New("a drag & drop session is already in progress"))
+		// Nothing can start a second drag: the pointer is already spoken for, here by a drag from outside the
+		// application, since Window.StartDrag refuses on its own while one of this application's is in progress. The
+		// platforms cannot even be asked, so there is no established behavior to copy — record it for Errors() and
+		// leave the drag in progress alone. The deferred dragSourceFinished then winds up the drag that never began.
+		hw.startDragRefused()
 		return
 	}
 	hs.beginDrag(hw.w, img, origin, opMask, data)
 	for hs.drag != nil && !hs.terminated.Load() {
 		processEvents()
 	}
+}
+
+// startDragRefused records, for Errors(), a StartDrag made while a drag & drop was already in progress. It is reached
+// from Window.StartDrag for a drag this application is still holding and from startDrag for one from outside it, so
+// that both refusals read the same to a test.
+func (hw *headlessWindow) startDragRefused() {
+	hw.hs.recordError(errs.New("a drag & drop session is already in progress"))
 }
 
 // presentCPUPixels adopts the freshly rendered frame as what is now "on the screen" for this window.

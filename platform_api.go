@@ -503,6 +503,15 @@ func (w *Window) apiStartDrag(img *Image, origin geom.Point, opMask drag.Op, dat
 	w.nativeStartDrag(img, origin, opMask, data...)
 }
 
+// apiStartDragRefused reports a StartDrag turned down because a drag this application started is still in progress.
+// The headless screen records it for Errors(), as it records the same refusal made from its own drag loop; the
+// platforms are never reached in this state and have nothing to say about it.
+func (w *Window) apiStartDragRefused() {
+	if hw := w.wnd.hw; hw != nil {
+		hw.startDragRefused()
+	}
+}
+
 func (w *Window) apiUpdateRegisteredDragTypes(types []*uti.DataType) {
 	if hw := w.wnd.hw; hw != nil {
 		hw.updateRegisteredDragTypes(types)

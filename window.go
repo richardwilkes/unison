@@ -106,7 +106,6 @@ type Window struct {
 	contextMenuCount     int
 	lastContentRect      geom.Rect
 	firstButtonLocation  geom.Point
-	dragDataLocation     geom.Point
 	contextMenuPress     geom.Point
 	lastWidth            float32
 	lastHeight           float32
@@ -1554,7 +1553,6 @@ func (w *Window) forgetContextMenuPress() {
 
 func (w *Window) mouseDrag(where geom.Point, button int, mods mod.Modifiers) {
 	w.lastKeyModifiers = mods
-	w.dragDataLocation = where
 	w.restoreHiddenCursor()
 	if w.contextMenuPanel != nil {
 		// A right-click that moves beyond the drift is a drag and opens no menu. The drift is measured here rather than
@@ -1779,6 +1777,14 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 	// than the focused window, so scrolling a window blocked by a modal is both possible and desirable, as it only
 	// adjusts the view and cannot trigger actions.
 	w.lastKeyModifiers = mods
+	if dragSource != nil {
+		// While a drag this application started is in progress, macOS and Windows hold the thread inside an event loop
+		// of their own, so the redraw pass that normally follows this event (see finishProcessingEvents) does not run
+		// until the drag ends. Paint whatever the wheel changes once it has been dispatched, or a view scrolled under
+		// the held drag would go on showing its old content until the drop. The nested loops Linux and the headless
+		// screen run for a drag are this package's own and draw as usual, so there the flush only paints a bit sooner.
+		defer w.FlushDrawing()
+	}
 	if w.MouseWheelCallback != nil {
 		stop := false
 		SafeCall(func() { stop = w.MouseWheelCallback(where, delta, mods) })
@@ -1989,6 +1995,13 @@ func (w *Window) IsDragGesture(where geom.Point) bool {
 			time.Since(w.lastButtonTime) > minDelay)
 }
 
+// dragSource is the window whose drag & drop is in progress, from StartDrag until the platform reports the drag over
+// through dragSourceFinished, or nil while no drag started by this application is in progress. It is package state
+// rather than the window's, since the drag may be held over any window of the application, and it is the window under
+// the pointer that needs to know; it also names the window whose cleanup is still owed should the platform report the
+// end of a drag whose source has since been disposed. See Window.mouseWheel for what depends on it.
+var dragSource *Window
+
 // StartDrag starts a drag & drop operation. 'img' is the drag image shown while dragging and may be nil. 'origin' is
 // the origin of the drag image in the window's root coordinate space. 'cleanup' is called when the drag source
 // finishes, if not nil. 'opMask' holds the permitted drag operations.
@@ -1996,14 +2009,36 @@ func (w *Window) StartDrag(img *Image, origin geom.Point, cleanup func(), opMask
 	if len(data) == 0 {
 		return
 	}
+	if dragSource != nil {
+		// A drag this application started is still being held, so the pointer is spoken for and no platform can be
+		// asked to begin another. The real platforms make this all but unreachable, since the mouse-drag callbacks that
+		// start drags are not delivered while their drag loop holds the thread, but a handler run from within the drag,
+		// or a HeadlessScreen.Do, can get here. The drag in progress, and the cleanup it will run when it ends, are left
+		// alone; this call's cleanup runs now, as it does when a platform cannot begin a drag (see dragSourceFinished),
+		// since the drag it was registered for never began.
+		w.apiStartDragRefused()
+		if cleanup != nil {
+			cleanup()
+		}
+		return
+	}
 	w.synthesizeMouseUp()
 	w.dragSourceCleanup = cleanup
+	dragSource = w
 	w.apiStartDrag(img, origin, opMask, data...)
 }
 
+// dragSourceFinished is called when a drag this window started has ended, however it ended, and also when the platform
+// could not begin it at all, since the cleanup the source registered has to run either way. The cleanup is dropped once
+// it has run, so that a second report of the same drag ending (the platform's, after the window was disposed with the
+// drag still in progress) does not run it again.
 func (w *Window) dragSourceFinished() {
-	if w.dragSourceCleanup != nil {
-		w.dragSourceCleanup()
+	if dragSource == w {
+		dragSource = nil
+	}
+	if cleanup := w.dragSourceCleanup; cleanup != nil {
+		w.dragSourceCleanup = nil
+		cleanup()
 	}
 }
 

@@ -232,12 +232,24 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window drag exit callback for unknown window", "window", macWnd)
 		}
 	}
-	cocoa.WindowDragSourceFinishedCallback = func(macWnd cocoa.Window) {
-		if w := macFindWindow(macWnd); w != nil {
-			w.dragSourceFinished()
-		} else {
-			slog.Warn("received window drag source finished callback for unknown window", "window", macWnd)
-		}
+	cocoa.WindowDragSourceFinishedCallback = macDragSourceFinished
+}
+
+// macDragSourceFinished is the WindowDragSourceFinishedCallback: AppKit's report that a drag begun from macWnd's view
+// has ended.
+func macDragSourceFinished(macWnd cocoa.Window) {
+	switch w := macFindWindow(macWnd); {
+	case w != nil:
+		w.dragSourceFinished()
+	case dragSource != nil:
+		// The source was disposed while its drag was in progress, as happens when the drop closes it (a tab moved out
+		// of a window it was the last of, say), so it is no longer in the list the lookup walks. AppKit reports the
+		// session's end to the source view all the same, and this is that report: wind the drag up so that the cleanup
+		// runs and the drag is no longer recorded as in progress, as the other platforms do unconditionally once their
+		// drag loop returns.
+		dragSource.dragSourceFinished()
+	default:
+		slog.Warn("received window drag source finished callback for unknown window", "window", macWnd)
 	}
 }
 
@@ -433,7 +445,11 @@ func (w *Window) nativeHide() {
 func (w *Window) nativeStartDrag(img *Image, origin geom.Point, opMask drag.Op, data ...drag.Data) {
 	nrgba, r := macDragImageAndFrame(img, origin)
 	r.Y = w.wnd.view.Frame().Height - r.Height - r.Y
-	w.wnd.view.BeginDraggingSession(nrgba, r, opMask, data...)
+	if !w.wnd.view.BeginDraggingSession(nrgba, r, opMask, data...) {
+		// No session was begun (see cocoa.dragSessionEvent), so AppKit will never report one ending. Wind the drag up
+		// here instead, so that the source's cleanup runs and nothing goes on believing a drag is in progress.
+		w.dragSourceFinished()
+	}
 }
 
 // macDragImageAndFrame converts the optional drag image into the pixel data and top-left-origin frame handed to

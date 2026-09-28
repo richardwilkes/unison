@@ -15,6 +15,8 @@ import (
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/uti"
+	"github.com/richardwilkes/unison/drag"
 )
 
 // TestDragSessionEvent covers the guard that keeps a nil event from reaching
@@ -73,6 +75,48 @@ func TestViewMouseMovedStashesDragEvent(t *testing.T) {
 			}
 			if got := ov.Send(Sel("lastMouseDraggedEvent")); got != 0 {
 				t.Errorf("lastMouseDraggedEvent = %#x after mouseMoved returned, want 0", got)
+			}
+		})
+	})
+}
+
+// TestBeginDraggingSessionReportsNoSession pins the result the window layer relies on to wind a drag up itself: with
+// nothing to drag, or with no event to start a session from, BeginDraggingSession reports false and leaves the view not
+// believing it is in a drag of its own, so AppKit will never report a session ending. The no-event half goes through
+// the seam that stands in for the application's current event, since whether the real application has one depends on
+// what ran before, and with one AppKit would be handed a real session to run.
+func TestBeginDraggingSessionReportsNoSession(t *testing.T) {
+	runOnMain(func() {
+		w, v, cleanup := newTestWindowAndView(t)
+		defer cleanup()
+		ov := objc.ID(v)
+		WithPool(func() {
+			frame := geom.NewRect(0, 0, 10, 10)
+			payload := []drag.Data{{Type: uti.UTF8PlainText, Data: []byte("payload")}}
+			// With no data there is nothing to drag, however good the stashed event is.
+			event := synthMouseEvent(nsEventTypeLeftMouseDragged, NSPoint{X: 5, Y: 5}, 0, w)
+			ov.Send(Sel("setLastMouseDraggedEvent:"), event)
+			if v.BeginDraggingSession(nil, frame, drag.Copy) {
+				t.Error("BeginDraggingSession with no data reported a session")
+			}
+			if objc.Send[bool](ov, Sel("isInDragWeStarted")) {
+				t.Error("the view believes it is in a drag after refusing to start one with no data")
+			}
+			// With nothing stashed and no current event, there is nothing to start a session from.
+			ov.Send(Sel("setLastMouseDraggedEvent:"), objc.ID(0))
+			consulted := 0
+			noEvent := func() objc.ID {
+				consulted++
+				return 0
+			}
+			if v.beginDraggingSession(nil, frame, drag.Copy, noEvent, payload) {
+				t.Error("beginDraggingSession with no event reported a session")
+			}
+			if consulted != 1 {
+				t.Errorf("the current event was consulted %d times, want once", consulted)
+			}
+			if objc.Send[bool](ov, Sel("isInDragWeStarted")) {
+				t.Error("the view believes it is in a drag after refusing to start one with no event")
 			}
 		})
 	})

@@ -82,6 +82,9 @@ func (s *headlessState) beginStartup() error {
 	windowList = nil
 	modalStack = nil
 	pendingFrontWindow = nil
+	// A drag one of those windows started and never saw the end of is disowned with it. Left in place, every wheel of
+	// the session would be flushed as though a drag were being held (see Window.mouseWheel).
+	dragSource = nil
 	redrawSet = make(map[*Window]struct{})
 	// The flag saying a wake-up has already been asked for goes with the set it belongs to, so the session's first
 	// MarkForRedraw posts one rather than trusting an empty event queued for whatever ran before it.

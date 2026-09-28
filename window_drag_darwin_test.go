@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
 // TestMacDragImageAndFrameNilImage is the regression test for nativeStartDrag panicking on a nil drag image.
@@ -43,4 +44,30 @@ func TestMacDragImageAndFrameWithImage(t *testing.T) {
 	c.Equal(w, nrgba.Rect.Dx())
 	c.Equal(h, nrgba.Rect.Dy())
 	c.Equal(geom.Rect{Point: origin, Size: img.LogicalSize()}, r)
+}
+
+// TestMacDragSourceFinishedForDisposedSource verifies the report AppKit makes when a drag ends after its source window
+// was disposed, as happens when the drop closes the source. The window is no longer in the window list, so the lookup
+// by native window fails; the drag still has to be wound up, running the cleanup the source registered and no longer
+// recording a drag as in progress, and a second report of the same end must not run the cleanup again.
+func TestMacDragSourceFinishedForDisposedSource(t *testing.T) {
+	c := check.New(t)
+	prevList, prevSource := windowList, dragSource
+	windowList, dragSource = nil, nil
+	defer func() { windowList, dragSource = prevList, prevSource }()
+
+	// No drag in progress: an unknown window is only logged, and nothing else happens.
+	macDragSourceFinished(cocoa.Window(1))
+	c.Nil(dragSource)
+
+	cleanups := 0
+	w := &Window{dragSourceCleanup: func() { cleanups++ }}
+	dragSource = w
+	macDragSourceFinished(cocoa.Window(1))
+	c.Equal(1, cleanups, "the disposed source's cleanup should have run when its drag ended")
+	c.Nil(dragSource, "the drag should no longer be recorded as in progress")
+	c.Nil(w.dragSourceCleanup, "a cleanup that has run should not be kept to run again")
+
+	macDragSourceFinished(cocoa.Window(1))
+	c.Equal(1, cleanups, "a second report of the same end should not run the cleanup again")
 }

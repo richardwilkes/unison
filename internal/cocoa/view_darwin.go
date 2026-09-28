@@ -650,20 +650,33 @@ func dragSessionEvent(stashed objc.ID, currentEvent func() objc.ID) (event objc.
 	return event, event != 0
 }
 
-// BeginDraggingSession starts a drag from this view with the given image and data. The image may be nil, in which
-// case the drag proceeds without one. It is normally called from within a mouse-dragged callback, since AppKit
-// requires the triggering mouse event (stashed in the lastMouseDraggedEvent ivar) to start a session; see
-// dragSessionEvent for what happens when it is reached without one.
-func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask drag.Op, data ...drag.Data) {
+// BeginDraggingSession starts a drag from this view with the given image and data, reporting whether a session was
+// begun. The image may be nil, in which case the drag proceeds without one. It is normally called from within a
+// mouse-dragged callback, since AppKit requires the triggering mouse event (stashed in the lastMouseDraggedEvent ivar)
+// to start a session; see dragSessionEvent for what happens when it is reached without one. When it reports false, no
+// session exists and AppKit will never report one ending, so the caller has to wind the drag up itself.
+func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask drag.Op, data ...drag.Data) bool {
+	return v.beginDraggingSession(img, frame, dragOpMask, appCurrentEvent, data)
+}
+
+// appCurrentEvent returns the event the application last took from its queue, or 0 when it has yet to take one. It is
+// what a drag begun outside a mouse-dragged callback falls back to; see dragSessionEvent.
+func appCurrentEvent() objc.ID {
+	return sharedApp().Send(Sel("currentEvent"))
+}
+
+// beginDraggingSession is BeginDraggingSession with the current-event lookup as a parameter, so that a test can stand
+// in for an application that has no current event: whether the real application has one depends on what ran before.
+func (v View) beginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask drag.Op,
+	currentEvent func() objc.ID, data []drag.Data,
+) bool {
 	if len(data) == 0 {
-		return
+		return false
 	}
 	// Resolved before anything is allocated or any state is set on the view, so that giving up costs no cleanup.
-	event, ok := dragSessionEvent(objc.ID(v).Send(Sel("lastMouseDraggedEvent")), func() objc.ID {
-		return objc.ID(Cls("NSApplication")).Send(Sel("sharedApplication")).Send(Sel("currentEvent"))
-	})
+	event, ok := dragSessionEvent(objc.ID(v).Send(Sel("lastMouseDraggedEvent")), currentEvent)
 	if !ok {
-		return
+		return false
 	}
 	item := NewPasteboardItem()
 	for _, d := range data {
@@ -683,6 +696,7 @@ func (v View) BeginDraggingSession(img *image.NRGBA, frame geom.Rect, dragOpMask
 	ov.Send(Sel("setInDragWeStarted:"), true)
 	ov.Send(Sel("beginDraggingSessionWithItems:event:source:"), NSArrayFromIDs(dragItem), event, ov)
 	Release(dragItem) // the dragging session retains everything it needs before beginDraggingSession... returns
+	return true
 }
 
 // RegisterDraggedTypes registers the data types the view accepts in drag & drop operations.
