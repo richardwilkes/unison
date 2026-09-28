@@ -145,7 +145,8 @@ func (d *Dock) RootDockLayout() *DockLayout {
 }
 
 // DockTo a Dockable within this Dock. If the Dockable already exists in this Dock, it will be moved to the new
-// location. nil may be passed in for the target, in which case the top-most layout is used.
+// location, and when it held the keyboard focus and stays in the same window, the panel within it that held the focus
+// keeps it. nil may be passed in for the target, in which case the top-most layout is used.
 func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, s side.Enum) {
 	if xreflect.IsNil(target) {
 		target = d.layout
@@ -178,7 +179,7 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, s side.Enum) {
 					}
 				}
 			}
-			dc.Close(dockable)
+			dc.remove(dockable, movingWithinWindow(dc, d))
 			if ok2 {
 				i := 1
 				for !d.layout.Contains(target) {

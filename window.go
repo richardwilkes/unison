@@ -333,7 +333,7 @@ func (w *Window) gainedFocus() {
 		windowList[0] = w
 	}
 	w.ClearTooltip()
-	if w.focus == nil {
+	if w.CurrentFocus() == nil {
 		w.FocusNext()
 	}
 	if w.focus != nil {
@@ -841,7 +841,9 @@ func (w *Window) notifyOfFocusChangeInHierarchy(oldFocus, newFocus *Panel) {
 // starts. See seedFocus, which Panel.FirstFocusableChild matches tier for tier.
 func (w *Window) FocusNext() {
 	if w.root.contentPanel != nil {
-		current := w.focus
+		// A panel that has been removed from the window while holding the focus is not in the window's tab order
+		// and cannot be moved from, so the focus is seeded afresh; see CurrentFocus.
+		current := w.CurrentFocus()
 		seeding := current == nil
 		if seeding {
 			current = w.root.contentPanel
@@ -866,7 +868,7 @@ func (w *Window) FocusNext() {
 // rule FocusNext documents decides where the person is put, applied from the other end.
 func (w *Window) FocusPrevious() {
 	if w.root.contentPanel != nil {
-		current := w.focus
+		current := w.CurrentFocus()
 		seeding := current == nil
 		if seeding {
 			current = w.root.contentPanel
@@ -1872,12 +1874,15 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 			}
 			panel = panel.parent
 		}
-		if key == KeyTab && (mods&(mod.NonSticky&^mod.Shift)) == 0 {
-			if mods.ShiftDown() {
-				w.FocusPrevious()
-			} else {
-				w.FocusNext()
-			}
+	}
+	// Tab moves the focus whether or not anything holds it: when nothing does -- the panel that had it was removed
+	// from the window, say, as when the last tab of a Dock is closed -- the move seeds the focus, so that the keyboard
+	// is never left with no way back into the window.
+	if key == KeyTab && (mods&(mod.NonSticky&^mod.Shift)) == 0 {
+		if mods.ShiftDown() {
+			w.FocusPrevious()
+		} else {
+			w.FocusNext()
 		}
 	}
 }

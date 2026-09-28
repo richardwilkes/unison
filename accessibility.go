@@ -603,7 +603,7 @@ func activateAccessibility() bool {
 	if !accessibilityActive.Swap(true) {
 		for _, wnd := range windowList {
 			wnd.MarkForRedraw()
-			if axReadersFollowFocus && wnd.Focused() && wnd.focus == nil {
+			if axReadersFollowFocus && wnd.Focused() && wnd.CurrentFocus() == nil {
 				wnd.FocusNext()
 			}
 		}

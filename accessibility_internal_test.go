@@ -1441,3 +1441,42 @@ func TestAccessibilityDescribeChildrenUnder(t *testing.T) {
 	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestActivateAccessibilitySeedsAFocusThatLeftTheWindow verifies that a screen reader arriving at a window whose
+// focused panel has since been removed from it -- so that the window's focus names a panel no longer in it, exactly as
+// if nothing held the focus -- has the focus seeded for it, as a window with nothing focused does, rather than being
+// left with nowhere to start because the stale name was taken for a focus.
+func TestActivateAccessibilitySeedsAFocusThatLeftTheWindow(t *testing.T) {
+	c := check.New(t)
+	var wnd *Window
+	var first, second *Field
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 600, Height: 600},
+		StartupFinishedCallback(func() {
+			first = NewField()
+			second = NewField()
+			column := NewPanel()
+			column.SetLayout(&FlexLayout{Columns: 1})
+			column.AddChild(first)
+			column.AddChild(second)
+			wnd = axNewTestWindow(t, "seed on activation", geom.NewRect(10, 10, 500, 500), column)
+			if wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	c.NotNil(wnd)
+	screen.Sync()
+	focus := func() *Panel {
+		var p *Panel
+		screen.Do(func() { p = wnd.CurrentFocus() })
+		return p
+	}
+
+	screen.Do(func() {
+		wnd.SetFocus(second)
+		second.RemoveFromParent()
+	})
+	c.Nil(focus(), "the panel that held the focus is no longer in the window")
+	screen.EnableAccessibility()
+	c.True(focus().Is(first), "so the screen reader's arrival seeds the focus, as it would with nothing focused")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

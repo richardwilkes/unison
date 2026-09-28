@@ -146,7 +146,8 @@ func DockableHasFocus(dockable Dockable) bool {
 }
 
 // Stack adds the Dockable to this DockContainer at the specified index. An out-of-bounds index will cause the Dockable
-// to be added at the end.
+// to be added at the end. A Dockable that is already in a Dock is moved, and when it held the keyboard focus and stays
+// in the same window, the panel within it that held the focus keeps it.
 func (d *DockContainer) Stack(dockable Dockable, index int) {
 	dockable = resolveDockable(dockable)
 	if existing := d.content.IndexOfChild(dockable); existing != -1 && existing < index {
@@ -157,7 +158,7 @@ func (d *DockContainer) Stack(dockable Dockable, index int) {
 			d.AcquireFocus()
 			return
 		}
-		dc.Close(dockable)
+		dc.remove(dockable, movingWithinWindow(dc, d))
 	}
 	d.content.AddChildAtIndex(dockable, index)
 	d.header.addTab(dockable, index)
@@ -200,15 +201,28 @@ func (d *DockContainer) AttemptClose(dockable Dockable) bool {
 }
 
 // Close the specified Dockable. If the last Dockable within this DockContainer is closed, then this DockContainer is
-// also removed from the Dock.
+// also removed from the Dock. When the Dockable held the keyboard focus, the focus goes to the tab that becomes current
+// in its place, or is released when there is none, so that the window never goes on naming a panel that is no longer
+// in it.
 func (d *DockContainer) Close(dockable Dockable) {
+	d.remove(dockable, false)
+}
+
+// remove takes the Dockable out of this DockContainer, as Close describes. It is also how Stack and Dock.DockTo take a
+// Dockable out of one place in a window to put it back at another, which is what moving reports. The focus is then
+// left alone: the window's focus names a panel that is briefly outside the window, and is within it again once the
+// caller has re-added the Dockable, which happens before anything can observe the gap. The person keeps their place in
+// the tab that way, and nothing is told it lost or gained the focus over a move that took it from no one. Only a move
+// that stays within one window may claim this; see movingWithinWindow.
+func (d *DockContainer) remove(dockable Dockable, moving bool) {
 	dockable = resolveDockable(dockable)
 	children := d.Dockables()
 	for i, c := range children {
 		if c != dockable {
 			continue
 		}
-		hadFocus := DockableHasFocus(dockable)
+		hadFocus := !moving && DockableHasFocus(dockable)
+		wnd := d.Window() // Looked up now, since the removal below may take this container out of the window.
 		next := d.CurrentDockable()
 		if next == dockable {
 			// The tab being closed is the current one, so a neighbor must become current instead.
@@ -249,8 +263,24 @@ func (d *DockContainer) Close(dockable Dockable) {
 				}
 			}
 		}
+		if hadFocus && wnd.CurrentFocus() == nil {
+			// No other tab took the focus the closed one held -- it was the last tab in its Dock, say -- so the
+			// window's focus still names a panel that is no longer in it. Let it go, so that the panel is told it lost
+			// the focus, the window knows nothing holds it and says so to an assistive technology, and the next Tab, or
+			// the application, can place it afresh.
+			wnd.SetFocus(nil)
+		}
 		return
 	}
+}
+
+// movingWithinWindow reports whether a Dockable taken from one place and put back at another stays in the same window
+// throughout, which is when remove may leave the focus where it is; see DockContainer.remove. A destination that is in
+// no window yet cannot be that, since the focus is a window's, and the window the Dockable leaves must then let it go
+// as it would for a close.
+func movingWithinWindow(from, to Paneler) bool {
+	wnd := from.AsPanel().Window()
+	return wnd != nil && wnd == to.AsPanel().Window()
 }
 
 // PreferredSize implements DockLayoutNode.
