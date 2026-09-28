@@ -109,7 +109,10 @@ type axSnapshot struct {
 	// axCaretBlockReportsFocus and axSnapshot.resolveCompanionFocus, which is what decides whether each of them keeps
 	// the claim. It stays nil in every window where nothing claims the focus twice, which is nearly all of them.
 	companionFocus []accessibility.NodeID
-	focus          accessibility.NodeID
+	// captions holds the panels whose text this description found naming another node, for
+	// axSnapshot.settleCaptionFocus. It stays nil in every window where no label names a control.
+	captions []*Panel
+	focus    accessibility.NodeID
 	// delegatedFocus is the virtual child a panel that holds the keyboard focus has handed the reported focus to — a
 	// list's or table's current row. It stays zero in every window where nothing delegates, which is nearly all of
 	// them. See AccessibilityBuilder.FocusChild, which is the only thing that sets it, and axSnapshot.visit, which
@@ -296,9 +299,47 @@ func (s *axSnapshot) buildRoot() {
 	}
 	s.visit(root.tooltipPanel, node.ID, clip)
 	s.visit(root.contentPanel, node.ID, clip)
+	s.settleCaptionFocus()
 	s.markOpenMenuItems()
 	s.resolveFocus()
 	s.resolveCompanionFocus()
+}
+
+// settleCaptionFocus takes the keyboard focus back from every caption that was described as able to take it.
+//
+// A caption cannot take the focus as standalone static text (see SetStaticTextFocusableForAccessibility), but which
+// labels are captions is learned only as each control's name is resolved (see axSnapshot.recordCaption), too late for a
+// caption described before the control that names it: the label placed just before a field always is, and a LabeledBy
+// may point at anything earlier in the window. Such a caption's node answered Panel.Focusable from the description
+// before, which may never have seen it as a caption. Asking again now, with every caption recorded, makes the node
+// agree with the traversal the person actually tabs through.
+//
+// Only what axSnapshot.visit derives from Panel.Focusable is undone: the Focusable flag and the focus action. Nothing
+// else in the tree depends on a caption's focusability. A caption in a cell described under an id its widget allocated
+// is not in the tree under its own id and is passed over, which costs nothing, since nothing in a cell takes the focus
+// as static text. It runs before the open menus are marked, so that marking has the last word on an item.
+//
+// A caption that holds the keyboard focus is left saying so, with Focusable now false: the window does not move the
+// focus off a panel that stops being a tab stop, so a screen reader following it really is reading that text. It is
+// the same pair any panel publishes after SetFocusable(false) while holding the focus, and it lasts until the focus
+// next moves; see Window.FocusNext.
+func (s *axSnapshot) settleCaptionFocus() {
+	for _, p := range s.captions {
+		node := s.tree.Nodes[p.Accessibility.id]
+		if node == nil || !node.Focusable {
+			continue
+		}
+		if node.Focusable = p.Focusable(); !node.Focusable {
+			node.Actions = node.Actions.Without(accessibility.Focus)
+		}
+	}
+}
+
+// recordCaption records that a panel's text names another node in this description, making it a caption; see
+// Panel.axStaticTextTakesFocus and axSnapshot.settleCaptionFocus.
+func (s *axSnapshot) recordCaption(p *Panel) {
+	p.Accessibility.captionAt = s.generation
+	s.captions = append(s.captions, p)
 }
 
 // markOpenMenuItems publishes every item of every open menu as something the focus can be moved onto, which for a menu
@@ -878,11 +919,13 @@ func axIsScaffolding(node *accessibility.Node) bool {
 
 // resolveName fills in the node's name and label associations, for a node whose widget did not name it outright. The
 // order is: an explicit Accessibility.LabeledBy panel, then the sibling-label convention, then, for static text, the
-// text of the panel and its descendants.
+// text of the panel and its descendants. Every panel a label association is made to is recorded as a caption; see
+// axSnapshot.recordCaption.
 func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 	if !xreflect.IsNil(p.Accessibility.LabeledBy) {
 		if labeler := p.Accessibility.LabeledBy.AsPanel(); labeler != nil {
 			node.LabeledBy = append(node.LabeledBy, axIDFor(labeler))
+			s.recordCaption(labeler)
 			if node.Name == "" {
 				// Trimmed exactly as the sibling-label convention below trims it, so that the same "Name:" label is
 				// spoken the same way whether the association was stated outright or merely inferred.
@@ -894,6 +937,7 @@ func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 		if labeler := axPrecedingLabel(p); labeler != nil {
 			node.Name = axTrimLabelText(axLabelText(labeler))
 			node.LabeledBy = append(node.LabeledBy, axIDFor(labeler))
+			s.recordCaption(labeler)
 		}
 	}
 	if node.Name == "" && (node.Role == role.Heading || node.Role == role.Label) {

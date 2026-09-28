@@ -668,6 +668,9 @@ func (t *Table[T]) installCell(cell *Panel, frame geom.Rect) {
 	cell.parent = t.AsPanel()
 }
 
+// axHoldsCells implements axCellHolder.
+func (t *Table[T]) axHoldsCells() {}
+
 // uninstallCell detaches a cell that installCell() attached, with one exception. The cell is first offered the chance
 // to become the focused cell, since a widget inside it may have taken the keyboard focus while handling the event that
 // was just forwarded to it, and the cell that ends up holding the focus is then left attached to the table.

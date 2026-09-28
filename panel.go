@@ -78,7 +78,8 @@ type Panel struct {
 	TooltipImmediate bool
 	// axFocusable marks a panel that asked to take the keyboard focus only while an assistive technology is being
 	// served, and only on the platforms whose screen readers need it to. A heading does the same without the flag,
-	// since being one is enough to say so. See Panel.axTakesFocus.
+	// since being one is enough to say so, and so does standalone static text when the application has asked for it.
+	// See Panel.axTakesFocus.
 	axFocusable bool
 }
 
@@ -520,10 +521,11 @@ func (p *Panel) RequestFocus() {
 // stop in its own right comes first, since that is where the keyboard belongs. Next comes one that asked for the focus
 // for an assistive technology's sake through Panel.axFocusable — a document, which is where a screen reader has to
 // begin reading, but which swallows typing that was meant for a field. Last comes anything else that can take the
-// focus, which on the platforms where axHeadingsTakeFocus is true means a heading; it is returned only when nothing
-// else in the subtree can take the focus at all, so that landing on it is a last resort rather than the first stop.
-// Window.SetFocus comes through here for a container, and DockContainer.AcquireFocus takes that path on every dock tab
-// switch, so the subtree is walked once and the best match of each tier is recorded as it goes.
+// focus, which on the platforms where axHeadingsTakeFocus is true means a heading, and wherever the application has
+// asked for it — see SetStaticTextFocusableForAccessibility — means standalone static text; it is returned only when
+// nothing else in the subtree can take the focus at all, so that landing on it is a last resort rather than the first
+// stop. Window.SetFocus comes through here for a container, and DockContainer.AcquireFocus takes that path on every
+// dock tab switch, so the subtree is walked once and the best match of each tier is recorded as it goes.
 func (p *Panel) FirstFocusableChild() *Panel {
 	tabStop, reader, other := p.firstFocusableChild()
 	switch {

@@ -55,6 +55,9 @@ var (
 	// holds and, like the SetAccessibilityEnabled that writes it, may be called from any goroutine; only the UI thread
 	// ever writes it.
 	noAccessibility atomic.Bool
+	// staticTextTakesFocus is what SetStaticTextFocusableForAccessibility last set. Atomic because the setter and getter
+	// may be called from any goroutine, while Panel.axTakesFocus reads it on the UI thread.
+	staticTextTakesFocus atomic.Bool
 	// axNextID is the process-wide source of node ids. Ids are handed out from one counter rather than one per window,
 	// so a NodeID identifies a node without needing to be qualified by the window it belongs to. UI thread only.
 	axNextID uint64
@@ -166,9 +169,19 @@ type AccessibilityInfo struct {
 	Level int
 	// id is this panel's node id, assigned lazily the first time the panel is described or referred to.
 	id accessibility.NodeID
+	// captionAt is the window's snapshot generation in which this panel's text last named another node, through that
+	// node's LabeledBy or by being the label placed just before it. Only the snapshot builder knows which panels are
+	// captions, so it records the fact here for Panel.axStaticTextTakesFocus to read. See axSnapshot.recordCaption.
+	captionAt uint64
 	// Role is what kind of element this panel is. role.Auto, the zero value, derives it from the widget, and role.None
 	// hides the panel entirely, promoting its children into its parent.
 	Role role.Enum
+	// FocusForReading asks this panel to take the keyboard focus while an assistive technology is being served, whether
+	// or not SetStaticTextFocusableForAccessibility is on, so that a screen reader in its focus mode can Tab to the
+	// text. It is that switch applied to one panel and follows the same rules: the panel must be static text with
+	// something to announce, must sit in the window's content, and must not be the caption of a control. It can only
+	// add a tab stop, never remove one. A person no assistive technology is serving sees no change.
+	FocusForReading bool
 }
 
 // axVirtualEntry is the id a panel has handed out for one virtual-child key, along with the snapshot generation that
@@ -540,6 +553,63 @@ func IsAccessibilityActive() bool {
 	return accessibilityActive.Load()
 }
 
+// SetStaticTextFocusableForAccessibility makes standalone static text a tab stop while an assistive technology is being
+// served, so that a person using a screen reader in its focus mode can reach it with Tab. NVDA, JAWS, Narrator outside
+// scan mode and Orca in focus mode speak only what holds the keyboard focus and what is associated with it, so a label
+// that captions nothing is otherwise out of reach of anyone moving through a window by focus alone.
+//
+// It takes effect only while an assistive technology is being served. Anyone else gets no new tab stops and sees
+// nothing drawn differently, so an application may leave the switch on unconditionally.
+//
+// It applies to a Label with text, and to any panel whose AccessibilityInfo.Role is role.Label or role.Heading and that
+// has something to announce: text, a name, or the tooltip a drawable-only label is named by. The panel must sit in the
+// window's content: not inside a panel whose AccessibilityInfo.Role says it is some other kind of element, not in a
+// cell of a Table, List or TableHeader, which the focus reaches through the widget's own cursor, not in a document such
+// as a Markdown, which reads its own content, and not in a menu or a tooltip. Only the Role field is consulted on the
+// way up, since this is asked ahead of any description, so a role reported from ProvideAccessibility or written by an
+// AccessibilityInfo.Callback is not seen: an application composite that holds a Label and takes its role that way
+// should set Role too, or the label inside it becomes a tab stop. A caption, which is a label naming a control through
+// that control's AccessibilityInfo.LabeledBy or by being the label placed just before it, is never made a tab stop,
+// since it is spoken with the control. Nothing changes for a panel that is not static text.
+//
+// A screen reader that asks for the focus on such a label is given it, as for any focusable panel. A mouse click does
+// not move the focus there, since static text handles no presses.
+//
+// It is off by default because native convention on every platform is that Tab stops only at controls: screen-reader
+// users reach static text with review cursors, scan mode, browse mode or the VoiceOver cursor, and a tab order that
+// runs through every label is slower to move through. Turn it on for an application whose windows carry text that
+// matters and whose users move through them by focus alone. AccessibilityInfo.FocusForReading asks the same of one
+// panel.
+//
+// Turning it off while such a label holds the focus leaves the focus there, but the label is no longer in the tab
+// order, so the next Tab lands on the window's first tab stop and Shift-Tab on its last. May be called at any time,
+// from any goroutine; windows being described are described again on the UI thread.
+func SetStaticTextFocusableForAccessibility(enabled bool) {
+	if staticTextTakesFocus.Swap(enabled) == enabled || !accessibilityActive.Load() {
+		// Nothing is described while nothing is listening, and activation marks every window for redraw, so the first
+		// description after it reads the new value.
+		return
+	}
+	if onUIThread() {
+		axMarkEveryWindowForPublish()
+		return
+	}
+	InvokeTask(axMarkEveryWindowForPublish)
+}
+
+// StaticTextFocusableForAccessibility reports what SetStaticTextFocusableForAccessibility last set, regardless of
+// whether an assistive technology is being served; see IsAccessibilityActive. Safe to call from any goroutine.
+func StaticTextFocusableForAccessibility() bool {
+	return staticTextTakesFocus.Load()
+}
+
+// axMarkEveryWindowForPublish marks every window for publishing; see Window.axMarkForPublish.
+func axMarkEveryWindowForPublish() {
+	for _, wnd := range windowList {
+		wnd.axMarkForPublish()
+	}
+}
+
 // AnnounceForAccessibility asks the platform's assistive technology to speak text, for something the user should hear
 // about that no change to a window expresses — a background task that finished, say. It does nothing when no assistive
 // technology is being served, so an application may call it unconditionally.
@@ -726,9 +796,10 @@ func axAllocID() accessibility.NodeID {
 }
 
 // axTakesFocus reports whether a panel that takes the keyboard focus only for an assistive technology's sake takes it
-// now. Two kinds of panel do: one that asked to, through Panel.axFocusable — a Markdown, whose content is read rather
-// than acted on — and a heading, on the platforms whose screen readers ask a heading they jumped to for the focus.
-// Neither takes it unless an assistive technology is actually being served.
+// now. Three kinds of panel do: one that asked to, through Panel.axFocusable — a Markdown, whose content is read rather
+// than acted on — a heading, on the platforms whose screen readers ask a heading they jumped to for the focus, and
+// standalone static text, when the application has asked for it through SetStaticTextFocusableForAccessibility or
+// AccessibilityInfo.FocusForReading. None of them takes it unless an assistive technology is actually being served.
 //
 // Such a panel has no use for the focus itself: it draws no differently for holding it and handles no keys of its
 // own. What it holds the focus for is where a screen reader begins. Narrator keeps its cursor on the focused element,
@@ -747,21 +818,119 @@ func axAllocID() accessibility.NodeID {
 // Level on any panel at all: a grouping Panel or a custom-drawn widget carrying a name is as much a heading Orca will
 // jump to as a Label is.
 //
-// A keyboard user nothing is listening to is left alone, since none of these panels have ever been tab stops. The
-// cost when nothing is listening is one bool read and one role comparison, which is what Panel.Focusable — called on
-// every panel of every traversal — pays for this.
+// Standalone static text is what a screen reader's focus mode leaves out, so making it a tab stop is the application's
+// choice; see SetStaticTextFocusableForAccessibility and axStaticTextTakesFocus.
+//
+// A keyboard user nothing is listening to is left alone, since none of these panels have ever been tab stops. The cost
+// when nothing is listening is one atomic load, paid by Panel.Focusable on every panel of every traversal. While
+// something is listening, only static text asked to take the focus pays for a walk up the hierarchy.
 func (p *Panel) axTakesFocus() bool {
-	heading := axHeadingsTakeFocus && p.Accessibility.Role == role.Heading
-	if !p.axFocusable && !heading {
-		return false
-	}
 	if !accessibilityActive.Load() {
 		return false
 	}
 	if p.axFocusable {
 		return axReadersFollowFocus
 	}
-	return p.axHasSomethingToAnnounce()
+	if axHeadingsTakeFocus && p.Accessibility.Role == role.Heading {
+		return p.axHasSomethingToAnnounce()
+	}
+	if p.Accessibility.FocusForReading || staticTextTakesFocus.Load() {
+		return p.axStaticTextTakesFocus()
+	}
+	return false
+}
+
+// axStaticTextTakesFocus reports whether a panel takes the keyboard focus as standalone static text: it must be static
+// text with something to say (axIsReadableText), sit in the window's content (axContentWindow), and not be the caption
+// of a control.
+//
+// A caption is spoken with the control it names, so a tab stop of its own would have it read twice. Only the snapshot
+// builder knows which panels are captions, and it records the generation it found each in (axSnapshot.recordCaption),
+// so a panel is a caption here when that is the window's latest description. Within a description a caption is usually
+// visited before the control that names it and answers from the description before; axSnapshot.settleCaptionFocus
+// corrects what was published for it once the whole window has been described.
+//
+// The answer therefore lags the window by one description, which is made only after a draw and at most once per
+// axPublishThrottle. A label that has only just become a caption stays a tab stop until the description that finds it
+// to be one, and a window not described since activation (axGeneration is zero) lets every caption take the focus. The
+// lag is bounded, since the change that makes a label a caption redraws the window, and activation and the switch each
+// mark every window for publishing. Working captions out here instead would repeat the snapshot builder's name
+// resolution on every call to Panel.Focusable.
+//
+// The cheap test comes first, so the walk up to the window is made only for text.
+func (p *Panel) axStaticTextTakesFocus() bool {
+	if !p.axIsReadableText() {
+		return false
+	}
+	w := p.axContentWindow()
+	if w == nil {
+		return false
+	}
+	return w.axGeneration == 0 || p.Accessibility.captionAt != w.axGeneration
+}
+
+// axIsReadableText reports whether a panel is static text with something to say. A panel marked up as role.Label or
+// role.Heading qualifies when it has something to announce, whatever widget it is built from. One left at role.Auto
+// qualifies only when it is exactly a *Label holding text: a widget that embeds a Label and points Self at itself, such
+// as a column header, is something else that draws text, and a label holding only a drawable is described as an image.
+// Every other role says the panel is something other than static text.
+func (p *Panel) axIsReadableText() bool {
+	switch p.Accessibility.Role {
+	case role.Label, role.Heading:
+		return p.axHasSomethingToAnnounce()
+	case role.Auto:
+		label, ok := p.Self.(*Label)
+		return ok && label.String() != ""
+	default:
+		return false
+	}
+}
+
+// axContentWindow returns the window whose content holds p as text read in its own right, or nil. Each ancestor must
+// leave its descendants' text as the window's:
+//
+//   - Its Accessibility.Role must be role.Auto, role.None or role.Group. A label inside a control is that control's
+//     name, and one inside a panel marked up as a label or heading is folded into that panel's name. Only the field is
+//     looked at, since Panel.Focusable asks this ahead of any description, so a role reported from
+//     ProvideAccessibility or written by an Accessibility.Callback is not seen; no built-in widget that reports its
+//     role that way holds a plain Label as a child.
+//   - It must not take the focus for an assistive technology's sake through Panel.axFocusable: a document reads its
+//     own content.
+//   - It must not be an axCellHolder: a Table, List or TableHeader reaches its cells through its own cursor.
+//
+// The walk must end at the window's root panel, entered from its content panel. The root's other children — the menu
+// bar, open menus and the tooltip — are never in the tab order.
+func (p *Panel) axContentWindow() *Window {
+	below := p
+	for ancestor := p.parent; ancestor != nil; ancestor = ancestor.parent {
+		if ancestor.parent == nil {
+			root, ok := ancestor.Self.(*rootPanel)
+			if !ok || below != root.contentPanel {
+				return nil
+			}
+			return root.window
+		}
+		switch ancestor.Accessibility.Role {
+		case role.Auto, role.None, role.Group:
+		default:
+			return nil
+		}
+		if ancestor.axFocusable {
+			return nil
+		}
+		if _, ok := ancestor.Self.(axCellHolder); ok {
+			return nil
+		}
+		below = ancestor
+	}
+	return nil
+}
+
+// axCellHolder is implemented by Table, List and TableHeader, which attach the panels they draw their cells with as
+// children of their own through installCell, so that static text in a cell can be told from static text in the
+// window's content. See Panel.axContentWindow.
+type axCellHolder interface {
+	axHoldsCells()
 }
 
 // axHasSomethingToAnnounce reports whether the node this panel will be published as carries anything a screen reader

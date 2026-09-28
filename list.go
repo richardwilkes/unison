@@ -306,6 +306,9 @@ func (l *List[T]) installCell(cell *Panel, rect geom.Rect) {
 	cell.parent = l.AsPanel()
 }
 
+// axHoldsCells implements axCellHolder.
+func (l *List[T]) axHoldsCells() {}
+
 // uninstallCell detaches a cell that installCell attached. Unlike a table, a list keeps no cell: it builds one
 // whenever it needs one and throws it away again, and it has nowhere to put one that a widget inside it has just
 // handed the keyboard focus to — a list is one tab stop, the rows within it are not reachable with the keyboard, and

@@ -829,15 +829,16 @@ func (w *Window) notifyOfFocusChangeInHierarchy(oldFocus, newFocus *Panel) {
 
 // FocusNext moves the keyboard focus to the next focusable panel.
 //
-// When nothing holds the focus yet, the first real tab stop is preferred over anything that can take the focus only
-// for an assistive technology's sake, rather than simply taking the first panel that can take the focus at all. Those
-// differ only while an assistive technology is being served, when a heading and a document can take the focus as well
-// — see Panel.axTakesFocus. A dialog whose first element is a title heading or an explanatory document should still
-// open with the person in its first field, where what they type goes somewhere. Only when there is no real tab stop
-// does a document win: it is exactly where a screen reader has to begin, since with nothing in the window holding the
-// focus Narrator's cursor stays on the window's own element, from which it will not move into the content. A window
-// holding nothing but headings falls back to the first of them, since something in it has to be where a screen reader
-// starts. See seedFocus, which Panel.FirstFocusableChild matches tier for tier.
+// When nothing holds the focus yet, the first real tab stop is preferred over anything that can take the focus only for
+// an assistive technology's sake, rather than simply taking the first panel that can take the focus at all. Those
+// differ only while an assistive technology is being served, when a heading, a document and, where the application
+// asked for it, standalone static text can take the focus as well — see Panel.axTakesFocus. A dialog whose first
+// element is a title heading, a line of text or an explanatory document should still open with the person in its first
+// field, where what they type goes somewhere. Only when there is no real tab stop does a document win: it is exactly
+// where a screen reader has to begin, since with nothing in the window holding the focus Narrator's cursor stays on the
+// window's own element, from which it will not move into the content. A window holding nothing but headings and text
+// falls back to the first of them, since something in it has to be where a screen reader starts. See seedFocus, which
+// Panel.FirstFocusableChild matches tier for tier.
 func (w *Window) FocusNext() {
 	if w.root.contentPanel != nil {
 		// A panel that has been removed from the window while holding the focus is not in the window's tab order
@@ -911,9 +912,10 @@ func dropSeedingCandidate(focusables []*Panel, i int) []*Panel {
 // first field rather than in the document, where what they type would go nowhere. Next comes one that asked for the
 // focus for an assistive technology's sake through Panel.axFocusable — a document, which is where a screen reader has
 // to begin reading, and which is the right answer for a window that holds nothing but content. Last comes anything
-// else, which is a heading that can take the focus only through the other arm of Panel.axTakesFocus; when there is
-// nothing but headings, the first one the scan reaches is used anyway, since something in the window has to be where a
-// screen reader starts. The scan records the best of the later tiers as it goes, so the list is walked once.
+// else, which is a heading or a piece of standalone static text that can take the focus only through the other arms of
+// Panel.axTakesFocus; when there is nothing but those, the first one the scan reaches is used anyway, since something
+// in the window has to be where a screen reader starts — a window of nothing but text opens in its first label. The
+// scan records the best of the later tiers as it goes, so the list is walked once.
 func seedFocus(focusables []*Panel, backward bool) *Panel {
 	if len(focusables) == 0 {
 		return nil

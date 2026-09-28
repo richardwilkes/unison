@@ -209,6 +209,9 @@ func (h *TableHeader[T]) installCell(cell *Panel, frame geom.Rect) {
 	cell.parent = h.AsPanel()
 }
 
+// axHoldsCells implements axCellHolder.
+func (h *TableHeader[T]) axHoldsCells() {}
+
 // uninstallCell detaches a column header that installCell() attached, with one exception. A widget inside a custom
 // column header may have taken the keyboard focus while handling whatever the header was installed for — a click, or
 // an assistive technology's Focus or Press request, which axPerformInColumnHeader carries out the same way — and a

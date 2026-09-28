@@ -381,6 +381,8 @@ func resetStartupOptions() {
 	noGlobalMenuBar = false
 	noPlatformFileDialogs = false
 	noAccessibility.Store(false)
+	// Not a StartupOption, but an application setting that must not leak from one session into the next.
+	staticTextTakesFocus.Store(false)
 }
 
 // recordError appends err to the list Errors() reports. It is installed as the recovery callback when the application

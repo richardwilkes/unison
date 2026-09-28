@@ -126,6 +126,14 @@
 // say. It does nothing when no assistive technology is being served, so it may be called unconditionally, and it is
 // safe to call from any goroutine.
 //
+// A screen reader in its focus mode — NVDA, JAWS, Narrator outside scan mode, Orca — speaks only what holds the
+// keyboard focus and what is associated with it, such as the label beside a field, so a label that captions no control
+// is out of reach of anyone moving through a window with Tab. [SetStaticTextFocusableForAccessibility] makes such
+// standalone text a tab stop, and AccessibilityInfo.FocusForReading does the same for one panel. Both take effect only
+// while an assistive technology is being served, so the switch may be left on unconditionally, and neither touches a
+// caption, which is already spoken with its control, or text inside a table or list cell, a document, a menu or a
+// tooltip. The switch is off by default, since native convention is that Tab stops only at controls.
+//
 // Until an assistive technology has actually asked for it, none of this costs anything beyond the AccessibilityInfo
 // each panel carries and one atomic load per window drawn or withdrawn per pass: no hierarchy is walked, nothing is
 // allocated, and no goroutine or platform object exists. The one exception is what it takes to be asked at all on

@@ -80,8 +80,8 @@ type dockTab struct {
 	title    *dockTabTitle
 	button   *Button
 	dockable Dockable
-	Panel
 	DockTabTheme
+	Panel
 	pressed bool
 }
 
