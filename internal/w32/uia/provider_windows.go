@@ -816,15 +816,13 @@ func fragmentGetEmbeddedFragmentRoots(_, out uintptr) uint64 {
 // keyboard focus. The request is queued onto the UI thread and this returns at once, which is what UI Automation
 // expects: the focus change is reported later, as an event.
 //
-// A node that does not offer the Focus action refuses: the snapshot's action set is its own statement that nothing
-// will happen, and Window.dispatchAccessibilityAction drops such a request, so answering S_OK would have a client
-// waiting for a focus event that is never coming. The action can disagree with Focusable — an Accessibility.Callback
-// that sets Disabled has the node's actions narrowed to axDisabledActions while its Focusable is left untouched, and
-// a callback may take the action away itself — which is why both are checked. Such a node refuses with
-// E_ELEMENTNOTENABLED when it is disabled, as every pattern write path here does. A disabled node that offers the
-// action is one the application has asked to be reachable by a screen reader, and it is given the focus. Both other
-// adapters refuse the same requests; see GrabFocus in internal/atspi, and setAccessibilityFocused: in internal/cocoa,
-// which is offered by the same rule and carried out through axPerformOn.
+// A node that is not focusable or does not offer the Focus action refuses, since answering S_OK would have a client
+// waiting for a focus event that is never coming. Both are checked because they can disagree: an
+// Accessibility.Callback that sets Disabled has the node's actions narrowed to axDisabledActions while its Focusable is
+// left untouched. Such a node refuses with E_ELEMENTNOTENABLED when it is disabled, as every pattern write path here
+// does. A disabled node that offers the action is one the application has asked to be reachable by a screen reader.
+// Both other adapters follow the same rule; see GrabFocus in internal/atspi and setAccessibilityFocused: in
+// internal/cocoa.
 func fragmentSetFocus(this uintptr) uint64 {
 	p := providerFromThis(this, ifaceFragment)
 	_, node, ok := p.current()

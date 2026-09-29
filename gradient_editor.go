@@ -369,8 +369,8 @@ func (e *GradientEditor) addRadiusRow(parent *Panel) (startField, endField *Fiel
 	endLabel := e.addTrailingLabel(parent, i18n.Text("End"))
 	endField = e.newPixelsField(parent, func(v float32) { e.gradient.Radius.End = v })
 	endField.Accessibility.LabeledBy = endLabel
-	// The unit is said as the description of the two fields it applies to rather than being described as an element of
-	// its own, for the reason ColorEditor.addHint gives.
+	// The unit is given as the description of the two fields rather than as an element of its own; see
+	// ColorEditor.addHint.
 	e.addTrailingLabel(parent, i18n.Text("px")).Accessibility.Role = role.None
 	startField.Accessibility.Description = i18n.Text("Pixels")
 	endField.Accessibility.Description = i18n.Text("Pixels")
@@ -651,9 +651,8 @@ func (e *GradientEditor) sync() {
 	e.MarkForRedraw()
 }
 
-// syncFieldText brings a field up to date with the gradient, other than one that is being edited, which is one that
-// holds the focus while enabled: a disabled field may hold the focus too, so that a screen reader can read it, and
-// nothing is being typed into that one; see SetFocusForReading.
+// syncFieldText brings a field up to date with the gradient, leaving the text of one that is being edited alone, which
+// is one that holds the focus while enabled: a disabled field may hold the focus too; see SetFocusForReading.
 func (e *GradientEditor) syncFieldText(field *Field, text string, enable bool) {
 	if !field.Focused() || !field.Enabled() {
 		field.SetText(text)

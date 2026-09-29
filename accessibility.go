@@ -176,11 +176,8 @@ type AccessibilityInfo struct {
 	// Role is what kind of element this panel is. role.Auto, the zero value, derives it from the widget, and role.None
 	// hides the panel entirely, promoting its children into its parent.
 	Role role.Enum
-	// FocusForReading asks this panel to take the keyboard focus while an assistive technology is being served, whether
-	// or not SetFocusForReading is on, so that a screen reader in its focus mode can Tab to it. It is that switch
-	// applied to one panel and follows the same rules: the panel must be static text with something to announce that
-	// is not the caption of a control, or a disabled control, and must sit in the window's content. It can only add a
-	// tab stop, never remove one. A person no assistive technology is serving sees no change.
+	// FocusForReading applies SetFocusForReading to this panel alone, whether or not that switch is on, and follows the
+	// same rules. It can only add a tab stop, never remove one.
 	FocusForReading bool
 }
 
@@ -554,50 +551,28 @@ func IsAccessibilityActive() bool {
 }
 
 // SetFocusForReading makes standalone static text and disabled controls tab stops while an assistive technology is
-// being served, so that a person using a screen reader in its focus mode can reach them with Tab. NVDA, JAWS, Narrator
-// outside scan mode and Orca in focus mode speak only what holds the keyboard focus and what is associated with it, so
-// a label that captions nothing, and a disabled control along with the label that captions it, are otherwise out of
-// reach of anyone moving through a window by focus alone.
+// being served, so that a screen reader in its focus mode, which speaks only what holds the keyboard focus and what is
+// associated with it, can reach them with Tab. Nothing changes while no assistive technology is being served, so an
+// application may leave the switch on unconditionally. It is off by default, since native convention is that Tab stops
+// only at controls that can be used. AccessibilityInfo.FocusForReading asks the same of one panel.
 //
-// It takes effect only while an assistive technology is being served. Anyone else gets no new tab stops and sees
-// nothing drawn differently, so an application may leave the switch on unconditionally.
+// Static text is a Label with text, or any panel whose AccessibilityInfo.Role is role.Label or role.Heading and that
+// has something to announce: text, a name, or the tooltip a drawable-only label is named by. It must not be a caption,
+// which is a label naming a control through that control's AccessibilityInfo.LabeledBy or by being the label placed
+// just before it. It must not be in a cell of a Table, List or TableHeader, in a document such as a Markdown, or in a
+// menu or a tooltip. It must not be inside a panel whose AccessibilityInfo.Role is anything but role.Auto, role.None or
+// role.Group. Only the Role field is consulted for that, so a composite that holds a Label and reports its role through
+// ProvideAccessibility or an AccessibilityInfo.Callback should set Role too.
 //
-// For static text, it applies to a Label with text, and to any panel whose AccessibilityInfo.Role is role.Label or
-// role.Heading and that has something to announce: text, a name, or the tooltip a drawable-only label is named by. The
-// panel must sit in the window's content: not inside a panel whose AccessibilityInfo.Role says it is some other kind of
-// element, not in a cell of a Table, List or TableHeader, which the focus reaches through the widget's own cursor, not
-// in a document such as a Markdown, which reads its own content, and not in a menu or a tooltip. Only the Role field is
-// consulted on the way up, since this is asked ahead of any description, so a role reported from ProvideAccessibility
-// or written by an AccessibilityInfo.Callback is not seen: an application composite that holds a Label and takes its
-// role that way should set Role too, or the label inside it becomes a tab stop. A caption, which is a label naming a
-// control through that control's AccessibilityInfo.LabeledBy or by being the label placed just before it, is never made
-// a tab stop, since it is spoken with the control.
+// A disabled control is any disabled panel that would be a tab stop were it enabled. The same rules apply, other than
+// that only a panel whose Role is role.Label or role.Heading keeps what is inside it out. It stays disabled in every
+// other respect: Panel.Enabled reports false, no mouse or keyboard event is delivered to it, menu commands pass over
+// it, and an assistive technology is refused everything other than moving the focus there and scrolling it into view.
+// Only its GainedFocusCallback and LostFocusCallback are called.
 //
-// For disabled controls, it applies to every panel that would be a tab stop were it enabled: a field, a button, a check
-// box, a popup menu, a list and so on. The panel must sit in the window's content in the same way, other than that it
-// may be inside a panel whose AccessibilityInfo.Role says it is some other kind of element, as a radio button is inside
-// a radio group; only one whose Role is role.Label or role.Heading keeps it out, since what is inside static text is
-// folded into that text and never described. Static text that is disabled is static text still, and follows the rules
-// given for it above. Such a control is disabled in every other respect. Panel.Enabled goes on reporting that it is, no
-// mouse or keyboard event is delivered to it, so the keys pressed while it holds the focus go to the panels it is
-// inside exactly as they do for any disabled panel that holds the focus, the commands of the menus pass over it in the
-// same way, and an assistive technology is told it is disabled and is refused everything it asks of it other than
-// moving the focus there and scrolling it into view. Only its GainedFocusCallback and LostFocusCallback are called, as
-// the focus arrives and leaves, which is what has the control show that it holds the focus.
-//
-// A screen reader that asks for the focus on such a panel is given it, as for any focusable panel. A mouse click does
-// not move the focus there, since neither static text nor a disabled control handles presses. A window with nothing
-// focused puts the focus on one only when nothing else can take it.
-//
-// It is off by default because native convention on every platform is that Tab stops only at controls that can be
-// used: screen-reader users reach everything else with review cursors, scan mode, browse mode or the VoiceOver cursor,
-// and a tab order that runs through every label and disabled control is slower to move through. Turn it on for an
-// application whose windows carry text and disabled controls that matter and whose users move through them by focus
-// alone. AccessibilityInfo.FocusForReading asks the same of one panel.
-//
-// Turning it off while such a panel holds the focus leaves the focus there, but the panel is no longer in the tab
-// order, so the next Tab lands on the window's first tab stop and Shift-Tab on its last. May be called at any time,
-// from any goroutine; windows being described are described again on the UI thread.
+// A mouse click does not move the focus to such a panel, and a window with nothing focused puts the focus on one only
+// when nothing else can take it. Turning the switch off while such a panel holds the focus leaves the focus there, but
+// the panel is no longer in the tab order. May be called at any time, from any goroutine.
 func SetFocusForReading(enabled bool) {
 	if focusForReading.Swap(enabled) == enabled || !accessibilityActive.Load() {
 		// Nothing is described while nothing is listening, and activation marks every window for redraw, so the first
@@ -611,8 +586,8 @@ func SetFocusForReading(enabled bool) {
 	InvokeTask(axMarkEveryWindowForPublish)
 }
 
-// FocusForReading reports what SetFocusForReading last set, regardless of whether an assistive technology is being
-// served; see IsAccessibilityActive. Safe to call from any goroutine.
+// FocusForReading reports what SetFocusForReading last set, whether or not an assistive technology is being served.
+// Safe to call from any goroutine.
 func FocusForReading() bool {
 	return focusForReading.Load()
 }
@@ -756,9 +731,8 @@ func axMarkActiveWindowChange(before *Window) {
 // so that clicking a check box does not pull the focus out of the text field a person is typing in, and an application
 // nothing is listening to pays one atomic load for each click.
 //
-// Only a control that can hold the focus asks for it, since Window.SetFocus takes the focus away from whatever holds it
-// when it is asked to give it to a panel that cannot: a link in a document or in a cell of a table, or the dropdown
-// button of a combo field, leaves the focus where it was.
+// A control that cannot hold the focus does not ask for it, since Window.SetFocus would then remove the focus from
+// whatever holds it: a link in a document or in a cell of a table, or the dropdown button of a combo field.
 func (p *Panel) axFocusOnClick() {
 	if accessibilityActive.Load() && p.Focusable() {
 		p.RequestFocus()
@@ -818,8 +792,8 @@ func axAllocID() accessibility.NodeID {
 // than acted on — a heading, on the platforms whose screen readers ask a heading they jumped to for the focus, and
 // standalone static text, when the application has asked for it through SetFocusForReading or
 // AccessibilityInfo.FocusForReading. None of them takes it unless an assistive technology is actually being served. A
-// disabled control that takes the focus for the same reason is another matter, since it was built as a tab stop to
-// begin with; see Panel.axDisabledTakesFocus.
+// disabled control that takes the focus for the same reason was built as a tab stop, so it is not decided here; see
+// Panel.axDisabledTakesFocus.
 //
 // Such a panel has no use for the focus itself: it draws no differently for holding it and handles no keys of its
 // own. What it holds the focus for is where a screen reader begins. Narrator keeps its cursor on the focused element,
@@ -861,27 +835,18 @@ func (p *Panel) axTakesFocus() bool {
 	return false
 }
 
-// axReadByFocus reports whether what this panel has to say is being made reachable by the keyboard focus for a screen
-// reader's sake: an assistive technology is being served, and the application asked for it, either for every window
-// through SetFocusForReading or for this panel through AccessibilityInfo.FocusForReading. It is what lets standalone
-// static text and a disabled control take the focus; see Panel.axStaticTextTakesFocus and Panel.axDisabledTakesFocus.
+// axReadByFocus reports whether an assistive technology is being served and the application asked for this panel to be
+// reachable by the keyboard focus, through SetFocusForReading or AccessibilityInfo.FocusForReading.
 func (p *Panel) axReadByFocus() bool {
 	return accessibilityActive.Load() && (p.Accessibility.FocusForReading || focusForReading.Load())
 }
 
-// axDisabledTakesFocus reports whether this panel, which the application disabled, may hold the keyboard focus all the
-// same, so that a screen reader in its focus mode can be taken to it and say what it is: the application asked for it
-// (axReadByFocus), and the panel sits in the window's content (axInContent). Whether it is something the focus is ever
-// given to is not decided here; Panel.Focusable asks that first, exactly as it does of an enabled panel.
+// axDisabledTakesFocus reports whether this disabled panel may hold the keyboard focus so that a screen reader can read
+// it: the application asked for it (axReadByFocus), and the panel sits in the window's content (axInContent). Whether
+// the focus is ever given to the panel is not decided here; Panel.Focusable asks that first.
 //
-// Nothing else about the panel changes. Panel.Enabled goes on reporting that it is disabled, which is what the window
-// asks before delivering an event and what every widget asks before acting on one, and it is published as disabled,
-// offering the focus and nothing else it did not already offer; see axSnapshot.visit and Panel.axDispatchAction. A
-// disabled control in a cell of a Table or List is left alone for the reason static text there is: the widget reaches
-// its cells through a cursor of its own.
-//
-// The cheap tests come first, so that an enabled panel pays for one comparison and the walk up to the window is made
-// only for a disabled panel while the application has asked for it to be read.
+// The cheap tests come first, so the walk up to the window is made only for a disabled panel while the application has
+// asked for it to be read.
 func (p *Panel) axDisabledTakesFocus() bool {
 	return p.disabled && !p.Hidden && p.axReadByFocus() && p.axInContent(false) != nil
 }
@@ -941,13 +906,10 @@ func (p *Panel) axContentWindow() *Window {
 // leave its descendants as the window's:
 //
 //   - Its Accessibility.Role must not be role.Label or role.Heading: what is inside static text is folded into that
-//     text's name and never described (see axSnapshot.visit), so a tab stop there would be one an assistive technology
-//     has no element for. When p is asked about as text, the role must be role.Auto, role.None or role.Group, since a
-//     label inside a control is that control's name. Only the field is looked at, since Panel.Focusable asks this
-//     ahead of any description, so a role reported from ProvideAccessibility or written by an Accessibility.Callback is
-//     not seen; no built-in widget that reports its role that way holds a plain Label as a child. A disabled control is
-//     not asked about as text: inside any other kind of element it is an element of its own, as a radio button inside
-//     a panel marked up as a radio group is.
+//     text's name and never described (see axSnapshot.visit). When asText is true, the role must be role.Auto,
+//     role.None or role.Group, since a label inside a control is that control's name. Only the field is looked at,
+//     since Panel.Focusable asks this ahead of any description, so a role reported from ProvideAccessibility or written
+//     by an Accessibility.Callback is not seen.
 //   - It must not take the focus for an assistive technology's sake through Panel.axFocusable: a document reads its
 //     own content.
 //   - It must not be an axCellHolder: a Table, List or TableHeader reaches its cells through its own cursor.

@@ -509,7 +509,7 @@ func TestComponentGrabFocusAndScrollTo(t *testing.T) {
 	ta.noRequest(t)
 
 	// A disabled node offers the focus action only when the application has asked for disabled controls to be reachable
-	// by a screen reader, and is given the focus then. Every other disabled node has had the action taken away.
+	// by a screen reader.
 	readable := activeMainTree(func(tree *accessibility.Tree) {
 		tree.Generation++
 		tree.Node(8).Disabled = true

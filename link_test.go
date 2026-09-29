@@ -145,9 +145,7 @@ func TestLinkIsATabStop(t *testing.T) {
 
 // TestLinkIsFollowedByTheKeyboard verifies that Return, the keypad's Enter and the space bar each follow the link that
 // holds the focus, taking the key so that Return does not go on to a dialog's default button, that no other key does,
-// nor any of those with a modifier held, and that a disabled link is not followed though it holds the focus, as one
-// that was disabled while holding it does. TestDisabledLinkTakesTheFocusForReading covers the disabled link that is
-// given the focus so that it can be read.
+// nor any of those with a modifier held, and that a link that was disabled while holding the focus is not followed.
 func TestLinkIsFollowedByTheKeyboard(t *testing.T) {
 	c := check.New(t)
 	const target = "https://example.com/docs"
@@ -240,8 +238,8 @@ func TestLinkWithoutAHandlerTakesItsKeys(t *testing.T) {
 }
 
 // TestLinkTakesTheFocusOnClickForAScreenReader verifies that a click gives the link the focus while an assistive
-// technology is being served, as it does for a button, that it does not otherwise, and that a link that cannot hold
-// the focus leaves it where it was rather than having the window take it away from whatever held it.
+// technology is being served, that it does not otherwise, and that a link that cannot hold the focus leaves it where
+// it was.
 func TestLinkTakesTheFocusOnClickForAScreenReader(t *testing.T) {
 	c := check.New(t)
 	followed := 0
@@ -323,11 +321,10 @@ func TestLinkShowsTheFocus(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestMarkdownLinksAreNotTabStops verifies that the links of a document are left to the document, which follows the
-// one under its reading caret, rather than each becoming a tab stop of its own, and that a click still follows one,
-// both while nothing is listening, when the document takes no focus either, and while a screen reader is being served
-// with the switch on, when Tab stops at the document and a click on a link gives the document the focus with its
-// reading caret on the link.
+// TestMarkdownLinksAreNotTabStops verifies that the links of a document are not tab stops and take up no room for an
+// outline, and that a click still follows one, both while nothing is listening and while a screen reader is being
+// served, when Tab stops at the document and a click on a link gives the document the focus with its reading caret on
+// the link.
 func TestMarkdownLinksAreNotTabStops(t *testing.T) {
 	c := check.New(t)
 	t.Cleanup(func() { unison.SetFocusForReading(false) })

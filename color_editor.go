@@ -161,9 +161,8 @@ func (e *ColorEditor) addChannelField(title string, value int, adjuster func(val
 }
 
 // addHint adds the dimmed text that follows a field to say what may be typed into it. The text is dimmed by being
-// disabled, and it is said as the field's description rather than being described as an element of its own: that
-// would be static text a screen reader announces as unavailable, and a tab stop after every field wherever the
-// application has asked for what is disabled to be reachable by one; see SetFocusForReading.
+// disabled, so it is given as the field's description rather than as an element of its own, which a screen reader
+// would announce as unavailable and SetFocusForReading would make a tab stop.
 func (e *ColorEditor) addHint(field *Field, hint string) {
 	field.Accessibility.Description = hint
 	l := NewLabel()

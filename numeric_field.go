@@ -79,13 +79,8 @@ func (f *NumericField[T]) Max() T {
 }
 
 // DefaultFocusLost is the default implementation for the LostFocusCallback, which brings what was typed into range and
-// into the form the field shows its values in. A disabled field that held the focus only so that a screen reader could
-// read it is left showing what the application put there, since nobody has typed anything; see SetFocusForReading.
-//
-// That is decided by what happened while the field held the focus rather than by what is being asked for as the focus
-// leaves: the field was given the focus while disabled and is disabled still. A field that was being typed into and
-// was disabled before the focus left it is brought into range as it always was, and one that was only being read is
-// left alone even if the application has stopped asking for disabled controls to be read in the meantime.
+// into the form the field shows its values in. A field that was given the focus while disabled and is disabled still
+// held it only so that a screen reader could read it (see SetFocusForReading), so its text is left as it was.
 func (f *NumericField[T]) DefaultFocusLost() {
 	if !f.focusedForReading || f.Enabled() {
 		f.SetText(f.Format(f.Value()))

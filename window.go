@@ -768,17 +768,15 @@ func (w *Window) Focus() *Panel {
 }
 
 // SetFocus sets the keyboard focus to the specified target. A target that cannot take the focus hands it to the first
-// panel within it that can, and so does a disabled one that holds a tab stop, even while it can take the focus itself
-// so that a screen reader can read it (see SetFocusForReading): the focus an application asks a container to take
-// belongs where the keyboard can be used.
+// panel within it that can, and the focus is removed if there is none. A disabled target that can take the focus (see
+// SetFocusForReading) hands it to the first tab stop within it, if there is one.
 func (w *Window) SetFocus(target Paneler) {
 	w.setFocus(target, false)
 }
 
-// setFocus sets the keyboard focus to the specified target. When exact is true, a target that can take the focus is
-// given it whatever it holds, which is what moving through the tab order and a request from an assistive technology
-// both need: each names the panel the focus is to land on, and a disabled panel that handed the focus on to a tab stop
-// within it could be neither tabbed onto nor tabbed back past.
+// setFocus sets the keyboard focus as SetFocus does, other than that when exact is true, a disabled target that can
+// take the focus is given it even if it holds a tab stop. Moving through the tab order and a request from an assistive
+// technology both need that, since each names the panel the focus is to land on.
 func (w *Window) setFocus(target Paneler, exact bool) {
 	var newFocus *Panel
 	if target != nil {
@@ -1981,9 +1979,8 @@ func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 			return
 		}
 	}
-	// The panel recorded is the one that took the key down or, when none did, the one holding the focus, which may be a
-	// disabled one: it was passed over for the key down and is passed over for the key up too, as is a panel that was
-	// disabled in between, as Window.mouseUp does for the release of a press.
+	// The panel recorded may be a disabled one that holds the focus, which was passed over for the key down, or one
+	// that was disabled since. Both are passed over, as Window.mouseUp does for the release of a press.
 	if w.lastKeyDownPanel != nil && w.lastKeyDownPanel.KeyUpCallback != nil && w.lastKeyDownPanel.Enabled() {
 		SafeCall(func() { w.lastKeyDownPanel.KeyUpCallback(key, mods) })
 	}

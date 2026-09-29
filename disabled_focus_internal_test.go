@@ -28,7 +28,7 @@ import (
 // static_text_focus_internal_test.go. A session owns most of the package's mutable globals while it runs, so none of
 // these may call t.Parallel.
 
-// disabledField returns a disabled field holding text that names itself, so that no label is needed to caption it.
+// disabledField returns a disabled field that names itself, so that no label is needed to caption it.
 func disabledField(name, text string) *Field {
 	f := staticTextNamedField(name)
 	f.SetText(text)
@@ -63,8 +63,7 @@ func disabledFocus(screen *HeadlessScreen, wnd *Window) *Panel {
 	return p
 }
 
-// disabledCheckStaysDisabled checks that a panel goes on reporting that it is disabled, which it must whether or not
-// it can take the focus.
+// disabledCheckStaysDisabled checks that a panel reports that it is disabled.
 func disabledCheckStaysDisabled(c check.Checker, screen *HeadlessScreen, p Paneler, what string) {
 	var enabled bool
 	screen.Do(func() { enabled = p.AsPanel().Enabled() })
@@ -72,7 +71,7 @@ func disabledCheckStaysDisabled(c check.Checker, screen *HeadlessScreen, p Panel
 }
 
 // disabledNode returns the last published node for p, without describing the window again, failing the test if there
-// is none, so that what is then checked of the node cannot be passed over for want of one.
+// is none.
 func disabledNode(c check.Checker, screen *HeadlessScreen, p Paneler, what string) *accessibility.Node {
 	node := screen.AccessibilityNodeFor(p)
 	c.NotNil(node, "%s should have been described", what)
@@ -80,16 +79,15 @@ func disabledNode(c check.Checker, screen *HeadlessScreen, p Paneler, what strin
 }
 
 // disabledStdMenus gives a window the standard menus, whose commands and key equivalents are routed to whatever holds
-// the keyboard focus ahead of the keys themselves; see RouteActionToFocusExecuteFunc. A test of what reaches a disabled
-// control that holds the focus is not complete without them.
+// the keyboard focus ahead of the keys themselves; see RouteActionToFocusExecuteFunc.
 func disabledStdMenus(wnd *Window) {
 	if wnd != nil {
 		DefaultMenuFactory().BarForWindow(wnd, func(m Menu) { InsertStdMenus(m, nil, nil, nil) })
 	}
 }
 
-// disabledCheckNode checks, without describing the window again, that the last published node for p is disabled, and
-// that it can be given the focus, and offers that and nothing else it may not, exactly when reachable says so.
+// disabledCheckNode checks, without describing the window again, that the last published node for p is disabled and
+// offers only what a disabled node may, and that it is focusable and offers the focus exactly when reachable is true.
 func disabledCheckNode(c check.Checker, screen *HeadlessScreen, p Paneler, reachable bool, what string) {
 	node := disabledNode(c, screen, p, what)
 	if node == nil {
@@ -104,7 +102,7 @@ func disabledCheckNode(c check.Checker, screen *HeadlessScreen, p Paneler, reach
 	c.Equal(want, node.Actions, "%s: actions offered", what)
 }
 
-// TestDisabledControlsAreOutOfReachByDefault verifies that a disabled control is what it always was while no assistive
+// TestDisabledControlsAreOutOfReachByDefault verifies that a disabled control takes no focus while no assistive
 // technology is being served, whatever the switch says, and while one is being served but the switch is off.
 func TestDisabledControlsAreOutOfReachByDefault(t *testing.T) {
 	c := check.New(t)
@@ -286,8 +284,7 @@ func TestDisabledControlsTakeTheFocusForReading(t *testing.T) {
 // TestDisabledControlsStayDisabled verifies that holding the focus changes nothing else about a disabled control:
 // nothing typed, pressed or clicked reaches it, the keys pressed while it holds the focus go to the panel it is inside,
 // the commands of the menus and their key equivalents pass over it, a click does not move the focus onto it, and an
-// assistive technology is refused everything other than the focus. The window has the standard menus, since their key
-// equivalents are run ahead of the keys.
+// assistive technology is refused everything that would act on it.
 func TestDisabledControlsStayDisabled(t *testing.T) {
 	c := check.New(t)
 	restoreStaticTextFocus(t)
@@ -361,8 +358,8 @@ func TestDisabledControlsStayDisabled(t *testing.T) {
 	c.Equal([]KeyCode{KeyX, KeyBackspace, KeyLeft, KeyV}, keys, "and so do the keys")
 	c.Equal(0, modified)
 
-	// The commands of the menus are routed to the focus, and their key equivalents are run by the menu bar ahead of the
-	// keys. Each passes over the disabled field, which has handlers installed for every one of them.
+	// The commands of the menus and their key equivalents pass over the disabled field, which has handlers installed
+	// for every one of them.
 	var can []bool
 	var clipboard string
 	screen.Do(func() {
@@ -950,8 +947,8 @@ func TestDisabledControlsShowTheFocus(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestDisabledComboFieldButtonDoesNothing verifies that the dropdown button of a disabled combo field, which is a panel
-// of its own that is not disabled along with the field, opens no menu and does not move the focus onto the field.
+// TestDisabledComboFieldButtonDoesNothing verifies that the dropdown button of a disabled combo field, which is not
+// disabled along with the field, opens no menu and does not move the focus onto the field.
 func TestDisabledComboFieldButtonDoesNothing(t *testing.T) {
 	c := check.New(t)
 	restoreStaticTextFocus(t)
@@ -1088,11 +1085,10 @@ func TestDisabledDocumentTakesTheFocusLast(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestNumericFieldBringsIntoRangeOnlyWhatWasTyped verifies that whether a numeric field brings its text into range as
-// the focus leaves is decided by what happened while it held the focus, not by what is being asked for at that moment:
-// a disabled field that was only read is left showing what the application put there even though the switch was
-// turned off, or the assistive technology went away, before the focus left, and a field that was typed into and then
-// disabled is brought into range whether the switch is on or off.
+// TestNumericFieldBringsIntoRangeOnlyWhatWasTyped verifies that a disabled numeric field that was only read is left
+// showing what the application put there as the focus leaves, even though the switch was turned off, or the assistive
+// technology went away, before it left, and that a field that was typed into and then disabled is brought into range
+// whether the switch is on or off.
 func TestNumericFieldBringsIntoRangeOnlyWhatWasTyped(t *testing.T) {
 	c := check.New(t)
 	restoreStaticTextFocus(t)
@@ -1182,8 +1178,7 @@ func TestNumericFieldBringsIntoRangeOnlyWhatWasTyped(t *testing.T) {
 
 // TestDisabledListRowRefusesAStaleFocusRequest verifies that a request for the focus aimed at a row is refused once the
 // list has been disabled, even though the row was published, while the list was enabled, as offering it and the window
-// has not been described since. Giving the list the focus instead would report the request as carried out for the row
-// while the focus went somewhere else.
+// has not been described since.
 func TestDisabledListRowRefusesAStaleFocusRequest(t *testing.T) {
 	c := check.New(t)
 	restoreStaticTextFocus(t)
@@ -1374,8 +1369,7 @@ func TestDisabledContainerHandsTheFocusOn(t *testing.T) {
 }
 
 // TestDisabledFieldIsNotScrolledByTheFocus verifies that a disabled field whose text does not fit is left showing the
-// start of it when it takes the focus, since nothing would scroll it back once the focus had left, while a field that
-// can be typed into is scrolled to its caret as it always was.
+// start of it when it takes the focus, while a field that can be typed into is scrolled to its caret.
 func TestDisabledFieldIsNotScrolledByTheFocus(t *testing.T) {
 	c := check.New(t)
 	restoreStaticTextFocus(t)

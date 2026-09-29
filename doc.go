@@ -128,14 +128,12 @@
 //
 // A screen reader in its focus mode — NVDA, JAWS, Narrator outside scan mode, Orca — speaks only what holds the
 // keyboard focus and what is associated with it, such as the label beside a field, so a label that captions no control
-// is out of reach of anyone moving through a window with Tab, and so is a disabled control, which cannot take the
-// focus. [SetFocusForReading] makes standalone text and disabled controls tab stops, and
-// AccessibilityInfo.FocusForReading does the same for one panel. Both take effect only while an assistive technology is
-// being served, so the switch may be left on unconditionally, and neither touches a caption, which is already spoken
-// with its control, or anything inside a table or list cell, a document, a menu or a tooltip. A disabled control that
-// takes the focus this way is disabled in every other respect: no event is delivered to it, no menu command acts on it,
-// Panel.Enabled goes on reporting that it is disabled, and a screen reader announces it as unavailable. The switch is
-// off by default, since native convention is that Tab stops only at controls that can be used.
+// and a disabled control are out of reach of anyone moving through a window with Tab. [SetFocusForReading] makes them
+// tab stops, and AccessibilityInfo.FocusForReading does the same for one panel. Both take effect only while an
+// assistive technology is being served, so the switch may be left on unconditionally, and neither touches a caption,
+// which is already spoken with its control, or anything inside a table or list cell, a document, a menu or a tooltip.
+// A disabled control that takes the focus this way is disabled in every other respect. The switch is off by default,
+// since native convention is that Tab stops only at controls that can be used.
 //
 // Until an assistive technology has actually asked for it, none of this costs anything beyond the AccessibilityInfo
 // each panel carries and one atomic load per window drawn or withdrawn per pass: no hierarchy is walked, nothing is

@@ -674,10 +674,8 @@ func TestFragmentRootAndEmbedded(t *testing.T) {
 //
 // Three things make it impossible, and each is answered the way the pattern write paths answer it: the element is
 // disabled and does not offer the Focus action, which is E_ELEMENTNOTENABLED; it is enabled and cannot take the focus
-// at all, or does not offer the action, which is the snapshot's own statement that nothing would happen; or the window
-// has nowhere to send the request. Window.dispatchAccessibilityAction drops a request for an action a node does not
-// offer, so answering S_OK would leave a client waiting for a focus event that is never coming. A disabled element
-// that does offer the action is one the application asked to be reachable by a screen reader, and is given the focus.
+// at all, or does not offer the action; or the window has nowhere to send the request. A disabled element that does
+// offer the action is one the application asked to be reachable by a screen reader, and is given the focus.
 func TestSetFocus(t *testing.T) {
 	c := check.New(t)
 	w := newTestWindow(t, sampleTree())

@@ -42,21 +42,18 @@ type LinkTheme struct {
 	LabelTheme
 }
 
-// linkFocusRingRoom is the room NewLink leaves to either side of a link's text for the outline drawn while the link
-// holds the keyboard focus: the outline itself and a gap between it and the text.
+// linkFocusRingRoom is the room NewLink leaves to either side of a link's text for its focus outline.
 const linkFocusRingRoom = 2
 
 // NewLink creates a new Label that can be used as a hyperlink. You may pass nil for the theme to use the
 // DefaultLinkTheme. The link is a tab stop, outlines itself while it holds the keyboard focus, and is followed by
-// Return, the keypad's Enter and the space bar as well as by a click, which are the keys that follow a link in a
-// Markdown. Return pressed on a link in a dialog therefore follows the link rather than pressing the dialog's default
-// button. The link is given a border that leaves room for the outline to either side of its text, which would otherwise
-// be drawn over the first and last of its letters.
+// Return, the keypad's Enter and the space bar as well as by a click. Return pressed on a link in a dialog therefore
+// follows the link rather than pressing the dialog's default button. The link is given a border that leaves room for
+// the outline to either side of its text.
 //
 // Call SetFocusable(false) on the result for one that should be followed by a click alone, and SetBorder(nil) as well
 // for one that should take up no more room than its text. A link that is, or is inside, a cell of a Table, List or
-// TableHeader takes no focus whatever it was told: the focus stays with the widget, which passes a press on a cell on
-// to the link within it.
+// TableHeader never takes the focus.
 func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(Paneler, string)) *Label {
 	link := NewLabel()
 	if theme == nil {
@@ -133,8 +130,8 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 			return false
 		}
 		link.MarkForRedraw()
-		// Cleared before the link is followed, since following it may open a window or a menu that runs an event loop
-		// of its own, and the link would be drawn pressed for as long as that lasted.
+		// Cleared before the link is followed, since following it may run an event loop of its own, during which the
+		// link would be drawn pressed.
 		mouseDown = false
 		if where.In(link.ContentRect(true)) {
 			link.axFocusOnClick()

@@ -322,9 +322,8 @@ func (s *axSnapshot) buildRoot() {
 // A caption that holds the keyboard focus is left saying so, with Focusable now false: the window does not move the
 // focus off a panel that stops being a tab stop, so a screen reader following it really is reading that text. It is
 // the same pair any panel publishes after SetFocusable(false) while holding the focus, and it lasts until the focus
-// next moves; see Window.FocusNext. A disabled caption is the exception, as every disabled node that cannot take the
-// focus is: it is published without the focus, for the reason axSnapshot.visit gives, and the focus is left for
-// axSnapshot.fallbackFocus to place, which runs after this.
+// next moves; see Window.FocusNext. A disabled caption is instead published without the focus, as axSnapshot.visit
+// does for every disabled node that cannot take it, leaving axSnapshot.fallbackFocus to place it.
 func (s *axSnapshot) settleCaptionFocus() {
 	for _, p := range s.captions {
 		node := s.tree.Nodes[p.Accessibility.id]
@@ -800,10 +799,8 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	switch {
 	case !node.Disabled:
 	case node.Focusable && p.axDisabledTakesFocus():
-		// A disabled control the application asked to have read is published as the disabled control it is, other
-		// than that it can be given the focus and says so when it holds it, which is what has a screen reader in its
-		// focus mode announce it, as unavailable, in place of passing over it. The focus is the one thing about it that
-		// can be asked for. See SetFocusForReading.
+		// A disabled control the application asked to have read still offers the focus and says so when it holds it,
+		// so that a screen reader in its focus mode announces it, as unavailable. See SetFocusForReading.
 		node.Actions &= axDisabledActions.With(accessibility.Focus)
 	default:
 		// Every request that would act on a disabled node is refused, so advertising one would offer an assistive

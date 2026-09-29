@@ -78,8 +78,7 @@ func TestAccessibilityInactiveBuildsNothing(t *testing.T) {
 			wnd = newHeadlessWindow(t, "inactive", geom.NewRect(20, 20, 240, 120), axColumn(button, field))
 		}))
 	c.NotNil(wnd)
-	// An application may leave static text and disabled controls focusable unconditionally, and pays nothing for that
-	// either.
+	// An application may leave the switch on unconditionally, and pays nothing for that either.
 	unison.SetFocusForReading(true)
 	t.Cleanup(func() { unison.SetFocusForReading(false) })
 

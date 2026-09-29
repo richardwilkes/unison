@@ -1177,16 +1177,13 @@ func (m *Markdown) createLink(label, target, tooltip string) *Label {
 		tooltip = target
 	}
 	link := NewLink(label, tooltip, target, &theme, m.linkHandler)
-	// A document handles its own links: it is the document that takes the keyboard focus, and the link under its
-	// reading caret that Return and Space follow; see Markdown.DefaultKeyDown. A link that holds no focus is never
-	// outlined, so the room NewLink left for the outline is given back to the words around the link.
+	// The document takes the keyboard focus and follows the link under its reading caret itself (see
+	// Markdown.DefaultKeyDown), so the link takes no focus and needs no room for the outline.
 	link.SetFocusable(false)
 	link.SetBorder(nil)
-	// The link is the deepest panel under a press on it, so the press never reaches the document, which would have
-	// taken the focus and placed its reading caret for a press anywhere else within it. While the document can take the
-	// focus, it is therefore given the focus here, with its caret put on the link unless it is there already, as it is
-	// when Return or Space is what is following the link. A screen reader then finds the person on the link they
-	// followed rather than wherever the focus was before. Nothing changes for a document that cannot take the focus.
+	// A press on the link never reaches the document, so a document that can take the focus is given it here, with its
+	// caret put on the link unless it is there already, as it is when Return or Space is what is following the link. A
+	// screen reader then finds the person on the link they followed.
 	press := link.MouseDownCallback
 	link.MouseDownCallback = func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
 		if button == ButtonLeft && m.Focusable() {

@@ -1564,10 +1564,8 @@ func (t *Table[T]) focusCellAt(row, col int, forward bool) bool {
 	if cell.Hidden {
 		return false
 	}
-	// What can take the focus is asked with the cell attached, since the answer may depend on where a panel is: a link
-	// takes none inside a cell; see Panel.inCell. Only the parent is set for the asking, leaving the layout installCell
-	// does to the cell the focus is about to be handed to, since Tab may pass over any number of cells on its way to
-	// one.
+	// What can take the focus is asked with the cell attached, since a link takes none inside a cell; see Panel.inCell.
+	// Only the parent is set, leaving the layout installCell does to the cell the focus is handed to.
 	parent := cell.parent
 	cell.parent = t.AsPanel()
 	target := cell

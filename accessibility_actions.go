@@ -36,9 +36,7 @@ import (
 // a person cannot. The snapshot builder narrows a disabled node's advertised actions to this same set, so that nothing
 // is offered that would then be refused.
 //
-// The one addition is the focus, for a disabled control the application asked to have read: it may be given the focus,
-// which changes nothing about the control itself, so that a screen reader can be taken to it. See
-// Panel.axDisabledTakesFocus.
+// A disabled control the application asked to have read may also be given the focus; see Panel.axDisabledTakesFocus.
 var axDisabledActions = accessibility.ActionSet(0).With(accessibility.ScrollIntoView)
 
 // performAccessibilityAction carries out a request from an assistive technology. UI thread only.
@@ -111,9 +109,8 @@ func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bo
 		(req.Action != accessibility.Focus || !node.Actions.Has(accessibility.Focus)) {
 		// The node was published as disabled, which for a virtual child such as a row of a table, or for a panel that
 		// reports a state of its own through Accessibility.Callback, is the only place that is known: the panel those
-		// belong to may itself be perfectly enabled. See axDisabledActions. A disabled node that offers the focus is a
-		// control the application asked to have read, and whether it may still be given the focus is decided by
-		// Panel.axDispatchAction.
+		// belong to may itself be perfectly enabled. See axDisabledActions. A request for the focus on a disabled node
+		// that offers it is left to Panel.axDispatchAction.
 		return false
 	}
 	// The widget is told which of its virtual children the request is aimed at, which is the only way it can tell one
@@ -158,9 +155,9 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 		// AccessibilityActor implementation and every default behavior alike, including the requests aimed at a
 		// virtual child of a disabled panel, which only this panel could have carried out. See axDisabledActions.
 		//
-		// A disabled control the application asked to have read may still be given the focus. Neither its callback nor
-		// the widget is asked, since a disabled panel is told of nothing else either, and a request aimed at a virtual
-		// child is refused, since moving the focus onto a row would move the widget's selection with it.
+		// A disabled control the application asked to have read may still be given the focus, without asking its
+		// callback or the widget. A request aimed at a virtual child is refused, since moving the focus onto a row
+		// would move the widget's selection with it.
 		if req.Action == accessibility.Focus && !virtual && p.axDisabledTakesFocus() {
 			return p.axTakeFocus()
 		}
@@ -207,14 +204,12 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 	}
 }
 
-// axTakeFocus gives the panel the keyboard focus on behalf of an assistive technology and brings it into view, which is
-// the default behavior for accessibility.Focus. Returns true if the panel holds the focus afterwards.
+// axTakeFocus gives the panel the keyboard focus and brings it into view, which is the default behavior for
+// accessibility.Focus. Returns true if the panel holds the focus afterwards.
 //
-// Window.SetFocus does not refuse a target that cannot hold the focus: it hands the focus to that target's first
-// focusable child instead, or clears it entirely. Either would leave the focus somewhere other than the node the
-// request named while reporting that the request was carried out, so a panel that cannot take the focus is refused
-// outright, the panel itself is what is asked to take it (see Window.setFocus), and what actually happened is checked
-// afterwards in case the window declined it for some other reason.
+// A panel that cannot take the focus is refused outright, since Window.setFocus would hand the focus to the panel's
+// first focusable child or clear it entirely, leaving it somewhere other than the node the request named. What
+// happened is checked afterwards in case the window declined for some other reason.
 func (p *Panel) axTakeFocus() bool {
 	if !p.Focusable() {
 		return false

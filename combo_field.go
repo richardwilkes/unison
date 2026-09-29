@@ -121,9 +121,7 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 	var openMenu Menu
 	b.ClickCallback = func() {
 		if !field.Enabled() {
-			// The button is a panel of its own and is not disabled along with the field, so it is here that a disabled
-			// combo field refuses to open: the choices would change the value of a field the person cannot otherwise
-			// change, and asking for the focus would move it onto a control a click does not give it to.
+			// The button is not disabled along with the field, so a disabled combo field refuses to open here.
 			return
 		}
 		field.RequestFocus()
