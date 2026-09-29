@@ -307,12 +307,12 @@ func (s *axSnapshot) buildRoot() {
 
 // settleCaptionFocus takes the keyboard focus back from every caption that was described as able to take it.
 //
-// A caption cannot take the focus as standalone static text (see SetStaticTextFocusableForAccessibility), but which
-// labels are captions is learned only as each control's name is resolved (see axSnapshot.recordCaption), too late for a
-// caption described before the control that names it: the label placed just before a field always is, and a LabeledBy
-// may point at anything earlier in the window. Such a caption's node answered Panel.Focusable from the description
-// before, which may never have seen it as a caption. Asking again now, with every caption recorded, makes the node
-// agree with the traversal the person actually tabs through.
+// A caption cannot take the focus as standalone static text (see SetFocusForReading), but which labels are captions is
+// learned only as each control's name is resolved (see axSnapshot.recordCaption), too late for a caption described
+// before the control that names it: the label placed just before a field always is, and a LabeledBy may point at
+// anything earlier in the window. Such a caption's node answered Panel.Focusable from the description before, which may
+// never have seen it as a caption. Asking again now, with every caption recorded, makes the node agree with the
+// traversal the person actually tabs through.
 //
 // Only what axSnapshot.visit derives from Panel.Focusable is undone: the Focusable flag and the focus action. Nothing
 // else in the tree depends on a caption's focusability. A caption in a cell described under an id its widget allocated
@@ -322,7 +322,9 @@ func (s *axSnapshot) buildRoot() {
 // A caption that holds the keyboard focus is left saying so, with Focusable now false: the window does not move the
 // focus off a panel that stops being a tab stop, so a screen reader following it really is reading that text. It is
 // the same pair any panel publishes after SetFocusable(false) while holding the focus, and it lasts until the focus
-// next moves; see Window.FocusNext.
+// next moves; see Window.FocusNext. A disabled caption is the exception, as every disabled node that cannot take the
+// focus is: it is published without the focus, for the reason axSnapshot.visit gives, and the focus is left for
+// axSnapshot.fallbackFocus to place, which runs after this.
 func (s *axSnapshot) settleCaptionFocus() {
 	for _, p := range s.captions {
 		node := s.tree.Nodes[p.Accessibility.id]
@@ -331,6 +333,12 @@ func (s *axSnapshot) settleCaptionFocus() {
 		}
 		if node.Focusable = p.Focusable(); !node.Focusable {
 			node.Actions = node.Actions.Without(accessibility.Focus)
+			if node.Disabled && node.Focused {
+				node.Focused = false
+				if s.focus == node.ID {
+					s.focus = 0
+				}
+			}
 		}
 	}
 }
@@ -386,8 +394,9 @@ func (s *axSnapshot) markMenuItemsFocusable(panel *menuPanel) {
 // resolveFocus decides which node, if any, the window reports the keyboard focus on. A node the focus panel was
 // described as has already claimed it during the walk; what is left to decide is the three cases where it did not — an
 // open menu with something highlighted and an open menu with nothing highlighted, both of which take the focus away
-// from wherever it actually is, and a focus panel that is not in the tree or is in it disabled, which has to fall back
-// to something that is.
+// from wherever it actually is, and a focus panel that is not in the tree, or is in it disabled and unable to take the
+// focus, which has to fall back to something that is. A disabled control that takes the focus so that it can be read
+// has claimed it like any other; see Panel.axDisabledTakesFocus.
 func (s *axSnapshot) resolveFocus() {
 	if id := s.openMenuFocus(); id != 0 {
 		s.focus = id
@@ -436,8 +445,8 @@ func (s *axSnapshot) resolveFocus() {
 // left claiming the focus inside a document the menu displaced would be the second focused object that clearing exists
 // to prevent, which on AT-SPI is what Orca would announce instead of the item. Nothing is lost by dropping it: the
 // caret has not moved while the menu is up, so the claim comes back with the focus when the menu closes. A focus that
-// fell back to an ancestor of the focus panel — because the panel is disabled or was never described — clears it for
-// the same reason.
+// fell back to an ancestor of the focus panel — because the panel is disabled and cannot take the focus, or was never
+// described — clears it for the same reason.
 //
 // Tree.Focus is never moved here. It names the node the focus is reported on, which is the document rather than the
 // block inside it, and the first claim is what set it.
@@ -517,8 +526,9 @@ func (s *axSnapshot) openMenuNode() accessibility.NodeID {
 // There are several ways that happens, and they amount to the same thing. The panel may not be in the tree at all: it
 // hides itself with role.None, it is inside a Heading or a Label, whose children are folded into the name and never
 // visited, or it was hidden while holding the focus. Or it may be in the tree but disabled, which is published without
-// the focus. Either way something in the window really does hold the keyboard focus, and a tree that says the focus is
-// nowhere makes an assistive technology stop following the window: it has been told the person is not anywhere.
+// the focus unless it is a control that takes the focus so that it can be read; see Panel.axDisabledTakesFocus. Either
+// way something in the window really does hold the keyboard focus, and a tree that says the focus is nowhere makes an
+// assistive technology stop following the window: it has been told the person is not anywhere.
 //
 // The root is not an answer. It reports whether the window is active, which is a different question, and naming it
 // would make the focus appear to jump out to the window itself. A disabled ancestor is not one either, for the reason
@@ -787,7 +797,15 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 			}
 		}
 	}
-	if node.Disabled {
+	switch {
+	case !node.Disabled:
+	case node.Focusable && p.axDisabledTakesFocus():
+		// A disabled control the application asked to have read is published as the disabled control it is, other
+		// than that it can be given the focus and says so when it holds it, which is what has a screen reader in its
+		// focus mode announce it, as unavailable, in place of passing over it. The focus is the one thing about it that
+		// can be asked for. See SetFocusForReading.
+		node.Actions &= axDisabledActions.With(accessibility.Focus)
+	default:
 		// Every request that would act on a disabled node is refused, so advertising one would offer an assistive
 		// technology something it cannot have, and a screen reader that says a greyed-out control can be pressed is
 		// worse than one that does not mention it. Applied after the widget and the callback have had their say, since

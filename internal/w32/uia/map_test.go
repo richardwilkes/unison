@@ -1022,6 +1022,12 @@ func TestHasKeyboardFocus(t *testing.T) {
 
 	c.False(HasKeyboardFocus(nil, tree.Node(4)))
 	c.False(HasKeyboardFocus(tree, nil))
+
+	// Whether the node can be used is no part of it: a disabled control that takes the focus so that a screen reader
+	// can read it has the keyboard focus like any other.
+	disabled := sampleTree()
+	disabled.Nodes[4].Disabled = true
+	c.True(HasKeyboardFocus(disabled, disabled.Node(4)))
 }
 
 // TestHeadingLevel verifies that only headings report a level, that the nine UI Automation levels are numbered from

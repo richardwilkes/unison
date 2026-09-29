@@ -100,6 +100,10 @@ type Field struct {
 	pending            bool
 	extendByWord       bool
 	invalid            bool
+	// focusedForReading is true while the field holds a keyboard focus it was given while disabled, which is one it
+	// holds only so that a screen reader can read it, not one a person has been typing into. See
+	// Field.DefaultFocusGained and NumericField.DefaultFocusLost.
+	focusedForReading bool
 }
 
 // FieldState holds the text and selection data for the field.
@@ -456,18 +460,27 @@ func (f *Field) blink() {
 	}
 }
 
-// DefaultFocusGained provides the default focus gained handling.
+// DefaultFocusGained provides the default focus gained handling. A disabled field holds the focus only so that a screen
+// reader can read it (see SetFocusForReading), so nothing is selected in one, and while the field itself is brought
+// into view, its text is left scrolled as it was: the caret it would be scrolled to is not shown, and nothing would
+// scroll the text back once the focus had left.
 func (f *Field) DefaultFocusGained() {
-	if !f.NoSelectAllOnFocus && !f.HasSelectionRange() {
-		f.SelectAll()
-	}
+	f.focusedForReading = !f.Enabled()
 	f.showCursor = true
-	f.ScrollSelectionIntoView()
+	if f.focusedForReading {
+		f.ScrollIntoView()
+	} else {
+		if !f.NoSelectAllOnFocus && !f.HasSelectionRange() {
+			f.SelectAll()
+		}
+		f.ScrollSelectionIntoView()
+	}
 	f.MarkForRedraw()
 }
 
 // DefaultFocusLost provides the default focus lost handling.
 func (f *Field) DefaultFocusLost() {
+	f.focusedForReading = false
 	f.undoID = NextUndoID()
 	f.MarkForRedraw()
 }

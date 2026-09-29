@@ -147,8 +147,11 @@ func (o *nodeObject) getAlpha(call *dbus.Call) {
 // virtual child carries whatever action set its builder gave it. The user interface thread refuses a request for an
 // action the node does not offer, so answering "yes" to one would leave an assistive technology waiting for a focused
 // state change that never arrives. Both other adapters refuse the same request.
+//
+// Being disabled is not asked about. A disabled node offers the focus action only when the application has asked for
+// disabled controls to be reachable by a screen reader, and every other disabled node has had the action taken away.
 func (o *nodeObject) grabFocus(call *dbus.Call) {
-	if o.node.Disabled || !o.node.Focusable || !o.node.Actions.Has(accessibility.Focus) {
+	if !o.node.Focusable || !o.node.Actions.Has(accessibility.Focus) {
 		call.Reply(false)
 		return
 	}

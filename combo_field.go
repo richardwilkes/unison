@@ -120,6 +120,12 @@ func NewComboField(options []*string, initial *string, changedCallback func(valu
 	// which is what tells an assistive technology whether the combo field is expanded.
 	var openMenu Menu
 	b.ClickCallback = func() {
+		if !field.Enabled() {
+			// The button is a panel of its own and is not disabled along with the field, so it is here that a disabled
+			// combo field refuses to open: the choices would change the value of a field the person cannot otherwise
+			// change, and asking for the focus would move it onto a control a click does not give it to.
+			return
+		}
 		field.RequestFocus()
 		if len(options) == 0 {
 			// A combo field with nothing to choose from opens nothing, exactly as PopupMenu.Click shows no menu for a

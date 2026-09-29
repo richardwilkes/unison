@@ -338,6 +338,24 @@ func TestStatesOfFocus(t *testing.T) {
 	c.True(States(focused, false, false).Has(StateFocusable))
 }
 
+// TestStatesOfADisabledControlHoldingTheFocus verifies how a disabled control that takes the focus so that a screen
+// reader can read it is exposed: it can take the focus and holds it, and is neither enabled nor sensitive, which is
+// what has Orca announce it as unavailable in place of passing over it. See unison.SetFocusForReading.
+func TestStatesOfADisabledControlHoldingTheFocus(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	readable := &accessibility.Node{Role: role.Button, Disabled: true, Focusable: true, Focused: true}
+	set := States(readable, true, false)
+	c.True(set.Has(StateFocusable))
+	c.True(set.Has(StateFocused))
+	c.False(set.Has(StateEnabled))
+	c.False(set.Has(StateSensitive))
+	c.False(States(readable, false, false).Has(StateFocused), "only the active window has a focused object")
+	unreachable := States(&accessibility.Node{Role: role.Button, Disabled: true}, true, false)
+	c.False(unreachable.Has(StateFocusable), "a disabled control that cannot take the focus does not say it can")
+	c.False(unreachable.Has(StateFocused))
+}
+
 func TestStatesOfAWindow(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -893,12 +911,15 @@ func TestStaticListsAreListsNotListBoxes(t *testing.T) {
 	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, RowCount: 3}),
 		"and so is one that samples its rows")
 	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Focusable: true, RowCount: 3}))
-	// A greyed-out list box is still a control. Panel.Focusable answers only while the panel is enabled, so the
-	// snapshot's Focusable is false for a disabled List exactly as it is for a static panel, and reading that alone
-	// would hand Orca an ordinary disabled control as static document content until it was enabled again.
+	// A greyed-out list box is still a control. Panel.Focusable answers for a disabled panel only while the application
+	// has asked for disabled controls to be reachable by a screen reader, so the snapshot's Focusable is otherwise
+	// false for a disabled List exactly as it is for a static panel, and reading that alone would hand Orca an
+	// ordinary disabled control as static document content until it was enabled again.
 	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Disabled: true}),
 		"a disabled list is a control that cannot be used rather than a list of items to read")
 	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Disabled: true, RowCount: 3}))
+	c.Equal(RoleListBox, MapRole(&accessibility.Node{Role: role.List, Disabled: true, Focusable: true}),
+		"as is a disabled one that takes the focus so that it can be read")
 	// The items are list items either way, since AT-SPI has one role for both.
 	c.Equal(RoleListItem, MapRole(&accessibility.Node{Role: role.ListItem}))
 	// A list is a selection whichever of the two it is reported as, and never a grid.

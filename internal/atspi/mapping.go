@@ -105,9 +105,10 @@ func MapRole(n *accessibility.Node) Role {
 		// since a document's items are real children rather than the sampled rows a List reports.
 		//
 		// Whether the control can be used at this moment is no part of it. [accessibility.Node.Focusable] is false for
-		// a disabled control as well as for a static panel — Panel.Focusable answers only while the panel is enabled —
-		// so a greyed-out empty List would otherwise be handed to Orca as static document content rather than as the
-		// list box it is and go on being presented that way until it was enabled again.
+		// a disabled control as well as for a static panel — Panel.Focusable answers for a disabled panel only while
+		// the application has asked for disabled controls to be reachable by a screen reader — so a greyed-out empty
+		// List would otherwise be handed to Orca as static document content rather than as the list box it is and go on
+		// being presented that way until it was enabled again.
 		if !n.Focusable && !n.Disabled && n.RowCount == 0 {
 			return RoleList
 		}

@@ -42,8 +42,21 @@ type LinkTheme struct {
 	LabelTheme
 }
 
+// linkFocusRingRoom is the room NewLink leaves to either side of a link's text for the outline drawn while the link
+// holds the keyboard focus: the outline itself and a gap between it and the text.
+const linkFocusRingRoom = 2
+
 // NewLink creates a new Label that can be used as a hyperlink. You may pass nil for the theme to use the
-// DefaultLinkTheme.
+// DefaultLinkTheme. The link is a tab stop, outlines itself while it holds the keyboard focus, and is followed by
+// Return, the keypad's Enter and the space bar as well as by a click, which are the keys that follow a link in a
+// Markdown. Return pressed on a link in a dialog therefore follows the link rather than pressing the dialog's default
+// button. The link is given a border that leaves room for the outline to either side of its text, which would otherwise
+// be drawn over the first and last of its letters.
+//
+// Call SetFocusable(false) on the result for one that should be followed by a click alone, and SetBorder(nil) as well
+// for one that should take up no more room than its text. A link that is, or is inside, a cell of a Table, List or
+// TableHeader takes no focus whatever it was told: the focus stays with the widget, which passes a press on a cell on
+// to the link within it.
 func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(Paneler, string)) *Label {
 	link := NewLabel()
 	if theme == nil {
@@ -67,6 +80,27 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 		// and the snapshot falls back to the tooltip's text for it while it is empty, so naming the target here for a
 		// link that was also given a tooltip would replace words someone chose with a URL.
 		link.Accessibility.Description = target
+	}
+	follow := func() {
+		if clickHandler != nil {
+			SafeCall(func() { clickHandler(link, target) })
+		}
+	}
+	link.SetFocusable(true)
+	link.noFocusInCells = true
+	link.SetBorder(NewEmptyBorder(geom.Insets{Left: linkFocusRingRoom, Right: linkFocusRingRoom}))
+	link.GainedFocusCallback = func() {
+		link.ScrollIntoView()
+		link.MarkForRedraw()
+	}
+	link.LostFocusCallback = link.MarkForRedraw
+	link.KeyDownCallback = func(keyCode KeyCode, mods mod.Modifiers, _ bool) bool {
+		if IsControlAction(keyCode, mods) ||
+			((keyCode == KeyReturn || keyCode == KeyNumPadEnter) && mods&mod.NonSticky == 0) {
+			follow()
+			return true
+		}
+		return false
 	}
 	link.UpdateCursorCallback = func(_ geom.Point) *Cursor {
 		if link.Enabled() {
@@ -99,10 +133,13 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 			return false
 		}
 		link.MarkForRedraw()
-		if where.In(link.ContentRect(true)) && clickHandler != nil {
-			SafeCall(func() { clickHandler(link, target) })
-		}
+		// Cleared before the link is followed, since following it may open a window or a menu that runs an event loop
+		// of its own, and the link would be drawn pressed for as long as that lasted.
 		mouseDown = false
+		if where.In(link.ContentRect(true)) {
+			link.axFocusOnClick()
+			follow()
+		}
 		return true
 	}
 	link.DrawCallback = func(gc *Canvas, rect geom.Rect) {
@@ -114,6 +151,12 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 			gc.DrawRect(rect, paint)
 		}
 		link.DefaultDraw(gc, rect)
+		if link.Focused() {
+			r := link.ContentRect(true).Inset(geom.NewUniformInsets(0.5))
+			paint := theme.PressedInk.Paint(gc, r, paintstyle.Stroke)
+			paint.SetStrokeWidth(1)
+			gc.DrawRoundedRect(r, geom.NewSize(2, 2), paint)
+		}
 	}
 	return link
 }

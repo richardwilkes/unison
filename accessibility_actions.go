@@ -35,6 +35,10 @@ import (
 // Window.keyDown all gate on Panel.Enabled — so that an assistive technology cannot activate, change or type into what
 // a person cannot. The snapshot builder narrows a disabled node's advertised actions to this same set, so that nothing
 // is offered that would then be refused.
+//
+// The one addition is the focus, for a disabled control the application asked to have read: it may be given the focus,
+// which changes nothing about the control itself, so that a screen reader can be taken to it. See
+// Panel.axDisabledTakesFocus.
 var axDisabledActions = accessibility.ActionSet(0).With(accessibility.ScrollIntoView)
 
 // performAccessibilityAction carries out a request from an assistive technology. UI thread only.
@@ -70,7 +74,8 @@ func (w *Window) performAccessibilityAction(req accessibility.ActionRequest) boo
 // notifications and k intermediate selections an assistive technology may read — from inside the single callback it is
 // waiting on. The requests themselves are exactly the ones performAccessibilityAction carries out, gate for gate: each
 // goes through dispatchAccessibilityAction, which refuses a window a modal is blocking, a node that has left the tree
-// and a disabled one. One that is refused leaves the rest alone, since each row of the set stands on its own.
+// and what a disabled one may not be asked for, which is everything a set of rows is made of. One that is refused
+// leaves the rest alone, since each row of the set stands on its own.
 func (w *Window) performAccessibilityActions(reqs []accessibility.ActionRequest) bool {
 	carried := false
 	for _, req := range reqs {
@@ -102,10 +107,13 @@ func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bo
 	if !ok || target.panel == nil || target.panel.Window() != w {
 		return false
 	}
-	if node := w.ax.last.Node(req.Node); node != nil && node.Disabled && !axDisabledActions.Has(req.Action) {
+	if node := w.ax.last.Node(req.Node); node != nil && node.Disabled && !axDisabledActions.Has(req.Action) &&
+		(req.Action != accessibility.Focus || !node.Actions.Has(accessibility.Focus)) {
 		// The node was published as disabled, which for a virtual child such as a row of a table, or for a panel that
 		// reports a state of its own through Accessibility.Callback, is the only place that is known: the panel those
-		// belong to may itself be perfectly enabled. See axDisabledActions.
+		// belong to may itself be perfectly enabled. See axDisabledActions. A disabled node that offers the focus is a
+		// control the application asked to have read, and whether it may still be given the focus is decided by
+		// Panel.axDispatchAction.
 		return false
 	}
 	// The widget is told which of its virtual children the request is aimed at, which is the only way it can tell one
@@ -149,6 +157,13 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 		// Gated here rather than in each widget so that it holds for every Accessibility.ActionCallback, every
 		// AccessibilityActor implementation and every default behavior alike, including the requests aimed at a
 		// virtual child of a disabled panel, which only this panel could have carried out. See axDisabledActions.
+		//
+		// A disabled control the application asked to have read may still be given the focus. Neither its callback nor
+		// the widget is asked, since a disabled panel is told of nothing else either, and a request aimed at a virtual
+		// child is refused, since moving the focus onto a row would move the widget's selection with it.
+		if req.Action == accessibility.Focus && !virtual && p.axDisabledTakesFocus() {
+			return p.axTakeFocus()
+		}
 		return false
 	}
 	if req.Action == accessibility.ShowContextMenu && !virtual && axMayShowContextMenu(p) {
@@ -179,20 +194,7 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 	}
 	switch req.Action {
 	case accessibility.Focus:
-		// Window.SetFocus does not refuse a target that cannot hold the focus: it hands the focus to that target's
-		// first focusable child instead, or clears it entirely. Either would leave the focus somewhere other than the
-		// node the request named while reporting that the request was carried out, so a panel that cannot take the
-		// focus is refused outright, and what actually happened is checked afterwards in case the window declined it
-		// for some other reason.
-		if !p.Focusable() {
-			return false
-		}
-		p.RequestFocus()
-		if wnd := p.Window(); wnd == nil || !p.Is(wnd.CurrentFocus()) {
-			return false
-		}
-		p.ScrollIntoView()
-		return true
+		return p.axTakeFocus()
 	case accessibility.ScrollIntoView:
 		p.ScrollIntoView()
 		return true
@@ -203,6 +205,30 @@ func (p *Panel) axDispatchAction(req accessibility.ActionRequest, virtual bool) 
 	default:
 		return false
 	}
+}
+
+// axTakeFocus gives the panel the keyboard focus on behalf of an assistive technology and brings it into view, which is
+// the default behavior for accessibility.Focus. Returns true if the panel holds the focus afterwards.
+//
+// Window.SetFocus does not refuse a target that cannot hold the focus: it hands the focus to that target's first
+// focusable child instead, or clears it entirely. Either would leave the focus somewhere other than the node the
+// request named while reporting that the request was carried out, so a panel that cannot take the focus is refused
+// outright, the panel itself is what is asked to take it (see Window.setFocus), and what actually happened is checked
+// afterwards in case the window declined it for some other reason.
+func (p *Panel) axTakeFocus() bool {
+	if !p.Focusable() {
+		return false
+	}
+	wnd := p.Window()
+	if wnd == nil {
+		return false
+	}
+	wnd.setFocus(p, true)
+	if !p.Is(wnd.CurrentFocus()) {
+		return false
+	}
+	p.ScrollIntoView()
+	return true
 }
 
 // axShowContextMenu opens the panel's contextual menu for an assistive technology at contextMenuAnchor, since there is

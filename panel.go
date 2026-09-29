@@ -81,6 +81,9 @@ type Panel struct {
 	// since being one is enough to say so, and so does standalone static text when the application has asked for it.
 	// See Panel.axTakesFocus.
 	axFocusable bool
+	// noFocusInCells marks a panel that takes no keyboard focus while it is, or is inside, a cell of a Table, List or
+	// TableHeader, however focusable it is elsewhere. NewLink sets it; see Panel.inCell.
+	noFocusInCells bool
 }
 
 // NewPanel creates a new panel.
@@ -492,14 +495,56 @@ func (p *Panel) SetEnabled(enabled bool) {
 	}
 }
 
-// Focusable returns true if this panel can have the keyboard focus.
+// Focusable returns true if this panel can have the keyboard focus. A disabled panel cannot, other than while the
+// application has asked for disabled controls to be reachable by a screen reader; see SetFocusForReading.
 func (p *Panel) Focusable() bool {
-	return (p.focusable || p.axTakesFocus()) && p.Enabled()
+	if !p.focusable && !p.axTakesFocus() {
+		return false
+	}
+	if p.noFocusInCells && p.inCell() {
+		return false
+	}
+	return p.Enabled() || p.axDisabledTakesFocus()
+}
+
+// inCell reports whether this panel is, or is inside, a cell of a Table, List or TableHeader that is attached to its
+// widget at the moment, which a cell is only while the widget is describing it, handing it an event or a request, or
+// keeping it as the cell that holds the keyboard focus.
+//
+// It is what keeps a link out of the focus there. A table hands the focus to a cell's content for the content to be
+// edited, and while a cell holds it the table passes over every key but the ones that leave the cell, so a link that
+// took the focus would leave the person on a row the arrow keys no longer moved from, with nothing to edit. The table
+// follows a link in a cell itself instead: a press on the cell is passed on to the link, and a click follows it as it
+// always did.
+func (p *Panel) inCell() bool {
+	for ancestor := p.parent; ancestor != nil; ancestor = ancestor.parent {
+		if _, ok := ancestor.Self.(axCellHolder); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // SetFocusable sets whether this panel can have the keyboard focus.
 func (p *Panel) SetFocusable(focusable bool) {
 	p.focusable = focusable
+}
+
+// isTabStop reports whether this panel is a tab stop in its own right, which is what the first of the three tiers
+// FirstFocusableChild and seedFocus choose between is made of. It is asked only of a panel that can take the focus, so
+// one that is disabled is a control taking it for a screen reader's sake alone, as standalone static text does: nothing
+// typed there goes anywhere. See Panel.axDisabledTakesFocus.
+func (p *Panel) isTabStop() bool {
+	return p.focusable && !p.disabled
+}
+
+// isReader reports whether this panel belongs to the second of those tiers: one that asked for the focus for an
+// assistive technology's sake through Panel.axFocusable, which is a document. Like isTabStop, it is asked only of a
+// panel that can take the focus, and a disabled document is left to the last tier for the same reason a disabled
+// control is: its reading caret answers no keys, so it is no place to start reading from while anything else can take
+// the focus.
+func (p *Panel) isReader() bool {
+	return p.axFocusable && !p.disabled
 }
 
 // Focused returns true if this panel has the keyboard focus.
@@ -522,7 +567,7 @@ func (p *Panel) RequestFocus() {
 // for an assistive technology's sake through Panel.axFocusable — a document, which is where a screen reader has to
 // begin reading, but which swallows typing that was meant for a field. Last comes anything else that can take the
 // focus, which on the platforms where axHeadingsTakeFocus is true means a heading, and wherever the application has
-// asked for it — see SetStaticTextFocusableForAccessibility — means standalone static text; it is returned only when
+// asked for it — see SetFocusForReading — means standalone static text and disabled controls; it is returned only when
 // nothing else in the subtree can take the focus at all, so that landing on it is a last resort rather than the first
 // stop. Window.SetFocus comes through here for a container, and DockContainer.AcquireFocus takes that path on every
 // dock tab switch, so the subtree is walked once and the best match of each tier is recorded as it goes.
@@ -547,10 +592,10 @@ func (p *Panel) firstFocusableChild() (tabStop, reader, other *Panel) {
 			continue
 		}
 		if child.Focusable() {
-			if child.focusable {
+			if child.isTabStop() {
 				return child, reader, other
 			}
-			if reader == nil && child.axFocusable {
+			if reader == nil && child.isReader() {
 				reader = child
 			}
 			if other == nil {
@@ -593,10 +638,10 @@ func (p *Panel) lastFocusableChild() (tabStop, reader, other *Panel) {
 			continue
 		}
 		if child.Focusable() {
-			if child.focusable {
+			if child.isTabStop() {
 				return child, reader, other
 			}
-			if reader == nil && child.axFocusable {
+			if reader == nil && child.isReader() {
 				reader = child
 			}
 			if other == nil {
@@ -780,31 +825,42 @@ func (p *Panel) RemoveCmdHandler(id int) {
 	}
 }
 
-// CanPerformCmd checks if this panel or its ancestors can perform the command. May be called on a nil Panel object.
-func (p *Panel) CanPerformCmd(src any, id int) bool {
-	current := p
-	for current != nil {
-		if f, ok := current.canPerformMap[id]; ok {
-			enabled := false
-			SafeCall(func() { enabled = f(src) })
-			return enabled
+// cmdHandlers returns the handlers CanPerformCmd and PerformCmd use for the command, which are those of the first
+// panel, starting with this one and going up through its ancestors, that is enabled and has handlers installed for it.
+// A panel that is not enabled is passed over, exactly as Window.keyPressed passes over one when it delivers a key, so
+// that a command chosen from a menu, or through its key equivalent, does not act on a disabled panel that holds the
+// keyboard focus, which a disabled control may do for a screen reader's sake; see SetFocusForReading.
+func (p *Panel) cmdHandlers(id int) (can func(any) bool, do func(any)) {
+	for current := p; current != nil; current = current.parent {
+		if !current.Enabled() {
+			continue
 		}
-		current = current.parent
+		if f, ok := current.canPerformMap[id]; ok {
+			return f, current.performMap[id]
+		}
 	}
-	return false
+	return nil, nil
 }
 
-// PerformCmd performs the command with the first handler found in this panel or its ancestors. May be called on a nil
-// Panel object. First calls CanPerformCmd() to ensure the command is permitted to be performed.
+// CanPerformCmd checks if this panel or its ancestors can perform the command. A panel that is not enabled is passed
+// over, as it is when a key is delivered, so its handlers are not consulted. May be called on a nil Panel object.
+func (p *Panel) CanPerformCmd(src any, id int) bool {
+	can, _ := p.cmdHandlers(id)
+	if can == nil {
+		return false
+	}
+	enabled := false
+	SafeCall(func() { enabled = can(src) })
+	return enabled
+}
+
+// PerformCmd performs the command with the first handler found in this panel or its ancestors, passing over any panel
+// that is not enabled. May be called on a nil Panel object. First calls CanPerformCmd() to ensure the command is
+// permitted to be performed.
 func (p *Panel) PerformCmd(src any, id int) {
 	if p.CanPerformCmd(src, id) {
-		current := p
-		for current != nil {
-			if f, ok := current.performMap[id]; ok {
-				SafeCall(func() { f(src) })
-				return
-			}
-			current = current.parent
+		if _, do := p.cmdHandlers(id); do != nil {
+			SafeCall(func() { do(src) })
 		}
 	}
 }

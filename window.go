@@ -767,8 +767,19 @@ func (w *Window) Focus() *Panel {
 	return w.focus
 }
 
-// SetFocus sets the keyboard focus to the specified target.
+// SetFocus sets the keyboard focus to the specified target. A target that cannot take the focus hands it to the first
+// panel within it that can, and so does a disabled one that holds a tab stop, even while it can take the focus itself
+// so that a screen reader can read it (see SetFocusForReading): the focus an application asks a container to take
+// belongs where the keyboard can be used.
 func (w *Window) SetFocus(target Paneler) {
+	w.setFocus(target, false)
+}
+
+// setFocus sets the keyboard focus to the specified target. When exact is true, a target that can take the focus is
+// given it whatever it holds, which is what moving through the tab order and a request from an assistive technology
+// both need: each names the panel the focus is to land on, and a disabled panel that handed the focus on to a tab stop
+// within it could be neither tabbed onto nor tabbed back past.
+func (w *Window) setFocus(target Paneler, exact bool) {
 	var newFocus *Panel
 	if target != nil {
 		newFocus = target.AsPanel()
@@ -779,10 +790,15 @@ func (w *Window) SetFocus(target Paneler) {
 		return
 	}
 	if newFocus.Window() == w {
-		if !newFocus.Focusable() {
+		switch {
+		case !newFocus.Focusable():
 			if newFocus = newFocus.FirstFocusableChild(); newFocus == nil {
 				w.removeFocus()
 				return
+			}
+		case !exact && newFocus.disabled:
+			if tabStop, _, _ := newFocus.firstFocusableChild(); tabStop != nil {
+				newFocus = tabStop
 			}
 		}
 		if !newFocus.Is(w.focus) {
@@ -832,13 +848,14 @@ func (w *Window) notifyOfFocusChangeInHierarchy(oldFocus, newFocus *Panel) {
 // When nothing holds the focus yet, the first real tab stop is preferred over anything that can take the focus only for
 // an assistive technology's sake, rather than simply taking the first panel that can take the focus at all. Those
 // differ only while an assistive technology is being served, when a heading, a document and, where the application
-// asked for it, standalone static text can take the focus as well — see Panel.axTakesFocus. A dialog whose first
-// element is a title heading, a line of text or an explanatory document should still open with the person in its first
-// field, where what they type goes somewhere. Only when there is no real tab stop does a document win: it is exactly
-// where a screen reader has to begin, since with nothing in the window holding the focus Narrator's cursor stays on the
-// window's own element, from which it will not move into the content. A window holding nothing but headings and text
-// falls back to the first of them, since something in it has to be where a screen reader starts. See seedFocus, which
-// Panel.FirstFocusableChild matches tier for tier.
+// asked for it, standalone static text and disabled controls can take the focus as well — see Panel.axTakesFocus and
+// Panel.axDisabledTakesFocus. A dialog whose first element is a title heading, a line of text or an explanatory
+// document should still open with the person in its first field, where what they type goes somewhere. Only when there
+// is no real tab stop does a document win: it is exactly where a screen reader has to begin, since with nothing in the
+// window holding the focus Narrator's cursor stays on the window's own element, from which it will not move into the
+// content. A window holding nothing but headings, text and disabled controls falls back to the first of them, since
+// something in it has to be where a screen reader starts. See seedFocus, which Panel.FirstFocusableChild matches tier
+// for tier.
 func (w *Window) FocusNext() {
 	if w.root.contentPanel != nil {
 		// A panel that has been removed from the window while holding the focus is not in the window's tab order
@@ -860,7 +877,7 @@ func (w *Window) FocusNext() {
 				current = focusables[i]
 			}
 		}
-		w.SetFocus(current)
+		w.setFocus(current, true)
 	}
 }
 
@@ -885,7 +902,7 @@ func (w *Window) FocusPrevious() {
 				current = focusables[i]
 			}
 		}
-		w.SetFocus(current)
+		w.setFocus(current, true)
 	}
 }
 
@@ -913,9 +930,10 @@ func dropSeedingCandidate(focusables []*Panel, i int) []*Panel {
 // focus for an assistive technology's sake through Panel.axFocusable — a document, which is where a screen reader has
 // to begin reading, and which is the right answer for a window that holds nothing but content. Last comes anything
 // else, which is a heading or a piece of standalone static text that can take the focus only through the other arms of
-// Panel.axTakesFocus; when there is nothing but those, the first one the scan reaches is used anyway, since something
-// in the window has to be where a screen reader starts — a window of nothing but text opens in its first label. The
-// scan records the best of the later tiers as it goes, so the list is walked once.
+// Panel.axTakesFocus, or a disabled control or document (see Panel.isTabStop and Panel.isReader); when there is nothing
+// but those, the first one the scan reaches is used anyway, since something in the window has to be where a screen
+// reader starts — a window of nothing but text opens in its first label. The scan records the best of the later tiers
+// as it goes, so the list is walked once.
 func seedFocus(focusables []*Panel, backward bool) *Panel {
 	if len(focusables) == 0 {
 		return nil
@@ -926,10 +944,10 @@ func seedFocus(focusables []*Panel, backward bool) *Panel {
 		if backward {
 			p = focusables[len(focusables)-1-i]
 		}
-		if p.focusable {
+		if p.isTabStop() {
 			return p
 		}
-		if reader == nil && p.axFocusable {
+		if reader == nil && p.isReader() {
 			reader = p
 		}
 	}
@@ -1963,7 +1981,10 @@ func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 			return
 		}
 	}
-	if w.lastKeyDownPanel != nil && w.lastKeyDownPanel.KeyUpCallback != nil {
+	// The panel recorded is the one that took the key down or, when none did, the one holding the focus, which may be a
+	// disabled one: it was passed over for the key down and is passed over for the key up too, as is a panel that was
+	// disabled in between, as Window.mouseUp does for the release of a press.
+	if w.lastKeyDownPanel != nil && w.lastKeyDownPanel.KeyUpCallback != nil && w.lastKeyDownPanel.Enabled() {
 		SafeCall(func() { w.lastKeyDownPanel.KeyUpCallback(key, mods) })
 	}
 }

@@ -272,7 +272,9 @@ func (l *List[T]) cellParams(row int) (fg, bg Ink, selected, focused bool) {
 		selected = l.Selection.State(row)
 	}
 	switch {
-	case selected && focused && l.Enabled():
+	case selected && focused:
+		// Whether or not the list is enabled, since a disabled list may hold the focus so that a screen reader can
+		// read it, and these inks are all a list has to show that it does; see SetFocusForReading.
 		fg = l.OnSelectionInk
 		bg = l.SelectionInk
 	case selected:

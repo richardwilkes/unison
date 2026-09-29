@@ -48,5 +48,8 @@ func main() {
 	if *noGlobalMenuBar {
 		options = append(options, unison.NoGlobalMenuBar())
 	}
+	// Lets a person using a screen reader in its focus mode Tab to the demo's standalone text and disabled controls. It
+	// changes nothing for anyone else, so it is left on unconditionally.
+	unison.SetFocusForReading(true)
 	unison.Start(options...) // Never returns
 }

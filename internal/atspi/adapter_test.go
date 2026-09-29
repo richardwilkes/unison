@@ -507,6 +507,28 @@ func TestComponentGrabFocusAndScrollTo(t *testing.T) {
 	c.Equal(false, ta.one(NodePath(6), InterfaceComponent, "GrabFocus", ""),
 		"a focusable node that does not offer the focus action refuses, as the user interface thread would")
 	ta.noRequest(t)
+
+	// A disabled node offers the focus action only when the application has asked for disabled controls to be reachable
+	// by a screen reader, and is given the focus then. Every other disabled node has had the action taken away.
+	readable := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Generation++
+		tree.Node(8).Disabled = true
+	})
+	ta.Publish(mainWindow, readable, nil, sampleGeometry())
+	c.Equal(true, ta.one(NodePath(8), InterfaceComponent, "GrabFocus", ""),
+		"a disabled node that offers the focus action is given the focus")
+	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.Focus}, ta.nextRequest(t))
+	unreachable := activeMainTree(func(tree *accessibility.Tree) {
+		tree.Generation += 2
+		tree.Node(8).Disabled = true
+		tree.Node(8).Actions = tree.Node(8).Actions.Without(accessibility.Focus)
+	})
+	ta.Publish(mainWindow, unreachable, nil, sampleGeometry())
+	c.Equal(false, ta.one(NodePath(8), InterfaceComponent, "GrabFocus", ""),
+		"a disabled node that does not offer it refuses")
+	ta.noRequest(t)
+	ta.Publish(mainWindow, activeMainTree(func(tree *accessibility.Tree) { tree.Generation += 3 }), nil,
+		sampleGeometry())
 	c.Equal(true, ta.one(NodePath(8), InterfaceComponent, "ScrollTo", "u", uint32(0)))
 	c.Equal(accessibility.ActionRequest{Node: 8, Action: accessibility.ScrollIntoView}, ta.nextRequest(t))
 	c.Equal(false, ta.one(NodePath(4), InterfaceComponent, "ScrollTo", "u", uint32(0)),

@@ -21,11 +21,11 @@ import (
 	"github.com/richardwilkes/unison/enums/role"
 )
 
-// These tests cover the keyboard focus standalone static text takes for a screen reader's sake; see
-// SetStaticTextFocusableForAccessibility, AccessibilityInfo.FocusForReading and Panel.axStaticTextTakesFocus. They use
-// plain labels rather than headings, since a headless session answers as Linux does and lets a heading take the focus
-// through an arm of its own; TestStaticTextFocusByRole turns that arm off. A session owns most of the package's mutable
-// globals while it runs, so none of these may call t.Parallel.
+// These tests cover the keyboard focus standalone static text takes for a screen reader's sake; see SetFocusForReading,
+// AccessibilityInfo.FocusForReading and Panel.axStaticTextTakesFocus. They use plain labels rather than headings, since
+// a headless session answers as Linux does and lets a heading take the focus through an arm of its own;
+// TestStaticTextFocusByRole turns that arm off. A session owns most of the package's mutable globals while it runs, so
+// none of these may call t.Parallel.
 
 func staticTextLabel(title string) *Label {
 	l := NewLabel()
@@ -60,7 +60,7 @@ func staticTextColumn(panels ...Paneler) *Panel {
 
 func restoreStaticTextFocus(t *testing.T) {
 	t.Helper()
-	t.Cleanup(func() { staticTextTakesFocus.Store(false) })
+	t.Cleanup(func() { focusForReading.Store(false) })
 }
 
 func staticTextFocusable(screen *HeadlessScreen, p Paneler) bool {
@@ -107,7 +107,7 @@ func TestStaticTextFocusIsOffByDefault(t *testing.T) {
 	c.NotNil(wnd)
 	screen.Sync()
 
-	c.False(StaticTextFocusableForAccessibility(), "the switch is off until the application turns it on")
+	c.False(FocusForReading(), "the switch is off until the application turns it on")
 	screen.EnableAccessibility()
 	c.True(IsAccessibilityActive())
 	c.False(staticTextFocusable(screen, text), "a standalone label is not a tab stop by default")
@@ -143,9 +143,9 @@ func TestStaticTextFocusNeedsAnAssistiveTechnology(t *testing.T) {
 	c.NotNil(wnd)
 	screen.Sync()
 
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
-	c.True(StaticTextFocusableForAccessibility(), "the switch reports what it was set to")
+	c.True(FocusForReading(), "the switch reports what it was set to")
 	c.False(IsAccessibilityActive(), "turning the switch on must not start accessibility support")
 	c.False(staticTextFocusable(screen, text), "with nothing listening, a label is not a tab stop")
 
@@ -202,7 +202,7 @@ func TestStaticTextTakesFocusExceptCaptions(t *testing.T) {
 	screen.EnableAccessibility()
 	c.NotNil(screen.AccessibilityTree(wnd))
 	before := staticTextSnapshots(screen)
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 	c.True(staticTextSnapshots(screen) > before, "turning the switch on describes the window again")
 
@@ -317,7 +317,7 @@ func TestStaticTextFocusExclusions(t *testing.T) {
 	c.NotNil(wnd)
 	screen.Sync()
 	screen.EnableAccessibility()
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 
 	c.False(staticTextFocusable(screen, inReader), "a document reads its own content")
@@ -404,7 +404,7 @@ func TestStaticTextSeedsTheFocusLast(t *testing.T) {
 	c.NotNil(textOnly)
 	screen.Sync()
 	screen.EnableAccessibility()
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 	c.True(staticTextFocusable(screen, lead), "the label before the field is standalone text, and a tab stop")
 	c.True(staticTextFocusable(screen, trailing))
@@ -463,7 +463,7 @@ func TestStaticTextFocusRuntimeToggle(t *testing.T) {
 	}
 
 	screen.EnableAccessibility()
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 	screen.Do(func() { wnd.SetFocus(text) })
 	c.True(focus().Is(text), "the label takes the focus while the switch is on")
@@ -472,9 +472,9 @@ func TestStaticTextFocusRuntimeToggle(t *testing.T) {
 
 	// Called off the UI thread, as a worker goroutine would.
 	snapshots := staticTextSnapshots(screen)
-	SetStaticTextFocusableForAccessibility(false)
+	SetFocusForReading(false)
 	screen.Sync()
-	c.False(StaticTextFocusableForAccessibility())
+	c.False(FocusForReading())
 	c.True(focus().Is(text), "turning the switch off leaves the focus where it is")
 	c.False(staticTextFocusable(screen, text), "but the label is no longer a tab stop")
 	c.True(staticTextSnapshots(screen) > snapshots, "the window is described again to say so")
@@ -493,23 +493,23 @@ func TestStaticTextFocusRuntimeToggle(t *testing.T) {
 	c.True(focus().Is(before), "so Tab lands on the window's first tab stop, not the field after the label")
 
 	snapshots = staticTextSnapshots(screen)
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 	c.True(staticTextFocusable(screen, text), "turning it back on makes the label a tab stop again")
 	c.True(staticTextSnapshots(screen) > snapshots, "and describes the window again")
 	staticTextCheckNode(c, screen, text, true, "the label with the switch back on")
 
 	screen.Do(func() { wnd.SetFocus(text) })
-	SetStaticTextFocusableForAccessibility(false)
+	SetFocusForReading(false)
 	screen.Sync()
 	c.True(focus().Is(text))
 	screen.KeyPress(KeyTab, mod.Shift)
 	c.True(focus().Is(after), "and Shift-Tab lands on the window's last tab stop, not the field before the label")
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 
 	snapshots = staticTextSnapshots(screen)
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 	c.Equal(snapshots, staticTextSnapshots(screen), "setting the value it already has describes nothing")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
@@ -556,7 +556,7 @@ func TestStaticTextFocusByRole(t *testing.T) {
 	c.False(staticTextFocusable(screen, heading), "where headings do not take the focus, one is not a tab stop by default")
 	c.False(staticTextFocusable(screen, named), "nor is a panel marked up as a label")
 
-	SetStaticTextFocusableForAccessibility(true)
+	SetFocusForReading(true)
 	screen.Sync()
 	c.True(staticTextFocusable(screen, named), "a panel marked up as a label takes the focus on the strength of its name")
 	c.False(staticTextFocusable(screen, nameless), "one with nothing to announce is no place to land")
@@ -593,7 +593,7 @@ func TestFocusForReadingOptsInOnePanel(t *testing.T) {
 	c.False(staticTextFocusable(screen, reading), "with nothing listening, even an opted-in label is not a tab stop")
 	screen.EnableAccessibility()
 	c.NotNil(screen.AccessibilityTree(wnd))
-	c.False(StaticTextFocusableForAccessibility(), "the switch itself is still off")
+	c.False(FocusForReading(), "the switch itself is still off")
 	c.True(staticTextFocusable(screen, reading), "the label that asked takes the focus")
 	c.False(staticTextFocusable(screen, plain), "the one beside it, which did not ask, does not")
 	c.False(staticTextFocusable(screen, caption), "and a caption that asked is still spoken with its field instead")
@@ -608,10 +608,10 @@ func TestStaticTextFocusDoesNotOutliveTheSession(t *testing.T) {
 	c := check.New(t)
 	restoreStaticTextFocus(t)
 	screen := startHeadlessTest(t, HeadlessConfig{Width: 200, Height: 200})
-	SetStaticTextFocusableForAccessibility(true)
-	c.True(StaticTextFocusableForAccessibility())
+	SetFocusForReading(true)
+	c.True(FocusForReading())
 	c.True(screen.Quit(), "the session should end")
 	next := startHeadlessTest(t, HeadlessConfig{Width: 200, Height: 200})
 	c.True(next.Running())
-	c.False(StaticTextFocusableForAccessibility(), "the next session starts with the switch off")
+	c.False(FocusForReading(), "the next session starts with the switch off")
 }

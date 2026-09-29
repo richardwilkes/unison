@@ -17,6 +17,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/gradienttype"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // ColorEditor provides a widget for editing a Color. It always operates on a copy of the Color it was given, so the
@@ -155,15 +156,24 @@ func (e *ColorEditor) addChannelField(title string, value int, adjuster func(val
 		return true
 	}
 	e.AddChild(field)
+	e.addHint(field, i18n.Text("0-255 or 0-100%"))
+	return slider, field
+}
 
-	l = NewLabel()
-	l.SetTitle(i18n.Text("0-255 or 0-100%"))
+// addHint adds the dimmed text that follows a field to say what may be typed into it. The text is dimmed by being
+// disabled, and it is said as the field's description rather than being described as an element of its own: that
+// would be static text a screen reader announces as unavailable, and a tab stop after every field wherever the
+// application has asked for what is disabled to be reachable by one; see SetFocusForReading.
+func (e *ColorEditor) addHint(field *Field, hint string) {
+	field.Accessibility.Description = hint
+	l := NewLabel()
+	l.SetTitle(hint)
 	l.SetEnabled(false)
+	l.Accessibility.Role = role.None
 	l.SetLayoutData(&FlexLayoutData{
 		VAlign: align.Middle,
 	})
 	e.AddChild(l)
-	return slider, field
 }
 
 func (e *ColorEditor) addHueField() (*Slider, *Field) {
@@ -217,14 +227,7 @@ func (e *ColorEditor) addHueField() (*Slider, *Field) {
 		return true
 	}
 	e.AddChild(field)
-
-	l = NewLabel()
-	l.SetTitle(i18n.Text("0-359"))
-	l.SetEnabled(false)
-	l.SetLayoutData(&FlexLayoutData{
-		VAlign: align.Middle,
-	})
-	e.AddChild(l)
+	e.addHint(field, i18n.Text("0-359"))
 	return slider, field
 }
 
@@ -282,14 +285,7 @@ func (e *ColorEditor) addPercentageField(title string, value float32, adjuster f
 		return true
 	}
 	e.AddChild(field)
-
-	l = NewLabel()
-	l.SetTitle(i18n.Text("0-100%"))
-	l.SetEnabled(false)
-	l.SetLayoutData(&FlexLayoutData{
-		VAlign: align.Middle,
-	})
-	e.AddChild(l)
+	e.addHint(field, i18n.Text("0-100%"))
 	return slider, field
 }
 

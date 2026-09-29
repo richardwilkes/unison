@@ -673,10 +673,11 @@ func TestFragmentRootAndEmbedded(t *testing.T) {
 // element that cannot take the focus says so instead of quietly doing nothing.
 //
 // Three things make it impossible, and each is answered the way the pattern write paths answer it: the element is
-// disabled, which is E_ELEMENTNOTENABLED; it cannot take the focus at all, or does not offer the Focus action,
-// which is the snapshot's own statement that nothing would happen; or the window has nowhere to send the request.
-// Window.dispatchAccessibilityAction drops a request for an action a node does not offer, so answering S_OK would
-// leave a client waiting for a focus event that is never coming.
+// disabled and does not offer the Focus action, which is E_ELEMENTNOTENABLED; it is enabled and cannot take the focus
+// at all, or does not offer the action, which is the snapshot's own statement that nothing would happen; or the window
+// has nowhere to send the request. Window.dispatchAccessibilityAction drops a request for an action a node does not
+// offer, so answering S_OK would leave a client waiting for a focus event that is never coming. A disabled element
+// that does offer the action is one the application asked to be reachable by a screen reader, and is given the focus.
 func TestSetFocus(t *testing.T) {
 	c := check.New(t)
 	w := newTestWindow(t, sampleTree())
@@ -691,9 +692,9 @@ func TestSetFocus(t *testing.T) {
 	c.Equal(E_INVALIDOPERATION, fragmentSetFocus(w.providerFor(5).ifacePtr(ifaceFragment)))
 	c.Equal(1, len(w.recorded()))
 
-	// A node that reports itself focusable while offering no Focus action refuses too. The pair is reachable:
-	// axSnapshot.resolveFocus marks the node an open menu points at focusable after visit has narrowed a disabled
-	// node's actions, and an Accessibility.Callback that sets Disabled leaves Focusable alone.
+	// A node that reports itself focusable while offering no Focus action refuses too. The pair is reachable: an
+	// Accessibility.Callback that sets Disabled has the node's actions narrowed while its Focusable is left alone, and
+	// a callback may take the action away itself.
 	actionless := sampleTree()
 	actionless.Nodes[4].Actions = 0
 	actionless.Generation = 2
@@ -701,13 +702,27 @@ func TestSetFocus(t *testing.T) {
 	c.Equal(E_INVALIDOPERATION, fragmentSetFocus(w.providerFor(4).ifacePtr(ifaceFragment)))
 	c.Equal(1, len(w.recorded()))
 
-	// A disabled node is refused with the answer every pattern write path gives for one, whatever its actions say.
+	// A disabled node that does not offer the focus is refused with the answer every pattern write path gives for one.
 	disabled := sampleTree()
 	disabled.Nodes[4].Disabled = true
+	disabled.Nodes[4].Actions = disabled.Nodes[4].Actions.Without(accessibility.Focus)
 	disabled.Generation = 3
 	w.Publish(disabled, nil)
 	c.Equal(E_ELEMENTNOTENABLED, fragmentSetFocus(w.providerFor(4).ifacePtr(ifaceFragment)))
 	c.Equal(1, len(w.recorded()))
+
+	// One that offers it is a control the application asked to be reachable by a screen reader, and is given it.
+	readable := sampleTree()
+	readable.Nodes[4].Disabled = true
+	readable.Generation = 4
+	w.Publish(readable, nil)
+	c.Equal(w32.COM_S_OK, fragmentSetFocus(w.providerFor(4).ifacePtr(ifaceFragment)))
+	requests = w.recorded()
+	c.Equal(2, len(requests))
+	if len(requests) == 2 {
+		c.Equal(accessibility.NodeID(4), requests[1].Node)
+		c.Equal(accessibility.Focus, requests[1].Action)
+	}
 
 	// A window with nowhere to send actions must refuse rather than report success.
 	plain := newActionlessWindow(t, sampleTree())
@@ -1096,6 +1111,38 @@ func TestGetPropertyValue(t *testing.T) {
 	value.Clear()
 
 	c.Equal(w32.COM_E_POINTER, simpleGetPropertyValue(w.providerFor(5).ifacePtr(ifaceSimple), 0, 0))
+}
+
+// TestDisabledControlHoldingTheFocusProperties verifies how a disabled control that takes the focus so that a screen
+// reader can read it is exposed: it is not enabled, and it can take the keyboard focus and holds it, which is what has
+// a screen reader announce it as unavailable in place of passing over it. One that cannot take the focus says so.
+func TestDisabledControlHoldingTheFocusProperties(t *testing.T) {
+	c := check.New(t)
+	var pin runtime.Pinner
+	defer pin.Unpin()
+	value, valueAddress := pinnedOut[VARIANT](&pin)
+	tree := sampleTree()
+	tree.Nodes[4].Disabled = true
+	tree.Nodes[4].Actions = accessibility.ActionSet(0).With(accessibility.ScrollIntoView, accessibility.Focus)
+	tree.Nodes[5].Disabled = true
+	w := newTestWindow(t, tree)
+
+	property := func(node accessibility.NodeID, id PropertyID) bool {
+		p := w.providerFor(node)
+		c.NotNil(p)
+		c.Equal(w32.COM_S_OK, simpleGetPropertyValue(p.ifacePtr(ifaceSimple), uintptr(id), valueAddress))
+		c.Equal(VT_BOOL, value.VT)
+		result := variantBool(value)
+		value.Clear()
+		return result
+	}
+
+	c.False(property(4, IsEnabledPropertyId))
+	c.True(property(4, IsKeyboardFocusablePropertyId))
+	c.True(property(4, HasKeyboardFocusPropertyId))
+	c.False(property(5, IsEnabledPropertyId))
+	c.False(property(5, IsKeyboardFocusablePropertyId))
+	c.False(property(5, HasKeyboardFocusPropertyId))
 }
 
 // TestHelpTextCarriesPlaceholder verifies that the watermark of a field with no description of its own is reported

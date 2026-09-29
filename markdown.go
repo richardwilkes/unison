@@ -32,6 +32,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/slant"
@@ -1176,6 +1177,28 @@ func (m *Markdown) createLink(label, target, tooltip string) *Label {
 		tooltip = target
 	}
 	link := NewLink(label, tooltip, target, &theme, m.linkHandler)
+	// A document handles its own links: it is the document that takes the keyboard focus, and the link under its
+	// reading caret that Return and Space follow; see Markdown.DefaultKeyDown. A link that holds no focus is never
+	// outlined, so the room NewLink left for the outline is given back to the words around the link.
+	link.SetFocusable(false)
+	link.SetBorder(nil)
+	// The link is the deepest panel under a press on it, so the press never reaches the document, which would have
+	// taken the focus and placed its reading caret for a press anywhere else within it. While the document can take the
+	// focus, it is therefore given the focus here, with its caret put on the link unless it is there already, as it is
+	// when Return or Space is what is following the link. A screen reader then finds the person on the link they
+	// followed rather than wherever the focus was before. Nothing changes for a document that cannot take the focus.
+	press := link.MouseDownCallback
+	link.MouseDownCallback = func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
+		if button == ButtonLeft && m.Focusable() {
+			m.RequestFocus()
+			doc := m.axDocument()
+			if !link.Is(doc.linkAt(m.axCaret())) {
+				pos := doc.offsetAt(link.PointTo(where, m.AsPanel()))
+				m.axSetSelection(pos, pos)
+			}
+		}
+		return press(where, button, clickCount, mods)
+	}
 	if m.text != nil {
 		_, prefSize, _ := link.Sizes(geom.Size{})
 		m.prepareToFlushText(prefSize.Width)
