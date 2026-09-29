@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/internal/cocoa"
@@ -48,24 +49,28 @@ func macSaveAccessibilityState(t *testing.T) {
 	})
 }
 
-// TestMacAccessibilityCallbacksInstalled proves the two Cocoa accessibility callbacks are wired up, which is what
-// nativeLateInit does at startup, and that both refuse a window they cannot resolve rather than acting on the wrong
-// one. Everything the adapter itself does needs a real screen and is tested in internal/cocoa. This test mutates
-// global state and therefore must not call t.Parallel.
+// TestMacAccessibilityCallbacksInstalled proves the Cocoa accessibility callbacks are wired up, which is what
+// nativeLateInit does at startup, and that the activation and action callbacks refuse a window they cannot resolve
+// rather than acting on the wrong one. Everything the adapter itself does needs a real screen and is tested in
+// internal/cocoa. This test mutates global state and therefore must not call t.Parallel.
 func TestMacAccessibilityCallbacksInstalled(t *testing.T) {
 	c := check.New(t)
 	savedActivate := cocoa.AccessibilityActivateCallback
 	savedAction := cocoa.AccessibilityActionCallback
+	savedStopped := cocoa.AccessibilityClientsStoppedCallback
 	t.Cleanup(func() {
 		cocoa.AccessibilityActivateCallback = savedActivate
 		cocoa.AccessibilityActionCallback = savedAction
+		cocoa.AccessibilityClientsStoppedCallback = savedStopped
 	})
 	cocoa.AccessibilityActivateCallback = nil
 	cocoa.AccessibilityActionCallback = nil
+	cocoa.AccessibilityClientsStoppedCallback = nil
 
 	macInitAccessibilityCallbacks()
 	c.NotNil(cocoa.AccessibilityActivateCallback)
 	c.NotNil(cocoa.AccessibilityActionCallback)
+	c.NotNil(cocoa.AccessibilityClientsStoppedCallback)
 
 	// A window that does not exist activates nothing, so nothing is built and no adapter appears.
 	before := axSnapshotCount
@@ -229,4 +234,88 @@ func TestMacAccessibilityActivateRefusesAWindowWithNothingToDescribe(t *testing.
 	c.False(IsAccessibilityActive(), "and neither may have turned snapshot building on")
 	c.Equal(snapshots, axSnapshotCount, "no snapshot may have been built")
 	c.Nil(w.ax, "and no state may have been created for the window")
+}
+
+// macServeTasks makes the test goroutine the UI thread, with an empty task queue that the test services itself.
+func macServeTasks(t *testing.T, c check.Checker) {
+	t.Helper()
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+	withUIThreadIdentity(t)
+}
+
+// macNewDescribableWindow puts a valid hand-built window with a root panel into the window list under macTestWindow,
+// so that macAccessibilityActivate can describe it. With no NSWindow behind it, its geometry and the trees published
+// for it go to the headless stand-in returned with it.
+func macNewDescribableWindow(t *testing.T) (*Window, *headlessWindow) {
+	t.Helper()
+	swapRedrawSet(t)
+	savedWake := redrawWakePending
+	t.Cleanup(func() { redrawWakePending = savedWake })
+	hw := &headlessWindow{rect: geom.NewRect(0, 0, 200, 100)}
+	w := &Window{wnd: &apiWindow{hw: hw}}
+	w.wnd.wnd = macTestWindow
+	w.valid = true
+	w.root = newRootPanel(w)
+	hw.w = w
+	windowList = append(windowList, w)
+	return w, hw
+}
+
+// TestMacAccessibilityClientsStoppedDeactivates covers VoiceOver and Switch Control both having been turned off:
+// support is turned off on the UI thread whichever thread reported it, every window's adapter is shut down, and the
+// next query a content view receives turns support back on. This test mutates global state and therefore must not call
+// t.Parallel.
+func TestMacAccessibilityClientsStoppedDeactivates(t *testing.T) {
+	c := check.New(t)
+	macSaveAccessibilityState(t)
+	macServeTasks(t, c)
+	w, hw := macNewDescribableWindow(t)
+	bare := &Window{wnd: &apiWindow{}, ax: &windowAccessibility{}}
+	windowList = append(windowList, bare)
+
+	macAccessibilityActivate(macTestWindow)
+	c.True(IsAccessibilityActive())
+	c.NotNil(w.ax)
+	c.NotNil(hw.axTree)
+
+	// KVO may report the stop on any thread; it is handed to the UI thread.
+	reported := make(chan struct{})
+	go func() {
+		macAccessibilityClientsStopped()
+		close(reported)
+	}()
+	<-reported
+	c.True(IsAccessibilityActive(), "nothing may be turned off anywhere but the UI thread")
+	processNextTask()
+	c.False(IsAccessibilityActive())
+	c.Nil(w.ax, "every window's accessibility state must be freed")
+	c.Nil(hw.axTree, "and its adapter shut down")
+	c.Nil(bare.ax)
+	length, head := taskQueueState()
+	c.Equal(0, length-head, "nothing further may be queued")
+
+	// Nothing was refused, so the next query turns support back on.
+	macAccessibilityActivate(macTestWindow)
+	c.True(IsAccessibilityActive())
+	c.NotNil(w.ax)
+	c.NotNil(hw.axTree)
+}
+
+// TestMacAccessibilityClientsStoppedKeepsAForcedApplication covers an application AccessibilityEnvKey forced support
+// on for: VoiceOver and Switch Control stopping leaves support on. This test mutates global state and therefore must
+// not call t.Parallel.
+func TestMacAccessibilityClientsStoppedKeepsAForcedApplication(t *testing.T) {
+	c := check.New(t)
+	macSaveAccessibilityState(t)
+	macServeTasks(t, c)
+	accessibilityEnv.Store(1)
+	accessibilityActive.Store(true)
+	w := &Window{wnd: &apiWindow{}, ax: &windowAccessibility{}}
+	windowList = append(windowList, w)
+
+	macAccessibilityClientsStopped()
+	c.True(IsAccessibilityActive())
+	c.NotNil(w.ax)
 }

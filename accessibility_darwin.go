@@ -51,14 +51,17 @@ var axHeadingsTakeFocus = false
 //
 // Nothing here runs until an assistive technology queries a window's content view. That query reaches
 // macAccessibilityActivate, which is the only thing on this platform that turns snapshot building on; before it happens
-// no window has an adapter and no tree has been built. Once it has happened the window stays described for the rest of
-// its life: macOS gives no notification that the last assistive technology has gone away, so there is nothing to
-// deactivate on.
+// no window has an adapter and no tree has been built. Support is turned off again when VoiceOver or Switch Control was
+// on and neither is any more (macAccessibilityClientsStopped). No other client says when it has gone, so support it
+// turned on stays on.
 
-// macInitAccessibilityCallbacks installs the three callbacks the Cocoa accessibility adapter reaches the root package
-// through. It is called once, from nativeLateInit, and installs nothing but function pointers: no snapshot is built and
-// no adapter is created until an assistive technology asks something.
+// macInitAccessibilityCallbacks installs the callbacks the Cocoa accessibility adapter reaches the root package
+// through, and the observer that reports VoiceOver and Switch Control being turned off. It is called once, from
+// nativeLateInit, so a headless session never installs them. No snapshot is built and no adapter is created until an
+// assistive technology asks something.
 func macInitAccessibilityCallbacks() {
+	cocoa.AccessibilityClientsStoppedCallback = macAccessibilityClientsStopped
+	cocoa.InstallAXClientObserver()
 	cocoa.AccessibilityActivateCallback = macAccessibilityActivate
 	cocoa.AccessibilityActionCallback = func(macWnd cocoa.Window, req accessibility.ActionRequest) {
 		// Finding the window is itself UI-thread work: the search is over windowList, which every window opening and
@@ -182,6 +185,19 @@ func macAccessibilityActivate(macWnd cocoa.Window) bool {
 	w.ValidateLayout()
 	w.publishAccessibilityNow()
 	return w.wnd.ax != nil
+}
+
+// macAccessibilityClientsStopped turns support off when VoiceOver and Switch Control have both been turned off, unless
+// AccessibilityEnvKey forced it on. A client that is still there turns support back on with its next query.
+func macAccessibilityClientsStopped() {
+	if !onUIThread() {
+		InvokeTask(macAccessibilityClientsStopped)
+		return
+	}
+	if accessibilityEnv.Load() > 0 {
+		return
+	}
+	deactivateAccessibility()
 }
 
 // nativeAccessibilityPublish hands a freshly built snapshot, and the events describing how it differs from the one

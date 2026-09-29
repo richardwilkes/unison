@@ -137,20 +137,21 @@
 //
 // Until an assistive technology has actually asked for it, none of this costs anything beyond the AccessibilityInfo
 // each panel carries and one atomic load per window drawn or withdrawn per pass: no hierarchy is walked, nothing is
-// allocated, and no goroutine or platform object exists. The one exception is what it takes to be asked at all on
-// Linux, where nothing arrives unbidden: one property read, one name-owner lookup and two match rules at startup, all
-// on the session bus connection that is already there for the color scheme. What counts as asking differs by platform:
+// allocated, and no goroutine or platform object exists. The exceptions are what it takes to be asked at all on Linux,
+// where nothing arrives unbidden: one property read, one name-owner lookup and two match rules at startup, all on the
+// session bus connection that is already there for the color scheme; and on macOS, one key-value observer that learns
+// when VoiceOver or Switch Control is turned off. What counts as asking differs by platform:
 //
 //   - macOS: the first accessibility query AppKit delivers to a window's content view, which is what VoiceOver or
-//     Accessibility Inspector sends on reaching the application. macOS never says that the last assistive technology
-//     has gone, so support stays on afterwards.
+//     Accessibility Inspector sends on reaching the application. Support is turned off again once VoiceOver and Switch
+//     Control are both off after either was on; no other client says when it has gone, so support it turned on stays
+//     on.
 //   - Windows: the first WM_GETOBJECT asking for the UI Automation root object. Events are raised only while UI
 //     Automation reports a listening client, so a window that goes on being described after every client has gone costs
 //     the snapshots and nothing more.
 //   - Linux: the accessibility bus launcher's org.a11y.Status.IsEnabled property, read once at startup over the session
 //     bus connection the color-scheme watcher already keeps, and then watched, so a screen reader started or stopped
-//     while the application runs is followed both ways — which makes Linux the one platform where support is also torn
-//     down again. NO_AT_BRIDGE=1 refuses it outright, exactly as it does for GTK.
+//     while the application runs is followed both ways. NO_AT_BRIDGE=1 refuses it outright, exactly as it does for GTK.
 //
 // [AccessibilityEnvKey] overrides that decision: UNISON_ACCESSIBILITY=1 builds and publishes descriptions whether or
 // not anything appears to be listening, which is useful for seeing what a screen reader would be told, while
