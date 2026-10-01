@@ -27,6 +27,7 @@ var (
 	ThemeTooltip          = DefaultThemeTooltip()
 	ThemeError            = DefaultThemeError()
 	ThemeWarning          = DefaultThemeWarning()
+	ThemeAlert            = DefaultThemeAlert()
 	ThemeCursorForeground = DefaultThemeCursorForeground()
 	ThemeCursorBackground = DefaultThemeCursorBackground()
 )
@@ -54,6 +55,7 @@ var (
 	ThemeOnTooltip          = ThemeTooltip.DeriveOn()
 	ThemeOnError            = ThemeError.DeriveOn()
 	ThemeOnWarning          = ThemeWarning.DeriveOn()
+	ThemeOnAlert            = ThemeAlert.DeriveOn()
 )
 
 // DefaultThemeSurface returns the default surface color.
@@ -84,6 +86,11 @@ func DefaultThemeError() *ThemeColor {
 // DefaultThemeWarning returns the default warning color.
 func DefaultThemeWarning() *ThemeColor {
 	return &ThemeColor{Light: RGB(217, 76, 0), Dark: RGB(191, 67, 0)}
+}
+
+// DefaultThemeAlert returns the default alert color.
+func DefaultThemeAlert() *ThemeColor {
+	return &ThemeColor{Light: RGB(232, 200, 96), Dark: RGB(204, 172, 76)}
 }
 
 // DefaultThemeCursorForeground returns the default cursor foreground color, used for the body and linework of the

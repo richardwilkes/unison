@@ -642,6 +642,24 @@ func (c Color) AdjustPerceivedLightness(adj float32) Color {
 	return OKLCH(rl+adj, rc, rh, c.AlphaIntensity())
 }
 
+// Contrast returns the WCAG contrast ratio of the two colors, from 1 for no difference up to 21 for black on white.
+func (c Color) Contrast(other Color) float64 {
+	luminance := c.Luminance()
+	otherLuminance := other.Luminance()
+	return (max(luminance, otherLuminance) + 0.05) / (min(luminance, otherLuminance) + 0.05)
+}
+
+// Luminance returns the WCAG relative luminance of the color.
+func (c Color) Luminance() float64 {
+	channel := func(v float32) float64 {
+		if v <= 0.04045 {
+			return float64(v) / 12.92
+		}
+		return math.Pow((float64(v)+0.055)/1.055, 2.4)
+	}
+	return 0.2126*channel(c.RedIntensity()) + 0.7152*channel(c.GreenIntensity()) + 0.0722*channel(c.BlueIntensity())
+}
+
 // Colors used for the On() method.
 var (
 	OnLight = RGB(16, 16, 16)
