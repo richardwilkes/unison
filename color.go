@@ -671,7 +671,19 @@ func (c Color) On() Color {
 	return c.OnCustom(OnLight, OnDark)
 }
 
-// OnCustom returns onLightColor if the input color is light, otherwise onDarkColor.
+// ShadedOrTintedOn returns the color of text drawn on the color: a deep shade of its own hue, or a pale tint of it when
+// that would stand further apart, so the text keeps the color's tone while reading well against it.
+func (c Color) ShadedOrTintedOn() Color {
+	_, chroma, hue := c.OKLCH()
+	shade := OKLCH(0.22, min(chroma, 0.05), hue, 1)
+	tint := OKLCH(0.98, min(chroma, 0.02), hue, 1)
+	if c.Contrast(tint) > c.Contrast(shade) {
+		return tint
+	}
+	return shade
+}
+
+// OnCustom returns onLightColor if the receiver color is light, otherwise onDarkColor.
 func (c Color) OnCustom(onLightColor, onDarkColor Color) Color {
 	if c.PerceivedLightness() > 0.6 {
 		return onLightColor
