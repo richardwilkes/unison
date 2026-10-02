@@ -384,3 +384,46 @@ func TestQuittingOnUIThreadRunsInline(t *testing.T) {
 	c.Equal(0, length, "a quit on the UI thread must not enqueue a task")
 	c.Equal(0, head)
 }
+
+// TestFilesRequestedAtLaunchNilOnceStartupHasBegun verifies that FilesRequestedAtLaunch leaves the platform alone and
+// returns nil once Start has begun, whether startup is still in progress or has completed: by then, the launch phase it
+// would perform has already been performed by Start, and the files it would return belong to the OpenFilesCallback.
+// This test mutates global state and therefore must not call t.Parallel.
+func TestFilesRequestedAtLaunchNilOnceStartupHasBegun(t *testing.T) {
+	c := check.New(t)
+	initTermLock.Lock()
+	savedInitialized, savedInitializing := initialized, initializing
+	initTermLock.Unlock()
+	t.Cleanup(func() {
+		initTermLock.Lock()
+		initialized, initializing = savedInitialized, savedInitializing
+		initTermLock.Unlock()
+	})
+	for _, state := range []struct {
+		name                      string
+		initialized, initializing bool
+	}{
+		{name: "initializing", initializing: true},
+		{name: "initialized", initialized: true},
+	} {
+		initTermLock.Lock()
+		initialized, initializing = state.initialized, state.initializing
+		initTermLock.Unlock()
+		c.Nil(FilesRequestedAtLaunch(), "expected nil while %s", state.name)
+	}
+}
+
+// TestFilesRequestedAtLaunchNilUnderHeadless verifies that FilesRequestedAtLaunch, and the platform wrapper behind it,
+// return nil rather than reaching the operating system while a headless session stands in for it. This test runs a
+// headless session and therefore must not call t.Parallel.
+func TestFilesRequestedAtLaunchNilUnderHeadless(t *testing.T) {
+	c := check.New(t)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 200, Height: 100, Scale: 1})
+	var files, wrapperFiles []string
+	c.True(screen.Do(func() {
+		files = FilesRequestedAtLaunch()
+		wrapperFiles = apiFilesRequestedAtLaunch()
+	}))
+	c.Nil(files)
+	c.Nil(wrapperFiles)
+}

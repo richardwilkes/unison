@@ -105,6 +105,11 @@ func linuxXSettingsChanged() {
 	}
 }
 
+// nativeFilesRequestedAtLaunch returns nil, since files requested at launch arrive on the command line here.
+func nativeFilesRequestedAtLaunch() []string {
+	return nil
+}
+
 func nativeFinalFinishStartup() {
 }
 

@@ -79,6 +79,11 @@ func w32MonitorThemeChanges(key registry.Key) {
 	}
 }
 
+// nativeFilesRequestedAtLaunch returns nil, since files requested at launch arrive on the command line here.
+func nativeFilesRequestedAtLaunch() []string {
+	return nil
+}
+
 func nativeFinalFinishStartup() {
 	// Not used on Windows
 }

@@ -190,14 +190,21 @@ func UninstallMacAppDelegate() {
 	}
 }
 
-// FinishLaunching runs the main event loop via [NSApp run] until something stops it (unison's
-// AppDidFinishLaunchingCallback posts an empty event and stops the loop, so in practice this returns as soon as the
-// application has finished launching), then switches the activation policy to a regular application.
-func FinishLaunching() {
+// RunUntilFinishedLaunching runs the main event loop via [NSApp run] until something stops it, unless the application
+// has already finished launching, in which case it does nothing. unison's AppDidFinishLaunchingCallback posts an empty
+// event and stops the loop, so in practice this returns as soon as the application has finished launching. Any request
+// to open documents that the application was launched with is delivered to the delegate before
+// applicationDidFinishLaunching:, and therefore before this returns.
+func RunUntilFinishedLaunching() {
 	if !objc.Send[bool](objc.ID(Cls("NSRunningApplication")).Send(Sel("currentApplication")),
 		Sel("isFinishedLaunching")) {
 		sharedApp().Send(Sel("run"))
 	}
+}
+
+// FinishLaunching calls RunUntilFinishedLaunching, then switches the activation policy to a regular application.
+func FinishLaunching() {
+	RunUntilFinishedLaunching()
 	sharedApp().Send(Sel("setActivationPolicy:"), nsApplicationActivationPolicyRegular)
 }
 

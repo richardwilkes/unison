@@ -10,9 +10,11 @@
 package unison
 
 import (
+	"slices"
 	"sync"
 	"time"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
 
@@ -23,6 +25,19 @@ var (
 )
 
 func nativeBeginStartup() error {
+	if err := macInstallAppDelegate(); err != nil {
+		return err
+	}
+	nativeFillKeyCodes()
+	macInitWindowCallbacks()
+	cocoa.FinishLaunching()
+	return nil
+}
+
+// macInstallAppDelegate points the app delegate callbacks at their handlers and installs the delegate. It is shared by
+// nativeBeginStartup and nativeFilesRequestedAtLaunch, and may be called more than once, as happens when an application
+// calls FilesRequestedAtLaunch and then Start: cocoa.InstallMacAppDelegate replaces any prior installation.
+func macInstallAppDelegate() error {
 	// System-initiated termination (e.g. Dock -> Quit, logout) takes the same path as the in-app Quit menu item, so
 	// the AllowQuitCallback and per-window AllowCloseCallback vetoes are honored for both. The delegate always reports
 	// NSTerminateCancel to AppKit, so when the request is permitted, AttemptQuit is responsible for actually exiting.
@@ -38,13 +53,33 @@ func nativeBeginStartup() error {
 	}
 	cocoa.OpenFilesCallback = macOpenFilesRequested
 	// NOTE: Two additional app delegate callbacks exist: AppWillFinishLaunchingCallback and AppDidHideCallback.
-	if err := cocoa.InstallMacAppDelegate(); err != nil {
-		return err
+	return cocoa.InstallMacAppDelegate()
+}
+
+// nativeFilesRequestedAtLaunch performs the part of startup that lets AppKit finish launching the application, then
+// returns the files it was asked to open in the process. Documents handed to the application by the Finder or
+// LaunchServices arrive as an Apple Event, which AppKit turns into the delegate's application:openURLs: during the
+// finish-launching processing [NSApp run] performs, before it sends applicationDidFinishLaunching:. Since the
+// AppDidFinishLaunchingCallback installed by macInstallAppDelegate stops the loop, by the time
+// cocoa.RunUntilFinishedLaunching returns, macOpenFilesRequested has already buffered any such request. A later Start
+// repeats both steps harmlessly: the delegate is simply reinstalled, and RunUntilFinishedLaunching does nothing the
+// second time, since the application then reports isFinishedLaunching. The activation policy is deliberately left alone
+// here; that remains the job of cocoa.FinishLaunching, which only Start calls.
+func nativeFilesRequestedAtLaunch() []string {
+	if err := macInstallAppDelegate(); err != nil {
+		errs.Log(err)
+		return nil
 	}
-	nativeFillKeyCodes()
-	macInitWindowCallbacks()
-	cocoa.FinishLaunching()
-	return nil
+	cocoa.RunUntilFinishedLaunching()
+	return macFilesRequestedAtLaunch()
+}
+
+// macFilesRequestedAtLaunch returns a copy of the buffered open-files requests. The buffer itself is left intact, so
+// that nativeFinalFinishStartup still delivers its contents to the OpenFilesCallback should Start be called later.
+func macFilesRequestedAtLaunch() []string {
+	macPendingFilesLock.Lock()
+	defer macPendingFilesLock.Unlock()
+	return slices.Clone(macPendingFilesToOpen)
 }
 
 func nativeLateInit() {

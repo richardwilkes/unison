@@ -205,6 +205,25 @@ func start() error {
 	return err
 }
 
+// FilesRequestedAtLaunch returns the files the operating system asked the application to open when it launched it. It
+// exists for use before Start: on macOS, documents handed to an application by the Finder or LaunchServices (a
+// double-clicked file, an "Open With" choice, a file dropped on the Dock icon) do not arrive on the command line but as
+// an Apple Event, which AppKit delivers only while the application is finishing its launch inside its event loop. This
+// performs that part of startup -- which Start performs as well, so calling both is fine -- and returns the paths the
+// event named. The paths stay queued, so a later Start still delivers them to the OpenFilesCallback; an application
+// that acts on them itself and then calls Start anyway will be handed them again. It must be called on the UI thread,
+// which before Start is the thread main() runs on. It returns nil once Start has been called, under a headless session,
+// and on platforms where such requests arrive on the command line.
+func FilesRequestedAtLaunch() []string {
+	initTermLock.Lock()
+	started := initialized || initializing
+	initTermLock.Unlock()
+	if started {
+		return nil
+	}
+	return apiFilesRequestedAtLaunch()
+}
+
 func processEvents() {
 	apiWaitEvents()
 	finishProcessingEvents()

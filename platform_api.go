@@ -85,6 +85,13 @@ func apiBeginStartup() error {
 	return nativeBeginStartup()
 }
 
+func apiFilesRequestedAtLaunch() []string {
+	if activeHeadless() != nil {
+		return nil
+	}
+	return nativeFilesRequestedAtLaunch()
+}
+
 func apiLateInit() {
 	if hs := activeHeadless(); hs != nil {
 		hs.lateInit()

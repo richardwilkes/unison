@@ -83,6 +83,43 @@ func TestFinalFinishStartupSurvivesReentrantOpenFiles(t *testing.T) {
 	c.Equal([]string{"c"}, received[1])
 }
 
+// TestMacFilesRequestedAtLaunchReturnsCopy verifies that the snapshot FilesRequestedAtLaunch returns on macOS is a copy
+// of the buffered open-files requests that leaves the buffer intact, so that a later Start still delivers them to the
+// OpenFilesCallback: changing the copy must not reach the buffer, and requests buffered afterward must not reach the
+// copy. This test mutates global state and therefore must not call t.Parallel.
+func TestMacFilesRequestedAtLaunchReturnsCopy(t *testing.T) {
+	c := check.New(t)
+	macPendingFilesLock.Lock()
+	savedPending := macPendingFilesToOpen
+	savedMayIssue := macMayIssueFileOpens
+	macPendingFilesToOpen = nil
+	macMayIssueFileOpens = false
+	macPendingFilesLock.Unlock()
+	t.Cleanup(func() {
+		macPendingFilesLock.Lock()
+		macPendingFilesToOpen = savedPending
+		macMayIssueFileOpens = savedMayIssue
+		macPendingFilesLock.Unlock()
+	})
+
+	c.Nil(macFilesRequestedAtLaunch(), "nothing has been requested yet")
+
+	macOpenFilesRequested([]string{"/a", "/b"})
+	files := macFilesRequestedAtLaunch()
+	c.Equal([]string{"/a", "/b"}, files)
+	files[0] = "/changed"
+	macPendingFilesLock.Lock()
+	c.Equal([]string{"/a", "/b"}, macPendingFilesToOpen, "changing the copy must not change the buffer")
+	macPendingFilesLock.Unlock()
+
+	macOpenFilesRequested([]string{"/c"})
+	c.Equal([]string{"/changed", "/b"}, files, "a later request must not change the copy")
+	c.Equal([]string{"/a", "/b", "/c"}, macFilesRequestedAtLaunch(), "taking a copy must not drain the buffer")
+	macPendingFilesLock.Lock()
+	c.Equal([]string{"/a", "/b", "/c"}, macPendingFilesToOpen)
+	macPendingFilesLock.Unlock()
+}
+
 // TestAPIWithAutoreleasePool verifies the wrapper finishProcessingEvents brackets its work with runs the function it
 // is given (inside a real autorelease pool on macOS, so autoreleased objects created by tasks and draws are
 // reclaimed each pass instead of accumulating until process exit).
