@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // TestUpdateTooltipPassesAlignedAvoidRect verifies that updateTooltip hands UpdateTooltipCallback — and, through it,
@@ -42,4 +43,23 @@ func TestUpdateTooltipPassesAlignedAvoidRect(t *testing.T) {
 	unaligned := child.RectToRoot(child.ContentRect(true))
 	c.NotEqual(unaligned, unaligned.Align(), "the panel must sit at a fractional position for this test to mean anything")
 	c.Equal(unaligned.Align(), got)
+}
+
+// TestModifierKeyDownKeepsTooltip verifies that pressing a modifier on its own leaves a showing tooltip in place, while
+// any other key still clears it.
+func TestModifierKeyDownKeepsTooltip(t *testing.T) {
+	c := check.New(t)
+	w := newModalInputTestWindow()
+	tip := NewPanel()
+	modifiers := []KeyCode{
+		KeyLShift, KeyRShift, KeyLControl, KeyRControl, KeyLOption, KeyROption, KeyLCommand, KeyRCommand,
+	}
+	for _, key := range modifiers {
+		w.root.setTooltip(tip)
+		w.keyPressed(key, mod.Shift|mod.Command)
+		w.keyReleased(key, 0)
+		c.True(w.root.tooltipPanel == tip, key.String())
+	}
+	w.keyPressed(KeyS, mod.Shift|mod.Command)
+	c.True(w.root.tooltipPanel == nil)
 }

@@ -317,6 +317,16 @@ func KeyCodeFromKey(key string) KeyCode {
 	return KeyNone
 }
 
+// isModifierKey reports whether the key is one of the shift, control, option (alt) or command (Windows, super) keys.
+func isModifierKey(key KeyCode) bool {
+	switch key {
+	case KeyLShift, KeyRShift, KeyLControl, KeyRControl, KeyLOption, KeyROption, KeyLCommand, KeyRCommand:
+		return true
+	default:
+		return false
+	}
+}
+
 // Key returns a string version of the KeyCode for the purpose of serialization.
 func (k KeyCode) Key() string {
 	if k == 0 {
