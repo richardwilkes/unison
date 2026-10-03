@@ -1849,7 +1849,11 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 			return
 		}
 	}
-	w.ClearTooltip()
+	// A modifier on its own leaves the tooltip alone, since it may be the start of a chord meant for the OS rather than
+	// for this window.
+	if !isModifierKey(key) {
+		w.ClearTooltip()
+	}
 	w.lastKeyDownPanel = nil
 	if !repeat && isContextMenuKey(key, mods) {
 		// The Menu key and shift+F10 open the contextual menu of the panel holding the focus. This comes before the
