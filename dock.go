@@ -29,7 +29,7 @@ var (
 var DefaultDockTheme = DockTheme{
 	BackgroundInk: ThemeSurface,
 	DividerInk:    ThemeDeepBelowSurface,
-	GripInk:       ThemeSurfaceEdge,
+	GripInk:       ThemeDragHandle,
 	DropAreaInk:   ThemeWarning,
 	GripCount:     5,
 	GripGap:       1,

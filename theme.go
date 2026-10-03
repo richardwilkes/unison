@@ -42,6 +42,7 @@ var (
 	ThemeDeeperFocus      = ThemeFocus.DeriveLightness(-0.1, -0.1)
 	ThemeDeepestFocus     = ThemeFocus.DeriveLightness(-0.15, -0.15)
 	ThemeTooltipEdge      = ThemeTooltip.DeriveLightness(-0.2, -0.2)
+	ThemeDragHandle       = ThemeSurface.DeriveLightness(-0.1, 0.15)
 
 	ThemeOnSurface          = ThemeSurface.DeriveOn()
 	ThemeOnAboveSurface     = ThemeAboveSurface.DeriveOn()
