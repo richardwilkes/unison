@@ -136,7 +136,7 @@ func checkIPPStatus(rsp *goipp.Message) error {
 	if rsp.Code <= 0xFF {
 		return nil
 	}
-	msg := fmt.Sprintf(i18n.Text("Error code 0x%04x"), rsp.Code)
+	msg := i18n.Text("Error code 0x%04x", rsp.Code)
 	if s := NewAttributes(rsp.Operation).Strings("status-message", nil); s != nil {
 		msg += ":\n" + strings.Join(s, "\n")
 	}

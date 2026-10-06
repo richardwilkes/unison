@@ -922,7 +922,7 @@ func ItemStatus(n *accessibility.Node) string {
 	if status == "" {
 		return i18n.Text("Busy")
 	}
-	return status + ", " + i18n.Text("Busy")
+	return i18n.Text("%s, Busy", status)
 }
 
 // WindowInteractionStateOf returns the value of the WindowInteractionState property for a fragment root. A window the

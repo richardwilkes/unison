@@ -11,7 +11,6 @@ package unison
 
 import (
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -123,7 +122,7 @@ func (d *x11OpenDialog) x11RunKDialog(kdialog string) bool {
 	if d.CanChooseFiles() {
 		allowed := d.x11PrepExt()
 		if len(allowed) != 0 {
-			cmd.Args = append(cmd.Args, fmt.Sprintf(i18n.Text("Readable Files (%s)"), strings.Join(allowed, " ")))
+			cmd.Args = append(cmd.Args, i18n.Text("Readable Files (%s)", strings.Join(allowed, " ")))
 		}
 	}
 	return d.x11RunModal(cmd, "\n")

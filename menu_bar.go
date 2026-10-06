@@ -10,8 +10,6 @@
 package unison
 
 import (
-	"fmt"
-
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/check"
@@ -76,7 +74,7 @@ func NewAppMenu(f MenuFactory, aboutHandler, prefsHandler func(MenuItem), update
 
 // InsertAboutItem creates the standard "About" menu item that will call the provided handler when chosen.
 func InsertAboutItem(m Menu, atIndex int, aboutHandler func(MenuItem)) {
-	m.InsertItem(atIndex, m.Factory().NewItem(AboutItemID, fmt.Sprintf(i18n.Text("About %s"), xos.AppName), KeyBinding{},
+	m.InsertItem(atIndex, m.Factory().NewItem(AboutItemID, i18n.Text("About %s", xos.AppName), KeyBinding{},
 		func(MenuItem) bool { return aboutHandler != nil }, aboutHandler))
 }
 

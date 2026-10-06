@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -116,10 +115,10 @@ func (f *NumericField[T]) tooltipTextForValidation() string {
 		return i18n.Text("Invalid value")
 	}
 	if minimum := f.minimum; v < minimum {
-		return fmt.Sprintf(i18n.Text("Value must be at least %s"), f.Format(minimum))
+		return i18n.Text("Value must be at least %s", f.Format(minimum))
 	}
 	if maximum := f.maximum; v > maximum {
-		return fmt.Sprintf(i18n.Text("Value must be no more than %s"), f.Format(maximum))
+		return i18n.Text("Value must be no more than %s", f.Format(maximum))
 	}
 	return ""
 }

@@ -87,7 +87,7 @@ func (d *w32SaveDialog) w32CreateFilters() []w32.FileFilter {
 	filters := make([]w32.FileFilter, 0, len(d.extensions))
 	for _, ext := range d.extensions {
 		filters = append(filters, w32.FileFilter{
-			Name:    ext + i18n.Text(" Files"),
+			Name:    i18n.Text("%s Files", ext),
 			Pattern: "*." + ext,
 		})
 	}

@@ -10,8 +10,6 @@
 package unison
 
 import (
-	"fmt"
-
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
 )
@@ -124,7 +122,7 @@ func (m *UndoManager) undo() {
 // UndoTitle returns the title for the current undo state.
 func (m *UndoManager) UndoTitle() string {
 	if m.CanUndo() {
-		return fmt.Sprintf(i18n.Text("Undo %s"), m.edits[m.index].Name())
+		return i18n.Text("Undo %s", m.edits[m.index].Name())
 	}
 	return CannotUndoTitle()
 }
@@ -154,7 +152,7 @@ func (m *UndoManager) redo() {
 // RedoTitle returns the title for the current redo state.
 func (m *UndoManager) RedoTitle() string {
 	if m.CanRedo() {
-		return fmt.Sprintf(i18n.Text("Redo %s"), m.edits[m.index+1].Name())
+		return i18n.Text("Redo %s", m.edits[m.index+1].Name())
 	}
 	return CannotRedoTitle()
 }

@@ -114,7 +114,7 @@ func (d *w32OpenDialog) w32CreateFilters() []w32.FileFilter {
 			})
 		} else {
 			filters = append(filters, w32.FileFilter{
-				Name:    ext + i18n.Text(" Files"),
+				Name:    i18n.Text("%s Files", ext),
 				Pattern: "*." + ext,
 			})
 		}

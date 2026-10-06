@@ -10,8 +10,6 @@
 package unison
 
 import (
-	"fmt"
-
 	"github.com/richardwilkes/toolbox/v2/i18n"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -26,7 +24,7 @@ func nativeAddAppMenuEntries(m Menu) {
 	m.InsertSeparator(-1, true)
 	m.InsertMenu(-1, m.Factory().NewMenu(ServicesMenuID, i18n.Text("Services"), nil))
 	m.InsertSeparator(-1, false)
-	m.InsertItem(-1, m.Factory().NewItem(HideItemID, fmt.Sprintf(i18n.Text("Hide %s"), xos.AppName),
+	m.InsertItem(-1, m.Factory().NewItem(HideItemID, i18n.Text("Hide %s", xos.AppName),
 		KeyBinding{KeyCode: KeyH, Modifiers: mod.OSMenuCommand()},
 		nil, func(MenuItem) { cocoa.HideApplication() }))
 	m.InsertItem(-1, m.Factory().NewItem(HideOthersItemID, i18n.Text("Hide Others"),

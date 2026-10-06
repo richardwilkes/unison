@@ -10,7 +10,6 @@
 package unison
 
 import (
-	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -3109,7 +3108,7 @@ func (t *Table[T]) axRowName(row T, titles []string) string {
 			// The title goes in front of the value in English — "Size 35 KB" — but which of the two a locale says
 			// first, and what it puts between them, is the locale's to decide, which is what the positions in the key
 			// are for.
-			fmt.Fprintf(&buffer, i18n.Text("%[1]s %[2]s"), title, text)
+			buffer.WriteString(i18n.Text("%[1]s %[2]s", title, text))
 			continue
 		}
 		buffer.WriteString(text)
