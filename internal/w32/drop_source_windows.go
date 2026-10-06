@@ -114,6 +114,6 @@ func dropSrcQueryContinueDrag(this, fEscapePressed uintptr, grfKeyState MKDnD) u
 	return COM_S_OK
 }
 
-func dropSrcGiveFeedback(_ uintptr, _ uintptr) uint64 {
+func dropSrcGiveFeedback(_, _ uintptr) uint64 {
 	return COM_DRAGDROP_S_USEDEFAULTCURSORS
 }

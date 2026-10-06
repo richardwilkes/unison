@@ -1,15 +1,19 @@
 #! /usr/bin/env bash
 
-set -eo pipefail
+set -eEo pipefail
 
 trap 'echo -e "\033[33;5mBuild failed on build.sh:$LINENO\033[0m"' ERR
 
 for arg in "$@"; do
 	case "$arg" in
 	--all | -a)
+		FMT=1
 		LINT=1
 		TEST=1
 		RACE=-race
+		;;
+	--fmt | -f)
+		FMT=1
 		;;
 	--lint | -l)
 		LINT=1
@@ -23,7 +27,8 @@ for arg in "$@"; do
 		;;
 	--help | -h)
 		echo "$0 [options]"
-		echo "  -a, --all  Equivalent to --lint --race"
+		echo "  -a, --all  Equivalent to --fmt --lint --race"
+		echo "  -f, --fmt  Verify the source formatting (gofumpt)"
 		echo "  -l, --lint Run the linters"
 		echo "  -r, --race Run the tests with race-checking enabled"
 		echo "  -t, --test Run the tests"
@@ -70,8 +75,12 @@ go generate ./cmd/enumgen/main.go
 echo -e "\033[33mBuilding Go code...\033[0m"
 go build -v ./...
 
-# Run the linters
-if [ "$LINT"x == "1x" ]; then
+# Both the formatting check and the linters come out of golangci-lint, so whichever of them runs first installs it.
+# Set GOLANGCI_LINT to the path of a binary to use it as is.
+ensure_golangci_lint() {
+	if [ -n "$GOLANGCI_LINT" ]; then
+		return
+	fi
 	GOLANGCI_LINT_VERSION=$(curl --head -s https://github.com/golangci/golangci-lint/releases/latest | grep -i location: | sed 's/^.*v//' | tr -d '\r\n')
 	TOOLS_DIR=$(go env GOPATH)/bin
 	if [ ! -e "$TOOLS_DIR/golangci-lint" ] || [ "$("$TOOLS_DIR/golangci-lint" version 2>&1 | awk '{ print $4 }' || true)x" != "${GOLANGCI_LINT_VERSION}x" ]; then
@@ -79,6 +88,26 @@ if [ "$LINT"x == "1x" ]; then
 		mkdir -p "$TOOLS_DIR"
 		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b "$TOOLS_DIR" v$GOLANGCI_LINT_VERSION
 	fi
+	GOLANGCI_LINT="$TOOLS_DIR/golangci-lint"
+}
+
+# `golangci-lint run` also enforces the `formatters` section of .golangci.yml, but only for the files it loads and not
+# for paths excluded from linting, such as internal/w32. `golangci-lint fmt` ignores build constraints and those
+# exclusions, so this single pass covers every file. It is also the one that prints the actual diff rather than a single
+# "not properly formatted" issue per file.
+if [ "$FMT"x == "1x" ]; then
+	ensure_golangci_lint
+	echo -e "\033[33mChecking the formatting of the Go code...\033[0m"
+	if ! "$GOLANGCI_LINT" fmt --diff; then
+		echo -e "\033[31mRun 'golangci-lint fmt' to apply the formatting shown above.\033[0m" >&2
+		exit 1
+	fi
+	echo "0 issues."
+fi
+
+# Run the linters
+if [ "$LINT"x == "1x" ]; then
+	ensure_golangci_lint
 	# Lint for every supported platform, not just the host, so problems in platform-specific files (e.g.
 	# *_windows.go) are caught no matter where the script is run. Each platform is linted twice, once for the
 	# default build and once with GOEXPERIMENT=simd, because the goexperiment.simd-tagged sources (internal/pixconv,
@@ -86,7 +115,7 @@ if [ "$LINT"x == "1x" ]; then
 	for TARGET_GOOS in darwin linux windows; do
 		for TARGET_EXP in "" simd; do
 			echo -e "\033[33mLinting for $TARGET_GOOS${TARGET_EXP:+ (GOEXPERIMENT=$TARGET_EXP)}...\033[0m"
-			GOOS=$TARGET_GOOS GOEXPERIMENT=$TARGET_EXP "$TOOLS_DIR/golangci-lint" run
+			GOOS=$TARGET_GOOS GOEXPERIMENT=$TARGET_EXP "$GOLANGCI_LINT" run
 		done
 	done
 fi

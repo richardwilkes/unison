@@ -19,7 +19,7 @@ import (
 
 // makeDropFiles builds a CF_HDROP buffer: a DROPFILES header whose PFiles points at a double-null-terminated list of
 // UTF-16LE strings.
-func makeDropFiles(pFiles uint32, fWide uint32, paths ...string) []byte {
+func makeDropFiles(pFiles, fWide uint32, paths ...string) []byte {
 	buf := make([]byte, dropFilesHeaderSize)
 	binary.LittleEndian.PutUint32(buf[dropFilesPFilesOffset:], pFiles)
 	binary.LittleEndian.PutUint32(buf[dropFilesFWideOffset:], fWide)
