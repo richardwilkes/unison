@@ -12,8 +12,10 @@ package main
 //go:generate go run main.go
 
 import (
+	"bufio"
 	"bytes"
 	_ "embed"
+	"flag"
 	"fmt"
 	"go/format"
 	"io"
@@ -25,7 +27,7 @@ import (
 	"text/template"
 	"unicode"
 
-	"github.com/richardwilkes/toolbox/v2/xfilepath"
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
@@ -33,7 +35,10 @@ import (
 	"golang.org/x/text/language"
 )
 
-const genSuffix = "_gen.go"
+const (
+	genSuffix  = "_gen.go"
+	modulePath = "github.com/richardwilkes/unison"
+)
 
 //go:embed enum.go.tmpl
 var enumTmplData string
@@ -61,20 +66,13 @@ type enumInfo struct {
 }
 
 func main() {
-	wd, err := os.Getwd()
+	rootDir := flag.String("root", "", "The `dir`ectory at the root of the Unison source tree. Defaults to the nearest "+
+		"directory at or above the working directory that holds a go.mod")
+	flag.Parse()
+	root, err := findRepoRoot(*rootDir)
 	xos.ExitIfErr(err)
-	originalWD := wd
-	if xfilepath.BaseName(wd) == "enumgen" {
-		wd = filepath.Dir(wd)
-		if xfilepath.BaseName(wd) == "cmd" {
-			wd = filepath.Dir(wd)
-		}
-	}
-	if xfilepath.BaseName(wd) != "unison" {
-		xos.ExitWithMsg("unexpected working directory: " + originalWD)
-	}
-	removeExistingGenFiles(wd)
-	processSourceTemplate(wd, &enumInfo{
+	removeExistingGenFiles(root)
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/align",
 		Name: "align",
 		Desc: "specifies how to align an object within its available space",
@@ -85,7 +83,7 @@ func main() {
 			{Key: "fill"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/arcsize",
 		Name: "arcsize",
 		Desc: "holds the relative size of an arc",
@@ -94,7 +92,7 @@ func main() {
 			{Key: "large"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/behavior",
 		Name: "behavior",
 		Desc: "controls how auto-sizing of the scroll content's preferred size is handled",
@@ -105,7 +103,7 @@ func main() {
 			{Key: "hinted-fill", Comment: "Uses hints to try and fix the content to the view size, but if the resulting content is smaller than the available space, expands it"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/blendmode",
 		Name: "blendmode",
 		Desc: "holds the mode used for blending pixels",
@@ -141,7 +139,7 @@ func main() {
 			{Key: "luminosity"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/blur",
 		Name: "blur",
 		Desc: "holds the type of blur to apply",
@@ -152,7 +150,7 @@ func main() {
 			{Key: "inner"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/check",
 		Name: "check",
 		Desc: "represents the current state of something like a check box or mark",
@@ -162,7 +160,7 @@ func main() {
 			{Key: "mixed"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/colorchannel",
 		Name: "colorchannel",
 		Desc: "specifies a specific channel within an RGBA color",
@@ -173,7 +171,7 @@ func main() {
 			{Key: "alpha"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/direction",
 		Name: "direction",
 		Desc: "holds the direction of a path",
@@ -182,7 +180,7 @@ func main() {
 			{Key: "counter-clockwise"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:      "enums/filtermode",
 		Name:     "filtermode",
 		Desc:     "holds the type of sampling to be done",
@@ -192,7 +190,7 @@ func main() {
 			{Key: "linear", Comment: "Interpolate between 2x2 sample points (bilinear interpolation)"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/gradienttype",
 		Name: "gradienttype",
 		Desc: "specifies the type of gradient to use",
@@ -203,7 +201,7 @@ func main() {
 			{Key: "conical"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/imgfmt",
 		Name: "imgfmt",
 		Desc: "holds the type of encoding an image was stored with",
@@ -218,7 +216,7 @@ func main() {
 			{Key: "bmp", NoLocalize: true, ForceUpper: true},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/invertstyle",
 		Name: "invertstyle",
 		Desc: "holds the type of image inversion",
@@ -228,7 +226,7 @@ func main() {
 			{Key: "lightness"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:      "enums/mipmapmode",
 		Name:     "mipmapmode",
 		Desc:     "holds the type of mipmapping to be done",
@@ -239,7 +237,7 @@ func main() {
 			{Key: "linear", Comment: "Interpolate between the two nearest levels"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/paintstyle",
 		Name: "paintstyle",
 		Desc: "holds the type of painting to do",
@@ -249,7 +247,7 @@ func main() {
 			{Key: "stroke-and-fill"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/patheffect",
 		Name: "patheffect",
 		Desc: "holds the 1D path effect",
@@ -259,7 +257,7 @@ func main() {
 			{Key: "morph"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/pathop",
 		Name: "pathop",
 		Desc: "holds the possible operations that can be performed on a pair of paths",
@@ -271,7 +269,7 @@ func main() {
 			{Key: "reverse-difference"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/pointmode",
 		Name: "pointmode",
 		Desc: "controls how Canvas.DrawPoints() renders the points passed to it",
@@ -281,7 +279,7 @@ func main() {
 			{Key: "polygon"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/role",
 		Name: "role",
 		Desc: "holds the semantic role a panel plays when it is presented to assistive technologies",
@@ -349,7 +347,7 @@ func main() {
 			},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/side",
 		Name: "side",
 		Desc: "specifies which side an object should be on",
@@ -360,7 +358,7 @@ func main() {
 			{Key: "right"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/slant",
 		Name: "slant",
 		Desc: "holds the slant of a font",
@@ -370,7 +368,7 @@ func main() {
 			{Key: "oblique"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:       "enums/spacing",
 		Name:      "spacing",
 		Desc:      "holds the text spacing of a font",
@@ -387,7 +385,7 @@ func main() {
 			{Key: "ultra-expanded"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/strokecap",
 		Name: "strokecap",
 		Desc: "holds the style for rendering the endpoint of a stroked line",
@@ -397,7 +395,7 @@ func main() {
 			{Key: "square"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/strokejoin",
 		Name: "strokejoin",
 		Desc: "holds the method for drawing the junction between connected line segments",
@@ -407,7 +405,7 @@ func main() {
 			{Key: "bevel"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/thememode",
 		Name: "thememode",
 		Desc: "holds the theme display mode",
@@ -417,7 +415,7 @@ func main() {
 			{Key: "light"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/tilemode",
 		Name: "tilemode",
 		Desc: "holds the type of tiling to perform",
@@ -428,7 +426,7 @@ func main() {
 			{Key: "decal"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/trimmode",
 		Name: "trimmode",
 		Desc: "holds the type of trim",
@@ -437,7 +435,7 @@ func main() {
 			{Key: "inverted"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:           "enums/weight",
 		Name:          "weight",
 		Desc:          "holds the weight of a font",
@@ -458,7 +456,7 @@ func main() {
 			{Key: "extra-black"},
 		},
 	})
-	processSourceTemplate(wd, &enumInfo{
+	processSourceTemplate(root, &enumInfo{
 		Pkg:  "enums/filltype",
 		Name: "filltype",
 		Desc: "holds the type of fill operation to perform, which affects how overlapping contours interact with each other",
@@ -471,6 +469,58 @@ func main() {
 	})
 }
 
+// findRepoRoot returns the absolute path of the Unison source tree root: dir if given, otherwise the nearest directory
+// at or above the working directory holding a go.mod. Every generated file beneath the root is deleted before
+// regenerating, so the root must hold the go.mod of the Unison module itself; a clone or worktree may be named
+// anything.
+func findRepoRoot(dir string) (string, error) {
+	if dir == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "", errs.Wrap(err)
+		}
+		dir = wd
+		for !xos.FileExists(filepath.Join(dir, "go.mod")) {
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return "", errs.New("no go.mod found at or above " + wd)
+			}
+			dir = parent
+		}
+	}
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", errs.Wrap(err)
+	}
+	var module string
+	if module, err = readModulePath(filepath.Join(dir, "go.mod")); err != nil {
+		return "", err
+	}
+	if module != modulePath {
+		return "", errs.New(dir + " holds module " + module + " rather than " + modulePath)
+	}
+	return dir, nil
+}
+
+// readModulePath returns the module path declared by the go.mod file at path.
+func readModulePath(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", errs.Wrap(err)
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 2 && fields[0] == "module" {
+			return strings.Trim(fields[1], "\"`"), nil
+		}
+	}
+	return "", errs.New("no module directive in " + path)
+}
+
+// removeExistingGenFiles removes every generated file in the source tree at rootDir. Dot-prefixed directories and
+// directories holding a go.mod of their own are skipped: neither is part of this module's source, and a worktree kept
+// inside the tree (such as those under .claude/worktrees) is a separate checkout whose files must be left alone.
 func removeExistingGenFiles(rootDir string) {
 	rootPath, err := filepath.Abs(rootDir)
 	xos.ExitIfErr(err)
@@ -482,7 +532,7 @@ func removeExistingGenFiles(rootDir string) {
 		xos.ExitIfErr(localErr)
 		name := entry.Name()
 		if entry.IsDir() {
-			if name == ".git" {
+			if path != "." && (strings.HasPrefix(name, ".") || xos.FileExists(filepath.Join(rootPath, path, "go.mod"))) {
 				return filepath.SkipDir
 			}
 		} else if strings.HasSuffix(name, genSuffix) {

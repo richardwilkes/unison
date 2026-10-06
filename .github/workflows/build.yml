@@ -73,9 +73,9 @@ jobs:
         run: |
           if { [ "$RUNNER_OS" = "Windows" ] && [ "$RUNNER_ARCH" = "ARM64" ]; } ||
             { [ "$RUNNER_OS" = "macOS" ] && [ "$RUNNER_ARCH" = "X64" ]; }; then
-            ./build.sh --test
+            ./build.sh --go --test
           else
-            ./build.sh --race
+            ./build.sh --go --race
           fi
 
       # The goexperiment.simd leg: test the module again with the simd kernels wired in (internal/pixconv and
