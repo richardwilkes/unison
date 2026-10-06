@@ -13,7 +13,7 @@ jobs:
   # build.sh lints for every supported GOOS from whatever host it runs on, so a single pass covers the entire matrix
   # and repeating it in all six build jobs bought nothing. Hoisting it here keeps the three passes off the slow
   # runners: on macos-26-intel they took ~6 of that job's ~9.5 minutes. ubuntu-22.04-arm is the fastest runner
-  # available for the work.
+  # available for the work. The format check ignores build constraints, so it needs only this one pass as well.
   lint:
     name: Lint
     runs-on: ubuntu-22.04-arm
@@ -27,8 +27,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Lint
-        run: ./build.sh --lint
+      - name: Check formatting and lint
+        run: ./build.sh --fmt --lint
 
   build:
     name: Build (${{ matrix.os }})
