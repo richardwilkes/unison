@@ -863,10 +863,10 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 //
 // It is done here rather than in each widget so that the rule is stated once, after the widget and the
 // Accessibility.Callback have had their say, since a combo box is a Field that is given its Expand by the callback
-// NewComboField installs, and after the node has been judged for scaffolding, since what is taken away here comes back
-// with the window's activation and must not decide whether the node is shown at all. Nothing else has to invalidate
-// anything when the activation changes: Window.gainedFocus and Window.lostFocus mark their window for publishing, and
-// the windows ActiveWindow() moved between as well (see axMarkActiveWindowChange).
+// InstallDropdown installs (which NewComboField uses), and after the node has been judged for scaffolding, since what
+// is taken away here comes back with the window's activation and must not decide whether the node is shown at all.
+// Nothing else has to invalidate anything when the activation changes: Window.gainedFocus and Window.lostFocus mark
+// their window for publishing, and the windows ActiveWindow() moved between as well (see axMarkActiveWindowChange).
 //
 // Every node the action is taken from, or given back to, is reported with an AttributesChanged on each change of
 // activation, and a Table or List with a menu has one such node per described row and cell (a 20x3 table of fields with

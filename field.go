@@ -1685,15 +1685,15 @@ func (f *Field) axPlaceMenuRange(req accessibility.ActionRequest) {
 }
 
 // axMenuOpeningActions reports which of the field's actions would open a menu, so that a field in a window none of its
-// menus would land in is published without them rather than advertising what the action callback NewComboField installs
-// would then refuse. See axMenuActions. The contextual menu is not named, since axSnapshot.narrowMenuActions takes it
-// from every node itself.
+// menus would land in is published without them rather than advertising what the action callback InstallDropdown
+// installs (which NewComboField uses) would then refuse. See axMenuActions. The contextual menu is not named, since
+// axSnapshot.narrowMenuActions takes it from every node itself.
 //
-// Expand belongs to a combo box, which is a field the dropdown NewComboField installs describes as one; a plain field
-// never advertises it, so naming it here costs such a field nothing. It is not named while the choices are already
-// showing, which is exactly what that callback does with the request: expanding a combo box that is already open is
-// accepted as already done, with no menu opened anywhere. Collapse is never named either, since taking a menu down acts
-// on the menu that is showing rather than on whatever window is active.
+// Expand belongs to a combo box, which is a field the dropdown InstallDropdown installs (which NewComboField uses)
+// describes as one; a plain field never advertises it, so naming it here costs such a field nothing. It is not named
+// while the choices are already showing, which is exactly what that callback does with the request: expanding a combo
+// box that is already open is accepted as already done, with no menu opened anywhere. Collapse is never named either,
+// since taking a menu down acts on the menu that is showing rather than on whatever window is active.
 func (f *Field) axMenuOpeningActions(node *accessibility.Node) accessibility.ActionSet {
 	if node.Expanded {
 		return 0
@@ -1702,19 +1702,38 @@ func (f *Field) axMenuOpeningActions(node *accessibility.Node) accessibility.Act
 }
 
 // InstallAccessoryPanel sets a panel into the field, attached to the right end. The editable text area will shrink by
-// the preferred width of the accessory panel.
+// the preferred width of the accessory panel, measured as the field is laid out rather than once, so that it follows a
+// font set afterward. Borders installed afterward replace the ones installed here and so have to add AccessoryInsets
+// to their own.
 func (f *Field) InstallAccessoryPanel(panel Paneler) {
-	p := panel.AsPanel()
 	UninstallFocusBorders(f, f)
-	_, prefSize, _ := p.Sizes(geom.Size{})
-	adjustBorder := func(b Border) Border {
-		return NewCompoundBorder(b, NewEmptyBorder(geom.Insets{Right: prefSize.Width}))
-	}
-	focusedBorder := adjustBorder(NewDefaultFieldBorder(true))
-	unfocusedBorder := adjustBorder(NewDefaultFieldBorder(false))
-	InstallFocusBorders(f, f, focusedBorder, unfocusedBorder)
-	f.AddChild(p)
+	f.AddChild(panel.AsPanel())
 	f.SetLayout(&fieldAccessoryLayout{})
+	InstallFocusBorders(f, f, &accessoryBorder{Border: NewDefaultFieldBorder(true), field: f},
+		&accessoryBorder{Border: NewDefaultFieldBorder(false), field: f})
+}
+
+// accessoryBorder is a border with the room the field's accessory panel needs added on the right, as AccessoryInsets
+// reports it at the time the border is asked. The border it wraps is drawn as it would be on its own.
+type accessoryBorder struct {
+	Border
+	field *Field
+}
+
+func (b *accessoryBorder) Insets() geom.Insets {
+	return b.Border.Insets().Add(b.field.AccessoryInsets())
+}
+
+// AccessoryInsets returns the room the borders of a field with an accessory panel have to leave on the right for it:
+// the panel's preferred width. Returns zero insets for a field without one.
+func (f *Field) AccessoryInsets() geom.Insets {
+	if _, ok := f.Layout().(*fieldAccessoryLayout); ok {
+		if children := f.Children(); len(children) != 0 {
+			_, prefSize, _ := children[0].Sizes(geom.Size{})
+			return geom.Insets{Right: prefSize.Width}
+		}
+	}
+	return geom.Insets{}
 }
 
 type fieldAccessoryLayout struct{}
