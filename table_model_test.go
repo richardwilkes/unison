@@ -31,6 +31,7 @@ type tableTestRow struct {
 	id       tid.TID
 	children []*tableTestRow
 	open     bool
+	hidden   bool
 }
 
 func newTableTestRow(id string) *tableTestRow {
@@ -70,8 +71,9 @@ func (r *tableTestRow) ColumnCell(row, col int, fg, bg unison.Ink, selected, ind
 	}
 	return unison.NewPanel()
 }
-func (r *tableTestRow) IsOpen() bool      { return r.open }
-func (r *tableTestRow) SetOpen(open bool) { r.open = open }
+func (r *tableTestRow) IsOpen() bool        { return r.open }
+func (r *tableTestRow) SetOpen(open bool)   { r.open = open }
+func (r *tableTestRow) HiddenInTable() bool { return r.hidden }
 
 // newTestTable builds a synced table from the supplied root rows.
 func newTestTable(rows ...*tableTestRow) *unison.Table[*tableTestRow] {
