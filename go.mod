@@ -1,17 +1,17 @@
 module github.com/richardwilkes/unison
 
-go 1.27.0
+go 1.27.2
 
 require (
 	github.com/OpenPrinting/goipp v1.2.0
 	github.com/ebitengine/purego v0.11.1
 	github.com/grandcat/zeroconf v1.0.0
 	github.com/richardwilkes/canvas v0.3.2
-	github.com/richardwilkes/toolbox/v2 v2.21.0
+	github.com/richardwilkes/toolbox/v2 v2.22.0
 	github.com/yuin/goldmark v1.8.6
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/image v0.46.0
-	golang.org/x/net v0.59.0
+	golang.org/x/net v0.60.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.42.0
 )
