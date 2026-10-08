@@ -84,6 +84,7 @@ var DefaultTableTheme = TableTheme{
 	OnInactiveSelectionInk: ThemeOnDeepFocus,
 	IndirectSelectionInk:   ThemeDeeperFocus,
 	OnIndirectSelectionInk: ThemeOnDeeperFocus,
+	HiddenRowsMarkerInk:    ThemeSurfaceEdge,
 	Padding:                geom.NewUniformInsets(4),
 	HierarchyIndent:        16,
 	MinimumRowHeight:       16,
@@ -106,6 +107,7 @@ type TableTheme struct {
 	OnInactiveSelectionInk Ink
 	IndirectSelectionInk   Ink
 	OnIndirectSelectionInk Ink
+	HiddenRowsMarkerInk    Ink
 	Padding                geom.Insets
 	HierarchyColumnID      int
 	HierarchyIndent        float32
@@ -115,6 +117,7 @@ type TableTheme struct {
 	ShowColumnDivider      bool
 	ShowFirstColumnDivider bool
 	ShowLastColumnDivider  bool
+	ShowHiddenRowsMarker   bool // Marks each run of hidden rows (see TableRowHider)
 }
 
 // Table provides a control that can display data in columns and rows.
@@ -143,6 +146,8 @@ type TableTheme struct {
 // any, currently holds the focus. A row that supplies such a widget must hand back the same instance from every
 // ColumnCell() call, since a freshly created one would have neither the focus nor the state the user put into it.
 type Table[T TableRowConstraint[T]] struct {
+	HiddenTooltipCallback    func(rows []T) string // If set, returns the tooltip for a hidden rows marker.
+	HiddenClickCallback      func(rows []T)        // If set, called when a hidden rows marker is clicked.
 	SelectionChangedCallback func()
 	DoubleClickCallback      func()
 	DragRemovedRowsCallback  func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
@@ -160,6 +165,7 @@ type Table[T TableRowConstraint[T]] struct {
 	lastSel                  tid.TID
 	hitRects                 []tableHitRect
 	rowCache                 []tableCache[T]
+	hiddenRuns               []tableHiddenRun[T]
 	lastMouseEnterCellPanel  *Panel
 	lastMouseDownCellPanel   *Panel
 	// Cells are normally ephemeral: the table points a cell's parent at itself just long enough to draw it or forward
@@ -450,6 +456,8 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			rect.Y++
 		}
 	}
+
+	t.drawHiddenRunMarkers(canvas, dirty)
 
 	// The cell cursor is drawn as a ring along the edges of the cell it is on, after the cells so that a cell whose
 	// content paints its own background — a Field, a check box, a banded custom cell — cannot cover it. The ring runs
@@ -920,6 +928,9 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 // not a panel of the table's, so what it has to say is not the table's to keep, and a description of the table built
 // while the borrowed tooltip sat in Tooltip would be a description of one of its cells.
 func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rect) geom.Rect {
+	if rect := t.hiddenRunTooltip(where); !rect.Empty() {
+		return rect
+	}
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
 			cell := t.cell(row, col)
@@ -2092,7 +2103,7 @@ func (t *Table[T]) SyncToModel() {
 	t.hasHierarchy = false
 	if !t.flatFilter() {
 		for _, row := range roots {
-			if row.CanHaveChildren() {
+			if row.CanHaveChildren() && !rowHidden(row) {
 				t.hasHierarchy = true
 				break
 			}
@@ -2102,10 +2113,8 @@ func (t *Table[T]) SyncToModel() {
 		rowCount += t.countDisclosedRowsRecursively(row)
 	}
 	t.rowCache = make([]tableCache[T], rowCount)
-	j := 0
-	for _, row := range roots {
-		j = t.buildRowCacheEntry(row, -1, j, 0)
-	}
+	t.hiddenRuns = nil
+	t.buildRowCacheEntries(roots, -1, 0, 0)
 	t.selNeedsPrune = true
 	// The row cache was just thrown away and rebuilt, so the row the person was on may no longer be among the rows the
 	// table shows — a row that was filtered out, or whose container was closed.
@@ -2122,8 +2131,11 @@ func (t *Table[T]) SyncToModel() {
 }
 
 // countDisclosedRowsRecursively returns the number of rows the table shows for the row: the row itself plus every row
-// disclosed beneath it.
+// disclosed beneath it, or none if the row is hidden.
 func (t *Table[T]) countDisclosedRowsRecursively(row T) int {
+	if rowHidden(row) {
+		return 0
+	}
 	count := 1
 	for _, child := range t.disclosedChildren(row) {
 		count += t.countDisclosedRowsRecursively(child)
@@ -2161,12 +2173,7 @@ func (t *Table[T]) buildRowCacheEntry(row T, parentIndex, index, depth int) int 
 	t.rowCache[index].parent = parentIndex
 	t.rowCache[index].depth = depth
 	t.rowCache[index].height = t.heightForColumns(row, index, depth)
-	parentIndex = index
-	index++
-	for _, child := range t.disclosedChildren(row) {
-		index = t.buildRowCacheEntry(child, parentIndex, index, depth+1)
-	}
-	return index
+	return t.buildRowCacheEntries(t.disclosedChildren(row), index, index+1, depth+1)
 }
 
 func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
@@ -2566,6 +2573,9 @@ func (t *Table[T]) removeRowsFromFilter(rows []T) {
 }
 
 func (t *Table[T]) applyFilter(row T, filter func(row T) bool) {
+	if rowHidden(row) {
+		return
+	}
 	if !filter(row) {
 		t.filteredRows = append(t.filteredRows, row)
 	}
@@ -3068,6 +3078,7 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 			}
 		}
 	}
+	t.axAddHiddenRunMarkers(b, rowID, row, rect)
 	return rowID
 }
 
@@ -3207,6 +3218,8 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		return t.axPerformInCell(key, req)
 	case axDisclosureKey:
 		return t.axActOnDisclosure(key, req)
+	case axHiddenRowsKey:
+		return t.axActOnHiddenRunMarker(key, req)
 	default:
 		return false
 	}
