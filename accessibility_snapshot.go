@@ -1086,10 +1086,14 @@ func axTrimLabelText(text string) string {
 	return strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text), ":"))
 }
 
-// axTooltipText returns the text of a panel's tooltip, which is what a node's description falls back to. A tooltip
-// built by NewTooltipWithText names itself; anything else is read from the labels it is built out of.
+// axTooltipText returns the text of a panel's tooltip, which is what a node's description falls back to.
 func axTooltipText(p *Panel) string {
-	tip := p.Tooltip
+	return axTooltipPanelText(p.Tooltip)
+}
+
+// axTooltipPanelText returns the text of a tooltip. A tooltip built by NewTooltipWithText names itself; anything else
+// is read from the labels it is built out of.
+func axTooltipPanelText(tip *Panel) string {
 	if tip == nil {
 		return ""
 	}

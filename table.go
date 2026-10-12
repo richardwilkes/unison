@@ -146,7 +146,7 @@ type TableTheme struct {
 // any, currently holds the focus. A row that supplies such a widget must hand back the same instance from every
 // ColumnCell() call, since a freshly created one would have neither the focus nor the state the user put into it.
 type Table[T TableRowConstraint[T]] struct {
-	HiddenTooltipCallback    func(rows []T) string // If set, returns the tooltip for a hidden rows marker.
+	HiddenTooltipCallback    func(rows []T) *Panel // If set, returns the tooltip for a hidden rows marker.
 	HiddenClickCallback      func(rows []T)        // If set, called when a hidden rows marker is clicked.
 	SelectionChangedCallback func()
 	DoubleClickCallback      func()
@@ -2737,6 +2737,7 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	// far from anything that can be seen, and replaces the selection with it.
 	node.Actions = node.Actions.Without(accessibility.Press)
 	if len(t.rowCache) == 0 {
+		t.axAddEmptyTableHiddenRunMarker(b)
 		return
 	}
 	focusedRow := -1

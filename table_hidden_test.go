@@ -68,9 +68,9 @@ func TestTableHiddenRowsMarker(t *testing.T) {
 		newTableTestRow("b"))
 	table.SetFrameRect(geom.NewRect(0, 0, 300, 300))
 	var tipRows []*tableTestRow
-	table.HiddenTooltipCallback = func(rows []*tableTestRow) string {
+	table.HiddenTooltipCallback = func(rows []*tableTestRow) *unison.Panel {
 		tipRows = rows
-		return "hidden"
+		return unison.NewTooltipWithText("hidden")
 	}
 	onBoundary := geom.NewPoint(1, table.RowFrame(1).Y)
 
@@ -92,7 +92,9 @@ func TestTableHiddenRowsMarkerAccessibility(t *testing.T) {
 		unison.StartupFinishedCallback(func() {
 			table = axNewTable(newTableTestRow("a"), hiddenTableTestRow("h"), newTableTestRow("b"))
 			table.ShowHiddenRowsMarker = true
-			table.HiddenTooltipCallback = func(_ []*tableTestRow) string { return "1 hidden" }
+			table.HiddenTooltipCallback = func(_ []*tableTestRow) *unison.Panel {
+				return unison.NewTooltipWithText("1 hidden")
+			}
 			table.HiddenClickCallback = func(rows []*tableTestRow) { pressed = rows }
 			if wnd = newHeadlessWindow(t, "Hidden", geom.NewRect(10, 10, 400, 400), table); wnd != nil {
 				wnd.ToFront()
@@ -118,4 +120,108 @@ func TestTableHiddenRowsMarkerAccessibility(t *testing.T) {
 	c.Equal(role.Button, marker.Role)
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{Node: marker.ID, Action: accessibility.Press}))
 	c.Equal([]tid.TID{"h"}, rowIDs(pressed))
+}
+
+func TestTableHiddenRunsMeetingAtOneBoundaryShareAMarker(t *testing.T) {
+	c := check.New(t)
+	parent := newTableTestRow("p")
+	parent.SetChildren([]*tableTestRow{newTableTestRow("c"), hiddenTableTestRow("h1")})
+	parent.SetOpen(true)
+	table := newTestTable(parent, hiddenTableTestRow("h2"), newTableTestRow("b"))
+	table.SetFrameRect(geom.NewRect(0, 0, 300, 300))
+	table.ShowHiddenRowsMarker = true
+	var tipRows []*tableTestRow
+	table.HiddenTooltipCallback = func(rows []*tableTestRow) *unison.Panel {
+		tipRows = rows
+		return unison.NewTooltipWithText("hidden")
+	}
+	c.False(table.DefaultUpdateTooltipCallback(geom.NewPoint(1, table.RowFrame(2).Y), geom.Rect{}).Empty())
+	c.Equal([]tid.TID{"h1", "h2"}, rowIDs(tipRows))
+}
+
+func TestTableHiddenRowsMarkerHonorsDrawRowRange(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(newTableTestRow("a"), hiddenTableTestRow("h1"), newTableTestRow("b"), newTableTestRow("c"),
+		hiddenTableTestRow("h2"), newTableTestRow("d"))
+	table.SetFrameRect(geom.NewRect(0, 0, 300, 300))
+	table.ShowHiddenRowsMarker = true
+	var tipRows []*tableTestRow
+	table.HiddenTooltipCallback = func(rows []*tableTestRow) *unison.Panel {
+		tipRows = rows
+		return unison.NewTooltipWithText("hidden")
+	}
+	table.SetDrawRowRange(2, 4)
+
+	// Only the run between c and d is within the range, and its marker sits one row down, below c.
+	c.False(table.DefaultUpdateTooltipCallback(geom.NewPoint(1, table.RowFrame(1).Y), geom.Rect{}).Empty())
+	c.Equal([]tid.TID{"h2"}, rowIDs(tipRows))
+	tipRows = nil
+	c.True(table.DefaultUpdateTooltipCallback(geom.NewPoint(1, table.RowFrame(3).Y), geom.Rect{}).Empty())
+	c.Equal(0, len(tipRows))
+}
+
+func TestTableHiddenRowsMarkerKeepsItsTooltip(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(newTableTestRow("a"), hiddenTableTestRow("h"), newTableTestRow("b"))
+	table.SetFrameRect(geom.NewRect(0, 0, 300, 300))
+	table.ShowHiddenRowsMarker = true
+	calls := 0
+	table.HiddenTooltipCallback = func(_ []*tableTestRow) *unison.Panel {
+		calls++
+		return unison.NewTooltipWithText("hidden")
+	}
+	onBoundary := geom.NewPoint(1, table.RowFrame(1).Y)
+	c.False(table.DefaultUpdateTooltipCallback(onBoundary, geom.Rect{}).Empty())
+	c.False(table.DefaultUpdateTooltipCallback(onBoundary.Add(geom.NewPoint(1, 0)), geom.Rect{}).Empty())
+	c.Equal(1, calls)
+}
+
+func TestTableHiddenRowsMarkerClickAfterCallbackRemoved(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table = axNewTable(newTableTestRow("a"), hiddenTableTestRow("h"), newTableTestRow("b"))
+			table.ShowHiddenRowsMarker = true
+			table.HiddenClickCallback = func(_ []*tableTestRow) {}
+			if wnd = newHeadlessWindow(t, "Hidden", geom.NewRect(10, 10, 400, 400), table); wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	screen.Sync()
+	screen.Do(func() {
+		table.HiddenClickCallback = nil
+		onMarker := geom.NewPoint(1, table.RowFrame(1).Y)
+		table.DefaultMouseDown(onMarker, unison.ButtonLeft, 1, 0)
+		c.True(table.DefaultMouseUp(onMarker, unison.ButtonLeft, 0))
+	})
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+func TestTableHiddenRowsMarkerAccessibilityWithEveryRowHidden(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			table = axNewTable(hiddenTableTestRow("h"))
+			table.ShowHiddenRowsMarker = true
+			table.HiddenClickCallback = func(_ []*tableTestRow) {}
+			if wnd = newHeadlessWindow(t, "Hidden", geom.NewRect(10, 10, 400, 400), table); wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	screen.Sync()
+	screen.EnableAccessibility()
+	tree := screen.AccessibilityTree(wnd)
+	tableNode := screen.AccessibilityNodeFor(table)
+	c.Equal(0, tableNode.RowCount)
+	var marker *accessibility.Node
+	for _, child := range axChildNodes(tree, tableNode) {
+		if child.Role == role.Button {
+			marker = child
+		}
+	}
+	c.NotNil(marker)
 }
