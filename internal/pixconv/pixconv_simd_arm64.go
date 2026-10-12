@@ -21,7 +21,7 @@ func simdPixconvSupported() bool { return true }
 // Per-kernel dispatch preference: whether the simd converter is at least as fast as this build's default lane. None of
 // these conversions has a hand-written NEON lane to lose to — the alternative is the portable per-byte form in
 // pixconv.go, which every one of them beats: -50% (SwizzleRB) to -70% (SwizzleRBBytes) on a full 1920x1080 frame,
-// measured on an M4 Max (darwin/arm64, benchstat n=6, 2026-08-21) with the benchmarks in pixconv_bench_test.go.
+// measured on an M4 Max (darwin/arm64, benchstat n=6, 2026-08-21) with the benchmarks in pixconv_test.go.
 const (
 	preferSIMDSwizzleRB       = true
 	preferSIMDSwizzleRBBytes  = true

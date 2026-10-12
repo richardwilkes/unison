@@ -11,6 +11,7 @@ package cocoa
 
 import (
 	"bytes"
+	"sync/atomic"
 	"testing"
 	"unsafe"
 
@@ -329,6 +330,51 @@ func TestNSRangeFromNSValue(t *testing.T) {
 			if got, ok := NSRangeFromNSValue(c.value); ok {
 				t.Errorf("%s answered the range %+v, want nothing", c.what, got)
 			}
+		}
+	})
+}
+
+var superTestCalls atomic.Int32
+
+// TestSendSuperFromDynamicSubclass proves that SendSuper dispatches to the superclass of the class that defined the
+// method even when the receiver's runtime class is a subclass of it. That is the situation created when AppKit or
+// Foundation isa-swizzles an object (KVO's NSKVONotifying_* classes); resolving "super" from the receiver's runtime
+// class instead, as objc.ID.SendSuper does, would call the same implementation again and recurse until the stack
+// overflowed.
+func TestSendSuperFromDynamicSubclass(t *testing.T) {
+	var base objc.Class
+	var err error
+	base, err = objc.RegisterClass("cocoaSuperTestBase", Cls("NSObject"), nil, nil, []objc.MethodDef{
+		{
+			Cmd: Sel("description"),
+			Fn: func(self objc.ID, _ objc.SEL) objc.ID {
+				if superTestCalls.Add(1) > 1 {
+					// Bail out rather than let a regression take the test process down with a stack overflow.
+					return 0
+				}
+				return SendSuper(self, base, Sel("description"))
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unable to register base class: %v", err)
+	}
+	sub, err := objc.RegisterClass("cocoaSuperTestSub", base, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("unable to register subclass: %v", err)
+	}
+	WithPool(func() {
+		obj := objc.ID(sub).Send(Sel("alloc")).Send(Sel("init"))
+		defer Release(obj)
+		desc := obj.Send(Sel("description"))
+		if got := superTestCalls.Load(); got != 1 {
+			t.Errorf("description implementation ran %d times, want 1", got)
+		}
+		if desc == 0 {
+			t.Fatal("super description returned nil")
+		}
+		if s := GoStringFromNSString(desc); s == "" {
+			t.Error("super description returned an empty string")
 		}
 	})
 }

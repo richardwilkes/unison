@@ -12,6 +12,7 @@ package unison
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -48,4 +49,14 @@ func TestNeedsOverwritePrompt(t *testing.T) {
 		"a revised target the dialog never presented must be confirmed")
 	c.True(needsOverwritePrompt(existing, other, false),
 		"a revised target must be confirmed even when the originally chosen path exists too")
+}
+
+// TestSaveDialogNeverRequestsFolderPicking verifies the Windows save dialog does not set FOS_PICKFOLDERS:
+// IFileSaveDialog does not support that option, and since SetOptions' HRESULT is not surfaced, a rejected flag would
+// silently drop every other option in the mask, including the overwrite prompt.
+func TestSaveDialogNeverRequestsFolderPicking(t *testing.T) {
+	c := check.New(t)
+	data, err := os.ReadFile("save_dialog_windows.go")
+	c.NoError(err)
+	c.False(strings.Contains(string(data), "w32.FOSPickFolders"))
 }
