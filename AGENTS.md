@@ -32,6 +32,12 @@ Any comments you add or edit:
 - `internal/w32` is excluded from linting, though not from the formatting check. The hygiene tests in its `w32_test.go`
   run on every platform and ban a few patterns outright, such as `syscall.NewLazyDLL` and `runtime.KeepAlive`; the
   comments there say why.
+- Tests live in one file per source file, named after it: the tests for `window.go` go in `window_test.go`, and the
+  tests for `window_darwin.go` in `window_darwin_test.go`. When a source file has tests in both the internal package
+  and the external `_test` package, the external ones take `X_test.go` and the internal ones `X_internal_test.go`.
+  Never start a new test file for a feature, a bug or a theme, such as `window_cursor_test.go`: add the tests to the
+  file for the source they exercise. Only tests that span many source files, such as the widget accessibility
+  sweeps, get a file of their own.
 - Tests that start a headless session, usually through the `startHeadless` or `startHeadlessTest` helper, must not
   call `t.Parallel`: a session owns most of the package's mutable globals while it runs. What such a test reads out of
   the application belongs to the UI thread, so read it inside `HeadlessScreen.Do`.
