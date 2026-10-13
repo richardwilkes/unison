@@ -53,19 +53,24 @@ func TestWaitEventsTimeout(t *testing.T) {
 		WaitEventsTimeout(0.25)
 	})
 
-	// Wake path: an event posted mid-wait returns long before the timeout expires.
+	// Wake path: an event posted mid-wait returns long before the timeout expires. The closure signals once it has
+	// drained the queue, and only then does the test post: a post that arrived earlier would be consumed by PollEvents
+	// and the wait would run to expiry.
 	var elapsed time.Duration
+	drained := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		runOnMain(func() {
 			PollEvents()
+			close(drained)
 			start := time.Now()
 			WaitEventsTimeout(10)
 			elapsed = time.Since(start)
 		})
 		close(done)
 	}()
-	time.Sleep(250 * time.Millisecond)
+	<-drained
+	time.Sleep(250 * time.Millisecond) // usually lets the wait begin first; the outcome does not depend on it
 	PostEmptyEvent()
 	select {
 	case <-done:
