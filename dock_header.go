@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/i18n"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -48,7 +49,7 @@ type DockHeaderTheme struct {
 
 type dockHeader struct {
 	owner                 *DockContainer
-	overflowButton        *Button
+	overflowButton        *dockOverflowButton
 	maximizeRestoreButton *Button
 	DockHeaderTheme
 	Panel
@@ -59,7 +60,7 @@ func newDockHeader(dc *DockContainer) *dockHeader {
 	d := &dockHeader{
 		DockHeaderTheme:       DefaultDockHeaderTheme,
 		owner:                 dc,
-		overflowButton:        createDockHeaderButton(),
+		overflowButton:        newDockOverflowButton(),
 		maximizeRestoreButton: createDockHeaderButton(),
 		dragInsertIndex:       -1,
 	}
@@ -369,6 +370,49 @@ func createDockHeaderButton() *Button {
 	return b
 }
 
+// dockOverflowButton is the header's "More Tabs" button. It is a Button of its own type only so that it can say its
+// click pops a menu up, which is asked of Panel.Self: the menu opens in the active window, so a press on behalf of an
+// assistive technology on a button in any other window is refused, and is not offered. See axMayPopupMenu.
+type dockOverflowButton struct {
+	Button
+}
+
+// newDockOverflowButton returns a button wired as createDockHeaderButton wires one, less the callbacks that only a
+// focusable button is ever sent.
+func newDockOverflowButton() *dockOverflowButton {
+	b := &dockOverflowButton{}
+	b.ButtonTheme = DefaultButtonTheme
+	b.Self = b
+	b.HideBase = true
+	b.SetFocusable(false)
+	b.SetSizer(b.DefaultSizes)
+	b.DrawCallback = b.DefaultDraw
+	b.MouseDownCallback = b.DefaultMouseDown
+	b.MouseDragCallback = b.DefaultMouseDrag
+	b.MouseUpCallback = b.DefaultMouseUp
+	b.UpdateCursorCallback = b.DefaultUpdateCursor
+	return b
+}
+
+// PerformAccessibilityAction refuses a press that would open the menu somewhere other than where the button is, which
+// the default behavior then refuses as well (see axClickOpensMenu), and leaves everything else to Button.
+func (b *dockOverflowButton) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
+	if req.Action == accessibility.Press && !axMayPopupMenu(b.AsPanel()) {
+		return false
+	}
+	return b.Button.PerformAccessibilityAction(req)
+}
+
+// axClickOpensMenu implements axMenuOpener: clicking the button shows the menu of hidden tabs, which is all it does.
+func (b *dockOverflowButton) axClickOpensMenu() bool {
+	return true
+}
+
+// axMenuOpeningActions implements axMenuActions: the press is the only action the button has, and it opens the menu.
+func (b *dockOverflowButton) axMenuOpeningActions(_ *accessibility.Node) accessibility.ActionSet {
+	return accessibility.ActionSet(0).With(accessibility.Press)
+}
+
 func (d *dockHeader) adjustToMaximizedState() {
 	d.maximizeRestoreButton.ClickCallback = func() { d.owner.Dock.Restore() }
 	fSize := d.maximizeRestoreButton.Font.Baseline()
@@ -391,7 +435,13 @@ func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))
 }
 
+// handleOverflowPopup pops up a menu of the tabs the header is hiding, below the overflow button. Menu.Popup builds the
+// menu in the active window, so nothing is shown for a header in any other window: positioned from the button's own
+// window, the menu would land in the active one at coordinates taken from the other. See axMayPopupMenu.
 func (d *dockHeader) handleOverflowPopup() {
+	if !axMayPopupMenu(d.overflowButton.AsPanel()) {
+		return
+	}
 	tabs, _ := d.partition()
 	m := DefaultMenuFactory().NewMenu(PopupMenuTemporaryBaseID, "", nil)
 	defer m.Dispose()

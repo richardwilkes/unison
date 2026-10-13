@@ -226,10 +226,14 @@ func (f *Field) installDropdown(titles func() []string, current func() string, c
 	}
 	// show gives the field the focus and pops the menu up, reporting whether it did. Nothing to choose from opens
 	// nothing, exactly as PopupMenu.Click shows no menu for a popup holding nothing: an empty menu panel has nothing to
-	// offer anyone.
+	// offer anyone. Neither does a field in any window but the active one, where the menu is built: positioned from the
+	// field's own window, it would land in the active one at coordinates taken from the other. See axMayPopupMenu.
 	show := func() bool {
 		if !f.Enabled() {
 			// The button is not disabled along with the field, so a disabled field refuses to open here.
+			return false
+		}
+		if !axMayPopupMenu(f.AsPanel()) {
 			return false
 		}
 		f.RequestFocus()

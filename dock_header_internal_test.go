@@ -11,12 +11,16 @@ package unison
 
 import (
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/richardwilkes/canvas/raster"
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
+	"github.com/richardwilkes/unison/enums/align"
+	"github.com/richardwilkes/unison/enums/side"
 )
 
 // countPixels returns the number of pixels in the canvas's pixmap that exactly match the given value.
@@ -158,4 +162,103 @@ func TestDockHeaderDropIndicatorAnchorsToVisibleTabs(t *testing.T) {
 	// The next visible tab (index 3) starts at x=54, so the marker belongs just left of it. The stale frame of hidden
 	// tab 1 starts at x=104, so anything at or beyond it means the marker was anchored to the stale rect.
 	c.True(x > 40 && x < 60, "expected the drop indicator near x=50, got x=%d", x)
+}
+
+// TestDockHeaderOverflowMenuOnlyInTheActiveWindow verifies that the "More Tabs" button of a header in a background
+// window opens nothing, whether clicked or pressed on behalf of an assistive technology, which is not offered the press
+// at all, since the menu it pops up is built in the active window at coordinates taken from the button's own window;
+// and that the same button opens its menu in its own window once that is the active one.
+func TestDockHeaderOverflowMenuOnlyInTheActiveWindow(t *testing.T) {
+	c := check.New(t)
+	var back, front *Window
+	var header *dockHeader
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 500, Height: 400},
+		StartupFinishedCallback(func() {
+			back = newHeadlessTestWindow(t, "back", geom.NewRect(10, 10, 200, 200))
+			front = newHeadlessTestWindow(t, "front", geom.NewRect(50, 50, 300, 200))
+			if back == nil || front == nil {
+				return
+			}
+			dock := NewDock()
+			first := newTestDockable("The first of several dockables")
+			dock.DockTo(first, nil, side.Left)
+			dc := Ancestor[*DockContainer](first)
+			for i := 2; i <= 6; i++ {
+				dc.Stack(newTestDockable("Dockable number "+strconv.Itoa(i)), -1)
+			}
+			header = dc.header
+			content := back.Content()
+			content.SetLayout(&FlexLayout{Columns: 1})
+			dock.SetLayoutData(&FlexLayoutData{HAlign: align.Fill, VAlign: align.Fill, HGrab: true, VGrab: true})
+			content.AddChild(dock)
+			front.ToFront()
+		}))
+	c.NotNil(back)
+	c.NotNil(front)
+	c.NotNil(header)
+	if back == nil || front == nil || header == nil {
+		return
+	}
+	screen.Sync() // the header has to have been laid out before it knows which tabs do not fit
+	var hidden bool
+	c.True(screen.Do(func() { hidden = header.overflowButton.Hidden }))
+	c.False(hidden, "the test needs tabs hidden behind the overflow button")
+
+	var active *Window
+	var frontOpen, backOpen int
+	look := func() {
+		frontOpen = len(front.root.openMenuPanels)
+		backOpen = len(back.root.openMenuPanels)
+	}
+	c.True(screen.Do(func() {
+		active = ActiveWindow()
+		header.handleOverflowPopup()
+		look()
+	}))
+	c.True(active == front, "the test needs the header's window in the background")
+	c.Equal(0, frontOpen, "the menu must not land in the active window")
+	c.Equal(0, backOpen, "nor anywhere else")
+
+	// What is refused is not advertised either, so an assistive technology is never offered a press that would open
+	// nothing. See axSnapshot.narrowMenuActions.
+	screen.AccessibilityTree(back)
+	backgrounded := screen.AccessibilityNodeFor(header.overflowButton)
+	c.NotNil(backgrounded)
+	if backgrounded == nil {
+		return
+	}
+	c.Equal("More Tabs", backgrounded.Name)
+	c.False(backgrounded.Actions.Has(accessibility.Press), "a button whose press would open nothing must not offer it")
+	var accepted bool
+	c.True(screen.Do(func() {
+		accepted = header.overflowButton.axDispatchAction(accessibility.ActionRequest{Action: accessibility.Press}, false)
+		look()
+	}))
+	c.False(accepted, "a press on it is refused, in case what was published still offered it")
+	c.Equal(0, frontOpen)
+	c.Equal(0, backOpen)
+
+	c.True(screen.Do(func() { back.ToFront() }))
+	screen.AccessibilityTree(back)
+	restored := screen.AccessibilityNodeFor(header.overflowButton)
+	c.NotNil(restored)
+	if restored == nil {
+		return
+	}
+	c.True(restored.Actions.Has(accessibility.Press), "the active window's button offers its press again")
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   restored.ID,
+		Action: accessibility.Press,
+	}), "and carries it out")
+	var openedIn *Window
+	c.True(screen.Do(func() {
+		look()
+		if backOpen == 1 {
+			openedIn = back.root.openMenuPanels[0].Window()
+		}
+	}))
+	c.Equal(1, backOpen, "the menu opens in the button's own window once that is the active one")
+	c.Equal(0, frontOpen)
+	c.True(openedIn == back)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

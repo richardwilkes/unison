@@ -154,3 +154,33 @@ func TestCloseMenuStackStoppingAt(t *testing.T) {
 	root.closeMenuStackStoppingAt(nil)
 	c.Equal(0, len(root.openMenuPanels))
 }
+
+// TestEnsureInWindowKeepsMenuBelowTop verifies that a menu too tall for the space under the menu bar is shrunk to fit
+// there rather than moved up over the bar, while a menu with no such limit may move up to use the whole window.
+func TestEnsureInWindowKeepsMenuBelowTop(t *testing.T) {
+	c := check.New(t)
+	root := newRootPanel(nil)
+	root.SetFrameRect(geom.NewRect(0, 0, 400, 300))
+	mp := newTestMenuPanel(0, 0, 10, 10)
+	root.insertMenu(mp)
+
+	// Below the bar: no room to grow, so it shrinks and stays put.
+	mp.menu.ensureInWindow(geom.NewRect(10, 30, 100, 500), 30)
+	c.Equal(geom.NewRect(10, 30, 100, 270), mp.FrameRect())
+
+	// A menu that fits under the bar is left where it was asked to go.
+	mp.menu.ensureInWindow(geom.NewRect(10, 30, 100, 200), 30)
+	c.Equal(geom.NewRect(10, 30, 100, 200), mp.FrameRect())
+
+	// One that nearly fits is moved up, but never above the bar.
+	mp.menu.ensureInWindow(geom.NewRect(10, 30, 100, 280), 30)
+	c.Equal(geom.NewRect(10, 30, 100, 270), mp.FrameRect())
+
+	// Without a limit, the same menu may cover the whole window height.
+	mp.menu.ensureInWindow(geom.NewRect(10, 30, 100, 500), 0)
+	c.Equal(geom.NewRect(10, 0, 100, 300), mp.FrameRect())
+
+	// A sub-menu with no limit still slides up to fit.
+	mp.menu.ensureInWindow(geom.NewRect(10, 100, 100, 250), 0)
+	c.Equal(geom.NewRect(10, 50, 100, 250), mp.FrameRect())
+}

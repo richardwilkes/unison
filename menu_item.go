@@ -170,8 +170,35 @@ func (mi *menuItem) SetCheckState(s check.Enum) {
 	mi.checkable = true
 }
 
+// menuItemPanel is the panel an item is drawn as. It is a type of its own only so that it can say which of the item's
+// actions open a menu, which is asked of Panel.Self: a sub-menu opens in the active window, so a request on behalf of an
+// assistive technology that would open one from an item in any other window is refused, and is not offered. See
+// axMayPopupMenu.
+type menuItemPanel struct {
+	item *menuItem
+	Panel
+}
+
+// axClickOpensMenu implements axMenuOpener: clicking an item that has a sub-menu shows it.
+func (p *menuItemPanel) axClickOpensMenu() bool {
+	return p.item.subMenu != nil
+}
+
+// axMenuOpeningActions implements axMenuActions: pressing or expanding an item that has a sub-menu opens it. Neither is
+// named while the sub-menu is already showing, which is exactly what performAccessibilityAction does with the request
+// then: it is accepted as already done, with no menu opened anywhere. Collapse is never named, since taking a menu
+// down acts on the menu that is showing rather than on whatever window is active.
+func (p *menuItemPanel) axMenuOpeningActions(node *accessibility.Node) accessibility.ActionSet {
+	if p.item.subMenu == nil || node.Expanded {
+		return 0
+	}
+	return accessibility.ActionSet(0).With(accessibility.Press, accessibility.Expand)
+}
+
 func (mi *menuItem) newPanel() *Panel {
-	mi.panel = NewPanel()
+	p := &menuItemPanel{item: mi}
+	p.Self = p
+	mi.panel = p.AsPanel()
 	if mi.isSeparator {
 		mi.panel.SetBorder(DefaultMenuItemTheme.SeparatorBorder)
 		mi.panel.Accessibility.Role = role.Separator
@@ -232,9 +259,17 @@ func (mi *menuItem) describeForAccessibility(node *accessibility.Node) {
 // runs its handler or opens its sub-menu exactly as clicking it or pressing Return on it would. Focusing an item is
 // highlighting it. Collapsing an item takes its sub-menu away again, along with anything opened from within it, which
 // is what moving the pointer back onto the item or pressing Escape in the sub-menu does.
+//
+// A request that would open the sub-menu of an item whose window is not the one a menu opens in is refused — see
+// axMayPopupMenu — and the default behavior for a press, a synthesized click, refuses it in turn (see axClickOpensMenu).
+// Collapsing is not gated that way: it takes down a menu in the item's own window, which is where any menu it opened
+// went.
 func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Press:
+		if mi.subMenu != nil && mi.subMenu.popupPanel == nil && !axMayPopupMenu(mi.panel) {
+			return false
+		}
 		mi.click()
 		return true
 	case accessibility.Focus:
@@ -261,7 +296,7 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 		mi.scrollIntoView()
 		return true
 	case accessibility.Expand:
-		if mi.subMenu == nil {
+		if mi.subMenu == nil || (mi.subMenu.popupPanel == nil && !axMayPopupMenu(mi.panel)) {
 			return false
 		}
 		// The sub-menu is opened from a queued task rather than here. Expand is a navigation action, carried out
@@ -276,7 +311,8 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 		// is no longer there to be expanded. The item may have been disabled by the validator that ran in between, and
 		// a click cannot open the sub-menu of a disabled item. And the sub-menu may have been opened by other means,
 		// where opening it again would tear it down and build it back up — which an assistive technology that was told
-		// the item is expanded would not expect.
+		// the item is expanded would not expect. The window may also have stopped being the one a menu opens in, which
+		// showSubMenu checks again for itself.
 		InvokeTask(func() {
 			if mi.subMenu == nil || mi.subMenu.popupPanel != nil || !mi.enabled || mi.panel == nil ||
 				mi.panel.Window() == nil {
@@ -322,25 +358,26 @@ func (mi *menuItem) click() {
 	}
 }
 
+// showSubMenu opens the item's sub-menu beside the item, or below it for an item on the menu bar. The popup is
+// inserted into the active window, so an item in any other window opens nothing: positioned from its own window, the
+// menu would land in the active one at coordinates taken from the other. See axMayPopupMenu.
 func (mi *menuItem) showSubMenu() {
-	if !mi.factory.showInProgress && mi.subMenu != nil && mi.subMenu.popupPanel == nil {
+	if !mi.factory.showInProgress && mi.subMenu != nil && mi.subMenu.popupPanel == nil && axMayPopupMenu(mi.panel) {
 		mi.factory.showInProgress = true
 		defer func() { mi.factory.showInProgress = false }()
 		mi.subMenu.createPopup()
-		if mi.subMenu.popupPanel == nil {
-			// createPopup is a no-op when no window is active, so there is no panel to position.
-			return
-		}
 		pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
 		fr := mi.subMenu.popupPanel.FrameRect()
+		var top float32
 		if mi.isRoot() {
 			fr.X = pr.X
 			fr.Y = pr.Bottom()
+			top = fr.Y
 		} else {
 			fr.X = pr.Right()
 			fr.Y = pr.Y
 		}
-		mi.subMenu.ensureInWindow(fr)
+		mi.subMenu.ensureInWindow(fr, top)
 	}
 }
 

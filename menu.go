@@ -220,14 +220,18 @@ func (m *menu) Popup(where geom.Rect, itemIndex int) {
 		fr := m.popupPanel.FrameRect()
 		where.Height = fr.Height
 		where.Width = max(fr.Width, where.Width)
-		m.ensureInWindow(where)
+		m.ensureInWindow(where, 0)
 		m.popupPanel.ValidateLayout()
 		m.setKeyIndex(itemIndex)
 	}
 }
 
-func (m *menu) ensureInWindow(where geom.Rect) {
+// ensureInWindow places the popup at where, shifting it and, when that is not enough, shrinking it so that it lies
+// within the window and no higher than top. A menu opened from the menu bar passes the bar's bottom as top so that it
+// scrolls rather than covering the bar.
+func (m *menu) ensureInWindow(where geom.Rect, top float32) {
 	fr := m.popupPanel.Parent().ContentRect(true)
+	top = min(max(top, 0), fr.Bottom())
 	if where.Width > fr.Width {
 		where.Width = fr.Width
 	}
@@ -237,14 +241,14 @@ func (m *menu) ensureInWindow(where geom.Rect) {
 	if where.X < 0 {
 		where.X = 0
 	}
-	if where.Height > fr.Height {
-		where.Height = fr.Height
+	if where.Height > fr.Bottom()-top {
+		where.Height = fr.Bottom() - top
 	}
 	if where.Bottom() > fr.Bottom() {
 		where.Y = fr.Bottom() - where.Height
 	}
-	if where.Y < 0 {
-		where.Y = 0
+	if where.Y < top {
+		where.Y = top
 	}
 	m.popupPanel.SetFrameRect(where)
 }
