@@ -393,3 +393,35 @@ func TestPopupWindowHitTestReachesTheTarget(t *testing.T) {
 		})
 	})
 }
+
+// TestWindowFrameMouseDown proves the classification behind the sendEvent: override: a mouse button press is reported
+// as one on the frame only when it lies outside the content view, and no other event is.
+func TestWindowFrameMouseDown(t *testing.T) {
+	runOnMain(func() {
+		w, v, cleanup := newTestWindowAndView(t)
+		defer cleanup()
+		WithPool(func() {
+			frame := objc.Send[NSRect](objc.ID(v), Sel("frame"))
+			inside := NSPoint{X: frame.Origin.X + 10, Y: frame.Origin.Y + 10}
+			title := NSPoint{X: frame.Origin.X + 10, Y: frame.Origin.Y + frame.Size.Height + 5}
+			for _, c := range []struct {
+				name      string
+				eventType uint64
+				where     NSPoint
+				want      bool
+			}{
+				{"left press on the title bar", nsEventTypeLeftMouseDown, title, true},
+				{"right press on the title bar", nsEventTypeRightMouseDown, title, true},
+				{"other press on the title bar", nsEventTypeOtherMouseDown, title, true},
+				{"left press on the content", nsEventTypeLeftMouseDown, inside, false},
+				{"left release on the title bar", nsEventTypeLeftMouseUp, title, false},
+				{"move over the title bar", nsEventTypeMouseMoved, title, false},
+			} {
+				event := synthMouseEvent(c.eventType, c.where, 0, w)
+				if got := windowFrameMouseDown(objc.ID(w), event); got != c.want {
+					t.Errorf("%s: windowFrameMouseDown = %v, want %v", c.name, got, c.want)
+				}
+			}
+		})
+	})
+}

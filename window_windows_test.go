@@ -324,3 +324,18 @@ func TestW32WindowClass(t *testing.T) {
 	c.False(w32PopupWndClass.icon)
 	c.True(w32MainWndClass.icon)
 }
+
+// TestW32NonClientMouseDownClosesMenus verifies that a press on a window's title bar or frame closes the window's open
+// menus, and that a window without a root panel tolerates one.
+func TestW32NonClientMouseDownClosesMenus(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{wnd: &apiWindow{}}
+	owner.root = newRootPanel(owner)
+	mp := newTestMenuPanel(0, 0, 100, 100)
+	newTestPopupWindow(owner, mp)
+	owner.root.insertMenu(mp)
+	owner.w32NonClientMouseDown()
+	c.Equal(0, len(owner.root.openMenuPanels))
+	c.Nil(mp.menu.popupPanel)
+	(&Window{wnd: &apiWindow{}}).w32NonClientMouseDown()
+}

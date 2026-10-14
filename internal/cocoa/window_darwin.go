@@ -85,11 +85,39 @@ const (
 // nsBackingStoreBuffered is NSBackingStoreType's NSBackingStoreBuffered.
 const nsBackingStoreBuffered uint64 = 2
 
+// NSEventType values of the mouse-down events (verified against the macOS SDK's NSEvent.h).
+const (
+	nsEventTypeLeftMouseDown  uint64 = 1
+	nsEventTypeRightMouseDown uint64 = 3
+	nsEventTypeOtherMouseDown uint64 = 25
+)
+
+// WindowFrameMouseDownCallback is invoked when a mouse button is pressed on a window outside its content view: on its
+// title bar or its frame. The press goes on to AppKit afterwards, so a window drag or a title bar button still works.
+var WindowFrameMouseDownCallback func(Window)
+
 var (
 	macWindowClassOnce sync.Once
 	macWindowClass     objc.Class
 	macWindowClassErr  error
 )
+
+// windowFrameMouseDown reports whether event is a mouse button press on wnd outside its content view.
+func windowFrameMouseDown(wnd, event objc.ID) bool {
+	switch objc.Send[uint64](event, Sel("type")) {
+	case nsEventTypeLeftMouseDown, nsEventTypeRightMouseDown, nsEventTypeOtherMouseDown:
+	default:
+		return false
+	}
+	content := wnd.Send(Sel("contentView"))
+	if content == 0 {
+		return false
+	}
+	pt := objc.Send[NSPoint](event, Sel("locationInWindow"))
+	frame := objc.Send[NSRect](content, Sel("frame"))
+	return pt.X < frame.Origin.X || pt.Y < frame.Origin.Y || pt.X >= frame.Origin.X+frame.Size.Width ||
+		pt.Y >= frame.Origin.Y+frame.Size.Height
+}
 
 // registerMacWindowClass registers the macWindow Objective-C class: NSWindow plus two bool ivars set at creation
 // time and read back by the canBecomeKeyWindow/canBecomeMainWindow overrides (through the accessors objc.RegisterClass
@@ -141,6 +169,17 @@ func registerMacWindowClass() {
 					return self.Send(Sel("contentView")).Send(Sel("accessibilityHitTest:"), pt)
 				}
 				return SendSuper(self, macWindowClass, Sel("accessibilityHitTest:"), pt)
+			},
+		},
+		{
+			// A press on the title bar or the frame never reaches the content view, so it is reported from here before
+			// AppKit handles it.
+			Cmd: Sel("sendEvent:"),
+			Fn: func(self objc.ID, _ objc.SEL, event objc.ID) {
+				if WindowFrameMouseDownCallback != nil && windowFrameMouseDown(self, event) {
+					WindowFrameMouseDownCallback(Window(self))
+				}
+				SendSuper(self, macWindowClass, Sel("sendEvent:"), event)
 			},
 		},
 	})

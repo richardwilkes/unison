@@ -22,16 +22,13 @@ import (
 	"github.com/richardwilkes/unison/drag"
 )
 
-// NSEventType values (verified against the macOS SDK's NSEvent.h).
+// NSEventType values (verified against the macOS SDK's NSEvent.h). The mouse-down ones are in window_darwin.go.
 const (
-	nsEventTypeLeftMouseDown    uint64 = 1
 	nsEventTypeLeftMouseUp      uint64 = 2
-	nsEventTypeRightMouseDown   uint64 = 3
 	nsEventTypeMouseMoved       uint64 = 5
 	nsEventTypeLeftMouseDragged uint64 = 6
 	nsEventTypeKeyDown          uint64 = 10
 	nsEventTypeKeyUp            uint64 = 11
-	nsEventTypeOtherMouseDown   uint64 = 25
 )
 
 // newTestWindowAndView builds the window+view pair the way unison's nativeInit does. The returned cleanup mirrors

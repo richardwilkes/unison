@@ -285,6 +285,9 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			if result, handled := w.w32MouseActivate(); handled {
 				return result
 			}
+		case w32.WM_NCLBUTTONDOWN, w32.WM_NCRBUTTONDOWN, w32.WM_NCMBUTTONDOWN:
+			// Left to DefWindowProc afterwards, so a window drag or a caption button works as usual.
+			w.w32NonClientMouseDown()
 		case w32.WM_CLOSE:
 			w.requestClose()
 			return 0
@@ -593,6 +596,14 @@ func (w *Window) w32HandleGetObject(wParam w32.WPARAM, lParam w32.LPARAM) (resul
 		w.wnd.uiaAnsweredForOwner = true
 	}
 	return uintptr(uia.ReturnRawElementProvider(w.wnd.wnd, wParam, lParam, adapter.RootUnknown())), true
+}
+
+// w32NonClientMouseDown handles a press on the window's title bar or frame. It lands outside every menu, so the
+// window's open menus close at once rather than only once the press has moved the window.
+func (w *Window) w32NonClientMouseDown() {
+	if w.root != nil {
+		w.root.closeMenuStackStoppingAt(nil)
+	}
 }
 
 // w32MouseActivate answers WM_MOUSEACTIVATE, reporting whether it answered at all. A click on a popup menu window must

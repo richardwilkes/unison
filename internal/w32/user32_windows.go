@@ -288,6 +288,9 @@ const (
 	WM_SETICON                     = 128
 	WM_NCPAINT                     = 133
 	WM_NCACTIVATE                  = 134
+	WM_NCLBUTTONDOWN               = 161
+	WM_NCRBUTTONDOWN               = 164
+	WM_NCMBUTTONDOWN               = 167
 	WM_KEYDOWN                     = 256
 	WM_KEYUP                       = 257
 	WM_CHAR                        = 258

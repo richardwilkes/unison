@@ -106,6 +106,7 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window did move callback for unknown window", "window", macWnd)
 		}
 	}
+	cocoa.WindowFrameMouseDownCallback = macFrameMouseDown
 	cocoa.WindowMinimizeCallback = func(macWnd cocoa.Window, minimized bool) {
 		if w := macFindWindow(macWnd); w != nil {
 			if w.minimized != minimized {
@@ -233,6 +234,14 @@ func macInitWindowCallbacks() {
 		}
 	}
 	cocoa.WindowDragSourceFinishedCallback = macDragSourceFinished
+}
+
+// macFrameMouseDown is the WindowFrameMouseDownCallback: a press on macWnd's title bar or frame. It lands outside
+// every menu, so the window's open menus close at once rather than only once the press has moved the window.
+func macFrameMouseDown(macWnd cocoa.Window) {
+	if w := macFindWindow(macWnd); w != nil && w.root != nil {
+		w.root.closeMenuStackStoppingAt(nil)
+	}
 }
 
 // macDragSourceFinished is the WindowDragSourceFinishedCallback: AppKit's report that a drag begun from macWnd's view

@@ -81,3 +81,22 @@ func TestMacDragSourceFinishedForDisposedSource(t *testing.T) {
 	macDragSourceFinished(cocoa.Window(1))
 	c.Equal(1, cleanups, "a second report of the same end should not run the cleanup again")
 }
+
+// TestMacFrameMouseDownClosesMenus verifies that a press on a window's title bar or frame closes the window's open
+// menus, and that one on a window that is not in the list is ignored.
+func TestMacFrameMouseDownClosesMenus(t *testing.T) {
+	c := check.New(t)
+	prevList := windowList
+	defer func() { windowList = prevList }()
+	owner := &Window{wnd: &apiWindow{wnd: cocoa.Window(7)}}
+	owner.root = newRootPanel(owner)
+	windowList = []*Window{owner}
+	mp := newTestMenuPanel(0, 0, 100, 100)
+	newTestPopupWindow(owner, mp)
+	owner.root.insertMenu(mp)
+	macFrameMouseDown(cocoa.Window(8))
+	c.Equal(1, len(owner.root.openMenuPanels), "a press on an unknown window leaves the menus alone")
+	macFrameMouseDown(cocoa.Window(7))
+	c.Equal(0, len(owner.root.openMenuPanels))
+	c.Nil(mp.menu.popupPanel)
+}
