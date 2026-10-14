@@ -98,6 +98,6 @@ func TestRectToAndFromWindowUnits(t *testing.T) {
 	inWindowUnits := geom.NewRect(2400, 1200, 200, 150)
 	c.Equal(inWindowUnits, d.apiRectToWindowUnits(raw))
 	c.Equal(raw, d.apiRectFromWindowUnits(inWindowUnits))
-	c.True(raw.In(d.Usable))
-	c.False(inWindowUnits.In(d.apiUsableInWindowUnits()), "the window-rect space cannot answer whether it fits")
+	c.True(d.Usable.Contains(raw))
+	c.False(d.apiUsableInWindowUnits().Contains(inWindowUnits), "the window-rect space cannot answer whether it fits")
 }

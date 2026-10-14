@@ -92,23 +92,27 @@ func (d *Display) FitRectOnto(r geom.Rect) geom.Rect {
 // BestDisplayForRect returns the display with the greatest overlap with the rectangle, or the primary display if there
 // is no overlap.
 func BestDisplayForRect(r geom.Rect) *Display {
+	if best := bestDisplayAmong(AllDisplays(), r); best != nil {
+		return best
+	}
+	return PrimaryDisplay()
+}
+
+// bestDisplayAmong returns the one of displays whose usable area contains r or, failing that, overlaps it most, or nil
+// when none overlaps it.
+func bestDisplayAmong(displays []*Display, r geom.Rect) *Display {
+	var best *Display
 	var bestArea float32
-	var bestDisplay *Display
-	for _, display := range AllDisplays() {
-		if r.In(display.Usable) {
-			return display
+	for _, d := range displays {
+		if d.Usable.Contains(r) {
+			return d
 		}
-		ri := r.Intersect(display.Usable)
-		if !ri.Empty() {
-			area := ri.Width * ri.Height
-			if bestArea < area {
+		if ri := r.Intersect(d.Usable); !ri.Empty() {
+			if area := ri.Width * ri.Height; bestArea < area {
 				bestArea = area
-				bestDisplay = display
+				best = d
 			}
 		}
 	}
-	if bestDisplay == nil {
-		return PrimaryDisplay()
-	}
-	return bestDisplay
+	return best
 }

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 // TestDisplayPPI verifies the pixels-per-inch computation, in particular that the zero physical sizes commonly
@@ -32,4 +33,38 @@ func TestDisplayPPI(t *testing.T) {
 
 	// A zero pixel extent yields an implausible zero PPI and falls back to the default as well.
 	c.Equal(defaultDisplayPPI, displayPPI(0, 527))
+}
+
+// TestBestDisplayAmong verifies that a rect belongs to the display whose usable area holds all of it, or else to the
+// one it overlaps most, rather than to the one holding its top-left corner.
+func TestBestDisplayAmong(t *testing.T) {
+	c := check.New(t)
+	left := &Display{Frame: geom.NewRect(0, 0, 1920, 1080), Usable: geom.NewRect(0, 24, 1920, 1056), Primary: true}
+	right := &Display{Frame: geom.NewRect(1920, 0, 1920, 1080), Usable: geom.NewRect(1920, 0, 1920, 1080)}
+	displays := []*Display{left, right}
+
+	// A rect within one display's usable area belongs to it.
+	c.Equal(left, bestDisplayAmong(displays, geom.NewRect(100, 100, 800, 600)))
+	c.Equal(right, bestDisplayAmong(displays, geom.NewRect(2000, 100, 800, 600)))
+
+	// A rect whose top-left corner lies on the left display while most of it lies on the right belongs to the right
+	// one. The corner alone used to decide for the left.
+	c.Equal(right, bestDisplayAmong(displays, geom.NewRect(1800, 100, 800, 600)))
+
+	// A rect overlapping no display belongs to none.
+	c.Nil(bestDisplayAmong(displays, geom.NewRect(-1000, -1000, 800, 600)))
+	c.Nil(bestDisplayAmong(nil, geom.NewRect(100, 100, 800, 600)))
+}
+
+// TestBestDisplayForRectFallsBackToPrimary verifies that a rect overlapping no display is placed on the primary one.
+func TestBestDisplayForRectFallsBackToPrimary(t *testing.T) {
+	c := check.New(t)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300})
+	var primary, best *Display
+	c.True(screen.Do(func() {
+		primary = PrimaryDisplay()
+		best = BestDisplayForRect(geom.NewRect(-1000, -1000, 100, 100))
+	}))
+	c.NotNil(primary)
+	c.Equal(primary, best)
 }
