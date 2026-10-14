@@ -377,20 +377,25 @@ func (mi *menuItem) showSubMenu() {
 		if !mi.subMenu.createPopup(wnd.menuOwner()) {
 			return
 		}
-		pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
-		pr.Point = wnd.apiPointToScreen(pr.Point)
 		fr := mi.subMenu.popupPanel.FrameRect()
+		fr.Point = subMenuOrigin(mi.panel.RectToRoot(mi.panel.ContentRect(true)), mi.isRoot(), wnd.apiPointToScreen)
 		top := noTopLimit
 		if mi.isRoot() {
-			fr.X = pr.X
-			fr.Y = pr.Bottom()
 			top = fr.Y
-		} else {
-			fr.X = pr.Right()
-			fr.Y = pr.Y
 		}
 		mi.subMenu.ensureOnDisplay(fr, top, wnd)
 	}
+}
+
+// subMenuOrigin returns where the sub-menu of an item whose content covers pr, in its window's root space, goes in the
+// space window rects use, which toScreen converts into: below the item for a title on the menu bar, beside it
+// otherwise. The corner itself is converted, since on Windows that space keeps a raw-pixel origin to which the item's
+// logical width or height cannot be added.
+func subMenuOrigin(pr geom.Rect, forBar bool, toScreen func(geom.Point) geom.Point) geom.Point {
+	if forBar {
+		return toScreen(geom.NewPoint(pr.X, pr.Bottom()))
+	}
+	return toScreen(geom.NewPoint(pr.Right(), pr.Y))
 }
 
 func (mi *menuItem) scrollIntoView() {

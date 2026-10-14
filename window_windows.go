@@ -285,7 +285,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			if result, handled := w.w32MouseActivate(); handled {
 				return result
 			}
-		case w32.WM_NCLBUTTONDOWN, w32.WM_NCRBUTTONDOWN, w32.WM_NCMBUTTONDOWN:
+		case w32.WM_NCLBUTTONDOWN, w32.WM_NCRBUTTONDOWN, w32.WM_NCMBUTTONDOWN, w32.WM_NCXBUTTONDOWN:
 			// Left to DefWindowProc afterwards, so a window drag or a caption button works as usual.
 			w.w32NonClientMouseDown()
 		case w32.WM_CLOSE:
@@ -435,21 +435,19 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				w.synthesizeMouseUp()
 			}
 			return 0
-		case w32.WM_MOUSEWHEEL:
+		case w32.WM_MOUSEWHEEL, w32.WM_MOUSEHWHEEL:
 			var pos w32.POINT
 			pos.X = int32(int16(lParam & 0xFFFF))
 			pos.Y = int32(int16((lParam >> 16) & 0xFFFF))
-			w32.ScreenToClient(w.wnd.wnd, &pos)
-			w.mouseWheel(w.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
-				geom.NewPoint(0, float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA)), w.CurrentKeyModifiers())
-			return 0
-		case w32.WM_MOUSEHWHEEL:
-			var pos w32.POINT
-			pos.X = int32(int16(lParam & 0xFFFF))
-			pos.Y = int32(int16((lParam >> 16) & 0xFFFF))
-			w32.ScreenToClient(w.wnd.wnd, &pos)
-			w.mouseWheel(w.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))),
-				geom.NewPoint(float32(int16((wParam>>16)&0xFFFF))/float32(w32.WHEEL_DELTA), 0), w.CurrentKeyModifiers())
+			target := w.w32WheelTarget(pos, w32.WindowFromPoint)
+			w32.ScreenToClient(target.wnd.wnd, &pos)
+			amount := float32(int16((wParam>>16)&0xFFFF)) / float32(w32.WHEEL_DELTA)
+			delta := geom.NewPoint(0, amount)
+			if uMsg == w32.WM_MOUSEHWHEEL {
+				delta = geom.NewPoint(amount, 0)
+			}
+			target.mouseWheel(target.w32ConvertRawMouse(geom.NewPoint(float32(pos.X), float32(pos.Y))), delta,
+				target.CurrentKeyModifiers())
 			return 0
 		case w32.WM_SIZE:
 			minimized := wParam == w32.SIZE_MINIMIZED
@@ -582,20 +580,31 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 //
 // A popup menu window answers with its owner's fragment root. Its menu's nodes live in the owner's tree, in the owner's
 // coordinates and marked as overlays, so UI Automation's ElementFromPoint over the popup hit-tests the owner's tree
-// with the owner's geometry and finds the item under the point. Should UI Automation reject a root hosted by another
-// window, the fallback is to leave a popup's request to DefWindowProc.
+// with the owner's geometry and finds the item under the point. Nothing detects UI Automation rejecting a root hosted
+// by another window; should that turn out to happen, a popup's request would have to be left to DefWindowProc instead.
 func (w *Window) w32HandleGetObject(wParam w32.WPARAM, lParam w32.LPARAM) (result uintptr, handled bool) {
-	if int32(lParam) != uia.RootObjectId {
+	adapter := w.w32GetObjectAdapter(lParam)
+	if adapter == nil {
 		return 0, false
+	}
+	return uintptr(uia.ReturnRawElementProvider(w.wnd.wnd, wParam, lParam, adapter.RootUnknown())), true
+}
+
+// w32GetObjectAdapter returns the adapter whose fragment root answers a WM_GETOBJECT carrying lParam, or nil if the
+// request is left to DefWindowProc; see w32HandleGetObject. A popup menu window that answers records that it did, so
+// that nativeAccessibilityShutdown withdraws its handle.
+func (w *Window) w32GetObjectAdapter(lParam w32.LPARAM) *uia.Window {
+	if int32(lParam) != uia.RootObjectId {
+		return nil
 	}
 	adapter := w.menuOwner().w32AccessibilityAdapter()
 	if adapter == nil {
-		return 0, false
+		return nil
 	}
 	if w.isPopup() {
 		w.wnd.uiaAnsweredForOwner = true
 	}
-	return uintptr(uia.ReturnRawElementProvider(w.wnd.wnd, wParam, lParam, adapter.RootUnknown())), true
+	return adapter
 }
 
 // w32NonClientMouseDown handles a press on the window's title bar or frame. It lands outside every menu, so the
@@ -604,6 +613,17 @@ func (w *Window) w32NonClientMouseDown() {
 	if w.root != nil {
 		w.root.closeMenuStackStoppingAt(nil)
 	}
+}
+
+// w32WheelTarget returns the window a wheel message at screen position pt is for. Windows sends the wheel to the focus
+// window unless it is set to scroll inactive windows under the pointer, and a popup menu window is never the focus
+// window, so a wheel turned over one of ours reaches its owner and is handed on to the popup. under finds the window
+// at pt; it is w32.WindowFromPoint outside the tests.
+func (w *Window) w32WheelTarget(pt w32.POINT, under func(w32.POINT) windows.HWND) *Window {
+	if target := w32FindWindowByHWND(under(pt)); target != nil && target.isPopup() && target.IsValid() {
+		return target
+	}
+	return w
 }
 
 // w32MouseActivate answers WM_MOUSEACTIVATE, reporting whether it answered at all. A click on a popup menu window must
@@ -643,9 +663,10 @@ func (w *Window) w32WindowStyle() uint32 {
 
 func (w *Window) w32WindowExStyle() uint32 {
 	if w.isPopup() {
-		// Never activated, and kept off the taskbar and out of Alt+Tab. No WS_EX_TOPMOST is needed for a floating
-		// owner, since an owned window always stays above its owner.
-		return w32.WS_EX_NOACTIVATE | w32.WS_EX_TOOLWINDOW
+		// Never activated, kept off the taskbar and out of Alt+Tab, and topmost, as the other platforms' menu levels
+		// are, so that a menu is not hidden by a floating window of the application or another program's always-on-top
+		// window; being owned keeps it above its owner, but above nothing else.
+		return w32.WS_EX_NOACTIVATE | w32.WS_EX_TOOLWINDOW | w32.WS_EX_TOPMOST
 	}
 	var style uint32
 	style = w32.WS_EX_APPWINDOW
@@ -992,11 +1013,6 @@ func (w *Window) nativeMaximize() {
 }
 
 func (w *Window) nativeAcquireFocusAndBringToFront() {
-	if w.isPopup() {
-		// A popup menu window never takes the focus or the foreground from its owner.
-		w32.ShowWindow(w.wnd.wnd, w32.SW_SHOWNA)
-		return
-	}
 	// Windows only permits a process to call SetForegroundWindow when it already owns the foreground window. When the
 	// app is launched from a command line, the console (a different process) owns the foreground, so the call is denied
 	// and the window merely flashes in the taskbar. Temporarily attaching our input thread to the thread that currently
@@ -1230,6 +1246,10 @@ func (w *Window) nativeDestroy() {
 		w.wnd.dropTarget.Revoke()
 		w.wnd.dropTarget = nil
 	}
+	// Given up before the window goes, so that the capture release destroying it would cause is not taken for another
+	// window taking the capture away and answered with releases to the panels of a window that is already disposed of.
+	// A popup menu window closed by a key while a press is held on one of its items is destroyed holding the capture.
+	w.nativeCancelMouseCapture()
 	if w.wnd.wnd != 0 {
 		w32.DestroyWindow(w.wnd.wnd)
 		w.wnd.wnd = 0

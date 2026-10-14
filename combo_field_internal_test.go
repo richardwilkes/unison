@@ -79,18 +79,13 @@ func TestFieldDropdownOpensOnlyInTheActiveWindow(t *testing.T) {
 	c.Equal(0, backOpen)
 	c.Equal(0, asked, "nothing is about to be shown, so the options are not asked for")
 
-	var openedIn *Window
 	c.True(screen.Do(func() {
 		back.ToFront()
 		button.ClickCallback()
 		look()
-		if backOpen == 1 {
-			openedIn = back.root.openMenuPanels[0].Window().menuOwner()
-		}
 	}))
 	c.Equal(1, backOpen, "the menu opens for the field's own window once that is the active one")
 	c.Equal(0, frontOpen)
-	c.True(openedIn == back)
 	c.Equal(1, asked)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

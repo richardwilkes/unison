@@ -119,10 +119,9 @@ type axSnapshot struct {
 	// keeps the panel that delegated from taking the focus back.
 	delegatedFocus accessibility.NodeID
 	generation     uint64
-	// offset translates the root space of the window whose panels are being visited into that of the window being
-	// described. It is zero except while the panel of an open menu, which a popup window shows, is visited; see
-	// visitMenu.
-	offset geom.Point
+	// space maps the root space of the window whose panels are being visited into that of the window being described.
+	// It is the identity except while the panel of an open menu, which a popup window shows, is visited; see visitMenu.
+	space axSpace
 	// menusLandHere is axMayPopupMenu's answer for every panel of the window, worked out once.
 	menusLandHere bool
 }
@@ -259,6 +258,7 @@ func (w *Window) buildAccessibilityTree() *accessibility.Tree {
 		targets:       make(map[accessibility.NodeID]axTarget, capacity),
 		focusPanel:    w.CurrentFocus(),
 		generation:    ax.generation,
+		space:         axIdentitySpace,
 		menusLandHere: w == ActiveWindow(),
 	}
 	s.buildRoot()
@@ -309,20 +309,56 @@ func (s *axSnapshot) buildRoot() {
 	s.resolveCompanionFocus()
 }
 
+// axSpace maps rects from the root space of one window into that of another: a point is scaled by scale and then moved
+// by offset. See axSpaceBetween.
+type axSpace struct {
+	scale  geom.Point
+	offset geom.Point
+}
+
+// axIdentitySpace maps every rect to itself.
+var axIdentitySpace = axSpace{scale: geom.NewPoint(1, 1)}
+
+// axSpaceBetween returns the mapping from popup's root space into owner's, going through the space window rects use. On
+// Windows that space keeps a raw-pixel origin with logical sizes, so a popup on a display of another scale than its
+// owner's is rescaled by its backing scale over the owner's as well as moved; everywhere else only the origin moves.
+func axSpaceBetween(popup, owner *Window) axSpace {
+	return axSpaceFor(popup.apiPointToScreen, owner.apiPointFromScreen)
+}
+
+// axSpaceFor builds the mapping from toScreen, which takes a point of the visited window's root space into the space
+// window rects use, and fromScreen, which takes one from there into the root space of the window being described.
+func axSpaceFor(toScreen, fromScreen func(geom.Point) geom.Point) axSpace {
+	offset := fromScreen(toScreen(geom.Point{}))
+	return axSpace{scale: fromScreen(toScreen(geom.NewPoint(1, 1))).Sub(offset), offset: offset}
+}
+
+// to maps r into the space of the window being described.
+func (s axSpace) to(r geom.Rect) geom.Rect {
+	r.Point = r.Point.MulPt(s.scale).Add(s.offset)
+	r.Size = r.Size.MulPt(s.scale)
+	return r
+}
+
+// from is the inverse of to.
+func (s axSpace) from(r geom.Rect) geom.Rect {
+	r.Point = r.Point.Sub(s.offset).DivPt(s.scale)
+	r.Size = r.Size.DivPt(s.scale)
+	return r
+}
+
 // visitMenu describes an open menu as a child of parent. The menu is shown in a popup window of its own, so its bounds
-// are translated from that window's root space into this window's, and are confined by the menu's own bounds rather
-// than by this window's, since the popup may extend beyond it. Its node is marked as an overlay for the same reason.
+// are mapped from that window's root space into this window's, and are confined by the menu's own bounds rather than
+// by this window's, since the popup may extend beyond it. Its node is marked as an overlay for the same reason.
 func (s *axSnapshot) visitMenu(panel *menuPanel, parent accessibility.NodeID) {
 	p := panel.AsPanel()
-	saved := s.offset
-	defer func() { s.offset = saved }()
-	s.offset = geom.Point{}
+	saved := s.space
+	defer func() { s.space = saved }()
+	s.space = axIdentitySpace
 	if popup := p.Window(); popup != s.window && popup.IsValid() && s.window.IsValid() {
-		s.offset = s.window.apiPointFromScreen(popup.apiPointToScreen(geom.Point{}))
+		s.space = axSpaceBetween(popup, s.window)
 	}
-	clip := p.RectToRoot(p.ContentRect(true))
-	clip.Point = clip.Point.Add(s.offset)
-	s.visit(p, parent, clip)
+	s.visit(p, parent, s.space.to(p.RectToRoot(p.ContentRect(true))))
 	// A menu panel that is not described has no node to mark; its items hang off parent and stay confined to it.
 	if node := s.tree.Nodes[p.Accessibility.id]; node != nil && s.targets[node.ID].panel == p {
 		node.Overlay = true
@@ -685,8 +721,7 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	if p == nil || p.Hidden {
 		return
 	}
-	raw := p.RectToRoot(p.ContentRect(true))
-	raw.Point = raw.Point.Add(s.offset)
+	raw := s.space.to(p.RectToRoot(p.ContentRect(true)))
 	// A panel clips its children to its frame when it draws them, so what its ancestors leave visible of it is the
 	// region its own children are in turn confined to. Its bounds are reported whole, though: an assistive technology
 	// needs to know where the panel is and how big it is even when part of it has been scrolled out of sight, since

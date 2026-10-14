@@ -85,6 +85,16 @@ func TestUsableInWindowUnits(t *testing.T) {
 	c.Equal(d.Usable, d.apiUsableInWindowUnits())
 }
 
+// TestRectToAndFromWindowUnits verifies that on this platform a rect converts into the window-rect space and back
+// unchanged, since x11NewDisplay already puts display rects into that space.
+func TestRectToAndFromWindowUnits(t *testing.T) {
+	c := check.New(t)
+	d := x11NewDisplay(geom.NewRect(0, 0, 3840, 2160), geom.NewRect(0, 32, 3840, 2128), 2, 163, true)
+	r := geom.NewRect(100, 200, 300, 400)
+	c.Equal(r, d.apiRectToWindowUnits(r))
+	c.Equal(r, d.apiRectFromWindowUnits(r))
+}
+
 // TestX11DisplaysWithoutConnection verifies that asking about displays before Start has connected to an X server --
 // the permanent state of a headless process such as a test run on a machine without a display -- reports that there
 // are none rather than dereferencing the missing connection and crashing the process.

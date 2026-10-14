@@ -82,8 +82,9 @@ func TestW32AccessibilityGeometryFor(t *testing.T) {
 }
 
 // TestW32PopupAccessibilityUsesOwner verifies that a popup menu window never builds an adapter of its own: it reports
-// its owner's, answers WM_GETOBJECT with it, and, while the owner has nothing to describe, neither builds a snapshot
-// nor turns accessibility support on, even though the popup has a root panel of its own.
+// its owner's, answers WM_GETOBJECT with it and records having done so, which its shutdown undoes, and, while the owner
+// has nothing to describe, neither builds a snapshot nor turns accessibility support on, even though the popup has a
+// root panel of its own.
 func TestW32PopupAccessibilityUsesOwner(t *testing.T) {
 	c := check.New(t)
 	wasActive := IsAccessibilityActive()
@@ -109,4 +110,13 @@ func TestW32PopupAccessibilityUsesOwner(t *testing.T) {
 	owner.wnd.uia = &uia.Window{}
 	c.True(popup.w32AccessibilityAdapter() == owner.wnd.uia)
 	c.Nil(popup.wnd.uia)
+	c.Nil(popup.w32GetObjectAdapter(0), "a request for anything but the UI Automation root is left alone")
+	c.False(popup.wnd.uiaAnsweredForOwner)
+	c.True(popup.w32GetObjectAdapter(w32.LPARAM(uiaObjectID)) == owner.wnd.uia, "the popup answers with the owner's")
+	c.True(popup.wnd.uiaAnsweredForOwner, "and records that it did")
+	c.True(owner.w32GetObjectAdapter(w32.LPARAM(uiaObjectID)) == owner.wnd.uia)
+	popup.nativeAccessibilityShutdown()
+	c.False(popup.wnd.uiaAnsweredForOwner, "shutting the popup down withdraws its answer")
+	c.Nil(popup.wnd.uia)
+	c.True(owner.wnd.uia != nil, "and leaves the owner's adapter alone")
 }

@@ -258,6 +258,19 @@ func firstTopLevelWindow() *Window {
 	return nil
 }
 
+// firstVisibleTopLevelWindow returns the first window in windowList that is neither a popup menu window nor hidden, or
+// nil if there is none. It is what a closing window hands the focus to: ToFront shows the window it is given, so one
+// the application hid must not be chosen over a visible one further down the list. A minimized window still counts,
+// since ToFront restores it.
+func firstVisibleTopLevelWindow() *Window {
+	for _, w := range windowList {
+		if !w.isPopup() && (w.IsVisible() || w.IsMinimized()) {
+			return w
+		}
+	}
+	return nil
+}
+
 // WindowCount returns the number of windows that are open. The toolkit's own popup menu windows are not counted.
 func WindowCount() int {
 	count := 0
@@ -530,6 +543,15 @@ func (w *Window) AttemptClose() bool {
 
 // Dispose of the window.
 func (w *Window) Dispose() {
+	if w.isPopup() && w.root != nil && w.owner.root != nil && w.root.contentPanel != nil {
+		// A popup menu window still in its owner's menu stack is closed through the stack, as rootPanel.removeMenu
+		// does, so that neither the stack nor the menu it shows goes on holding a window that is gone; the menus above
+		// it go with it. A platform's close request, such as WM_CLOSE on Windows, arrives here directly.
+		if mp, ok := w.root.contentPanel.Self.(*menuPanel); ok && slices.Contains(w.owner.root.openMenuPanels, mp) {
+			w.owner.root.closeMenuStackStoppingAt(mp.menu.titleItem.menu)
+			return
+		}
+	}
 	// Popup menu windows go first, since Windows destroys owned windows along with their owner. Any not in the menu
 	// stack are swept up too, since Windows() leaves them out and closeAllWindows would otherwise never empty the list.
 	if w.root != nil {
@@ -564,7 +586,7 @@ func (w *Window) Dispose() {
 		quitting()
 	}
 	if active != nil && active == w {
-		if next := firstTopLevelWindow(); next != nil {
+		if next := firstVisibleTopLevelWindow(); next != nil {
 			next.ToFront()
 		}
 	}
@@ -1383,10 +1405,17 @@ func (w *Window) HideCursorUntilMouseMoves() {
 	}
 }
 
+// restoreHiddenCursor shows the cursor HideCursorUntilMouseMoves hid, as the mouse moving does. A popup menu window
+// restores its owner's as well: typing in the owner is what hid it, and on macOS the hide is undone only through the
+// window that made it, so a move over a menu opened from the keyboard would otherwise leave the pointer hidden until
+// it came back to the owner.
 func (w *Window) restoreHiddenCursor() {
 	if w.cursorHiddenUntilMouseMoves {
 		w.cursorHiddenUntilMouseMoves = false
 		w.ShowCursor()
+	}
+	if w.isPopup() {
+		w.owner.restoreHiddenCursor()
 	}
 }
 

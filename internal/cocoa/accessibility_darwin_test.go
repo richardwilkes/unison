@@ -6982,7 +6982,8 @@ func TestAXDisabledNodeOfferingTheFocus(t *testing.T) {
 // TestAXViewAlias proves how a popup window's content view answers through the view whose tree describes it: it
 // reports no children and no focused element of its own without anything being activated, a hit test asks the
 // target's window to activate and is then resolved in the target's tree, even where that finds nothing, and the alias
-// goes with ClearAXViewAlias and with the Shutdown of the target's adapter, which leaves other aliases alone.
+// goes with ClearAXViewAlias but survives the Shutdown of the target's adapter, so that a query through it while the
+// popup is still open turns support back on for the target.
 func TestAXViewAlias(t *testing.T) {
 	defer func() { AccessibilityActivateCallback = nil }()
 	runOnMain(func() {
@@ -7070,11 +7071,39 @@ func TestAXViewAlias(t *testing.T) {
 
 		SetAXViewAlias(popup, owner)
 		axAdapters[owner].Shutdown()
-		if _, ok := axViewAliases[popup]; ok {
-			t.Error("the alias outlived the Shutdown of its target's adapter")
+		if got := axViewAliases[popup]; got != owner {
+			t.Errorf("the alias did not survive the Shutdown of its target's adapter (now %#x)", got)
 		}
 		if got := axViewAliases[otherAlias]; got != otherTarget {
 			t.Errorf("the Shutdown of an unrelated adapter dropped another alias (now %#x)", got)
 		}
+		// Support turned off and back on with the popup still open: the next query through the alias activates the
+		// target again and is answered by its new adapter, rather than by nothing until the popup is reopened.
+		AccessibilityActivateCallback = func(macWnd Window) bool {
+			activated = append(activated, macWnd)
+			a := NewAXAdapter(owner)
+			if a == nil {
+				return false
+			}
+			tree := newAXTestTree()
+			a.Publish(tree, accessibility.Diff(nil, tree))
+			return true
+		}
+		activated = nil
+		a := axViewAdapter(popup)
+		if a == nil || a != axAdapters[owner] {
+			t.Fatalf("axViewAdapter(alias) = %p after the target's adapter was shut down, want the target's new one %p",
+				a, axAdapters[owner])
+		}
+		if len(activated) != 1 || activated[0] != ownerWnd {
+			t.Errorf("activation callbacks = %v, want one for the target's window %#x", activated, ownerWnd)
+		}
+		WithPool(func() {
+			pt := axTestScreenPoint(a, geom.NewPoint(50, 30))
+			if got := op.Send(Sel("accessibilityHitTest:"), pt); got == 0 || got != a.Element(axTestButton) {
+				t.Errorf("alias hit test = %#x after reactivation, want the target's button %#x", got,
+					a.Element(axTestButton))
+			}
+		})
 	})
 }

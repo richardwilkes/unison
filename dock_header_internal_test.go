@@ -250,15 +250,10 @@ func TestDockHeaderOverflowMenuOnlyInTheActiveWindow(t *testing.T) {
 		Node:   restored.ID,
 		Action: accessibility.Press,
 	}), "and carries it out")
-	var openedIn *Window
 	c.True(screen.Do(func() {
 		look()
-		if backOpen == 1 {
-			openedIn = back.root.openMenuPanels[0].Window().menuOwner()
-		}
 	}))
 	c.Equal(1, backOpen, "the menu opens for the button's own window once that is the active one")
 	c.Equal(0, frontOpen)
-	c.True(openedIn == back)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

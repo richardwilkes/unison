@@ -82,6 +82,16 @@ func (d *Display) nativeUsableInWindowUnits() geom.Rect {
 	return d.Usable
 }
 
+// nativeRectToWindowUnits is the identity, since display and window rects share a space on this platform.
+func (*Display) nativeRectToWindowUnits(r geom.Rect) geom.Rect {
+	return r
+}
+
+// nativeRectFromWindowUnits is the identity, for the same reason as nativeRectToWindowUnits.
+func (*Display) nativeRectFromWindowUnits(r geom.Rect) geom.Rect {
+	return r
+}
+
 // x11LogicalRect converts a rectangle expressed in raw pixels into the logical, 1x-scale coordinate space.
 func x11LogicalRect(r geom.Rect, scale float32) geom.Rect {
 	r.X /= scale

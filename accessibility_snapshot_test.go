@@ -471,6 +471,34 @@ func TestAccessibilityMenuInPopupIsDescribedByItsOwner(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestAxSpaceForRescalesAPopupOnAnotherDisplay verifies that the mapping from a popup's root space into its owner's
+// rescales as well as moves when the two windows' backing scales differ, as they do on Windows when a menu lands on a
+// monitor of another scale than its owner's, and that it is a plain move where the window-rect space is logical
+// throughout.
+func TestAxSpaceForRescalesAPopupOnAnotherDisplay(t *testing.T) {
+	c := check.New(t)
+	// Windows' window-rect space keeps a raw-pixel origin with logical sizes: the owner sits at raw (100, 50) on a 100%
+	// display and the popup at raw (2000, 300) on a 200% one.
+	popupToScreen := func(pt geom.Point) geom.Point { return geom.NewPoint(2000, 300).Add(pt.Mul(2)) }
+	ownerFromScreen := func(pt geom.Point) geom.Point { return pt.Sub(geom.NewPoint(100, 50)) }
+	space := axSpaceFor(popupToScreen, ownerFromScreen)
+	c.Equal(geom.NewPoint(2, 2), space.scale)
+	c.Equal(geom.NewPoint(1900, 250), space.offset)
+	r := geom.NewRect(10, 20, 30, 40)
+	c.Equal(geom.NewRect(1920, 290, 60, 80), space.to(r), "an item's bounds are rescaled as well as moved")
+	c.Equal(r, space.from(space.to(r)))
+	// The owner on the 200% display and the popup on the 100% one.
+	space = axSpaceFor(func(pt geom.Point) geom.Point { return geom.NewPoint(100, 50).Add(pt) },
+		func(pt geom.Point) geom.Point { return pt.Sub(geom.NewPoint(2000, 300)).Div(2) })
+	c.Equal(geom.NewPoint(0.5, 0.5), space.scale)
+	c.Equal(geom.NewRect(-945, -115, 15, 20), space.to(r))
+	// Everywhere else the space is logical throughout, so only the origin moves.
+	space = axSpaceFor(func(pt geom.Point) geom.Point { return pt.Add(geom.NewPoint(5, 5)) },
+		func(pt geom.Point) geom.Point { return pt.Sub(geom.NewPoint(1, 2)) })
+	c.Equal(axSpace{scale: geom.NewPoint(1, 1), offset: geom.NewPoint(4, 3)}, space)
+	c.Equal(geom.NewRect(14, 23, 30, 40), space.to(r))
+}
+
 // TestAccessibilityPublishLaysTheWindowOutFirst covers the geometry a description is built from. A tree asked for while
 // a layout invalidation is still pending would otherwise report the frames the panels had before it, which is both what
 // an assistive technology draws its highlight from and what the BoundsChanged events of the next diff carry.

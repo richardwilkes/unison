@@ -58,6 +58,16 @@ func (d *Display) nativeUsableInWindowUnits() geom.Rect {
 	return d.Usable
 }
 
+// nativeRectToWindowUnits is the identity, since display and window rects share a space on this platform.
+func (*Display) nativeRectToWindowUnits(r geom.Rect) geom.Rect {
+	return r
+}
+
+// nativeRectFromWindowUnits is the identity, for the same reason as nativeRectToWindowUnits.
+func (*Display) nativeRectFromWindowUnits(r geom.Rect) geom.Rect {
+	return r
+}
+
 func macTransformY(y float32) float32 {
 	return cocoa.DisplayBounds(cocoa.MainDisplayID()).Height - y
 }

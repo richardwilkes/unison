@@ -63,6 +63,9 @@ type nativeWindow struct {
 	// pressGrab is true while this window holds the pointer grab that stands in for the implicit grab of a press made
 	// while a menu grab was in effect; see nativeMenuStackChanged.
 	pressGrab bool
+	// pointerInside is true while the pointer is in the window, as its crossing events last reported; see
+	// Window.x11PointerCrossed.
+	pointerInside bool
 }
 
 func x11FindWindow(id x11.WindowID) *Window {
@@ -492,15 +495,12 @@ func (w *Window) x11SetMaximized(maximized bool) {
 	}
 }
 
-// nativeAcquireFocusAndBringToFront raises the window and gives it the input focus. A popup menu window is only raised,
-// since the keyboard stays with its owner.
+// nativeAcquireFocusAndBringToFront raises the window and gives it the input focus.
 func (w *Window) nativeAcquireFocusAndBringToFront() {
 	x11Conn.ConfigureWindow(w.wnd.id, x11.ConfigureWindowMaskStackMode, &x11.ConfigureWindowRequest{
 		StackMode: x11.StackModeAbove,
 	})
-	if !w.isPopup() {
-		x11Conn.FocusWindow(w.wnd.id)
-	}
+	x11Conn.FocusWindow(w.wnd.id)
 	x11Conn.Flush()
 }
 
@@ -524,11 +524,13 @@ const x11MenuGrabEventMask = x11.EventMaskButtonPress | x11.EventMaskButtonRelea
 // focus change follows it, and a focus-follows-mouse window manager, which sees no pointer crossings during a grab,
 // would move the focus away as the pointer crossed a menu.
 //
-// A drag cannot start while the grab is held: a press anywhere but on a menu closes the menus first (in
-// rootPanel.preMouseDown, or in x11ProcessEvent for one outside our windows), and the menus hold nothing a drag starts
-// from. A drag begun by a press that closed the menus replaces the grab held for that press (see below). A menu opened
-// from the keyboard during a drag takes no grab, since the drag loop holds the pointer and its release would end this
-// grab too.
+// A press anywhere but on a menu closes the menus first (in rootPanel.preMouseDown, or in x11ProcessEvent for one
+// outside our windows), and the menus hold nothing a drag starts from, so a drag starts while the grab is held only
+// from a press that was already down when a menu was opened from the keyboard. The drag's grab replaces this one and
+// the drag's end releases it, so nativeStartDrag records the replacement and takes this grab again afterwards, if the
+// menus are still open. A drag begun by a press that closed the menus replaces the grab held for that press (see
+// below). A menu opened from the keyboard during a drag takes no grab, since the drag loop holds the pointer and its
+// release would end this grab too.
 //
 // A press made while the grab is held forms no implicit grab of its own. When the stack empties with such a press
 // still down in a window other than a popup menu window, the pointer is grabbed for that window instead, without owner
@@ -539,19 +541,7 @@ func (w *Window) nativeMenuStackChanged(open bool) {
 		if w.wnd.menuGrab || w.wnd.id == 0 || dragSource != nil {
 			return
 		}
-		// The grab shows the arrow wherever the pointer is. Without a cursor of its own, X would show the owner's
-		// current cursor everywhere outside the owner, menus included, which after a right-click on a text field is an
-		// I-beam.
-		var cursor x11.CursorID
-		if arrow := ArrowCursor(); arrow != nil {
-			cursor = arrow.cursor
-		}
-		if x11Conn.GrabPointer(w.wnd.id, true, x11MenuGrabEventMask, cursor) {
-			// The new grab replaced any held for a press, whose events x11RoutePointerEvent now sends where they belong.
-			x11ForgetPressGrabs()
-			w.wnd.menuGrab = true
-		}
-		x11Conn.Flush()
+		w.x11TakeMenuGrab()
 		return
 	}
 	if !w.wnd.menuGrab {
@@ -572,6 +562,41 @@ func (w *Window) nativeMenuStackChanged(open bool) {
 		x11Conn.UngrabPointer()
 	}
 	x11Conn.Flush()
+}
+
+// x11TakeMenuGrab grabs the pointer for the window's open menu stack; see nativeMenuStackChanged, which decides when.
+func (w *Window) x11TakeMenuGrab() {
+	// The grab shows the arrow wherever the pointer is. Without a cursor of its own, X would show the owner's current
+	// cursor everywhere outside the owner, menus included, which after a right-click on a text field is an I-beam.
+	var cursor x11.CursorID
+	if arrow := ArrowCursor(); arrow != nil {
+		cursor = arrow.cursor
+	}
+	if x11Conn.GrabPointer(w.wnd.id, true, x11MenuGrabEventMask, cursor) {
+		// The new grab replaced any held for a press, whose events x11RoutePointerEvent now sends where they belong.
+		x11ForgetPressGrabs()
+		w.wnd.menuGrab = true
+	}
+	x11Conn.Flush()
+}
+
+// x11DragReplacedMenuGrab records that the grab a drag has just taken replaced the one held for an open menu stack, if
+// one was held, and returns the window that held it, for x11RestoreMenuGrab once the drag is over.
+func x11DragReplacedMenuGrab() *Window {
+	owner := x11MenuGrabOwner()
+	if owner != nil {
+		owner.wnd.menuGrab = false
+	}
+	return owner
+}
+
+// x11RestoreMenuGrab takes the grab for owner's menu stack again, once the drag that replaced it has released its own,
+// if the menus are still open. It is called before the drag is forgotten, so it does not go through
+// nativeMenuStackChanged, which takes no grab during a drag. A nil owner is nothing to restore.
+func x11RestoreMenuGrab(owner *Window) {
+	if owner.IsValid() && !owner.wnd.menuGrab && owner.root != nil && len(owner.root.openMenuPanels) != 0 {
+		owner.x11TakeMenuGrab()
+	}
 }
 
 // x11EndPressGrab releases the grab the window holds in place of a press's implicit grab, if any.
@@ -812,9 +837,14 @@ func (w *Window) nativeStartDrag(img *Image, origin geom.Point, opMask drag.Op, 
 		slog.Warn("unable to grab the pointer to start a drag")
 		return
 	}
-	// This grab replaced any held for a press (see nativeMenuStackChanged), and the drag's release ends it.
+	// This grab replaced any held for a press or for an open menu stack (see nativeMenuStackChanged), and the drag's
+	// release ends it; the menu grab is taken again afterwards.
 	x11ForgetPressGrabs()
-	defer x11Conn.UngrabPointer()
+	menuOwner := x11DragReplacedMenuGrab()
+	defer func() {
+		x11Conn.UngrabPointer()
+		x11RestoreMenuGrab(menuOwner)
+	}()
 	imgWnd := w.newX11DragImageWindow(img, origin)
 	defer imgWnd.dispose()
 	w.x11DragLoop(x11DnDActionForOp(opMask), imgWnd)
@@ -1305,7 +1335,12 @@ func (w *Window) nativeDestroy() {
 		w.wnd.colorMap = 0
 	}
 	x11Conn.Flush()
-	nativePollEvents()
+	// Handling the next queued event here does so from inside the caller. A popup menu window is disposed of from
+	// inside the handling of the press that closed its menu, so a release queued behind that press would be handled
+	// before the press itself; the event loop gets to it once the handler returns.
+	if !w.isPopup() {
+		nativePollEvents()
+	}
 }
 
 func (w *Window) x11SetDecorated(decorated bool) {
@@ -1451,16 +1486,20 @@ func x11ProcessEvent(e x11.Event) {
 		}
 		x11EndPressGrabs(ev)
 	case *x11.EnterNotifyEvent:
-		if w := x11FindWindow(ev.Event); w != nil && !x11IgnoreEnter(w, ev) {
-			w.nativeUpdateCursorImage()
-			w.mouseEnter(w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
-				x11TranslateModifierState(ev.State))
+		if w := x11FindWindow(ev.Event); w != nil {
+			w.x11PointerCrossed(true, ev.Mode)
+			if !x11IgnoreEnter(w, ev) {
+				w.nativeUpdateCursorImage()
+				w.mouseEnter(w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY))),
+					x11TranslateModifierState(ev.State))
+			}
 		}
 	case *x11.LeaveNotifyEvent:
 		// Every leave is kept, NotifyGrab ones included: one may come from another client's grab, such as a window
 		// manager's move, which really does take the pointer away, and a spurious one only costs a hover state that the
 		// next motion restores. The crossings a grab's release reports (NotifyUngrab) say where the pointer really is.
 		if w := x11FindWindow(ev.Event); w != nil {
+			w.x11PointerCrossed(false, ev.Mode)
 			w.nativeUpdateCursorImage()
 			w.mouseExit()
 		}
@@ -1730,12 +1769,24 @@ func x11InContent(w *Window, x, y int16) bool {
 	return x >= 0 && y >= 0 && float32(x) < w.lastWidth && float32(y) < w.lastHeight
 }
 
+// x11PointerCrossed records that the pointer entered or left the window, from an EnterNotify or LeaveNotify with the
+// given mode. One a grab reports as it takes effect (NotifyGrab) enters the grab window wherever the pointer really
+// is, so it says nothing about where the pointer is and is not recorded; a leave of that mode is, since another
+// client's grab really does take the pointer away, and the crossing the grab's release reports (NotifyUngrab) puts it
+// back.
+func (w *Window) x11PointerCrossed(entered bool, mode byte) {
+	if !entered || mode != x11.NotifyGrab {
+		w.wnd.pointerInside = entered
+	}
+}
+
 // x11PointerTarget returns the window a motion or button release X delivered to w belongs to, or nil if it is to be
 // dropped. inside is true if the event lies within w's content. While a menu grab is held, a press forms no implicit
 // grab, so X reports such an event to whichever of our windows is under the pointer, or to the owner when the pointer
 // is over another client's window, rather than to the window holding the press. The event therefore goes to the window
 // holding a press, preferring a popup menu window, as the implicit grab would have sent it; one with no press in
-// progress that reaches the owner from outside it is over another client's window, and is dropped.
+// progress that reaches the owner from outside it, or from within its bounds while the pointer has left it for another
+// client's window on top (see x11PointerCrossed), is over another client's window, and is dropped.
 func x11PointerTarget(w *Window, inside bool) *Window {
 	owner := x11MenuGrabOwner()
 	if owner == nil || w.inMouseDown {
@@ -1744,7 +1795,7 @@ func x11PointerTarget(w *Window, inside bool) *Window {
 	if holder := x11PressHolder(); holder != nil {
 		return holder
 	}
-	if w == owner && !inside {
+	if w == owner && (!inside || !w.wnd.pointerInside) {
 		return nil
 	}
 	return w
@@ -1756,17 +1807,19 @@ func x11RoutePointerEvent(w *Window, ev *x11.InputEvent) (target *Window, where 
 	if target = x11PointerTarget(w, x11InContent(w, ev.EventX, ev.EventY)); target == nil {
 		return nil, geom.Point{}
 	}
-	x, y := ev.EventX, ev.EventY
-	if target != w {
-		var err error
-		if x, y, _, _, err = x11Conn.TranslateCoordinates(x11Conn.RootWindow(), target.wnd.id, ev.RootX,
-			ev.RootY); err != nil {
-			errs.Log(err)
-			return nil, geom.Point{}
-		}
-	}
+	x, y := x11PointerEventPosition(w, target, ev)
 	where = target.x11ConvertRawMouse(geom.NewPoint(float32(x), float32(y)))
 	return target, where
+}
+
+// x11PointerEventPosition returns the position of a pointer event X delivered to w, in the X server's pixels, within
+// target, which is w itself or another window of ours. The other window's origin on the root is known from its last
+// ConfigureNotify, so no round trip to the server is needed for an event rerouted on every motion.
+func x11PointerEventPosition(w, target *Window, ev *x11.InputEvent) (x, y int16) {
+	if target == w {
+		return ev.EventX, ev.EventY
+	}
+	return ev.RootX - int16(target.wnd.lastX), ev.RootY - int16(target.wnd.lastY)
 }
 
 // x11EndPressGrabs releases each grab held in place of a press's implicit grab (see nativeMenuStackChanged) once its
@@ -1775,7 +1828,7 @@ func x11RoutePointerEvent(w *Window, ev *x11.InputEvent) (target *Window, where 
 // popup menu window closed by the press itself.
 func x11EndPressGrabs(ev *x11.ButtonReleaseEvent) {
 	for _, w := range slices.Clone(windowList) {
-		if !w.wnd.pressGrab || (w.inMouseDown && x11OtherButtonsDown(ev)) {
+		if !w.wnd.pressGrab || (w.inMouseDown && (x11OtherButtonsDown(ev) || w.x11OtherButtonsHeld(ev.Detail))) {
 			continue
 		}
 		w.x11EndPressGrab()
@@ -1793,6 +1846,36 @@ func x11OtherButtonsDown(ev *x11.ButtonReleaseEvent) bool {
 		held &^= 0x80 << ev.Detail // The released button's own mask
 	}
 	return held != 0
+}
+
+// x11OtherButtonsHeld returns true if the window records a button down other than the one a release with the given
+// detail is for. The core protocol carries no state for buttons above the fifth, so a held back or forward button is
+// known only from the window's own record.
+func (w *Window) x11OtherButtonsHeld(detail byte) bool {
+	released := x11ButtonFromDetail(detail)
+	for button := range w.pressedButtons {
+		if button != released {
+			return true
+		}
+	}
+	return false
+}
+
+// x11ButtonFromDetail returns the toolkit's button for the detail of a ButtonPress or ButtonRelease, or -1 for the
+// wheel, which x11ProcessEvent reports as scrolling rather than as a button.
+func x11ButtonFromDetail(detail byte) int {
+	switch detail {
+	case 1:
+		return ButtonLeft
+	case 2:
+		return ButtonMiddle
+	case 3:
+		return ButtonRight
+	case 4, 5, 6, 7:
+		return -1
+	default:
+		return int(detail - 5)
+	}
 }
 
 // x11IgnoreEnter returns true if an EnterNotify X delivered to w is to be ignored. One a grab reports as it takes

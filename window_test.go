@@ -864,6 +864,10 @@ func TestNewPopupWindow(t *testing.T) {
 	var windows []*Window
 	var count, listed, listedAfterOrphan int
 	var size geom.Size
+	var popupOwner, popupMenuOwner, ownerMenuOwner, subOwner *Window
+	var popupIsPopup, ownerIsPopup, cpuOnly, surfaceCPUOnly, transient, undecorated, notResizable bool
+	var kind WindowKind
+	var titleIcons int
 	c.True(screen.Do(func() {
 		sub, subErr = newPopupWindow(popup, "sub")
 		listed = len(windowList)
@@ -877,23 +881,38 @@ func TestNewPopupWindow(t *testing.T) {
 		})
 		popup.SetContentRect(geom.NewRect(100, 100, 300, 10))
 		size = popup.ContentRect().Size
+		popupOwner = popup.owner
+		popupIsPopup = popup.isPopup()
+		ownerIsPopup = owner.isPopup()
+		popupMenuOwner = popup.menuOwner()
+		ownerMenuOwner = owner.menuOwner()
+		cpuOnly = popup.cpuOnly
+		surfaceCPUOnly = popup.surface.cpuOnly
+		kind = popup.kind
+		transient = popup.transient
+		undecorated = popup.undecorated
+		notResizable = popup.notResizable
+		titleIcons = len(popup.titleIcons)
+		if sub != nil {
+			subOwner = sub.owner
+		}
 	}))
-	c.True(popup.owner == owner)
-	c.True(popup.isPopup())
-	c.False(owner.isPopup())
-	c.True(popup.menuOwner() == owner)
-	c.True(owner.menuOwner() == owner)
+	c.True(popupOwner == owner)
+	c.True(popupIsPopup)
+	c.False(ownerIsPopup)
+	c.True(popupMenuOwner == owner)
+	c.True(ownerMenuOwner == owner)
 	c.True((*Window)(nil).menuOwner() == nil)
 	c.False((*Window)(nil).isPopup())
-	c.True(popup.cpuOnly)
-	c.True(popup.surface.cpuOnly, "the surface should have been told to stay on the CPU")
-	c.Equal(WindowKindMenu, popup.kind)
-	c.True(popup.transient)
-	c.True(popup.undecorated)
-	c.True(popup.notResizable)
-	c.Equal(0, len(popup.titleIcons))
+	c.True(cpuOnly)
+	c.True(surfaceCPUOnly, "the surface should have been told to stay on the CPU")
+	c.Equal(WindowKindMenu, kind)
+	c.True(transient)
+	c.True(undecorated)
+	c.True(notResizable)
+	c.Equal(0, titleIcons)
 	c.NoError(subErr)
-	c.True(sub.owner == owner, "a popup opened from a popup should belong to the top-level window")
+	c.True(subOwner == owner, "a popup opened from a popup should belong to the top-level window")
 	c.HasError(orphanErr)
 	c.True(orphan == nil)
 	c.Equal(listed, listedAfterOrphan, "a refused popup should not join the window list")
@@ -934,16 +953,18 @@ func TestPopupToFrontIsRefused(t *testing.T) {
 	}))
 	c.False(visible, "ToFront should not show a popup")
 	c.True(pending != popup, "ToFront should not ask for a popup to be activated")
+	var focused bool
 	c.True(screen.Do(func() {
 		popup.Show()
 		popup.ToFront()
 		active = ActiveWindow()
 		visible = popup.IsVisible()
+		focused = popup.Focused()
 	}))
 	c.True(visible)
 	c.True(active == owner, "the owner should remain the active window")
 	c.True(screen.FocusedWindow() == owner, "the owner should keep the focus")
-	c.False(popup.Focused())
+	c.False(focused)
 }
 
 // TestPopupFollowsOwnerThroughModal verifies that a popup menu window is blocked by a modal window exactly when its
@@ -993,7 +1014,7 @@ func TestDisposePopupWindow(t *testing.T) {
 	screen, owner, popup := startPopupTest(t)
 	var before, after int
 	var windows []*Window
-	var inList, ownerValid bool
+	var inList, ownerValid, popupValid bool
 	c.True(screen.Do(func() {
 		before = len(windowList)
 		popup.Dispose()
@@ -1001,38 +1022,58 @@ func TestDisposePopupWindow(t *testing.T) {
 		inList = slices.Contains(windowList, popup)
 		windows = Windows()
 		ownerValid = owner.IsValid()
+		popupValid = popup.IsValid()
 	}))
 	c.Equal(2, before)
 	c.Equal(1, after)
 	c.False(inList)
-	c.False(popup.IsValid())
+	c.False(popupValid)
 	c.True(ownerValid)
 	c.Equal([]*Window{owner}, windows)
 	c.True(screen.FocusedWindow() == owner)
 	c.True(screen.WindowAt(geom.NewPoint(110, 110)) == owner, "the owner should be what is under the popup's old spot")
 }
 
-// TestDisposeOwnerDisposesPopupsFirst verifies that disposing of a window disposes of the popup menu windows it owns
-// before itself, including one that is not in its menu stack.
+// TestDisposeOwnerDisposesPopupsFirst verifies that disposing of a window closes its menu stack and disposes of the
+// popup menu windows it owns, the one showing the open menu and one that is in no menu stack, before itself, leaving
+// the stack empty and the menu closed.
 func TestDisposeOwnerDisposesPopupsFirst(t *testing.T) {
 	c := check.New(t)
 	screen, owner, popup := startPopupTest(t)
 	var order []string
-	var other *Window
+	var other, menuPopup *Window
 	var windows []*Window
-	var listed int
+	var listed, open int
+	var popupValid, ownerValid, menuPopupValid, menuOpen bool
 	c.True(screen.Do(func() {
 		// Keeps the session alive once the owner is gone.
 		other = newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100))
+		var chosen []string
+		m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One")
+		m.Popup(geom.NewRect(10, 10, 0, 0), -1)
+		if m.popupPanel == nil {
+			return
+		}
+		menuPopup = m.popupPanel.Window()
+		menuPopup.WillCloseCallback = func() { order = append(order, "menu") }
 		popup.WillCloseCallback = func() { order = append(order, "popup") }
 		owner.WillCloseCallback = func() { order = append(order, "owner") }
 		owner.Dispose()
 		windows = Windows()
 		listed = len(windowList)
+		open = len(owner.root.openMenuPanels)
+		menuOpen = m.popupPanel != nil
+		popupValid = popup.IsValid()
+		menuPopupValid = menuPopup.IsValid()
+		ownerValid = owner.IsValid()
 	}))
-	c.Equal([]string{"popup", "owner"}, order)
-	c.False(popup.IsValid())
-	c.False(owner.IsValid())
+	c.NotNil(menuPopup)
+	c.Equal([]string{"menu", "popup", "owner"}, order)
+	c.Equal(0, open, "the menu stack is closed")
+	c.False(menuOpen, "and the menu knows it")
+	c.False(menuPopupValid)
+	c.False(popupValid)
+	c.False(ownerValid)
 	c.Equal([]*Window{other}, windows)
 	c.Equal(1, listed)
 }
@@ -1083,6 +1124,7 @@ func TestHideAndMinimizeCloseTheMenuStack(t *testing.T) {
 	for _, which := range []string{"Hide", "Minimize"} {
 		var popup *Window
 		var open int
+		var popupValid bool
 		c.True(screen.Do(func() {
 			var chosen []string
 			m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One")
@@ -1096,6 +1138,7 @@ func TestHideAndMinimizeCloseTheMenuStack(t *testing.T) {
 				owner.Minimize()
 			}
 			open = len(owner.root.openMenuPanels)
+			popupValid = popup.IsValid()
 			if which == "Minimize" {
 				owner.Minimize()
 			}
@@ -1103,7 +1146,7 @@ func TestHideAndMinimizeCloseTheMenuStack(t *testing.T) {
 		}))
 		c.NotNil(popup, which)
 		c.Equal(0, open, which)
-		c.False(popup.IsValid(), which)
+		c.False(popupValid, which)
 	}
 }
 
@@ -1126,4 +1169,139 @@ func TestWindowMenuListsNoPopup(t *testing.T) {
 	}))
 	c.Equal(1, separators)
 	c.Equal([]string{"owner"}, titles)
+}
+
+// TestMoveOverPopupRestoresOwnersHiddenCursor verifies that the mouse moving over a popup menu window shows the cursor
+// that typing in the owner hid, as a move over the owner would.
+func TestMoveOverPopupRestoresOwnersHiddenCursor(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var center geom.Point
+	var hidden, opened bool
+	c.True(screen.Do(func() {
+		owner.HideCursorUntilMouseMoves()
+		m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two")
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		if opened = m.popupPanel != nil; opened {
+			center = screen.PanelCenter(m.items[1].panel)
+		}
+		hidden = owner.cursorHidden
+	}))
+	c.True(opened)
+	c.True(hidden, "the test needs the owner's cursor hidden with the menu open")
+	screen.MouseMove(center, 0)
+	var stillHidden, untilMoves bool
+	c.True(screen.Do(func() { stillHidden, untilMoves = owner.cursorHidden, owner.cursorHiddenUntilMouseMoves }))
+	c.False(untilMoves, "a move over the popup counts as the move the owner was waiting for")
+	c.False(stillHidden)
+}
+
+// TestDisposePopupGoesThroughTheMenuStack verifies that a popup menu window disposed of directly, as a platform's close
+// request does it, is closed through its owner's menu stack: the menu it shows and those above it are closed, the
+// stack and the menus no longer hold the windows, and the menu can be opened again.
+func TestDisposePopupGoesThroughTheMenuStack(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m, sub *menu
+	var parent, child *Window
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		m = newTestMenu(f, UserBaseID, &chosen, "One")
+		sub = newTestMenu(f, UserBaseID+100, &chosen, "Deep")
+		m.InsertMenu(-1, sub)
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		if m.popupPanel != nil {
+			parent = m.popupPanel.Window()
+			sub.titleItem.showSubMenu()
+			if sub.popupPanel != nil {
+				child = sub.popupPanel.Window()
+			}
+		}
+	}))
+	c.NotNil(parent)
+	c.NotNil(child)
+	if parent == nil || child == nil {
+		return
+	}
+	var open int
+	var parentValid, childValid, parentOpen, subOpen bool
+	look := func() {
+		open = len(owner.root.openMenuPanels)
+		parentValid, childValid = parent.IsValid(), child.IsValid()
+		parentOpen, subOpen = m.popupPanel != nil, sub.popupPanel != nil
+	}
+	c.True(screen.Do(func() {
+		child.Dispose()
+		look()
+	}))
+	c.Equal(1, open, "disposing of the sub-menu's popup closes only the sub-menu")
+	c.True(parentValid)
+	c.False(childValid)
+	c.True(parentOpen)
+	c.False(subOpen)
+	c.True(screen.Do(func() {
+		sub.titleItem.showSubMenu()
+		if sub.popupPanel != nil {
+			child = sub.popupPanel.Window()
+		}
+		parent.Dispose()
+		look()
+	}))
+	c.Equal(0, open, "disposing of the parent's popup closes it and the sub-menu above it")
+	c.False(parentValid)
+	c.False(childValid)
+	c.False(parentOpen)
+	c.False(subOpen)
+	var reopened bool
+	c.True(screen.Do(func() {
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		reopened = m.popupPanel != nil
+		m.closeMenuStack()
+	}))
+	c.True(reopened, "the menu opens again, since nothing still says it is open")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFirstVisibleTopLevelWindowSkipsHiddenWindows verifies that the window a closing window hands the focus to is
+// never one the application hid, which ToFront would show, nor a popup menu window, though it may be a minimized one,
+// which ToFront restores, while the first top-level window the Windows clipboard code borrows may still be a hidden one.
+func TestFirstVisibleTopLevelWindowSkipsHiddenWindows(t *testing.T) {
+	c := check.New(t)
+	var hidden, minimized, visible *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			hidden = newHeadlessTestWindow(t, "hidden", geom.NewRect(10, 10, 100, 100))
+			minimized = newHeadlessTestWindow(t, "minimized", geom.NewRect(120, 10, 100, 100))
+			visible = newHeadlessTestWindow(t, "visible", geom.NewRect(230, 10, 100, 100))
+		}))
+	c.NotNil(hidden)
+	var popup *Window
+	var first, firstVisible, firstMinimized, noneVisible, noWindows *Window
+	c.True(screen.Do(func() {
+		var err error
+		if popup, err = newPopupWindow(visible, "popup"); err != nil {
+			t.Errorf("unable to create popup window: %v", err)
+			return
+		}
+		hidden.Hide()
+		minimized.Minimize()
+		saved := windowList
+		defer func() { windowList = saved }()
+		windowList = []*Window{popup, hidden, visible, minimized}
+		first = firstTopLevelWindow()
+		firstVisible = firstVisibleTopLevelWindow()
+		windowList = []*Window{popup, hidden, minimized, visible}
+		firstMinimized = firstVisibleTopLevelWindow()
+		windowList = []*Window{popup, hidden}
+		noneVisible = firstVisibleTopLevelWindow()
+		windowList = nil
+		noWindows = firstVisibleTopLevelWindow()
+	}))
+	c.True(first == hidden, "any top-level window will do for the clipboard")
+	c.True(firstVisible == visible, "but only a visible one may be given the focus")
+	c.True(firstMinimized == minimized, "or a minimized one, which is restored")
+	c.True(noneVisible == nil)
+	c.True(noWindows == nil)
 }

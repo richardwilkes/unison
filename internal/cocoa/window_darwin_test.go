@@ -14,6 +14,8 @@ import (
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // newTestWindow creates a window the way unison's nativeInit does (titled unless undecorated), on the caller's
@@ -321,11 +323,35 @@ func TestNewPopupWindow(t *testing.T) {
 }
 
 // TestWindowAccessibilityHidden proves the overrides SetAccessibilityHidden turns on: a hidden window is no
-// accessibility element, has no children and hands hit tests to its content view, and turning it off again restores
-// NSWindow's own answers.
+// accessibility element, has no children and hands hit tests to its content view, which is shown with a point outside
+// the window's frame, where NSWindow itself answers with the window and only the content view's tree, holding an
+// overlay there, finds anything, and turning it off again restores NSWindow's own answers.
 func TestWindowAccessibilityHidden(t *testing.T) {
+	const (
+		overlayID accessibility.NodeID = 50 + iota
+		overlayItemID
+	)
 	runOnMain(func() {
-		v, a, _, cleanup := newAXTestAdapter(t)
+		tree := newAXTestTree()
+		tree.Nodes[overlayID] = &accessibility.Node{
+			ID:       overlayID,
+			Parent:   axTestRoot,
+			Children: []accessibility.NodeID{overlayItemID},
+			Name:     "Menu",
+			Role:     role.Menu,
+			Bounds:   geom.NewRect(400, 300, 100, 40),
+			Overlay:  true,
+		}
+		tree.Nodes[overlayItemID] = &accessibility.Node{
+			ID:      overlayItemID,
+			Parent:  overlayID,
+			Name:    "Item",
+			Role:    role.MenuItem,
+			Bounds:  geom.NewRect(404, 304, 92, 20),
+			Actions: accessibility.ActionSet(0).With(accessibility.Press),
+		}
+		tree.Nodes[axTestRoot].Children = append(tree.Nodes[axTestRoot].Children, overlayID)
+		v, a, cleanup := newAXAdapterWithTree(t, tree)
 		defer cleanup()
 		if a == nil {
 			return
@@ -340,6 +366,12 @@ func TestWindowAccessibilityHidden(t *testing.T) {
 			if shown == 0 {
 				t.Error("an ordinary window reports no accessibility children")
 			}
+			// NSWindow's own answer for a point outside its frame is the window itself, never anything the content
+			// view's tree holds there.
+			outside := axTestScreenPoint(a, geom.NewPoint(450, 314))
+			if got := ow.Send(Sel("accessibilityHitTest:"), outside); got != ow {
+				t.Errorf("ordinary window hit test outside its frame = %#x, want the window itself %#x", got, ow)
+			}
 			w.SetAccessibilityHidden(true)
 			if objc.Send[bool](ow, Sel("isAccessibilityElement")) {
 				t.Error("a hidden window is still an accessibility element")
@@ -348,13 +380,12 @@ func TestWindowAccessibilityHidden(t *testing.T) {
 				t.Errorf("a hidden window reports children %#x (%d), want an empty array", children,
 					NSArrayCount(children))
 			}
-			pt := axTestScreenPoint(a, geom.NewPoint(50, 30))
-			button := a.Element(axTestButton)
-			if got := objc.ID(v).Send(Sel("accessibilityHitTest:"), pt); got != button {
-				t.Fatalf("content view hit test = %#x, want the button %#x", got, button)
+			item := objc.ID(v).Send(Sel("accessibilityHitTest:"), outside)
+			if item == 0 || item != a.Element(overlayItemID) {
+				t.Fatalf("content view hit test = %#x, want the overlay's item %#x", item, a.Element(overlayItemID))
 			}
-			if got := ow.Send(Sel("accessibilityHitTest:"), pt); got != button {
-				t.Errorf("hidden window hit test = %#x, want the content view's answer %#x", got, button)
+			if got := ow.Send(Sel("accessibilityHitTest:"), outside); got != item {
+				t.Errorf("hidden window hit test = %#x, want the content view's answer %#x", got, item)
 			}
 			w.SetAccessibilityHidden(false)
 			if !objc.Send[bool](ow, Sel("isAccessibilityElement")) {
@@ -362,6 +393,9 @@ func TestWindowAccessibilityHidden(t *testing.T) {
 			}
 			if got := NSArrayCount(ow.Send(Sel("accessibilityChildren"))); got != shown {
 				t.Errorf("a window shown again reports %d children, want %d", got, shown)
+			}
+			if got := ow.Send(Sel("accessibilityHitTest:"), outside); got != ow {
+				t.Errorf("window shown again hit test outside its frame = %#x, want the window itself %#x", got, ow)
 			}
 		})
 	})

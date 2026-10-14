@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/internal/w32"
+	"golang.org/x/sys/windows"
 )
 
 // TestW32MouseCaptureTransition is the regression test for the missing SetCapture/ReleaseCapture handling: without
@@ -265,8 +266,8 @@ func TestW32FrameThemeAttribute(t *testing.T) {
 }
 
 // TestW32PopupWindowStyles verifies the styles a popup menu window is created with: a bare popup with no system menu or
-// minimize box, never activated and kept off the taskbar, and no WS_EX_APPWINDOW or WS_EX_TOPMOST even when it is
-// marked floating. A window of WindowKindMenu that is not a popup keeps the ordinary styles.
+// minimize box, never activated, kept off the taskbar and topmost whether or not it is marked floating, and no
+// WS_EX_APPWINDOW. A window of WindowKindMenu that is not a popup keeps the ordinary styles.
 func TestW32PopupWindowStyles(t *testing.T) {
 	c := check.New(t)
 	owner := &Window{wnd: &apiWindow{}}
@@ -283,7 +284,8 @@ func TestW32PopupWindowStyles(t *testing.T) {
 		}
 		c.Equal(uint32(w32.WS_POPUP|w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN), popup.w32WindowStyle(),
 			"floating=%v", floating)
-		c.Equal(uint32(w32.WS_EX_NOACTIVATE|w32.WS_EX_TOOLWINDOW), popup.w32WindowExStyle(), "floating=%v", floating)
+		c.Equal(uint32(w32.WS_EX_NOACTIVATE|w32.WS_EX_TOOLWINDOW|w32.WS_EX_TOPMOST), popup.w32WindowExStyle(),
+			"floating=%v", floating)
 	}
 	plain := &Window{wnd: &apiWindow{}, kind: WindowKindMenu, undecorated: true, notResizable: true}
 	c.Equal(uint32(w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN|w32.WS_SYSMENU|w32.WS_MINIMIZEBOX|w32.WS_POPUP),
@@ -338,4 +340,41 @@ func TestW32NonClientMouseDownClosesMenus(t *testing.T) {
 	c.Equal(0, len(owner.root.openMenuPanels))
 	c.Nil(mp.menu.popupPanel)
 	(&Window{wnd: &apiWindow{}}).w32NonClientMouseDown()
+}
+
+// TestW32WheelTarget verifies where a wheel message goes: to the popup menu window of ours under the pointer when the
+// message reached its owner, since a never-activated popup is not the focus window the wheel is sent to, and otherwise
+// to the window it reached.
+func TestW32WheelTarget(t *testing.T) {
+	c := check.New(t)
+	priorWindows := windowList
+	t.Cleanup(func() { windowList = priorWindows })
+	owner := &Window{valid: true, wnd: &apiWindow{}}
+	owner.wnd.wnd = 1
+	popup := &Window{valid: true, wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu}
+	popup.wnd.wnd = 2
+	other := &Window{valid: true, wnd: &apiWindow{}}
+	other.wnd.wnd = 3
+	windowList = []*Window{owner, popup, other}
+	underIs := func(hwnd windows.HWND) func(w32.POINT) windows.HWND {
+		return func(w32.POINT) windows.HWND { return hwnd }
+	}
+	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(2)) == popup, "handed on to the popup under the pointer")
+	c.True(popup.w32WheelTarget(w32.POINT{}, underIs(2)) == popup, "a popup sent the wheel itself keeps it")
+	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(1)) == owner)
+	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(3)) == owner, "another top-level window of ours is not a popup")
+	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(9)) == owner, "nor is another program's window")
+	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(0)) == owner)
+	popup.valid = false
+	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(2)) == owner, "a disposed popup takes nothing")
+}
+
+// TestW32DestroyGivesUpTheCapture verifies that destroying a window releases the mouse capture it holds, so that the
+// capture change destroying it would otherwise report is not answered with releases to a window already disposed of.
+func TestW32DestroyGivesUpTheCapture(t *testing.T) {
+	c := check.New(t)
+	w := &Window{wnd: &apiWindow{}, glCtx: &apiGLContext{}}
+	w.wnd.mouseCaptured = true
+	w.nativeDestroy()
+	c.False(w.wnd.mouseCaptured)
 }

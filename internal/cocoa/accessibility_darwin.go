@@ -418,12 +418,9 @@ func (a *AXAdapter) Shutdown() {
 		// works in. An element that has just been announced as destroyed is asked what window and parent it belonged
 		// to, and axElementTarget answers that from the adapter registered for the view: unregistering first would
 		// leave each of those notifications describing an element with no window, no parent and no role at all.
+		// The aliases pointing at the view are kept: they belong to the popup windows, which outlive support being
+		// turned off, and are what lets the next query through one of them turn it back on for the target.
 		delete(axAdapters, a.view)
-		for alias, target := range axViewAliases {
-			if target == a.view {
-				delete(axViewAliases, alias)
-			}
-		}
 		a.tree = nil
 	})
 }

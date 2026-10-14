@@ -26,3 +26,16 @@ func TestUsableInWindowUnits(t *testing.T) {
 	}
 	c.Equal(d.Usable, d.apiUsableInWindowUnits())
 }
+
+// TestRectToAndFromWindowUnits verifies that on this platform a rect converts into the window-rect space and back
+// unchanged, since the two spaces are the same.
+func TestRectToAndFromWindowUnits(t *testing.T) {
+	c := check.New(t)
+	d := &Display{
+		Usable: geom.NewRect(0, 25, 1728, 1054),
+		Scale:  geom.NewPoint(2, 2),
+	}
+	r := geom.NewRect(100, 200, 300, 400)
+	c.Equal(r, d.apiRectToWindowUnits(r))
+	c.Equal(r, d.apiRectFromWindowUnits(r))
+}

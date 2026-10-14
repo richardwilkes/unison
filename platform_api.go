@@ -202,6 +202,25 @@ func (d *Display) apiUsableInWindowUnits() geom.Rect {
 	return d.nativeUsableInWindowUnits()
 }
 
+// apiRectToWindowUnits converts a rect from the display's own coordinate space into the space window rects use, the
+// conversion apiUsableInWindowUnits applies to the usable area, and apiRectFromWindowUnits is its inverse. Math that
+// compares or clamps rects has to happen in the display's space: on Windows the window-rect space keeps a raw-pixel
+// origin with a logical size, so a window rect's far edges cannot be computed in it at any display scale but 1.
+func (d *Display) apiRectToWindowUnits(r geom.Rect) geom.Rect {
+	if d.headless {
+		return r
+	}
+	return d.nativeRectToWindowUnits(r)
+}
+
+// apiRectFromWindowUnits is the inverse of apiRectToWindowUnits.
+func (d *Display) apiRectFromWindowUnits(r geom.Rect) geom.Rect {
+	if d.headless {
+		return r
+	}
+	return d.nativeRectFromWindowUnits(r)
+}
+
 // Cursors.
 
 func apiNewCursor(src *cursorSource) *Cursor {

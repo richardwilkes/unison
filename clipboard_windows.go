@@ -10,8 +10,10 @@
 package unison
 
 import (
+	"strings"
 	"syscall"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/uti"
@@ -95,6 +97,16 @@ func nativeClipboardGetData(dataType *uti.DataType) []byte {
 	return data
 }
 
+// w32ClipboardText converts text into the NUL-terminated UTF-16 that CF_UNICODETEXT holds. Text with a NUL in it is cut
+// there, since the terminator ends what any reader of the clipboard sees, rather than being dropped from the clipboard
+// altogether.
+func w32ClipboardText(text string) []uint16 {
+	if i := strings.IndexByte(text, 0); i >= 0 {
+		text = text[:i]
+	}
+	return append(utf16.Encode([]rune(text)), 0)
+}
+
 func nativeClipboardSetData(data ...drag.Data) {
 	type entry struct {
 		format w32.ClipboardFormat
@@ -108,10 +120,7 @@ func nativeClipboardSetData(data ...drag.Data) {
 		}
 		var obj syscall.Handle
 		if uti.UTF8PlainText.ConformsTo(d.Type) {
-			s, err := windows.UTF16FromString(string(d.Data))
-			if err != nil {
-				continue
-			}
+			s := w32ClipboardText(string(d.Data))
 			obj = w32.GlobalAlloc(w32.GMemMoveable, len(s)*2)
 			if obj == 0 {
 				continue

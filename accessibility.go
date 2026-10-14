@@ -236,7 +236,8 @@ func (b *AccessibilityBuilder) Panel() *Panel {
 	return b.panel
 }
 
-// Window returns the window the panel being described belongs to.
+// Window returns the window being described. For a panel of an open menu that is the window the menu belongs to,
+// rather than the popup menu window showing it, which Panel.Window would return; see axSnapshot.visitMenu.
 func (b *AccessibilityBuilder) Window() *Window {
 	return b.snapshot.window
 }
@@ -256,9 +257,7 @@ func (b *AccessibilityBuilder) VisibleRect() geom.Rect {
 	if b.clip.Empty() {
 		return geom.Rect{}
 	}
-	clip := b.clip
-	clip.Point = clip.Point.Sub(b.snapshot.offset)
-	return b.panel.RectFromRoot(clip).Intersect(b.panel.ContentRect(true))
+	return b.panel.RectFromRoot(b.snapshot.space.from(b.clip)).Intersect(b.panel.ContentRect(true))
 }
 
 // IDFor returns the node id of another panel, assigning one if it does not have it yet. Use it to point at a node from
@@ -352,8 +351,7 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 		// reader makes of one. See axSnapshot.resolveCompanionFocus.
 		b.snapshot.companionFocus = append(b.snapshot.companionFocus, id)
 	}
-	raw := b.panel.RectToRoot(node.Bounds)
-	raw.Point = raw.Point.Add(b.snapshot.offset)
+	raw := b.snapshot.space.to(b.panel.RectToRoot(node.Bounds))
 	node.Bounds = raw
 	node.Offscreen = !raw.Intersects(b.clip) && !raw.Empty()
 	b.snapshot.tree.Nodes[id] = node
@@ -917,14 +915,15 @@ func (p *Panel) axContentWindow() *Window {
 //     own content.
 //   - It must not be an axCellHolder: a Table, List or TableHeader reaches its cells through its own cursor.
 //
-// The walk must end at the window's root panel, entered from its content panel. The root's other children — the menu
-// bar, open menus and the tooltip — are never in the tab order.
+// The walk must end at the root panel of a window that is not a popup menu window, entered from its content panel. The
+// root's other children — the menu bar and the tooltip — are never in the tab order, and neither is an open menu, which
+// is the content of its popup menu window's root.
 func (p *Panel) axInContent(asText bool) *Window {
 	below := p
 	for ancestor := p.parent; ancestor != nil; ancestor = ancestor.parent {
 		if ancestor.parent == nil {
 			root, ok := ancestor.Self.(*rootPanel)
-			if !ok || below != root.contentPanel {
+			if !ok || below != root.contentPanel || root.window.isPopup() {
 				return nil
 			}
 			return root.window

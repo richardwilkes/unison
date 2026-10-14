@@ -191,6 +191,9 @@ func (m *menu) RemoveItem(index int) {
 }
 
 func (m *menu) RemoveAll() {
+	for _, mi := range m.items {
+		mi.menu = nil
+	}
 	m.items = nil
 }
 
@@ -236,7 +239,9 @@ func (m *menu) Popup(where geom.Rect, itemIndex int) {
 // ensureOnDisplay places the popup window at where, in the space window rects use, shifting it and, when that is not
 // enough, shrinking it so that it lies within the usable area of its display and no higher than top, and then shows
 // it. A menu opened from the menu bar passes the bar's bottom as top so that it scrolls rather than covering the bar.
-// The display is the one where overlaps most, or anchor's when where overlaps none.
+// The display is the one where overlaps most, or anchor's when where overlaps none. The fitting is done in the
+// display's own space, since the window-rect space is not one its edges can be computed in on every platform; see
+// Display.apiRectFromWindowUnits.
 func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window) {
 	if m.popupPanel == nil {
 		return
@@ -245,41 +250,59 @@ func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window) {
 	if !popup.IsValid() {
 		return
 	}
-	fr := menuDisplayFor(where, anchor).apiUsableInWindowUnits()
-	top = min(max(top, fr.Y), fr.Bottom())
-	if where.Width > fr.Width {
-		where.Width = fr.Width
+	d := menuDisplayFor(where, anchor)
+	popup.SetContentRect(d.apiRectToWindowUnits(fitMenuRect(d.apiRectFromWindowUnits(where), d.Usable, top)))
+	popup.ValidateLayout()
+	popup.Show()
+}
+
+// fitMenuRect returns where shifted and, when that is not enough, shrunk so that it lies within usable and no higher
+// than top. All three are in the same space.
+func fitMenuRect(where, usable geom.Rect, top float32) geom.Rect {
+	top = min(max(top, usable.Y), usable.Bottom())
+	if where.Width > usable.Width {
+		where.Width = usable.Width
 	}
-	if where.Right() > fr.Right() {
-		where.X = fr.Right() - where.Width
+	if where.Right() > usable.Right() {
+		where.X = usable.Right() - where.Width
 	}
-	if where.X < fr.X {
-		where.X = fr.X
+	if where.X < usable.X {
+		where.X = usable.X
 	}
-	if where.Height > fr.Bottom()-top {
-		where.Height = fr.Bottom() - top
+	if where.Height > usable.Bottom()-top {
+		where.Height = usable.Bottom() - top
 	}
-	if where.Bottom() > fr.Bottom() {
-		where.Y = fr.Bottom() - where.Height
+	if where.Bottom() > usable.Bottom() {
+		where.Y = usable.Bottom() - where.Height
 	}
 	if where.Y < top {
 		where.Y = top
 	}
 	where.Height = max(where.Height, 1)
-	popup.SetContentRect(where)
-	popup.ValidateLayout()
-	popup.Show()
+	return where
 }
 
-// menuDisplayFor returns the display a menu placed at where belongs on: the one where overlaps most, or anchor's when
-// where overlaps none.
+// menuDisplayFor returns the display a menu placed at where, in the space window rects use, belongs on: the one where
+// overlaps most, or anchor's when where overlaps none. Each display's overlap is measured in that display's own space.
 func menuDisplayFor(where geom.Rect, anchor *Window) *Display {
+	var best *Display
+	var bestArea float32
 	for _, d := range AllDisplays() {
-		if where.Intersects(d.Usable) {
-			return BestDisplayForRect(where)
+		r := d.apiRectFromWindowUnits(where)
+		if r.In(d.Usable) {
+			return d
+		}
+		if ri := r.Intersect(d.Usable); !ri.Empty() {
+			if area := ri.Width * ri.Height; bestArea < area {
+				bestArea = area
+				best = d
+			}
 		}
 	}
-	return anchor.Display()
+	if best == nil {
+		return anchor.Display()
+	}
+	return best
 }
 
 // createPopup builds the menu's panel and the popup window showing it, as the newest menu of owner's stack, closing

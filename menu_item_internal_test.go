@@ -17,6 +17,21 @@ import (
 	"github.com/richardwilkes/unison/accessibility"
 )
 
+// TestSubMenuOriginConvertsTheCorner verifies that a sub-menu is placed from the converted far corner of its item rather
+// than from the converted origin plus the item's logical extent, which on Windows at 150%, with the owner's content at
+// raw (1000, 100), would put a 200-wide item's sub-menu at x 1200 rather than 1300 and a 24-high bar title's menu at
+// y 124 rather than 136.
+func TestSubMenuOriginConvertsTheCorner(t *testing.T) {
+	c := check.New(t)
+	toScreen := func(pt geom.Point) geom.Point { return geom.NewPoint(1000, 100).Add(pt.Mul(1.5)) }
+	pr := geom.NewRect(0, 0, 200, 24)
+	c.Equal(geom.NewPoint(1300, 100), subMenuOrigin(pr, false, toScreen))
+	c.Equal(geom.NewPoint(1000, 136), subMenuOrigin(pr, true, toScreen))
+	pr = geom.NewRect(10, 20, 200, 24)
+	c.Equal(geom.NewPoint(1315, 130), subMenuOrigin(pr, false, toScreen))
+	c.Equal(geom.NewPoint(1015, 166), subMenuOrigin(pr, true, toScreen))
+}
+
 // TestMenuItemMenuReturnsTrueNil verifies that Menu() on an item that has not been inserted into a menu returns a
 // true nil interface rather than a typed-nil *menu, which would pass != nil checks and then crash on the first method
 // call. This matches the behavior of the macOS implementation.
