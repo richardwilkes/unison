@@ -1523,6 +1523,7 @@ func TestX11MenuGrabRefusedIsRetried(t *testing.T) {
 
 	server.refuseGrabs.Store(true)
 	owner.root.insertMenu(mp)
+	c.Equal([]x11Grab{menuGrab}, server.grabs())
 	c.Equal(3, scheduled)
 	dragSource = owner
 	x11RetryMenuGrab()
