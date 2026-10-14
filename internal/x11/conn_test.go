@@ -520,6 +520,48 @@ func TestConfigureWindowDoesNotSync(t *testing.T) {
 	c.Equal(byte(opConfigureWindow), requests[0][0])
 }
 
+// TestGrabPointerEncodesRequest verifies that GrabPointer sends its owner-events argument in the request's second byte,
+// with the window, event mask and cursor where the protocol puts them, and reports the reply's status.
+func TestGrabPointerEncodesRequest(t *testing.T) {
+	for _, tc := range []struct {
+		ownerEvents bool
+		status      byte
+		granted     bool
+	}{
+		{ownerEvents: false, status: 0, granted: true},
+		{ownerEvents: true, status: 0, granted: true},
+		{ownerEvents: true, status: 1, granted: false}, // AlreadyGrabbed
+	} {
+		c := check.New(t)
+		client, server := net.Pipe()
+		conn, stop := NewConnForTest(client, []Screen{{Root: 1}})
+		sent := make(chan []byte, 1)
+		go func() {
+			req := make([]byte, 24)
+			if _, err := io.ReadFull(server, req); err != nil {
+				return
+			}
+			sent <- req
+			reply := make([]byte, 32)
+			reply[0] = 1
+			reply[1] = tc.status
+			binary.LittleEndian.PutUint16(reply[2:4], 1)
+			_, _ = server.Write(reply) //nolint:errcheck // A failed write fails the GrabPointer call below
+		}()
+		mask := uint16(EventMaskButtonPress | EventMaskButtonRelease | EventMaskPointerMotion)
+		c.Equal(tc.granted, conn.GrabPointer(WindowID(42), tc.ownerEvents, mask, CursorID(7)))
+		req := <-sent
+		c.Equal(byte(opGrabPointer), req[0])
+		c.Equal(tc.ownerEvents, req[1] == 1)
+		c.Equal(uint16(6), binary.LittleEndian.Uint16(req[2:4]))
+		c.Equal(uint32(42), binary.LittleEndian.Uint32(req[4:8]))
+		c.Equal(mask, binary.LittleEndian.Uint16(req[8:10]))
+		c.Equal(uint32(7), binary.LittleEndian.Uint32(req[16:20]))
+		xio.CloseIgnoringErrors(server)
+		stop()
+	}
+}
+
 // TestParseFrameExtents verifies that a _NET_FRAME_EXTENTS property is only accepted when it actually holds all four
 // CARD32s. A property of 8 to 12 bytes used to be accepted by the frame-extents refresh path, which then read past the
 // end of the value (logging errors) and cached zeroed top/bottom borders as if the window manager had reported them.

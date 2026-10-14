@@ -96,8 +96,8 @@ func (hw *headlessWindow) destroy() {
 	hw.releasePointer(false)
 	if hs.focused == w {
 		// Hand the focus back to the frontmost window that can hold it, as hide() does and as the platforms do when the
-		// key window closes. This cannot be left to Window.Dispose(), which refocuses windowList[0] only when the
-		// window was the ActiveWindow(): a transient window never is, so disposing of one that had taken the focus
+		// key window closes. This cannot be left to Window.Dispose(), which refocuses firstTopLevelWindow() only when
+		// the window was the ActiveWindow(): a transient window never is, so disposing of one that had taken the focus
 		// with ToFront() would otherwise leave nothing focused and every key event dropped until the next click. The
 		// two do not fight over it: the window chosen here is at the front of the window list by the time Dispose()
 		// looks, so its ToFront() finds the focus already where it would have put it. The focus is cleared before the
@@ -169,6 +169,18 @@ func (hw *headlessWindow) frameRect() geom.Rect {
 
 func (hw *headlessWindow) contentRect() geom.Rect {
 	return hw.rect
+}
+
+func (hw *headlessWindow) pointToScreen(pt geom.Point) geom.Point {
+	return hw.rect.Point.Add(pt)
+}
+
+func (hw *headlessWindow) pointFromScreen(pt geom.Point) geom.Point {
+	return pt.Sub(hw.rect.Point)
+}
+
+// menuStackChanged does nothing: the headless input router has no pointer grab to install.
+func (hw *headlessWindow) menuStackChanged(_ bool) {
 }
 
 // frameRectForContentRect is the identity, since a headless window has no decorations around its content.
@@ -408,20 +420,29 @@ func (hw *headlessWindow) presentCPUPixels(pixels *raster.Pixmap) {
 // The z-order stack runs back to front: the last entry is the topmost window. Only windows that are currently visible
 // are in it. All of the following are UI thread only.
 
-// raise moves w to the top of the z-order. Floating windows are kept above non-floating ones, matching the window
-// levels the platforms give them, so raising a normal window slides it in below any floating ones rather than over
-// them.
+// raise moves w to the top of its tier of the z-order, below every window of a higher tier. The tiers match the
+// window levels the platforms give them: menu windows above floating ones, and floating ones above the rest. See
+// windowStackLevel.
 func (s *headlessState) raise(w *Window) {
 	s.stack = slices.DeleteFunc(s.stack, func(other *Window) bool { return other == w })
-	if w.floating {
-		s.stack = append(s.stack, w)
-		return
-	}
+	level := windowStackLevel(w)
 	i := len(s.stack)
-	for i > 0 && s.stack[i-1].floating {
+	for i > 0 && windowStackLevel(s.stack[i-1]) > level {
 		i--
 	}
 	s.stack = slices.Insert(s.stack, i, w)
+}
+
+// windowStackLevel returns the z-order tier of w: 2 for a menu window, 1 for a floating window and 0 for any other.
+func windowStackLevel(w *Window) int {
+	switch {
+	case w.kind == WindowKindMenu:
+		return 2
+	case w.floating:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // windowAt returns the topmost window containing pt, or nil if there is none. pt is in the screen's logical

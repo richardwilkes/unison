@@ -19,6 +19,7 @@ import (
 	"unicode"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 // TestAPIWrappersLiveInPlatformAPI checks the claim platform_api.go makes about itself: every api* function or method
@@ -49,6 +50,27 @@ func TestAPIWrappersLiveInPlatformAPI(t *testing.T) {
 		}
 	}
 	c.Equal(0, len(strays), "every api* function must be declared in platform_api.go, but these are not: %v", strays)
+}
+
+// TestPointToScreenRoundTrip verifies that a point converted into the space window rects use and back is unchanged,
+// using a headless window, whose space is the screen's own, placed away from the origin.
+func TestPointToScreenRoundTrip(t *testing.T) {
+	c := check.New(t)
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			wnd = newHeadlessTestWindow(t, "points", geom.NewRect(30, 40, 100, 50))
+		}))
+	c.NotNil(wnd)
+	var toScreen, back, origin geom.Point
+	c.True(screen.Do(func() {
+		toScreen = wnd.apiPointToScreen(geom.NewPoint(5, 7))
+		back = wnd.apiPointFromScreen(toScreen)
+		origin = wnd.apiPointFromScreen(geom.Point{})
+	}))
+	c.Equal(geom.NewPoint(35, 47), toScreen)
+	c.Equal(geom.NewPoint(5, 7), back)
+	c.Equal(geom.NewPoint(-30, -40), origin)
 }
 
 // isAPIWrapperName reports whether name is of the form the platform wrappers use: "api" followed by a capitalized

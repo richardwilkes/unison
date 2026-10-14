@@ -23,8 +23,8 @@ import (
 
 func nativeClipboardAvailableDataTypes() []string {
 	var wnd windows.HWND
-	if len(windowList) != 0 {
-		wnd = windowList[0].wnd.wnd
+	if w := firstTopLevelWindow(); w != nil {
+		wnd = w.wnd.wnd
 	}
 	tries := 3
 	for !w32.OpenClipboard(wnd) {
@@ -58,8 +58,8 @@ func nativeClipboardGetData(dataType *uti.DataType) []byte {
 		return nil
 	}
 	var wnd windows.HWND
-	if len(windowList) != 0 {
-		wnd = windowList[0].wnd.wnd
+	if w := firstTopLevelWindow(); w != nil {
+		wnd = w.wnd.wnd
 	}
 	tries := 3
 	for !w32.OpenClipboard(wnd) {
@@ -142,8 +142,8 @@ func nativeClipboardSetData(data ...drag.Data) {
 		return
 	}
 	var wnd windows.HWND
-	if len(windowList) != 0 {
-		wnd = windowList[0].wnd.wnd
+	if w := firstTopLevelWindow(); w != nil {
+		wnd = w.wnd.wnd
 	}
 	tries := 3
 	for !w32.OpenClipboard(wnd) {

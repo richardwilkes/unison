@@ -28,6 +28,9 @@ const macUnknownWindow cocoa.Window = 0xdead0000
 // finding the window a request names can be followed past that point without AppKit having created anything.
 const macTestWindow cocoa.Window = 0xdead0001
 
+// macTestPopupWindow is macTestWindow for a hand-built popup menu window.
+const macTestPopupWindow cocoa.Window = 0xdead0002
+
 // macSaveAccessibilityState puts the process-wide accessibility flags, and the window list that activation walks, back
 // the way the test found them. The tests below turn snapshot building on and off, which nothing else in the package
 // expects to find changed, and hand-build windows that no event loop knows about.
@@ -301,6 +304,26 @@ func TestMacAccessibilityClientsStoppedDeactivates(t *testing.T) {
 	c.True(IsAccessibilityActive())
 	c.NotNil(w.ax)
 	c.NotNil(hw.axTree)
+}
+
+// TestMacAccessibilityActivateDescribesAPopupsOwner covers a popup menu window's content view reaching activation
+// itself, which happens only once its alias to the owner's view is gone: the owner is described, since its tree holds
+// the menu, and the popup is given no accessibility state of its own. This test mutates global state and therefore must
+// not call t.Parallel.
+func TestMacAccessibilityActivateDescribesAPopupsOwner(t *testing.T) {
+	c := check.New(t)
+	macSaveAccessibilityState(t)
+	macServeTasks(t, c)
+	owner, hw := macNewDescribableWindow(t)
+	popup := &Window{wnd: &apiWindow{}, owner: owner, valid: true}
+	popup.wnd.wnd = macTestPopupWindow
+	windowList = append(windowList, popup)
+
+	macAccessibilityActivate(macTestPopupWindow)
+	c.True(IsAccessibilityActive())
+	c.NotNil(owner.ax, "the owner must be described")
+	c.NotNil(hw.axTree)
+	c.Nil(popup.ax, "and the popup never")
 }
 
 // TestMacAccessibilityClientsStoppedKeepsAForcedApplication covers an application AccessibilityEnvKey forced support

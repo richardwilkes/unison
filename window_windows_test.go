@@ -263,3 +263,64 @@ func TestW32FrameThemeAttribute(t *testing.T) {
 		c.Equal(one.expectedEnabled, enabled, "dark=%v atLeast=%v: value", one.dark, one.atLeastBuild)
 	}
 }
+
+// TestW32PopupWindowStyles verifies the styles a popup menu window is created with: a bare popup with no system menu or
+// minimize box, never activated and kept off the taskbar, and no WS_EX_APPWINDOW or WS_EX_TOPMOST even when it is
+// marked floating. A window of WindowKindMenu that is not a popup keeps the ordinary styles.
+func TestW32PopupWindowStyles(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{wnd: &apiWindow{}}
+	for _, floating := range []bool{false, true} {
+		popup := &Window{
+			wnd:          &apiWindow{},
+			owner:        owner,
+			kind:         WindowKindMenu,
+			transient:    true,
+			undecorated:  true,
+			notResizable: true,
+			cpuOnly:      true,
+			floating:     floating,
+		}
+		c.Equal(uint32(w32.WS_POPUP|w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN), popup.w32WindowStyle(),
+			"floating=%v", floating)
+		c.Equal(uint32(w32.WS_EX_NOACTIVATE|w32.WS_EX_TOOLWINDOW), popup.w32WindowExStyle(), "floating=%v", floating)
+	}
+	plain := &Window{wnd: &apiWindow{}, kind: WindowKindMenu, undecorated: true, notResizable: true}
+	c.Equal(uint32(w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN|w32.WS_SYSMENU|w32.WS_MINIMIZEBOX|w32.WS_POPUP),
+		plain.w32WindowStyle())
+	c.Equal(uint32(w32.WS_EX_APPWINDOW), plain.w32WindowExStyle())
+}
+
+// TestW32MouseActivate verifies that a click on a popup menu window is answered with MA_NOACTIVATE, so that it never
+// takes the activation from its owner, while every other window leaves WM_MOUSEACTIVATE to DefWindowProc.
+func TestW32MouseActivate(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{wnd: &apiWindow{}}
+	result, handled := (&Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu}).w32MouseActivate()
+	c.True(handled)
+	c.Equal(uintptr(w32.MA_NOACTIVATE), result)
+	result, handled = owner.w32MouseActivate()
+	c.False(handled)
+	c.Equal(uintptr(0), result)
+	result, handled = (&Window{wnd: &apiWindow{}, kind: WindowKindMenu}).w32MouseActivate()
+	c.False(handled, "a window of WindowKindMenu that is not a popup is activated as usual")
+	c.Equal(uintptr(0), result)
+}
+
+// TestW32WindowClass verifies the class each window is created from: popup menu windows get one of their own, with a
+// drop shadow and no icon, while every other window, including one of WindowKindMenu, gets the main class.
+func TestW32WindowClass(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{wnd: &apiWindow{}}
+	popup := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu}
+	c.True(popup.w32Class() == &w32PopupWndClass)
+	c.True(owner.w32Class() == &w32MainWndClass)
+	c.True((&Window{wnd: &apiWindow{}, kind: WindowKindMenu}).w32Class() == &w32MainWndClass)
+	c.Equal("UnisonPopup", w32PopupWndClass.name)
+	c.Equal(wndProcClassName, w32MainWndClass.name)
+	baseStyle := uint32(w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC)
+	c.Equal(baseStyle|w32.CS_DROPSHADOW, w32PopupWndClass.style)
+	c.Equal(baseStyle, w32MainWndClass.style)
+	c.False(w32PopupWndClass.icon)
+	c.True(w32MainWndClass.icon)
+}

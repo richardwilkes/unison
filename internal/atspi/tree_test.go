@@ -281,6 +281,47 @@ func TestWindowDataWithGeometry(t *testing.T) {
 	c.Equal(int32(220), original, "the original is untouched")
 }
 
+// TestWindowDataReachableBoundsRestartAtAnOverlay covers the clipping mouse review works from. An ordinary node is
+// confined to every ancestor, but an overlay, such as an open menu extending beyond its window, is drawn above the
+// window, so the confinement of what it holds restarts from the overlay's own bounds.
+func TestWindowDataReachableBoundsRestartAtAnOverlay(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	tree := treeOf(1,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Bounds: geom.NewRect(0, 0, 100, 100), Children: []accessibility.NodeID{2, 5},
+		},
+		&accessibility.Node{
+			ID: 2, Parent: 1, Role: role.Menu, Overlay: true, Bounds: geom.NewRect(80, 20, 60, 120),
+			Children: []accessibility.NodeID{3, 4},
+		},
+		&accessibility.Node{ID: 3, Parent: 2, Role: role.MenuItem, Bounds: geom.NewRect(80, 120, 60, 20)},
+		&accessibility.Node{ID: 4, Parent: 2, Role: role.MenuItem, Bounds: geom.NewRect(80, 60, 100, 20)},
+		&accessibility.Node{ID: 5, Parent: 1, Role: role.Button, Bounds: geom.NewRect(80, 90, 40, 20)},
+	)
+	d := newWindowData(tree, Geometry{})
+	c.Equal([]accessibility.NodeID{2}, d.overlays)
+	for _, one := range []struct {
+		why    string
+		node   accessibility.NodeID
+		bounds geom.Rect
+	}{
+		{why: "the overlay is not confined to the window", node: 2, bounds: geom.NewRect(80, 20, 60, 120)},
+		{why: "nor is an item below the window", node: 3, bounds: geom.NewRect(80, 120, 60, 20)},
+		{why: "but an item is confined to the overlay", node: 4, bounds: geom.NewRect(80, 60, 60, 20)},
+		{why: "and an ordinary node to the window", node: 5, bounds: geom.NewRect(80, 90, 20, 10)},
+	} {
+		bounds, ok := d.reachableBounds(d.node(one.node))
+		c.True(ok, one.why)
+		c.Equal(one.bounds, bounds, one.why)
+	}
+
+	// An offscreen ancestor still takes everything beneath it out of reach, overlay or not.
+	tree.Node(1).Offscreen = true
+	_, ok := newWindowData(tree, Geometry{}).reachableBounds(tree.Node(3))
+	c.False(ok)
+}
+
 // TestWindowDataWalksTheReportedHierarchy covers the walk an org.a11y.atspi.Collection search is made over, which has
 // to be the hierarchy an assistive technology is shown rather than the tree's own shape: an ignored group is not in it
 // and its children stand in for it.

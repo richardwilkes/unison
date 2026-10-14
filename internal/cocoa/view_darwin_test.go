@@ -783,3 +783,89 @@ func TestBeginDraggingSessionReportsNoSession(t *testing.T) {
 		})
 	})
 }
+
+// trackingOptions returns the options of the tracking area a macContentView installed for itself.
+func trackingOptions(t *testing.T, v View) uint64 {
+	t.Helper()
+	ta := objc.ID(v).Send(Sel("trackingArea"))
+	if ta == 0 {
+		t.Fatal("the view has no tracking area")
+	}
+	return objc.Send[uint64](ta, Sel("options"))
+}
+
+// TestNewPopupViewTracking proves the tracking area of a view made by NewPopupView: since its window never becomes
+// key, the area reports mouse moves and stays active whichever window is key, and it does not assume the pointer
+// starts inside. The choice survives the area being rebuilt, an ordinary view keeps its key-window-only set, and the
+// events the popup's area delivers reach the same callbacks an ordinary view's do.
+func TestNewPopupViewTracking(t *testing.T) {
+	defer func() {
+		WindowMouseMovedCallback = nil
+		WindowMouseEnterCallback = nil
+		WindowMouseExitCallback = nil
+		WindowCursorUpdateCallback = nil
+	}()
+	runOnMain(func() {
+		w, v, cleanup := newTestPopupWindow(t, geom.NewRect(140, 140, 120, 80))
+		defer cleanup()
+		ov := objc.ID(v)
+		if !objc.Send[bool](ov, Sel("isPopup")) {
+			t.Error("a popup view's popup ivar is false")
+		}
+		ov.Send(Sel("updateTrackingAreas"))
+		options := trackingOptions(t, v)
+		if options != nsTrackingPopupOptions {
+			t.Errorf("popup tracking options = %#x, want %#x", options, nsTrackingPopupOptions)
+		}
+		for _, c := range []struct {
+			name string
+			bit  uint64
+			want bool
+		}{
+			{name: "MouseEnteredAndExited", bit: nsTrackingMouseEnteredAndExited, want: true},
+			{name: "MouseMoved", bit: nsTrackingMouseMoved, want: true},
+			{name: "CursorUpdate", bit: nsTrackingCursorUpdate, want: true},
+			{name: "ActiveAlways", bit: nsTrackingActiveAlways, want: true},
+			{name: "ActiveInKeyWindow", bit: nsTrackingActiveInKeyWindow, want: false},
+			{name: "AssumeInside", bit: nsTrackingAssumeInside, want: false},
+		} {
+			if got := options&c.bit != 0; got != c.want {
+				t.Errorf("popup tracking option %s = %v, want %v", c.name, got, c.want)
+			}
+		}
+
+		_, plain, closePlain := newTestWindowAndView(t)
+		defer closePlain()
+		if objc.Send[bool](objc.ID(plain), Sel("isPopup")) {
+			t.Error("an ordinary view's popup ivar is true")
+		}
+		if got := trackingOptions(t, plain); got != nsTrackingOptions {
+			t.Errorf("ordinary tracking options = %#x, want %#x", got, nsTrackingOptions)
+		}
+
+		var moved, entered, exited, cursorUpdated []Window
+		WindowMouseMovedCallback = func(cbw Window, _ geom.Point, _ uint) { moved = append(moved, cbw) }
+		WindowMouseEnterCallback = func(cbw Window, _ geom.Point, _ uint) { entered = append(entered, cbw) }
+		WindowMouseExitCallback = func(cbw Window) { exited = append(exited, cbw) }
+		WindowCursorUpdateCallback = func(cbw Window) { cursorUpdated = append(cursorUpdated, cbw) }
+		WithPool(func() {
+			event := synthMouseEvent(nsEventTypeMouseMoved, NSPoint{X: 5, Y: 6}, 0, w)
+			for _, sel := range []string{"mouseEntered:", "mouseMoved:", "cursorUpdate:", "mouseExited:"} {
+				ov.Send(Sel(sel), event)
+			}
+		})
+		for _, c := range []struct {
+			name string
+			got  []Window
+		}{
+			{name: "mouse moved", got: moved},
+			{name: "mouse enter", got: entered},
+			{name: "mouse exit", got: exited},
+			{name: "cursor update", got: cursorUpdated},
+		} {
+			if len(c.got) != 1 || c.got[0] != w {
+				t.Errorf("%s callbacks = %v, want one for the popup window %#x", c.name, c.got, w)
+			}
+		}
+	})
+}

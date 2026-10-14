@@ -6978,3 +6978,103 @@ func TestAXDisabledNodeOfferingTheFocus(t *testing.T) {
 		}
 	})
 }
+
+// TestAXViewAlias proves how a popup window's content view answers through the view whose tree describes it: it
+// reports no children and no focused element of its own without anything being activated, a hit test asks the
+// target's window to activate and is then resolved in the target's tree, even where that finds nothing, and the alias
+// goes with ClearAXViewAlias and with the Shutdown of the target's adapter, which leaves other aliases alone.
+func TestAXViewAlias(t *testing.T) {
+	defer func() { AccessibilityActivateCallback = nil }()
+	runOnMain(func() {
+		ownerWnd, owner, closeOwner := newTestWindowAndView(t)
+		defer closeOwner()
+		ownerWnd.MakeKeyAndOrderFront()
+		_, popup, closePopup := newTestPopupWindow(t, geom.NewRect(700, 500, 120, 80))
+		defer closePopup()
+
+		// Refused outright, as are an alias to itself and a zero view.
+		SetAXViewAlias(popup, popup)
+		SetAXViewAlias(0, owner)
+		SetAXViewAlias(popup, 0)
+		if len(axViewAliases) != 0 {
+			t.Fatalf("axViewAliases holds %d entries after invalid aliases, want 0", len(axViewAliases))
+		}
+
+		var activated []Window
+		AccessibilityActivateCallback = func(macWnd Window) bool {
+			activated = append(activated, macWnd)
+			a := NewAXAdapter(owner)
+			if a == nil {
+				return false
+			}
+			tree := newAXTestTree()
+			a.Publish(tree, accessibility.Diff(nil, tree))
+			return true
+		}
+		defer func() {
+			if a := axAdapters[owner]; a != nil {
+				a.Shutdown()
+			}
+		}()
+		SetAXViewAlias(popup, owner)
+		const otherAlias, otherTarget View = 0xdead0000, 0xdead0010
+		SetAXViewAlias(otherAlias, otherTarget)
+		defer ClearAXViewAlias(otherAlias)
+		op := objc.ID(popup)
+		WithPool(func() {
+			if children := op.Send(Sel("accessibilityChildren")); children == 0 || NSArrayCount(children) != 0 {
+				t.Errorf("alias children = %#x (%d), want an empty array", children, NSArrayCount(children))
+			}
+			if got := op.Send(Sel("accessibilityFocusedUIElement")); got != 0 {
+				t.Errorf("alias focused element = %#x, want nil", got)
+			}
+			if len(activated) != 0 {
+				t.Fatalf("answering for an alias's children or focus activated %d windows, want 0", len(activated))
+			}
+
+			// A point inside the popup but outside the owner: the owner's tree has nothing there.
+			if got := op.Send(Sel("accessibilityHitTest:"), NSPoint{X: 760, Y: 540}); got != 0 {
+				t.Errorf("alias hit test outside the target's tree = %#x, want nil", got)
+			}
+			if len(activated) != 1 || activated[0] != ownerWnd {
+				t.Fatalf("activation callbacks = %v, want one for the target's window %#x", activated, ownerWnd)
+			}
+			a := axAdapters[owner]
+			if a == nil {
+				t.Fatal("activation created no adapter for the target")
+			}
+			if got := axViewAdapter(popup); got != a {
+				t.Errorf("axViewAdapter(alias) = %p, want the target's adapter %p", got, a)
+			}
+			pt := axTestScreenPoint(a, geom.NewPoint(50, 30))
+			button := objc.ID(owner).Send(Sel("accessibilityHitTest:"), pt)
+			if button == 0 || button != a.Element(axTestButton) {
+				t.Fatalf("target hit test = %#x, want the button %#x", button, a.Element(axTestButton))
+			}
+			if got := op.Send(Sel("accessibilityHitTest:"), pt); got != button {
+				t.Errorf("alias hit test = %#x, want the target's button %#x", got, button)
+			}
+			if len(activated) != 1 {
+				t.Errorf("activation callback ran %d times, want 1", len(activated))
+			}
+		})
+
+		ClearAXViewAlias(popup)
+		if _, ok := axViewAliases[popup]; ok {
+			t.Error("ClearAXViewAlias left the alias in place")
+		}
+		AccessibilityActivateCallback = nil
+		if got := axViewAdapter(popup); got != nil {
+			t.Errorf("axViewAdapter(view) = %p after its alias was cleared, want nil", got)
+		}
+
+		SetAXViewAlias(popup, owner)
+		axAdapters[owner].Shutdown()
+		if _, ok := axViewAliases[popup]; ok {
+			t.Error("the alias outlived the Shutdown of its target's adapter")
+		}
+		if got := axViewAliases[otherAlias]; got != otherTarget {
+			t.Errorf("the Shutdown of an unrelated adapter dropped another alias (now %#x)", got)
+		}
+	})
+}

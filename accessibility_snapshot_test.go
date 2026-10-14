@@ -327,6 +327,150 @@ func TestAccessibilityMenuSeparatorIsNeverTheFocus(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestAccessibilityMenuInPopupIsDescribedByItsOwner covers a menu shown in a popup window of its own that overflows the
+// small window it was opened from. The popup publishes nothing: the menu is described as part of its owner, with its
+// bounds translated into the owner's space and marked as an overlay, so an assistive technology hit-testing beyond the
+// owner's edge still finds its items, and the requests it makes of them are carried out.
+func TestAccessibilityMenuInPopupIsDescribedByItsOwner(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 200, 100))
+	var chosen []string
+	var m, sub *menu
+	var popup *Window
+	var menuPanel *Panel
+	var itemPanels []*Panel
+	var subTitle *Panel
+	var expected []geom.Rect
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		m = newTestMenu(f, UserBaseID, &chosen, menuItemTitles(12)...)
+		sub = newTestMenu(f, UserBaseID+100, &chosen, "Deep", "Deeper")
+		m.InsertMenu(-1, sub)
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		if m.popupPanel == nil {
+			return
+		}
+		popup = m.popupPanel.Window()
+		menuPanel = m.popupPanel.AsPanel()
+		offset := popup.ContentRect().Point.Sub(owner.ContentRect().Point)
+		for _, item := range m.items {
+			if item.subMenu != nil {
+				subTitle = item.panel
+				continue
+			}
+			itemPanels = append(itemPanels, item.panel)
+			r := item.panel.RectToRoot(item.panel.ContentRect(true))
+			r.Point = r.Point.Add(offset)
+			expected = append(expected, r)
+		}
+	}))
+	c.NotNil(popup)
+	c.NotNil(subTitle)
+	if popup == nil || subTitle == nil || len(itemPanels) == 0 {
+		return
+	}
+
+	tree := screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	if tree == nil {
+		return
+	}
+	root := tree.Node(tree.Root)
+	menuNode := screen.AccessibilityNodeFor(menuPanel)
+	c.NotNil(menuNode, "the menu is described in its owner's tree")
+	if root == nil || menuNode == nil {
+		return
+	}
+	c.Equal(role.Menu, menuNode.Role)
+	c.True(menuNode.Overlay, "the menu is drawn above its owner, so it is an overlay")
+	c.Equal(tree.Root, menuNode.Parent)
+	c.True(len(root.Children) != 0 && root.Children[0] == menuNode.ID, "the menu comes first, above the content")
+	c.False(root.Overlay, "nothing else is an overlay")
+
+	var outside *accessibility.Node
+	for i, panel := range itemPanels {
+		node := screen.AccessibilityNodeFor(panel)
+		c.NotNil(node)
+		if node == nil {
+			continue
+		}
+		c.Equal(expected[i], node.Bounds, "an item's bounds are its popup's, moved into the owner's space")
+		c.False(node.Overlay)
+		if outside == nil && !node.Bounds.Center().In(root.Bounds) {
+			outside = node
+		}
+	}
+	c.NotNil(outside, "the menu overflows its owner")
+	if outside != nil {
+		c.Equal(outside.ID, tree.HitTest(outside.Bounds.Center()), "an item beyond the owner's edge is hit")
+	}
+	if first := screen.AccessibilityNodeFor(itemPanels[0]); first != nil {
+		c.True(first.Bounds.Center().In(root.Bounds))
+		c.Equal(first.ID, tree.HitTest(first.Bounds.Center()), "an item over the owner's content is hit")
+	}
+
+	// The popup publishes nothing of its own: asking for its description describes its owner.
+	popupTree := screen.AccessibilityTree(popup)
+	c.NotNil(popupTree)
+	if popupTree != nil {
+		c.Equal(tree.Root, popupTree.Root)
+	}
+	var popupAX *windowAccessibility
+	c.True(screen.Do(func() { popupAX = popup.ax }))
+	c.Nil(popupAX)
+
+	// Expanding the item that holds the sub-menu opens it in a popup of its own, and the next description of the owner
+	// holds its items.
+	subTitleNode := screen.AccessibilityNodeFor(subTitle)
+	c.NotNil(subTitleNode)
+	if subTitleNode == nil {
+		return
+	}
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node: subTitleNode.ID, Action: accessibility.Expand,
+	}))
+	screen.Sync()
+	var subPanel *Panel
+	var deeper *Panel
+	c.True(screen.Do(func() {
+		if sub.popupPanel != nil {
+			subPanel = sub.popupPanel.AsPanel()
+			deeper = sub.items[1].panel
+		}
+	}))
+	c.NotNil(subPanel, "the sub-menu has opened")
+	if subPanel == nil {
+		return
+	}
+	tree = screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	subNode := screen.AccessibilityNodeFor(subPanel)
+	deeperNode := screen.AccessibilityNodeFor(deeper)
+	c.NotNil(subNode)
+	c.NotNil(deeperNode, "the sub-menu's items join the owner's tree")
+	if tree == nil || subNode == nil || deeperNode == nil {
+		return
+	}
+	c.True(subNode.Overlay)
+	c.Equal(subNode.ID, tree.Node(tree.Root).Children[0], "the newest menu comes first")
+	c.Equal(deeperNode.ID, tree.HitTest(deeperNode.Bounds.Center()))
+
+	// Pressing an item in a popup chooses it.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node: deeperNode.ID, Action: accessibility.Press,
+	}))
+	screen.Sync()
+	var picked []string
+	var open int
+	c.True(screen.Do(func() {
+		picked = append(picked, chosen...)
+		open = len(owner.root.openMenuPanels)
+	}))
+	c.Equal([]string{"Deeper"}, picked)
+	c.Equal(0, open, "choosing an item closes the menus")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestAccessibilityPublishLaysTheWindowOutFirst covers the geometry a description is built from. A tree asked for while
 // a layout invalidation is still pending would otherwise report the frames the panels had before it, which is both what
 // an assistive technology draws its highlight from and what the BoundsChanged events of the next diff carry.

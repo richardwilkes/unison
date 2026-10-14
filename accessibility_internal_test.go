@@ -1183,6 +1183,7 @@ func TestAccessibilityCaretBlockLosesFocusToAnOpenMenu(t *testing.T) {
 		mp = newTestMenuPanel(20, 20, 120, 80)
 		mp.Accessibility.Role = role.Menu
 		mp.Accessibility.Name = "Edit"
+		newTestPopupWindow(wnd, mp)
 		wnd.root.insertMenu(mp)
 		wnd.MarkForRedraw()
 	})

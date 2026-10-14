@@ -11,6 +11,7 @@ package unison
 
 import (
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -298,7 +299,8 @@ func ThemeChanged() {
 	MarkDynamicColorsForRebuild() // first, so the GetColor() calls during cursor sync observe the new dark-mode state
 	syncBuiltInCursors()
 	SafeCall(themeChangedCallback)
-	for _, wnd := range Windows() {
+	// Every window, including the toolkit's popup menu windows, so that open menus repaint too.
+	for _, wnd := range slices.Clone(windowList) {
 		// Refresh unconditionally rather than only when the sync above rebuilt something: cursor retrieval also
 		// syncs, so the rebuild may already have happened on another path, leaving windows on a stale or fallback
 		// cursor. The refresh is a no-op when the resolved cursor is unchanged.

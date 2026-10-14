@@ -29,7 +29,8 @@ const CPURenderingEnvKey = "UNISON_CPU_RENDERING"
 // cpuRenderingActive is true once hardware-accelerated (OpenGL) rendering has been found to be unavailable and the
 // process has fallen back to CPU rendering, or once CPURenderingEnvKey has asked for it up front. The fallback is
 // sticky and process-wide: once any window fails to obtain a usable OpenGL environment, all subsequent rendering
-// happens on the CPU rather than repeatedly re-attempting (and failing) GL setup. Only accessed on the UI thread.
+// happens on the CPU rather than repeatedly re-attempting (and failing) GL setup. A window created with cpuOnly set,
+// as popup menu windows are, renders on the CPU even while this is false. Only accessed on the UI thread.
 var cpuRenderingActive bool
 
 // IsCPURenderingActive returns true if rendering is being performed on the CPU rather than with hardware acceleration

@@ -206,9 +206,9 @@ func (p *PopupMenu[T]) Text() string {
 	}
 }
 
-// Click performs any animation associated with a click and triggers the popup menu to appear. The menu is built in the
-// active window, so a popup in any other window shows nothing and WillShowMenuCallback is not run: positioned from its
-// own window, the menu would land in the active one at coordinates taken from the other. See axMayPopupMenu.
+// Click performs any animation associated with a click and triggers the popup menu to appear. The menu is opened for
+// the active window, so a popup in any other window shows nothing and WillShowMenuCallback is not run: positioned from
+// its own window, the menu would be placed for the active one at coordinates taken from the other. See axMayPopupMenu.
 func (p *PopupMenu[T]) Click() {
 	if !axMayPopupMenu(p.AsPanel()) {
 		return
@@ -677,7 +677,7 @@ func axCollapseMenu(p *Panel, m Menu) {
 	if !axMenuIsOpen(m) {
 		return
 	}
-	if wnd := p.Window(); wnd != nil {
+	if wnd := p.Window().menuOwner(); wnd != nil {
 		wnd.root.closeMenuStackStoppingAt(nil)
 	}
 }

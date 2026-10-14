@@ -1034,6 +1034,16 @@ func TestTextVisibleBounds(t *testing.T) {
 	unbounded.Node(textScrollID).Bounds = geom.Rect{}
 	c.Equal(geom.NewRect(10, 20, 110, 70), visibleBounds(unbounded, unbounded.Node(textDocumentID)))
 
+	// An overlay is drawn above the window, so the confinement of what it holds restarts from its own bounds, and the
+	// overlay itself is confined by nothing above it.
+	overlay := textFixtureTree()
+	overlay.Node(textWindowID).Bounds = geom.NewRect(0, 0, 50, 50)
+	overlay.Node(textScrollID).Overlay = true
+	c.Equal(geom.NewRect(10, 20, 110, 35), visibleBounds(overlay, overlay.Node(textDocumentID)))
+	c.Equal(geom.NewRect(10, 20, 110, 35), visibleBounds(overlay, overlay.Node(textScrollID)))
+	overlay.Node(textScrollID).Overlay = false
+	c.Equal(geom.NewRect(10, 20, 40, 30), visibleBounds(overlay, overlay.Node(textDocumentID)))
+
 	c.True(visibleBounds(nil, tree.Node(textDocumentID)).Empty())
 	c.True(visibleBounds(tree, nil).Empty())
 }

@@ -2512,13 +2512,14 @@ func (c *Conn) RespondToPing(ping *ClientMessageEvent) {
 	}
 }
 
-// GrabPointer actively grabs the pointer so that all pointer events matching the given event mask are reported to the
-// specified window, regardless of which window the pointer is in. If cursor is not 0, it is displayed for the duration
-// of the grab. Returns true if the grab succeeded.
-func (c *Conn) GrabPointer(window WindowID, eventMask uint16, cursor CursorID) bool {
+// GrabPointer actively grabs the pointer so that pointer events matching the given event mask are reported to the
+// specified window, regardless of which window the pointer is in. If ownerEvents is true, an event that would normally
+// be reported to one of this client's windows still is, and only the rest are reported to the grab window. If cursor is
+// not 0, it is displayed for the duration of the grab. Returns true if the grab succeeded.
+func (c *Conn) GrabPointer(window WindowID, ownerEvents bool, eventMask uint16, cursor CursorID) bool {
 	w := NewWriter(24)
 	w.Byte(opGrabPointer)
-	w.Bool(false) // owner-events: report all events with respect to the grab window
+	w.Bool(ownerEvents)
 	w.Uint16(6)
 	w.WindowID(window)
 	w.Uint16(eventMask)

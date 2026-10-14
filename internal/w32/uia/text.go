@@ -418,8 +418,9 @@ func documentSpans(t *accessibility.Tree) map[accessibility.NodeID]documentSpan 
 }
 
 // visibleBounds returns the part of a node's bounds that is really on screen: its own bounds intersected with those
-// of every one of its ancestors, which is what a scroll area does to the content inside it. A node the snapshot reports
-// as offscreen has no visible area at all, and neither has one whose bounds fall entirely outside an ancestor's.
+// of every one of its ancestors up to the nearest Overlay, which is what a scroll area does to the content inside it.
+// A node the snapshot reports as offscreen has no visible area at all, and neither has one whose bounds fall entirely
+// outside an ancestor's.
 //
 // An ancestor with no bounds filled in is passed over rather than clipping everything away, since a snapshot is
 // entitled to leave the bounds of a node that draws nothing empty.
@@ -429,10 +430,14 @@ func visibleBounds(t *accessibility.Tree, n *accessibility.Node) geom.Rect {
 	}
 	bounds := n.Bounds
 	for _, id := range t.Path(n.ID) {
-		if id == n.ID {
+		ancestor := t.Node(id)
+		if ancestor == nil {
 			continue
 		}
-		if ancestor := t.Node(id); ancestor != nil && !ancestor.Bounds.Empty() {
+		if ancestor.Overlay {
+			bounds = n.Bounds
+		}
+		if id != n.ID && !ancestor.Bounds.Empty() {
 			bounds = bounds.Intersect(ancestor.Bounds)
 		}
 	}

@@ -23,6 +23,9 @@ var (
 
 // DWMWINDOWATTRIBUTE values https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
 const (
+	// DWMWA_TRANSITIONS_FORCEDISABLED takes a BOOL that, when TRUE, turns off the animations DWM plays as the window
+	// is shown, hidden, minimized or restored.
+	DWMWA_TRANSITIONS_FORCEDISABLED = 3
 	// DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1 is the attribute index the dark mode flag used prior to Windows 10
 	// build 18985. It was renumbered to DWMWA_USE_IMMERSIVE_DARK_MODE from that build onward.
 	DWMWA_USE_IMMERSIVE_DARK_MODE_PRE_20H1 = 19

@@ -17,8 +17,8 @@ import (
 )
 
 // TestPopupMenuClickOnlyInTheActiveWindow verifies that Click on a popup in a background window opens nothing, since
-// the menu it pops up is built in the active window at coordinates taken from the popup's own window, and that the
-// same popup opens its menu in its own window once that is the active one.
+// the menu it pops up is opened for the active window at coordinates taken from the popup's own window, and that the
+// same popup opens its menu for its own window once that is the active one.
 func TestPopupMenuClickOnlyInTheActiveWindow(t *testing.T) {
 	c := check.New(t)
 	var back, front *Window
@@ -64,10 +64,10 @@ func TestPopupMenuClickOnlyInTheActiveWindow(t *testing.T) {
 		popup.Click()
 		look()
 		if backOpen == 1 {
-			openedIn = back.root.openMenuPanels[0].Window()
+			openedIn = back.root.openMenuPanels[0].Window().menuOwner()
 		}
 	}))
-	c.Equal(1, backOpen, "the menu opens in the popup's own window once that is the active one")
+	c.Equal(1, backOpen, "the menu opens for the popup's own window once that is the active one")
 	c.Equal(0, frontOpen)
 	c.True(openedIn == back)
 	c.Equal(1, willShow)

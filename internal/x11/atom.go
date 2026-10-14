@@ -89,58 +89,60 @@ const (
 
 // Atoms holds the Atom values for commonly used X11 Atoms that don't have predefined constants.
 type Atoms struct {
-	ATSPIBus                Atom
-	Clipboard               Atom
-	ClipboardIncremental    Atom
-	ClipboardManager        Atom
-	ClipboardMultiple       Atom
-	ClipboardSaveTargets    Atom
-	ClipboardSelection      Atom
-	ClipboardTargets        Atom
-	DnDActionCopy           Atom
-	DnDActionList           Atom
-	DnDActionMove           Atom
-	DnDAware                Atom
-	DnDDrop                 Atom
-	DnDEnter                Atom
-	DnDFinished             Atom
-	DnDLeave                Atom
-	DnDPosition             Atom
-	DnDSelection            Atom
-	DnDStatus               Atom
-	DnDTypeList             Atom
-	GTKThemeVariant         Atom
-	KDENetWMColorScheme     Atom
-	MotifWMHints            Atom
-	NetActiveWindow         Atom
-	NetCurrentDesktop       Atom
-	NetFrameExtents         Atom
-	NetRequestFrameExtents  Atom
-	NetSupported            Atom
-	NetWMIcon               Atom
-	NetWMIconName           Atom
-	NetWMName               Atom
-	NetWMPing               Atom
-	NetWMState              Atom
-	NetWMStateAbove         Atom
-	NetWMStateMaximizedHorz Atom
-	NetWMStateMaximizedVert Atom
-	NetWMWindowType         Atom
-	NetWMWindowTypeDialog   Atom
-	NetWMWindowTypeMenu     Atom
-	NetWMWindowTypeNormal   Atom
-	NetWMWindowTypeTooltip  Atom
-	NetWorkArea             Atom
-	Null                    Atom
-	Pair                    Atom
-	Text                    Atom
-	TextURIList             Atom
-	UTF8String              Atom
-	WMChangeState           Atom
-	WMDeleteWindow          Atom
-	WMPID                   Atom
-	WMProtocols             Atom
-	WMState                 Atom
+	ATSPIBus                   Atom
+	Clipboard                  Atom
+	ClipboardIncremental       Atom
+	ClipboardManager           Atom
+	ClipboardMultiple          Atom
+	ClipboardSaveTargets       Atom
+	ClipboardSelection         Atom
+	ClipboardTargets           Atom
+	DnDActionCopy              Atom
+	DnDActionList              Atom
+	DnDActionMove              Atom
+	DnDAware                   Atom
+	DnDDrop                    Atom
+	DnDEnter                   Atom
+	DnDFinished                Atom
+	DnDLeave                   Atom
+	DnDPosition                Atom
+	DnDSelection               Atom
+	DnDStatus                  Atom
+	DnDTypeList                Atom
+	GTKThemeVariant            Atom
+	KDENetWMColorScheme        Atom
+	KDENetWMSkipCloseAnimation Atom
+	MotifWMHints               Atom
+	NetActiveWindow            Atom
+	NetCurrentDesktop          Atom
+	NetFrameExtents            Atom
+	NetRequestFrameExtents     Atom
+	NetSupported               Atom
+	NetWMIcon                  Atom
+	NetWMIconName              Atom
+	NetWMName                  Atom
+	NetWMPing                  Atom
+	NetWMState                 Atom
+	NetWMStateAbove            Atom
+	NetWMStateMaximizedHorz    Atom
+	NetWMStateMaximizedVert    Atom
+	NetWMWindowType            Atom
+	NetWMWindowTypeDialog      Atom
+	NetWMWindowTypeMenu        Atom
+	NetWMWindowTypeNormal      Atom
+	NetWMWindowTypePopupMenu   Atom
+	NetWMWindowTypeTooltip     Atom
+	NetWorkArea                Atom
+	Null                       Atom
+	Pair                       Atom
+	Text                       Atom
+	TextURIList                Atom
+	UTF8String                 Atom
+	WMChangeState              Atom
+	WMDeleteWindow             Atom
+	WMPID                      Atom
+	WMProtocols                Atom
+	WMState                    Atom
 }
 
 func (a *Atoms) init(c *Conn) error {
@@ -171,6 +173,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.DnDTypeList, "XdndTypeList"},
 		{&a.GTKThemeVariant, "_GTK_THEME_VARIANT"},           // The theme variant a window asks for its frame to be drawn in
 		{&a.KDENetWMColorScheme, "_KDE_NET_WM_COLOR_SCHEME"}, // The color scheme a window asks KWin to draw its frame in
+		{&a.KDENetWMSkipCloseAnimation, "_KDE_NET_WM_SKIP_CLOSE_ANIMATION"},
 		{&a.MotifWMHints, "_MOTIF_WM_HINTS"},
 		{&a.NetActiveWindow, "_NET_ACTIVE_WINDOW"},
 		{&a.NetCurrentDesktop, "_NET_CURRENT_DESKTOP"},
@@ -189,6 +192,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.NetWMWindowTypeDialog, "_NET_WM_WINDOW_TYPE_DIALOG"},
 		{&a.NetWMWindowTypeMenu, "_NET_WM_WINDOW_TYPE_MENU"},
 		{&a.NetWMWindowTypeNormal, "_NET_WM_WINDOW_TYPE_NORMAL"},
+		{&a.NetWMWindowTypePopupMenu, "_NET_WM_WINDOW_TYPE_POPUP_MENU"},
 		{&a.NetWMWindowTypeTooltip, "_NET_WM_WINDOW_TYPE_TOOLTIP"},
 		{&a.NetWorkArea, "_NET_WORKAREA"},
 		{&a.Null, "NULL"},

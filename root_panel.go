@@ -64,22 +64,32 @@ func (p *rootPanel) setMenuBar(menuBar *menu) {
 	p.MarkForLayoutAndRedraw()
 }
 
+// insertMenu records panel, the content of a popup menu window this root's window owns, as the newest open menu.
 func (p *rootPanel) insertMenu(panel *menuPanel) {
 	p.openMenuPanels = append(p.openMenuPanels, panel)
-	p.AddChildAtIndex(panel, 0)
+	if len(p.openMenuPanels) == 1 && p.window.IsValid() {
+		p.window.apiMenuStackChanged(true)
+	}
 }
 
+// removeMenu takes panel off the open menu stack and disposes of the popup window showing it. A panel that is not the
+// content of a popup window is merely detached from its parent.
 func (p *rootPanel) removeMenu(panel *menuPanel) {
-	for i, one := range p.openMenuPanels {
-		if one != panel {
-			continue
-		}
-		p.openMenuPanels = slices.Delete(p.openMenuPanels, i, i+1)
-		panel.RemoveFromParent()
-		panel.menu.popupPanel = nil
-		p.MarkForRedraw()
-		break
+	i := slices.Index(p.openMenuPanels, panel)
+	if i < 0 {
+		return
 	}
+	p.openMenuPanels = slices.Delete(p.openMenuPanels, i, i+1)
+	panel.menu.popupPanel = nil
+	if wnd := panel.Window(); wnd.isPopup() && wnd.IsValid() {
+		wnd.Dispose()
+	} else {
+		panel.RemoveFromParent()
+	}
+	if len(p.openMenuPanels) == 0 && p.window.IsValid() {
+		p.window.apiMenuStackChanged(false)
+	}
+	p.MarkForRedraw()
 }
 
 func (p *rootPanel) setContent(content Paneler) {
@@ -92,7 +102,7 @@ func (p *rootPanel) setContent(content Paneler) {
 	}
 	p.contentPanel = panel
 	if panel != nil {
-		index := len(p.openMenuPanels)
+		index := 0
 		if p.menuBarPanel != nil {
 			index++
 		}
@@ -112,7 +122,7 @@ func (p *rootPanel) setTooltip(tip *Panel) {
 	}
 	p.tooltipPanel = tip
 	if tip != nil {
-		index := len(p.openMenuPanels)
+		index := 0
 		if p.menuBarPanel != nil {
 			index++
 		}
@@ -176,22 +186,29 @@ func (p *rootPanel) preKeyUp(_ *Window, _ KeyCode, _ mod.Modifiers) bool {
 	return len(p.openMenuPanels) != 0
 }
 
-func (p *rootPanel) preMouseDown(_ *Window, where geom.Point) bool {
-	// Iterate from the most recently opened popup to the oldest, matching the draw/hit-test z-order (the newest popup
-	// is topmost). This ensures that when a child menu overlaps its parent, a click in the overlap is attributed to the
-	// child rather than the parent, which would otherwise tear the child back down.
-	for i := len(p.openMenuPanels) - 1; i >= 0; i-- {
-		one := p.openMenuPanels[i]
-		if where.In(one.FrameRect()) {
-			SafeCall(func() { p.closeMenuStackStoppingAt(one.menu) })
+// preMouseDown closes the menus a press makes obsolete. A press in a popup menu window closes the menus opened after
+// the one it shows; a press that reached any other window landed outside every menu, so it closes them all. The press
+// is never consumed, so it still reaches the panel under it.
+func (p *rootPanel) preMouseDown(wnd *Window, _ geom.Point) bool {
+	if wnd.isPopup() {
+		if p.contentPanel == nil || wnd.owner.root == nil {
 			return false
 		}
+		if mp, ok := p.contentPanel.Self.(*menuPanel); ok {
+			SafeCall(func() { wnd.owner.root.closeMenuStackStoppingAt(mp.menu) })
+		}
+		return false
 	}
 	SafeCall(func() { p.closeMenuStackStoppingAt(nil) })
 	return false
 }
 
-func (p *rootPanel) preMoved(_ *Window) {
+// preMoved closes the open menus when their owner moves. A popup menu window moves only when it is placed, which must
+// leave its owner's menus alone.
+func (p *rootPanel) preMoved(wnd *Window) {
+	if wnd.isPopup() {
+		return
+	}
 	SafeCall(func() { p.closeMenuStackStoppingAt(nil) })
 }
 
@@ -204,11 +221,15 @@ func (p *rootPanel) postLostFocus(w *Window) {
 	})
 }
 
+// closeMenuStackStoppingAt closes the newest open menus until it reaches stopAt, which stays open, or closes them all
+// when stopAt is nil or not open. The top is read again on every pass, since disposing of a popup window synthesizes
+// pointer crossings that can open or close menus in turn.
 func (p *rootPanel) closeMenuStackStoppingAt(stopAt *menu) {
-	for i := len(p.openMenuPanels) - 1; i >= 0; i-- {
-		if p.openMenuPanels[i].menu == stopAt {
+	for n := len(p.openMenuPanels); n != 0; n = len(p.openMenuPanels) {
+		top := p.openMenuPanels[n-1]
+		if top.menu == stopAt {
 			return
 		}
-		p.removeMenu(p.openMenuPanels[i])
+		p.removeMenu(top)
 	}
 }

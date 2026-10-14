@@ -80,7 +80,8 @@ func (t *Tree) walk(id NodeID, visited map[NodeID]bool, fn func(n *Node) bool) b
 // one wins, since children are ordered with the topmost first; Offscreen nodes are skipped. A node's Bounds are not
 // clipped by its ancestors, but what it draws is, so a point counts as inside a node only when it is also inside every
 // ancestor: the rows of a table that has been scrolled partly out of its view port cannot be hit through the widgets
-// that cover them.
+// that cover them. An Overlay is the exception: it is confined by its own bounds alone and is tested even when the
+// point is outside its parent, so an open menu hanging off the root is hit beyond the edge of the window.
 func (t *Tree) HitTest(pt geom.Point) NodeID {
 	if t == nil {
 		return 0
@@ -93,22 +94,32 @@ func (t *Tree) HitTest(pt geom.Point) NodeID {
 }
 
 // hitTest implements HitTest from one starting node, returning zero when nothing at or below it contains pt. clip is
-// the intersection of the bounds of every node above this one, and visited holds the ids already tested, which is what
-// keeps a malformed tree from being descended forever; see maxTreeDepth.
+// the intersection of the bounds of every node above this one, up to the nearest Overlay, and visited holds the ids
+// already tested, which is what keeps a malformed tree from being descended forever; see maxTreeDepth.
 func (t *Tree) hitTest(id NodeID, pt geom.Point, clip geom.Rect, visited map[NodeID]bool) NodeID {
 	n := t.Nodes[id]
 	if n == nil || n.Offscreen || visited[id] {
 		return 0
 	}
 	visited[id] = true
-	clip = clip.Intersect(n.Bounds)
-	if !pt.In(clip) {
-		return 0
+	if n.Overlay {
+		clip = n.Bounds
+	} else {
+		clip = clip.Intersect(n.Bounds)
 	}
+	inside := pt.In(clip)
 	for _, child := range n.Children {
+		if !inside {
+			if c := t.Nodes[child]; c == nil || !c.Overlay {
+				continue
+			}
+		}
 		if hit := t.hitTest(child, pt, clip, visited); hit != 0 {
 			return hit
 		}
+	}
+	if !inside {
+		return 0
 	}
 	return id
 }

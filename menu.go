@@ -10,8 +10,10 @@
 package unison
 
 import (
+	"math"
 	"slices"
 
+	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/behavior"
@@ -53,7 +55,8 @@ type Menu interface {
 	Title() string
 	// Count of menu items in this menu.
 	Count() int
-	// Popup the menu at the specified position within the active window.
+	// Popup the menu at the specified position, given in the coordinates of the active window's root panel. The menu
+	// is shown in a window of its own, so it may extend beyond the active window.
 	Popup(where geom.Rect, itemIndex int)
 	// Dispose releases any OS resources associated with this menu.
 	Dispose()
@@ -71,6 +74,10 @@ type MenuTheme struct {
 	BarBorder  Border
 	MenuBorder Border
 }
+
+// noTopLimit is the top passed to menu.ensureOnDisplay for a menu that may cover anything above it. Zero cannot serve,
+// since a display above the primary one has negative coordinates.
+var noTopLimit = float32(math.Inf(-1))
 
 type menuPanel struct {
 	menu *menu
@@ -204,42 +211,50 @@ func (m *menu) Count() int {
 }
 
 func (m *menu) Popup(where geom.Rect, itemIndex int) {
-	if m.popupPanel == nil {
-		m.createPopup()
-		if m.popupPanel == nil {
-			// createPopup is a no-op when no window is active (a transient state; see FrontmostWindow's comment), so
-			// there is no panel to position or show.
-			return
-		}
-		if itemIndex >= 0 && itemIndex < len(m.items) {
-			m.popupPanel.ValidateLayout()
-			if sp, ok := m.popupPanel.Children()[0].Self.(*ScrollPanel); ok {
-				where.Y -= sp.Content().AsPanel().Children()[itemIndex].FrameRect().Y
-			}
-		}
-		fr := m.popupPanel.FrameRect()
-		where.Height = fr.Height
-		where.Width = max(fr.Width, where.Width)
-		m.ensureInWindow(where, 0)
-		m.popupPanel.ValidateLayout()
-		m.setKeyIndex(itemIndex)
+	if m.popupPanel != nil {
+		return
 	}
+	owner := ActiveWindow()
+	if !m.createPopup(owner) {
+		// No window is active (a transient state; see FrontmostWindow's comment), so there is nothing to show the
+		// menu for.
+		return
+	}
+	if itemIndex >= 0 && itemIndex < len(m.items) {
+		if sp, ok := m.popupPanel.Children()[0].Self.(*ScrollPanel); ok {
+			where.Y -= sp.Content().AsPanel().Children()[itemIndex].FrameRect().Y
+		}
+	}
+	fr := m.popupPanel.FrameRect()
+	where.Height = fr.Height
+	where.Width = max(fr.Width, where.Width)
+	where.Point = owner.apiPointToScreen(where.Point)
+	m.ensureOnDisplay(where, noTopLimit, owner)
+	m.setKeyIndex(itemIndex)
 }
 
-// ensureInWindow places the popup at where, shifting it and, when that is not enough, shrinking it so that it lies
-// within the window and no higher than top. A menu opened from the menu bar passes the bar's bottom as top so that it
-// scrolls rather than covering the bar.
-func (m *menu) ensureInWindow(where geom.Rect, top float32) {
-	fr := m.popupPanel.Parent().ContentRect(true)
-	top = min(max(top, 0), fr.Bottom())
+// ensureOnDisplay places the popup window at where, in the space window rects use, shifting it and, when that is not
+// enough, shrinking it so that it lies within the usable area of its display and no higher than top, and then shows
+// it. A menu opened from the menu bar passes the bar's bottom as top so that it scrolls rather than covering the bar.
+// The display is the one where overlaps most, or anchor's when where overlaps none.
+func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window) {
+	if m.popupPanel == nil {
+		return
+	}
+	popup := m.popupPanel.Window()
+	if !popup.IsValid() {
+		return
+	}
+	fr := menuDisplayFor(where, anchor).apiUsableInWindowUnits()
+	top = min(max(top, fr.Y), fr.Bottom())
 	if where.Width > fr.Width {
 		where.Width = fr.Width
 	}
 	if where.Right() > fr.Right() {
 		where.X = fr.Right() - where.Width
 	}
-	if where.X < 0 {
-		where.X = 0
+	if where.X < fr.X {
+		where.X = fr.X
 	}
 	if where.Height > fr.Bottom()-top {
 		where.Height = fr.Bottom() - top
@@ -250,19 +265,46 @@ func (m *menu) ensureInWindow(where geom.Rect, top float32) {
 	if where.Y < top {
 		where.Y = top
 	}
-	m.popupPanel.SetFrameRect(where)
+	where.Height = max(where.Height, 1)
+	popup.SetContentRect(where)
+	popup.ValidateLayout()
+	popup.Show()
 }
 
-func (m *menu) createPopup() {
-	if m.popupPanel != nil {
-		return
+// menuDisplayFor returns the display a menu placed at where belongs on: the one where overlaps most, or anchor's when
+// where overlaps none.
+func menuDisplayFor(where geom.Rect, anchor *Window) *Display {
+	for _, d := range AllDisplays() {
+		if where.Intersects(d.Usable) {
+			return BestDisplayForRect(where)
+		}
 	}
-	if activeWnd := ActiveWindow(); activeWnd != nil {
-		activeWnd.root.closeMenuStackStoppingAt(m.titleItem.menu)
-		m.popupPanel = m.newPanel(false)
-		m.popupPanel.Pack()
-		activeWnd.root.insertMenu(m.popupPanel)
+	return anchor.Display()
+}
+
+// createPopup builds the menu's panel and the popup window showing it, as the newest menu of owner's stack, closing
+// whatever the stack holds above the menu this one belongs to. The window is left hidden for the caller to place and
+// show. Returns true if the popup was created.
+func (m *menu) createPopup(owner *Window) bool {
+	if m.popupPanel != nil || !owner.IsValid() {
+		return false
 	}
+	owner.root.closeMenuStackStoppingAt(m.titleItem.menu)
+	owner.ClearTooltip()
+	// Built before the window exists, since building runs the menu's updater and its items' validators.
+	panel := m.newPanel(false)
+	popup, err := newPopupWindow(owner, m.Title())
+	if err != nil {
+		errs.Log(err)
+		return false
+	}
+	m.popupPanel = panel
+	// Not Window.SetContent, which would lay the panel out at the window's initial size.
+	popup.root.setContent(panel)
+	panel.Pack()
+	panel.ValidateLayout()
+	owner.root.insertMenu(panel)
+	return true
 }
 
 func (m *menu) newPanel(forBar bool) *menuPanel {
@@ -345,7 +387,7 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 				return true
 			}
 		case KeyEscape, KeyLeft:
-			if wnd := p.Window(); wnd != nil {
+			if wnd := p.Window().menuOwner(); wnd != nil {
 				wnd.root.closeMenuStackStoppingAt(m.titleItem.menu)
 			}
 			return true
@@ -363,7 +405,7 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	content.SetLayout(lay)
 	content.Pack()
 	s := NewScrollPanel()
-	// The scroll panel is how a menu too tall for its window is shown, and nothing more: an assistive technology
+	// The scroll panel is how a menu too tall for its display is shown, and nothing more: an assistive technology
 	// walking a menu must find the items in it, not an anonymous scroll area holding them. Hiding the panel itself
 	// leaves the items as the menu's own children, while the scroll bar within it is still described when there is
 	// something to scroll.
@@ -395,7 +437,7 @@ func (m *menu) doExitEnter(previousIndex int) {
 
 func (m *menu) setKeyIndex(index int) {
 	if m.popupPanel == nil {
-		// The popup may not exist if createPopup ran while no window was active.
+		// The popup may not exist if createPopup had no window to open it for.
 		return
 	}
 	m.popupPanel.itemIndex = index
@@ -433,10 +475,18 @@ func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repe
 	return len(wnd.root.openMenuPanels) != 0
 }
 
+// closeMenuStack closes every open menu of the window this menu was opened for. The focus never left that window, so
+// there is nothing to give back to it.
 func (m *menu) closeMenuStack() {
-	if wnd := ActiveWindow(); wnd != nil {
+	var wnd *Window
+	if m.popupPanel != nil {
+		wnd = m.popupPanel.Window().menuOwner()
+	}
+	if wnd == nil {
+		wnd = ActiveWindow()
+	}
+	if wnd != nil {
 		wnd.root.closeMenuStackStoppingAt(nil)
-		wnd.ToFront()
 		wnd.MarkForRedraw()
 		wnd.FlushDrawing()
 	}

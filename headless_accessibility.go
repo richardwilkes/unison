@@ -86,11 +86,13 @@ func (s *HeadlessScreen) EnableAccessibility() {
 
 // AccessibilityTree returns the most recent description of the window, as a platform adapter would have been handed it,
 // turning accessibility support on first if it is not on already and then rebuilding the description so that what comes
-// back reflects the window as it is now. Returns nil if the session has ended, the window is not one of this session's,
-// or accessibility support has been refused.
+// back reflects the window as it is now. A popup menu window is described as part of the window that opened it, so
+// that window's description is returned for one. Returns nil if the session has ended, the window is not one of this
+// session's, or accessibility support has been refused.
 func (s *HeadlessScreen) AccessibilityTree(w *Window) *accessibility.Tree {
 	described := false
 	if !s.Do(func() {
+		w = w.menuOwner()
 		if !activateAccessibility() || !w.IsValid() {
 			return
 		}
@@ -199,7 +201,8 @@ func (s *HeadlessScreen) AccessibilityNodeFor(p Paneler) *accessibility.Node {
 		if panel.Accessibility.id == 0 || panel.Accessibility.owner != panel {
 			return
 		}
-		if w := panel.Window(); w != nil && w.ax != nil {
+		// A panel of a popup menu window is described as part of the window that opened the menu.
+		if w := panel.Window().menuOwner(); w != nil && w.ax != nil {
 			node = w.ax.last.Node(panel.Accessibility.id)
 		}
 	})

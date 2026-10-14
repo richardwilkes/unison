@@ -254,6 +254,9 @@ func macDragSourceFinished(macWnd cocoa.Window) {
 }
 
 func (w *Window) nativeInit() error {
+	if w.isPopup() {
+		return w.macInitPopup()
+	}
 	styleMask := cocoa.WindowStyleMaskMiniaturizable
 	if w.undecorated {
 		styleMask |= cocoa.WindowStyleMaskBorderless
@@ -294,6 +297,26 @@ func (w *Window) nativeInit() error {
 	return nil
 }
 
+// macInitPopup creates the native window for a popup menu window: borderless, never key, above every ordinary window,
+// shown without animation and left out of the accessibility hierarchy, its content view answering assistive
+// technologies through the owner's, whose tree describes the menu. It has no title and does not touch the application
+// appearance the owner has already set.
+func (w *Window) macInitPopup() error {
+	nw := cocoa.NewPopupWindow(geom.NewRect(0, 0, 1, 1))
+	if nw == 0 {
+		return errs.New("unable to create native popup window")
+	}
+	v := cocoa.NewPopupView(nw)
+	nw.SetContentView(v)
+	nw.MakeFirstResponder(v)
+	nw.SetDelegate(cocoa.NewWindowDelegate())
+	nw.SetAcceptsMouseMovedEvents(true)
+	w.wnd.wnd = nw
+	w.wnd.view = v
+	cocoa.SetAXViewAlias(v, w.owner.wnd.view)
+	return nil
+}
+
 func (w *Window) nativeSetTitle(title string) {
 	w.wnd.wnd.SetTitle(title)
 }
@@ -331,6 +354,14 @@ func (w *Window) nativeContentRect() geom.Rect {
 	r := w.wnd.wnd.ContentRectForFrameRect(w.wnd.wnd.Frame())
 	r.Y = macTransformY(r.Bottom())
 	return r
+}
+
+func (w *Window) nativePointToScreen(pt geom.Point) geom.Point {
+	return w.nativeContentRect().Point.Add(pt)
+}
+
+func (w *Window) nativePointFromScreen(pt geom.Point) geom.Point {
+	return pt.Sub(w.nativeContentRect().Point)
 }
 
 func (w *Window) nativeContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
@@ -391,6 +422,11 @@ func (w *Window) nativeMaximize() {
 }
 
 func (w *Window) nativeAcquireFocusAndBringToFront() {
+	if w.isPopup() {
+		// A popup menu window never takes the focus from its owner, nor activates the application.
+		w.wnd.wnd.OrderFront()
+		return
+	}
 	cocoa.ActivateIgnoringOtherApps()
 	w.wnd.wnd.MakeKeyAndOrderFront()
 }
@@ -399,6 +435,10 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 // for the application to hand back. The release itself, when it arrives, is dropped by mouseUp, since the button has
 // already been recorded as up.
 func (w *Window) nativeCancelMouseCapture() {
+}
+
+// nativeMenuStackChanged is a no-op: a platform may grab the pointer while a menu stack is open, but this one need not.
+func (w *Window) nativeMenuStackChanged(_ bool) {
 }
 
 // nativeUpdateFrameTheme makes the application appearance follow an explicit SetThemeMode() choice, so that the frame,
@@ -485,6 +525,9 @@ func (w *Window) nativeDestroy() {
 		if delegate := w.wnd.wnd.Delegate(); delegate != 0 {
 			w.wnd.wnd.SetDelegate(0)
 			delegate.Release()
+		}
+		if w.isPopup() {
+			cocoa.ClearAXViewAlias(w.wnd.view)
 		}
 		w.wnd.view.Release()
 		w.wnd.wnd.Close()

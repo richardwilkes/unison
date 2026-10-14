@@ -65,8 +65,10 @@ var (
 // NSTrackingArea options (values verified against the macOS SDK's NSTrackingArea.h, which documents them as fixed).
 const (
 	nsTrackingMouseEnteredAndExited  uint64 = 0x01
+	nsTrackingMouseMoved             uint64 = 0x02
 	nsTrackingCursorUpdate           uint64 = 0x04
 	nsTrackingActiveInKeyWindow      uint64 = 0x20
+	nsTrackingActiveAlways           uint64 = 0x80
 	nsTrackingAssumeInside           uint64 = 0x100
 	nsTrackingInVisibleRect          uint64 = 0x200
 	nsTrackingEnabledDuringMouseDrag uint64 = 0x400
@@ -74,6 +76,13 @@ const (
 	// nsTrackingOptions is the option set the old Objective-C macContentView used for its tracking area.
 	nsTrackingOptions = nsTrackingMouseEnteredAndExited | nsTrackingActiveInKeyWindow |
 		nsTrackingEnabledDuringMouseDrag | nsTrackingCursorUpdate | nsTrackingInVisibleRect | nsTrackingAssumeInside
+
+	// nsTrackingPopupOptions is the option set for a view created by NewPopupView. Its window never becomes key, so it
+	// gets no mouse-moved events of its own and its tracking area has to report moves and stay active whichever window
+	// is key. AssumeInside is left out: the pointer is usually outside a popup when it opens, and assuming otherwise
+	// would swallow the first entry.
+	nsTrackingPopupOptions = nsTrackingMouseEnteredAndExited | nsTrackingMouseMoved | nsTrackingActiveAlways |
+		nsTrackingEnabledDuringMouseDrag | nsTrackingCursorUpdate | nsTrackingInVisibleRect
 )
 
 // nsNotFound is Foundation's NSNotFound (NSIntegerMax).
@@ -194,6 +203,7 @@ func registerMacContentViewClass() {
 		{Name: "lastMouseDraggedEvent", Type: reflect.TypeFor[objc.ID](), Attribute: objc.ReadWrite},
 		{Name: "dragMask", Type: reflect.TypeFor[uint64](), Attribute: objc.ReadWrite},
 		{Name: "inDragWeStarted", Type: reflect.TypeFor[bool](), Attribute: objc.ReadWrite},
+		{Name: "popup", Type: reflect.TypeFor[bool](), Attribute: objc.ReadWrite},
 	}, []objc.MethodDef{
 		{
 			Cmd: Sel("dealloc"),
@@ -338,9 +348,13 @@ func registerMacContentViewClass() {
 					self.Send(Sel("removeTrackingArea:"), ta)
 					Release(ta)
 				}
+				options := nsTrackingOptions
+				if objc.Send[bool](self, Sel("isPopup")) {
+					options = nsTrackingPopupOptions
+				}
 				ta := objc.ID(Cls("NSTrackingArea")).Send(Sel("alloc")).Send(
 					Sel("initWithRect:options:owner:userInfo:"), objc.Send[NSRect](self, Sel("bounds")),
-					nsTrackingOptions, self, objc.ID(0),
+					options, self, objc.ID(0),
 				)
 				self.Send(Sel("setTrackingArea:"), ta)
 				self.Send(Sel("addTrackingArea:"), ta)
@@ -576,6 +590,18 @@ func registerMacContentViewClass() {
 // the old initWithWindow: initializer: super's init runs first, then the window ivar and an empty marked-text buffer
 // are assigned, then the tracking area is installed.
 func NewView(w Window) View {
+	return newView(w, false)
+}
+
+// NewPopupView is NewView for the content view of a window that never becomes key, such as one made by
+// NewPopupWindow: its tracking area reports mouse moves and stays active whichever window is key.
+func NewPopupView(w Window) View {
+	return newView(w, true)
+}
+
+// newView is the constructor shared by NewView and NewPopupView. The popup ivar is set before the first
+// updateTrackingAreas, which is what reads it.
+func newView(w Window, popup bool) View {
 	macContentViewClassOnce.Do(registerMacContentViewClass)
 	if macContentViewClassErr != nil {
 		errs.Log(macContentViewClassErr)
@@ -586,6 +612,7 @@ func NewView(w Window) View {
 		return 0
 	}
 	v.Send(Sel("setWnd:"), objc.ID(w))
+	v.Send(Sel("setPopup:"), popup)
 	v.Send(Sel("setMarkedText:"), objc.ID(Cls("NSMutableAttributedString")).Send(Sel("alloc")).Send(Sel("init")))
 	v.Send(Sel("updateTrackingAreas"))
 	return View(v)

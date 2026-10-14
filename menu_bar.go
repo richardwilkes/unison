@@ -162,12 +162,12 @@ func windowListUpdater(m Menu) {
 			}
 			m.RemoveItem(i)
 		}
-		if len(windowList) != 0 {
+		if windows := Windows(); len(windows) != 0 {
 			m.InsertSeparator(-1, false)
 			id := WindowMenuItemBaseID
 			f := m.Factory()
 			active := ActiveWindow()
-			for _, wnd := range windowList {
+			for _, wnd := range windows {
 				m.InsertItem(-1, createSelectWindowMenuItem(f, id, wnd, active))
 				id++
 				if id >= PopupMenuTemporaryBaseID {

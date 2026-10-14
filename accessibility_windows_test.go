@@ -80,3 +80,33 @@ func TestW32AccessibilityGeometryFor(t *testing.T) {
 	c.Equal(float64(-1916), left)
 	c.Equal(float64(8), top)
 }
+
+// TestW32PopupAccessibilityUsesOwner verifies that a popup menu window never builds an adapter of its own: it reports
+// its owner's, answers WM_GETOBJECT with it, and, while the owner has nothing to describe, neither builds a snapshot
+// nor turns accessibility support on, even though the popup has a root panel of its own.
+func TestW32PopupAccessibilityUsesOwner(t *testing.T) {
+	c := check.New(t)
+	wasActive := IsAccessibilityActive()
+	snapshots := axSnapshotCount
+	owner := &Window{wnd: &apiWindow{}, valid: true}
+	popup := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu}
+	popup.root = newRootPanel(popup)
+	// Marked valid only once its root exists, so that building the root does not queue a redraw of a window that has no
+	// native window behind it.
+	popup.valid = true
+	c.Nil(popup.w32AccessibilityAdapter(), "an owner with no root panel has nothing to describe")
+	uiaObjectID := uia.RootObjectId
+	result, handled := popup.w32HandleGetObject(0, w32.LPARAM(uiaObjectID))
+	c.False(handled)
+	c.Equal(uintptr(0), result)
+	c.False(popup.wnd.uiaAnsweredForOwner)
+	c.Nil(popup.ax, "the popup must not have been made accessible itself")
+	c.Nil(popup.wnd.uia)
+	c.Equal(wasActive, IsAccessibilityActive(), "accessibility support should not have been turned on")
+	c.Equal(snapshots, axSnapshotCount, "no snapshot should have been built")
+	// Once the owner has an adapter, the popup reports that one. Only its identity matters here, so a zero value
+	// stands in for it.
+	owner.wnd.uia = &uia.Window{}
+	c.True(popup.w32AccessibilityAdapter() == owner.wnd.uia)
+	c.Nil(popup.wnd.uia)
+}

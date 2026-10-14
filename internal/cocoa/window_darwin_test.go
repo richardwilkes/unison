@@ -249,3 +249,147 @@ func TestWindowDelegate(t *testing.T) {
 		w.Close()
 	})
 }
+
+// newTestPopupWindow creates a popup window at the given content rect with its content view installed, as unison's
+// macInitPopup does. The returned cleanup mirrors nativeDestroy.
+func newTestPopupWindow(t *testing.T, contentRect geom.Rect) (Window, View, func()) {
+	t.Helper()
+	sharedApp()
+	w := NewPopupWindow(contentRect)
+	if w == 0 {
+		t.Fatal("NewPopupWindow returned 0")
+	}
+	v := NewPopupView(w)
+	if v == 0 {
+		w.Close()
+		t.Fatal("NewPopupView returned 0")
+	}
+	w.SetContentView(v)
+	w.MakeFirstResponder(v)
+	return w, v, func() {
+		ClearAXViewAlias(v)
+		w.OrderOut()
+		v.Release()
+		w.Close()
+	}
+}
+
+// TestNewPopupWindow proves the configuration a popup menu window is created with: borderless, never key or main, at
+// the pop-up menu level in every space and beside full-screen windows, out of the window cycle, without show and hide
+// animations, with a shadow, and hidden from assistive technologies. Ordered front, as Window.Show does it, it is on
+// the screen but not key.
+func TestNewPopupWindow(t *testing.T) {
+	runOnMain(func() {
+		w, _, cleanup := newTestPopupWindow(t, geom.NewRect(140, 140, 120, 80))
+		defer cleanup()
+		ow := objc.ID(w)
+		if got := w.StyleMask(); got != WindowStyleMaskBorderless {
+			t.Errorf("StyleMask() = %#x, want borderless", got)
+		}
+		for _, sel := range []string{
+			"canBecomeKeyWindow", "canBecomeMainWindow", "isRestorable", "isAccessibilityElement",
+		} {
+			if objc.Send[bool](ow, Sel(sel)) {
+				t.Errorf("%s = true, want false", sel)
+			}
+		}
+		if !objc.Send[bool](ow, Sel("hasShadow")) {
+			t.Error("hasShadow = false, want true")
+		}
+		if got := objc.Send[int64](ow, Sel("level")); got != WindowLevelPopUpMenu {
+			t.Errorf("level = %d, want %d", got, WindowLevelPopUpMenu)
+		}
+		wantBehavior := WindowCollectionBehaviorFullScreenAuxiliary | WindowCollectionBehaviorCanJoinAllSpaces |
+			WindowCollectionBehaviorTransient | WindowCollectionBehaviorIgnoresCycle
+		if got := objc.Send[uint64](ow, Sel("collectionBehavior")); got != wantBehavior {
+			t.Errorf("collectionBehavior = %#x, want %#x", got, wantBehavior)
+		}
+		if got := objc.Send[int64](ow, Sel("animationBehavior")); got != WindowAnimationBehaviorNone {
+			t.Errorf("animationBehavior = %d, want %d", got, WindowAnimationBehaviorNone)
+		}
+		if got := objc.Send[int64](ow, Sel("tabbingMode")); got != WindowTabbingModeDisallowed {
+			t.Errorf("tabbingMode = %d, want %d", got, WindowTabbingModeDisallowed)
+		}
+		w.OrderFront()
+		if !w.Visible() {
+			t.Error("popup window is not visible after OrderFront")
+		}
+		if w.Focused() {
+			t.Error("popup window is key after OrderFront")
+		}
+	})
+}
+
+// TestWindowAccessibilityHidden proves the overrides SetAccessibilityHidden turns on: a hidden window is no
+// accessibility element, has no children and hands hit tests to its content view, and turning it off again restores
+// NSWindow's own answers.
+func TestWindowAccessibilityHidden(t *testing.T) {
+	runOnMain(func() {
+		v, a, _, cleanup := newAXTestAdapter(t)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		w := a.wnd
+		ow := objc.ID(w)
+		WithPool(func() {
+			if !objc.Send[bool](ow, Sel("isAccessibilityElement")) {
+				t.Error("an ordinary window is not an accessibility element")
+			}
+			shown := NSArrayCount(ow.Send(Sel("accessibilityChildren")))
+			if shown == 0 {
+				t.Error("an ordinary window reports no accessibility children")
+			}
+			w.SetAccessibilityHidden(true)
+			if objc.Send[bool](ow, Sel("isAccessibilityElement")) {
+				t.Error("a hidden window is still an accessibility element")
+			}
+			if children := ow.Send(Sel("accessibilityChildren")); children == 0 || NSArrayCount(children) != 0 {
+				t.Errorf("a hidden window reports children %#x (%d), want an empty array", children,
+					NSArrayCount(children))
+			}
+			pt := axTestScreenPoint(a, geom.NewPoint(50, 30))
+			button := a.Element(axTestButton)
+			if got := objc.ID(v).Send(Sel("accessibilityHitTest:"), pt); got != button {
+				t.Fatalf("content view hit test = %#x, want the button %#x", got, button)
+			}
+			if got := ow.Send(Sel("accessibilityHitTest:"), pt); got != button {
+				t.Errorf("hidden window hit test = %#x, want the content view's answer %#x", got, button)
+			}
+			w.SetAccessibilityHidden(false)
+			if !objc.Send[bool](ow, Sel("isAccessibilityElement")) {
+				t.Error("a window shown again is not an accessibility element")
+			}
+			if got := NSArrayCount(ow.Send(Sel("accessibilityChildren"))); got != shown {
+				t.Errorf("a window shown again reports %d children, want %d", got, shown)
+			}
+		})
+	})
+}
+
+// TestPopupWindowHitTestReachesTheTarget proves the path an assistive technology's hit test over a popup takes: the
+// hidden popup window hands it to its content view, whose alias resolves it in the target's tree, so a point the
+// popup's own frame does not even contain still finds the target's element there.
+func TestPopupWindowHitTestReachesTheTarget(t *testing.T) {
+	runOnMain(func() {
+		target, a, _, cleanup := newAXTestAdapter(t)
+		defer cleanup()
+		if a == nil {
+			return
+		}
+		popup, popupView, closePopup := newTestPopupWindow(t, geom.NewRect(700, 500, 120, 80))
+		defer closePopup()
+		popup.OrderFront()
+		SetAXViewAlias(popupView, target)
+		WithPool(func() {
+			pt := axTestScreenPoint(a, geom.NewPoint(50, 30))
+			button := objc.ID(target).Send(Sel("accessibilityHitTest:"), pt)
+			if button == 0 || button != a.Element(axTestButton) {
+				t.Fatalf("target hit test = %#x, want the button %#x", button, a.Element(axTestButton))
+			}
+			if got := objc.ID(popup).Send(Sel("accessibilityHitTest:"), pt); got != button {
+				t.Errorf("popup window hit test = %#x, want the target's button %#x", got, button)
+			}
+		})
+	})
+}

@@ -280,6 +280,7 @@ const (
 	WM_QUIT                        = 18
 	WM_ERASEBKGND                  = 20
 	WM_SETCURSOR                   = 32
+	WM_MOUSEACTIVATE               = 33
 	WM_GETMINMAXINFO               = 36
 	WM_GETOBJECT                   = 61
 	WM_COPYGLOBALDATA              = 73
@@ -313,6 +314,11 @@ const (
 	WM_DWMCOMPOSITIONCHANGED       = 798
 	WM_DWMCOLORIZATIONCOLORCHANGED = 800
 )
+
+// MA_NOACTIVATE is the WM_MOUSEACTIVATE answer that leaves the window inactive while still delivering the click.
+//
+// https://learn.microsoft.com/windows/win32/inputdev/wm-mouseactivate
+const MA_NOACTIVATE = 3
 
 const (
 	SM_CXICON   = 11

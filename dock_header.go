@@ -371,7 +371,7 @@ func createDockHeaderButton() *Button {
 }
 
 // dockOverflowButton is the header's "More Tabs" button. It is a Button of its own type only so that it can say its
-// click pops a menu up, which is asked of Panel.Self: the menu opens in the active window, so a press on behalf of an
+// click pops a menu up, which is asked of Panel.Self: the menu opens for the active window, so a press on behalf of an
 // assistive technology on a button in any other window is refused, and is not offered. See axMayPopupMenu.
 type dockOverflowButton struct {
 	Button
@@ -435,9 +435,9 @@ func (d *dockHeader) adjustToRestoredState() {
 	d.maximizeRestoreButton.Tooltip = NewTooltipWithText(i18n.Text("Maximize"))
 }
 
-// handleOverflowPopup pops up a menu of the tabs the header is hiding, below the overflow button. Menu.Popup builds the
-// menu in the active window, so nothing is shown for a header in any other window: positioned from the button's own
-// window, the menu would land in the active one at coordinates taken from the other. See axMayPopupMenu.
+// handleOverflowPopup pops up a menu of the tabs the header is hiding, below the overflow button. Menu.Popup opens the
+// menu for the active window, so nothing is shown for a header in any other window: positioned from the button's own
+// window, the menu would be placed for the active one at coordinates taken from the other. See axMayPopupMenu.
 func (d *dockHeader) handleOverflowPopup() {
 	if !axMayPopupMenu(d.overflowButton.AsPanel()) {
 		return

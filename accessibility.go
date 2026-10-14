@@ -256,7 +256,9 @@ func (b *AccessibilityBuilder) VisibleRect() geom.Rect {
 	if b.clip.Empty() {
 		return geom.Rect{}
 	}
-	return b.panel.RectFromRoot(b.clip).Intersect(b.panel.ContentRect(true))
+	clip := b.clip
+	clip.Point = clip.Point.Sub(b.snapshot.offset)
+	return b.panel.RectFromRoot(clip).Intersect(b.panel.ContentRect(true))
 }
 
 // IDFor returns the node id of another panel, assigning one if it does not have it yet. Use it to point at a node from
@@ -351,6 +353,7 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 		b.snapshot.companionFocus = append(b.snapshot.companionFocus, id)
 	}
 	raw := b.panel.RectToRoot(node.Bounds)
+	raw.Point = raw.Point.Add(b.snapshot.offset)
 	node.Bounds = raw
 	node.Offscreen = !raw.Intersects(b.clip) && !raw.Empty()
 	b.snapshot.tree.Nodes[id] = node

@@ -119,6 +119,10 @@ type axSnapshot struct {
 	// keeps the panel that delegated from taking the focus back.
 	delegatedFocus accessibility.NodeID
 	generation     uint64
+	// offset translates the root space of the window whose panels are being visited into that of the window being
+	// described. It is zero except while the panel of an open menu, which a popup window shows, is visited; see
+	// visitMenu.
+	offset geom.Point
 	// menusLandHere is axMayPopupMenu's answer for every panel of the window, worked out once.
 	menusLandHere bool
 }
@@ -269,8 +273,8 @@ func (w *Window) buildAccessibilityTree() *accessibility.Tree {
 // buildRoot describes the window itself and then its children. The root's children are taken from the root panel's own
 // fields rather than from its child list, so the order an assistive technology reads them in is fixed by what they are
 // — the menus that are open, then the menu bar, then the tooltip, then the content — rather than by the order in which
-// they happened to be inserted. The open menus are visited newest first, which is both their z-order and the order the
-// root panel actually holds them in.
+// they happened to be inserted. The open menus, each shown in a popup window of its own, are visited newest first,
+// which is their z-order.
 func (s *axSnapshot) buildRoot() {
 	w := s.window
 	root := w.root
@@ -292,7 +296,7 @@ func (s *axSnapshot) buildRoot() {
 	s.targets[node.ID] = axTarget{panel: root.AsPanel()}
 	clip := node.Bounds
 	for i := len(root.openMenuPanels) - 1; i >= 0; i-- {
-		s.visit(root.openMenuPanels[i].AsPanel(), node.ID, clip)
+		s.visitMenu(root.openMenuPanels[i], node.ID)
 	}
 	if root.menuBarPanel != nil {
 		s.visit(root.menuBarPanel.AsPanel(), node.ID, clip)
@@ -303,6 +307,26 @@ func (s *axSnapshot) buildRoot() {
 	s.markOpenMenuItems()
 	s.resolveFocus()
 	s.resolveCompanionFocus()
+}
+
+// visitMenu describes an open menu as a child of parent. The menu is shown in a popup window of its own, so its bounds
+// are translated from that window's root space into this window's, and are confined by the menu's own bounds rather
+// than by this window's, since the popup may extend beyond it. Its node is marked as an overlay for the same reason.
+func (s *axSnapshot) visitMenu(panel *menuPanel, parent accessibility.NodeID) {
+	p := panel.AsPanel()
+	saved := s.offset
+	defer func() { s.offset = saved }()
+	s.offset = geom.Point{}
+	if popup := p.Window(); popup != s.window && popup.IsValid() && s.window.IsValid() {
+		s.offset = s.window.apiPointFromScreen(popup.apiPointToScreen(geom.Point{}))
+	}
+	clip := p.RectToRoot(p.ContentRect(true))
+	clip.Point = clip.Point.Add(s.offset)
+	s.visit(p, parent, clip)
+	// A menu panel that is not described has no node to mark; its items hang off parent and stay confined to it.
+	if node := s.tree.Nodes[p.Accessibility.id]; node != nil && s.targets[node.ID].panel == p {
+		node.Overlay = true
+	}
 }
 
 // settleCaptionFocus takes the keyboard focus back from every caption that was described as able to take it.
@@ -662,6 +686,7 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 		return
 	}
 	raw := p.RectToRoot(p.ContentRect(true))
+	raw.Point = raw.Point.Add(s.offset)
 	// A panel clips its children to its frame when it draws them, so what its ancestors leave visible of it is the
 	// region its own children are in turn confined to. Its bounds are reported whole, though: an assistive technology
 	// needs to know where the panel is and how big it is even when part of it has been scrolled out of sight, since
@@ -851,8 +876,8 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 // narrowMenuActions takes away the actions a node advertises that would open a menu, for a panel whose window is not
 // the one a menu would open in.
 //
-// A menu does not open where the widget that opened it is: menu.createPopup inserts the popup into ActiveWindow()'s
-// root, so every request that would open one from a background window is refused — see axMayPopupMenu. A node that went
+// A menu does not open for the window of the widget that opened it: Menu.Popup opens it for ActiveWindow(), so every
+// request that would open one from a background window is refused — see axMayPopupMenu. A node that went
 // on advertising them would offer a screen-reader user an expand or a contextual menu that silently does nothing, which
 // is the same drift the narrowing of a disabled node's actions exists to prevent. The answer is the same for every
 // panel of the window; see axSnapshot.menusLandHere.
@@ -1110,8 +1135,8 @@ func axTooltipText(p *Panel) string {
 // before it returns.
 func (w *Window) publishAccessibility() {
 	// The root panel is what a description is built from, so a window that has none — a bare Window a test assembled
-	// itself — has nothing to describe.
-	if !accessibilityActive.Load() || !w.IsValid() || w.root == nil {
+	// itself — has nothing to describe. A popup menu window is described as part of its owner instead.
+	if w.isPopup() || !accessibilityActive.Load() || !w.IsValid() || w.root == nil {
 		return
 	}
 	if w.ax == nil {

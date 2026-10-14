@@ -55,14 +55,30 @@ func replyFalse(call *dbus.Call) {
 // then asks that object whether it really is, and two different answers leave it with nowhere to go. Both therefore use
 // the clipped area (see [windowData.reachableBounds]) rather than the node's own unclipped Bounds, so a row scrolled
 // out of its table's view port does not claim a point that belongs to whatever is drawn over it.
+//
+// The window itself also claims every point inside one of its overlays, such as an open menu extending beyond its
+// edge, since Orca asks the window whether it contains the pointer before asking it what is there.
 func (o *nodeObject) contains(call *dbus.Call) {
 	args, ok := callArgs(call)
 	if !ok {
 		return
 	}
 	pt := o.data.logicalPoint(o.node, int32Arg(args, 0), int32Arg(args, 1), coordArg(args, 2))
-	bounds, reachable := o.data.reachableBounds(o.node)
-	call.Reply(reachable && pt.In(bounds))
+	if bounds, reachable := o.data.reachableBounds(o.node); reachable && pt.In(bounds) {
+		call.Reply(true)
+		return
+	}
+	if o.isRoot() {
+		for _, id := range o.data.overlays {
+			if n := o.data.node(id); n != nil {
+				if bounds, reachable := o.data.reachableBounds(n); reachable && pt.In(bounds) {
+					call.Reply(true)
+					return
+				}
+			}
+		}
+	}
+	call.Reply(false)
 }
 
 // getAccessibleAtPoint implements org.a11y.atspi.Component.GetAccessibleAtPoint. The answer is the deepest reported

@@ -101,8 +101,10 @@ func (w *Window) dispatchAccessibilityAction(req accessibility.ActionRequest) bo
 		// cannot touch would run application callbacks that are entitled to assume the modal is still in front.
 		return false
 	}
+	// A panel of one of the window's popup menu windows is described as part of the window, so it is compared through
+	// the window its menus belong to.
 	target, ok := w.ax.targets[req.Node]
-	if !ok || target.panel == nil || target.panel.Window() != w {
+	if !ok || target.panel == nil || target.panel.Window().menuOwner() != w {
 		return false
 	}
 	if node := w.ax.last.Node(req.Node); node != nil && node.Disabled && !axDisabledActions.Has(req.Action) &&
@@ -346,12 +348,13 @@ func (p *Panel) axSynthesizeClick() bool {
 // axMayPopupMenu reports whether a menu popped up on behalf of this panel would land where the panel is. Every request
 // from an assistive technology that opens a menu has to be refused when it would not.
 //
-// A menu does not open inside the window of the widget that opened it: menu.createPopup inserts the popup panel into
-// ActiveWindow()'s root (menu.go), and macMenu.Popup pops the native menu up over ActiveWindow()'s native window
-// (menu_darwin.go). Both look that window up for themselves, so the question is simply whether the window they are
-// going to find is this panel's. A request aimed at a widget in any other window would put that widget's menu up in
-// whatever window is active, at coordinates translated from the one the widget is in, and a request made while no
-// window is active would quietly do nothing at all while reporting that it had been carried out.
+// A menu does not open for the window of the widget that opened it: Menu.Popup makes its popup window part of
+// ActiveWindow()'s menu stack and places it from that window's coordinates (menu.go), and macMenu.Popup pops the native
+// menu up over ActiveWindow()'s native window (menu_darwin.go). Both look that window up for themselves, so the
+// question is simply whether the window they are going to find is the one this panel's menus belong to — the panel's
+// own window, or the owner of the popup menu window it is in. A request aimed at a widget in any other window would put
+// that widget's menu up for whatever window is active, at coordinates translated from the one the widget is in, and a
+// request made while no window is active would quietly do nothing at all while reporting that it had been carried out.
 //
 // Asking ActiveWindow() is what the window's own focus flag cannot do. A transient window — one that takes input
 // without ever becoming the active one, such as a menu or a tooltip window — may perfectly well hold the focus, and
@@ -365,7 +368,7 @@ func (p *Panel) axSynthesizeClick() bool {
 // somewhere else entirely. Those are also narrowed out of what a node advertises, so that nothing is offered that would
 // then be refused; see axSnapshot.narrowMenuActions and AccessibilityBuilder.AddVirtualChildOf.
 func axMayPopupMenu(p *Panel) bool {
-	wnd := p.Window()
+	wnd := p.Window().menuOwner()
 	return wnd != nil && wnd == ActiveWindow()
 }
 

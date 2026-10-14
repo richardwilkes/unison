@@ -171,9 +171,9 @@ func (mi *menuItem) SetCheckState(s check.Enum) {
 }
 
 // menuItemPanel is the panel an item is drawn as. It is a type of its own only so that it can say which of the item's
-// actions open a menu, which is asked of Panel.Self: a sub-menu opens in the active window, so a request on behalf of an
-// assistive technology that would open one from an item in any other window is refused, and is not offered. See
-// axMayPopupMenu.
+// actions open a menu, which is asked of Panel.Self: a sub-menu opens only for the active window, so a request on
+// behalf of an assistive technology that would open one from an item of any other window is refused, and is not
+// offered. See axMayPopupMenu.
 type menuItemPanel struct {
 	item *menuItem
 	Panel
@@ -260,10 +260,10 @@ func (mi *menuItem) describeForAccessibility(node *accessibility.Node) {
 // highlighting it. Collapsing an item takes its sub-menu away again, along with anything opened from within it, which
 // is what moving the pointer back onto the item or pressing Escape in the sub-menu does.
 //
-// A request that would open the sub-menu of an item whose window is not the one a menu opens in is refused — see
-// axMayPopupMenu — and the default behavior for a press, a synthesized click, refuses it in turn (see axClickOpensMenu).
-// Collapsing is not gated that way: it takes down a menu in the item's own window, which is where any menu it opened
-// went.
+// A request that would open the sub-menu of an item that is not one of the active window's menus is refused — see
+// axMayPopupMenu — and the default behavior for a press, a synthesized click, refuses it in turn (see
+// axClickOpensMenu). Collapsing is not gated that way: it takes down menus of the window the item's menus belong to,
+// which is where any menu it opened went.
 func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Press:
@@ -311,7 +311,7 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 		// is no longer there to be expanded. The item may have been disabled by the validator that ran in between, and
 		// a click cannot open the sub-menu of a disabled item. And the sub-menu may have been opened by other means,
 		// where opening it again would tear it down and build it back up — which an assistive technology that was told
-		// the item is expanded would not expect. The window may also have stopped being the one a menu opens in, which
+		// the item is expanded would not expect. The window may also have stopped being the active one, which
 		// showSubMenu checks again for itself.
 		InvokeTask(func() {
 			if mi.subMenu == nil || mi.subMenu.popupPanel != nil || !mi.enabled || mi.panel == nil ||
@@ -325,7 +325,7 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 		if mi.subMenu == nil {
 			return false
 		}
-		if wnd := mi.panel.Window(); wnd != nil {
+		if wnd := mi.panel.Window().menuOwner(); wnd != nil {
 			// Everything above the menu this item sits in goes, which is the item's own sub-menu and whatever was
 			// opened from that. The menu the item belongs to stays, since the item is still there to be chosen from.
 			wnd.root.closeMenuStackStoppingAt(mi.menu)
@@ -358,17 +358,20 @@ func (mi *menuItem) click() {
 	}
 }
 
-// showSubMenu opens the item's sub-menu beside the item, or below it for an item on the menu bar. The popup is
-// inserted into the active window, so an item in any other window opens nothing: positioned from its own window, the
-// menu would land in the active one at coordinates taken from the other. See axMayPopupMenu.
+// showSubMenu opens the item's sub-menu in a popup window beside the item, or below it for an item on the menu bar,
+// which the popup never covers. Only an item of the active window's menus opens one. See axMayPopupMenu.
 func (mi *menuItem) showSubMenu() {
 	if !mi.factory.showInProgress && mi.subMenu != nil && mi.subMenu.popupPanel == nil && axMayPopupMenu(mi.panel) {
 		mi.factory.showInProgress = true
 		defer func() { mi.factory.showInProgress = false }()
-		mi.subMenu.createPopup()
+		wnd := mi.panel.Window()
+		if !mi.subMenu.createPopup(wnd.menuOwner()) {
+			return
+		}
 		pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
+		pr.Point = wnd.apiPointToScreen(pr.Point)
 		fr := mi.subMenu.popupPanel.FrameRect()
-		var top float32
+		top := noTopLimit
 		if mi.isRoot() {
 			fr.X = pr.X
 			fr.Y = pr.Bottom()
@@ -377,7 +380,7 @@ func (mi *menuItem) showSubMenu() {
 			fr.X = pr.Right()
 			fr.Y = pr.Y
 		}
-		mi.subMenu.ensureInWindow(fr, top)
+		mi.subMenu.ensureOnDisplay(fr, top, wnd)
 	}
 }
 
@@ -403,8 +406,10 @@ func (mi *menuItem) highlight() {
 
 func (mi *menuItem) mouseEnter(_ geom.Point, _ mod.Modifiers) bool {
 	mi.highlight()
-	if mi.subMenu != nil && len(mi.panel.Window().root.openMenuPanels) != 0 {
-		mi.showSubMenu()
+	if mi.subMenu != nil {
+		if wnd := mi.panel.Window().menuOwner(); wnd != nil && len(wnd.root.openMenuPanels) != 0 {
+			mi.showSubMenu()
+		}
 	}
 	return false
 }
@@ -414,7 +419,7 @@ func (mi *menuItem) mouseMove(_ geom.Point, _ mod.Modifiers) bool {
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu
 	}
-	if w := ActiveWindow(); w != nil {
+	if w := mi.panel.Window().menuOwner(); w != nil {
 		w.root.closeMenuStackStoppingAt(stopAt)
 	}
 	return false

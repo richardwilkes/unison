@@ -28,8 +28,8 @@ func TestMenuItemMenuReturnsTrueNil(t *testing.T) {
 
 // TestShowSubMenuOnlyInTheActiveWindow verifies that a menu bar item in a background window opens nothing, whether
 // asked directly or on behalf of an assistive technology, which is refused and is not offered the actions that would
-// open it, since the popup is inserted into the active window and would otherwise land there at coordinates taken from
-// the item's own window, and that the same item opens its menu below its title once its window is the active one.
+// open it, since the popup would be opened for the active window, and that the same item opens its menu below its title
+// once its window is the active one.
 func TestShowSubMenuOnlyInTheActiveWindow(t *testing.T) {
 	c := check.New(t)
 	const testMenuID = UserBaseID + 1
@@ -72,7 +72,7 @@ func TestShowSubMenuOnlyInTheActiveWindow(t *testing.T) {
 	look := func() {
 		openedIn = nil
 		if backMenu.popupPanel != nil {
-			openedIn = backMenu.popupPanel.Window()
+			openedIn = backMenu.popupPanel.Window().menuOwner()
 		}
 		frontOpen = len(front.root.openMenuPanels)
 		backOpen = len(back.root.openMenuPanels)
@@ -111,8 +111,7 @@ func TestShowSubMenuOnlyInTheActiveWindow(t *testing.T) {
 	c.Equal(0, frontOpen)
 	c.Equal(0, backOpen)
 
-	var fr geom.Rect
-	var want geom.Point
+	var at, want geom.Point
 	c.True(screen.Do(func() { back.ToFront() }))
 	screen.AccessibilityTree(back)
 	restored := screen.AccessibilityNodeFor(backMenu.titleItem.panel)
@@ -127,15 +126,15 @@ func TestShowSubMenuOnlyInTheActiveWindow(t *testing.T) {
 		backMenu.titleItem.showSubMenu()
 		look()
 		if backMenu.popupPanel != nil {
-			fr = backMenu.popupPanel.FrameRect()
+			at = backMenu.popupPanel.Window().ContentRect().Point
 		}
 		title := backMenu.titleItem.panel
 		pr := title.RectToRoot(title.ContentRect(true))
-		want = geom.NewPoint(pr.X, pr.Bottom())
+		want = back.apiPointToScreen(geom.NewPoint(pr.X, pr.Bottom()))
 	}))
 	c.True(active == back, "the test needs the item's window active")
-	c.True(openedIn == back, "the item opens its menu in its own window once that is the active one")
+	c.True(openedIn == back, "the item opens its menu for its own window once that is the active one")
 	c.Equal(1, backOpen)
 	c.Equal(0, frontOpen)
-	c.Equal(want, fr.Point, "placed below its title")
+	c.Equal(want, at, "placed below its title")
 }
