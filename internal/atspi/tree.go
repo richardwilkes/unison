@@ -180,7 +180,10 @@ type windowData struct {
 	relations map[accessibility.NodeID][]relation
 	headers   map[accessibility.NodeID][]accessibility.NodeID
 	spans     map[accessibility.NodeID]spanRef
-	geometry  Geometry
+	// overlays holds every Overlay node, which [nodeObject.contains] consults for the window itself, since an overlay
+	// may extend beyond the window.
+	overlays []accessibility.NodeID
+	geometry Geometry
 }
 
 // newWindowData indexes a tree so that the questions AT-SPI asks most often — the children of a node, where a node sits
@@ -197,6 +200,9 @@ func newWindowData(t *accessibility.Tree, g Geometry) *windowData {
 		geometry:  g,
 	}
 	t.Walk(func(n *accessibility.Node) bool {
+		if n.Overlay {
+			d.overlays = append(d.overlays, n.ID)
+		}
 		if n.Ignored || len(n.Children) == 0 {
 			// An ignored node is not reported at all: its children are spliced into the list of the nearest ancestor
 			// that is reported, which is where they are indexed.
@@ -358,9 +364,9 @@ func (d *windowData) walkReportedChildren(id accessibility.NodeID, visited map[a
 }
 
 // reachableBounds returns the part of a node that can actually be pointed at: its own Bounds confined to those of every
-// ancestor, which is the clipping [accessibility.Tree.HitTest] applies and the clipping the drawing applies. ok is
-// false when nothing of the node can be reached, either because it or an ancestor is scrolled or clipped entirely out
-// of view or because the clipping leaves no area at all.
+// ancestor up to the nearest Overlay, which is the clipping [accessibility.Tree.HitTest] applies and the clipping the
+// drawing applies. ok is false when nothing of the node can be reached, either because it or an ancestor is scrolled
+// or clipped entirely out of view or because the clipping leaves no area at all.
 //
 // Node bounds alone will not do. A node's Bounds are the whole of it, unclipped, so that an assistive technology can
 // tell how far to scroll to reveal it, which means a row scrolled out of its table's view port still reports the area
@@ -376,7 +382,7 @@ func (d *windowData) reachableBounds(n *accessibility.Node) (bounds geom.Rect, o
 		if ancestor == nil || ancestor.Offscreen {
 			return geom.Rect{}, false
 		}
-		if i == 0 {
+		if i == 0 || ancestor.Overlay {
 			bounds = ancestor.Bounds
 			continue
 		}

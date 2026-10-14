@@ -139,7 +139,8 @@ type Node struct {
 	// Bounds is the node's whole area in window-local, top-left origin, logical units. It is not clipped by the node's
 	// ancestors: a row half scrolled out of a table's view port reports its full height, and one scrolled out entirely
 	// reports where it would be, with Offscreen set. An assistive technology needs the whole of an element to know how
-	// far to scroll to reveal it; Tree.HitTest confines each node to its ancestors, as the drawing does.
+	// far to scroll to reveal it; Tree.HitTest confines each node to its ancestors up to the nearest Overlay, as the
+	// drawing does.
 	Bounds geom.Rect
 	// Actions holds everything an assistive technology may ask this node to do.
 	Actions ActionSet
@@ -188,6 +189,13 @@ type Node struct {
 	Resizable bool
 	// Floating reports that a window node stays in front of the ordinary windows. It is meaningful only on a root node.
 	Floating bool
+	// Overlay reports that the node is drawn in a layer of its own above the window, such as an open menu shown in a
+	// popup window. Neither its ancestors' bounds nor the window's confine it, so it may extend beyond the window, and
+	// the confinement of everything beneath it restarts from its own bounds. Tree.HitTest looks for an overlay outside
+	// its parent's bounds but not outside those of the nodes above its parent, so it belongs on a child of the root.
+	// Diff reports no change to it, since an adapter consults it only when asked where something is, which it answers
+	// from the current tree.
+	Overlay bool
 	// Busy reports that the node is working and its value is not yet meaningful.
 	Busy bool
 	// Invalid reports that the node's current value has been rejected.

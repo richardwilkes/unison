@@ -280,6 +280,7 @@ const (
 	WM_QUIT                        = 18
 	WM_ERASEBKGND                  = 20
 	WM_SETCURSOR                   = 32
+	WM_MOUSEACTIVATE               = 33
 	WM_GETMINMAXINFO               = 36
 	WM_GETOBJECT                   = 61
 	WM_COPYGLOBALDATA              = 73
@@ -287,6 +288,10 @@ const (
 	WM_SETICON                     = 128
 	WM_NCPAINT                     = 133
 	WM_NCACTIVATE                  = 134
+	WM_NCLBUTTONDOWN               = 161
+	WM_NCRBUTTONDOWN               = 164
+	WM_NCMBUTTONDOWN               = 167
+	WM_NCXBUTTONDOWN               = 171
 	WM_KEYDOWN                     = 256
 	WM_KEYUP                       = 257
 	WM_CHAR                        = 258
@@ -313,6 +318,11 @@ const (
 	WM_DWMCOMPOSITIONCHANGED       = 798
 	WM_DWMCOLORIZATIONCOLORCHANGED = 800
 )
+
+// MA_NOACTIVATE is the WM_MOUSEACTIVATE answer that leaves the window inactive while still delivering the click.
+//
+// https://learn.microsoft.com/windows/win32/inputdev/wm-mouseactivate
+const MA_NOACTIVATE = 3
 
 const (
 	SM_CXICON   = 11
@@ -501,6 +511,7 @@ const (
 )
 
 const (
+	HWND_MESSAGE   windows.HWND = windows.HWND(^uintptr(2)) // -3 as uintptr
 	HWND_NOTOPMOST windows.HWND = windows.HWND(^uintptr(1)) // -2 as uintptr
 	HWND_TOPMOST   windows.HWND = windows.HWND(^uintptr(0)) // -1 as uintptr
 	HWND_TOP       windows.HWND = 0

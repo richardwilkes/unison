@@ -1210,6 +1210,31 @@ func TestHitTest(t *testing.T) {
 	c.Equal(accessibility.NodeID(9), HitTest(tree, geom.NewPoint(10, 110)), "an offscreen node is passed over")
 }
 
+// TestHitTestOverlay verifies that an open menu extending beyond its window, which the snapshot describes as an
+// overlay hanging off the root, is found by ElementProviderFromPoint wherever it is drawn, and that a hit on an
+// ignored node inside it resolves to the menu.
+func TestHitTestOverlay(t *testing.T) {
+	c := check.New(t)
+	tree := newTestTree(1, 0,
+		&accessibility.Node{
+			ID: 1, Role: role.Window, Bounds: geom.NewRect(0, 0, 100, 100), Children: []accessibility.NodeID{2, 5},
+		},
+		&accessibility.Node{
+			ID: 2, Role: role.Menu, Overlay: true, Bounds: geom.NewRect(80, 20, 60, 120),
+			Children: []accessibility.NodeID{3, 4},
+		},
+		&accessibility.Node{ID: 3, Role: role.MenuItem, Name: "Open", Bounds: geom.NewRect(80, 20, 60, 20)},
+		&accessibility.Node{ID: 4, Role: role.Group, Ignored: true, Bounds: geom.NewRect(80, 120, 60, 20)},
+		&accessibility.Node{ID: 5, Role: role.Button, Name: "OK", Bounds: geom.NewRect(0, 0, 100, 100)},
+	)
+	c.Equal(accessibility.NodeID(3), HitTest(tree, geom.NewPoint(130, 30)), "an item beyond the window is found")
+	c.Equal(accessibility.NodeID(3), HitTest(tree, geom.NewPoint(90, 30)), "the menu is above the content")
+	c.Equal(accessibility.NodeID(2), HitTest(tree, geom.NewPoint(100, 130)),
+		"a hit on an ignored node inside the menu reports the menu")
+	c.Equal(accessibility.NodeID(5), HitTest(tree, geom.NewPoint(50, 50)))
+	c.Equal(accessibility.NodeID(0), HitTest(tree, geom.NewPoint(200, 200)))
+}
+
 // TestPositionInSet verifies that rows are numbered from what the snapshot recorded rather than from what is in the
 // tree, since a table publishes only the rows in its viewport, while tabs and menu items are numbered by counting
 // siblings.

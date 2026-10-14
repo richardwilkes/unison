@@ -29,10 +29,14 @@ var macAppAppearance string
 
 type nativeWindow struct {
 	// ax is the NSAccessibility adapter serving this window, or nil until an assistive technology has asked about it.
-	ax             *cocoa.AXAdapter
-	wnd            cocoa.Window
-	view           cocoa.View
-	nsCursorHidden bool
+	ax   *cocoa.AXAdapter
+	wnd  cocoa.Window
+	view cocoa.View
+	// covered is true from the exit made for the pointer leaving the window's content until it comes back; see
+	// macCoveredMove and macMouseExited.
+	covered bool
+	// number is the window's number, which identifies it to the window server, or 0 until macNumber reads it.
+	number int
 }
 
 func macFindWindow(macWnd cocoa.Window) *Window {
@@ -106,6 +110,7 @@ func macInitWindowCallbacks() {
 			slog.Warn("received window did move callback for unknown window", "window", macWnd)
 		}
 	}
+	cocoa.WindowFrameMouseDownCallback = macFrameMouseDown
 	cocoa.WindowMinimizeCallback = func(macWnd cocoa.Window, minimized bool) {
 		if w := macFindWindow(macWnd); w != nil {
 			if w.minimized != minimized {
@@ -141,23 +146,21 @@ func macInitWindowCallbacks() {
 	}
 	cocoa.WindowMouseEnterCallback = func(macWnd cocoa.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeUpdateCursorImage()
-			w.mouseEnter(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
+			w.macMouseEntered(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
 		}
 	}
 	cocoa.WindowMouseExitCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeUpdateCursorImage()
-			w.mouseExit()
+			w.macMouseExited()
 		} else {
 			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
 		}
 	}
 	cocoa.WindowMouseMovedCallback = func(macWnd cocoa.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.mouseMovedOrDragged(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
+			w.macMouseMoved(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse moved callback for unknown window", "window", macWnd)
 		}
@@ -235,6 +238,85 @@ func macInitWindowCallbacks() {
 	cocoa.WindowDragSourceFinishedCallback = macDragSourceFinished
 }
 
+// macFrameMouseDown is the WindowFrameMouseDownCallback: a press on macWnd's title bar or frame. It lands outside
+// every menu, so the window's open menus close at once rather than only once the press has moved the window.
+func macFrameMouseDown(macWnd cocoa.Window) {
+	if w := macFindWindow(macWnd); w != nil && w.root != nil {
+		w.root.closeMenuStackStoppingAt(nil)
+	}
+}
+
+// macMouseMoved handles a mouse-moved or mouse-dragged event AppKit delivered to the window at pt, in its content
+// coordinates. AppKit sends every mouse-moved event to the key window, wherever the pointer is, so the owner of an open
+// menu stack is sent the moves over its popup menu windows, and a key window those over any window above it: another
+// of the application's shown or floating over it, or another application's. Such a move is dropped rather than
+// hit-tested against the panels hidden under the other window, which would get crossings, tooltips and the cursor meant
+// for it, and the panel the pointer left is exited, as the crossing events of the other platforms do. A drag goes to
+// the window holding the press wherever the pointer is, as on the other platforms.
+func (w *Window) macMouseMoved(pt geom.Point, mods mod.Modifiers) {
+	if w.macCoveredMove(!w.inMouseDown && w.macCovered(w.nativePointToScreen(pt))) {
+		return
+	}
+	w.mouseMovedOrDragged(pt, mods)
+}
+
+// macCoveredMove records whether the mouse-moved event being handled is over another window (see macCovered), and
+// returns covered. The first of a run of such moves exits whatever the pointer left, as the crossing event of the
+// other platforms does, unless macMouseExited already has; the rest are dropped without that, since the window's
+// MouseExitCallback may keep the panel it is told about, and would otherwise be told of the same crossing on every
+// move.
+func (w *Window) macCoveredMove(covered bool) bool {
+	if !covered {
+		w.wnd.covered = false
+		return false
+	}
+	if !w.wnd.covered {
+		w.wnd.covered = true
+		w.mouseExit()
+	}
+	return true
+}
+
+// macMouseEntered handles AppKit's report, through the window's tracking area, that the pointer entered its content,
+// which starts a new crossing for macCoveredMove.
+func (w *Window) macMouseEntered(pt geom.Point, mods mod.Modifiers) {
+	w.wnd.covered = false
+	w.nativeUpdateCursorImage()
+	w.mouseEnter(pt, mods)
+}
+
+// macMouseExited handles AppKit's report, through the window's tracking area, that the pointer left its content. It
+// exits unless macCoveredMove already has for a move over another window, and keeps the moves after it from exiting
+// again.
+func (w *Window) macMouseExited() {
+	w.nativeUpdateCursorImage()
+	if !w.wnd.covered {
+		w.wnd.covered = true
+		w.mouseExit()
+	}
+}
+
+// macWindowNumberAt returns the number of the window, of any application, that is frontmost at pt, in the space window
+// rects use, or 0 for none. It is replaceable by the tests, which have no windows on the screen.
+var macWindowNumberAt = func(pt geom.Point) int {
+	return cocoa.WindowNumberAtPoint(geom.NewPoint(pt.X, macTransformY(pt.Y)))
+}
+
+// macCovered returns true if pt, in the space window rects use, is over a window other than this one: one of its popup
+// menu windows, another of the application's windows ordered above it, another application's, or no window at all.
+func (w *Window) macCovered(pt geom.Point) bool {
+	return macWindowNumberAt(pt) != w.macNumber()
+}
+
+// macNumber returns the window's number, which identifies it to the window server, read from the window the first time
+// it is asked for.
+func (w *Window) macNumber() int {
+	if w.wnd.number == 0 {
+		w.wnd.number = w.wnd.wnd.Number()
+	}
+	return w.wnd.number
+}
+
 // macDragSourceFinished is the WindowDragSourceFinishedCallback: AppKit's report that a drag begun from macWnd's view
 // has ended.
 func macDragSourceFinished(macWnd cocoa.Window) {
@@ -254,6 +336,9 @@ func macDragSourceFinished(macWnd cocoa.Window) {
 }
 
 func (w *Window) nativeInit() error {
+	if w.isPopup() {
+		return w.macInitPopup()
+	}
 	styleMask := cocoa.WindowStyleMaskMiniaturizable
 	if w.undecorated {
 		styleMask |= cocoa.WindowStyleMaskBorderless
@@ -291,6 +376,26 @@ func (w *Window) nativeInit() error {
 	w.wnd.wnd = nw
 	w.wnd.view = v
 	w.nativeUpdateFrameTheme()
+	return nil
+}
+
+// macInitPopup creates the native window for a popup menu window: borderless, never key, above every ordinary window,
+// shown without animation and left out of the accessibility hierarchy, its content view answering assistive
+// technologies through the owner's, whose tree describes the menu. It has no title and does not touch the application
+// appearance the owner has already set.
+func (w *Window) macInitPopup() error {
+	nw := cocoa.NewPopupWindow(geom.NewRect(0, 0, 1, 1))
+	if nw == 0 {
+		return errs.New("unable to create native popup window")
+	}
+	v := cocoa.NewPopupView(nw)
+	nw.SetContentView(v)
+	nw.MakeFirstResponder(v)
+	nw.SetDelegate(cocoa.NewWindowDelegate())
+	nw.SetAcceptsMouseMovedEvents(true)
+	w.wnd.wnd = nw
+	w.wnd.view = v
+	cocoa.SetAXViewAlias(v, w.owner.wnd.view)
 	return nil
 }
 
@@ -333,6 +438,14 @@ func (w *Window) nativeContentRect() geom.Rect {
 	return r
 }
 
+func (w *Window) nativePointToScreen(pt geom.Point) geom.Point {
+	return w.nativeContentRect().Point.Add(pt)
+}
+
+func (w *Window) nativePointFromScreen(pt geom.Point) geom.Point {
+	return pt.Sub(w.nativeContentRect().Point)
+}
+
 func (w *Window) nativeContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 	frameRect.Y = macTransformY(frameRect.Bottom())
 	contentRect := w.wnd.wnd.ContentRectForFrameRect(frameRect)
@@ -349,16 +462,28 @@ func (w *Window) nativeCurrentKeyModifiers() mod.Modifiers {
 	return macModifiersFromEventModifierFlags(cocoa.CurrentModifierFlags())
 }
 
+// macCursorHidden is true while the cursor is hidden through macHideCursor. AppKit hides it for the whole application
+// rather than for a window, so a window applying its cursor without hiding it undoes a hide another made, as a popup
+// menu window does when the pointer is over it after typing in its owner hid the cursor.
+var macCursorHidden bool
+
+// macHideCursor and macShowCursor are cocoa.HideCursor and cocoa.ShowCursor, replaceable by the tests, which run off
+// the main thread.
+var (
+	macHideCursor = cocoa.HideCursor
+	macShowCursor = cocoa.ShowCursor
+)
+
 func (w *Window) nativeUpdateCursorImage() {
 	if w.cursorHidden {
-		if !w.wnd.nsCursorHidden {
-			cocoa.HideCursor()
-			w.wnd.nsCursorHidden = true
+		if !macCursorHidden {
+			macHideCursor()
+			macCursorHidden = true
 		}
 	} else {
-		if w.wnd.nsCursorHidden {
-			cocoa.ShowCursor()
-			w.wnd.nsCursorHidden = false
+		if macCursorHidden {
+			macShowCursor()
+			macCursorHidden = false
 		}
 		if w.cursor != nil {
 			w.cursor.cursor.Set()
@@ -368,8 +493,16 @@ func (w *Window) nativeUpdateCursorImage() {
 	}
 }
 
+// nativeCursorInContentArea reports whether the pointer is over the window's content, which it is not while over
+// another window above it (see macCovered): the window would otherwise show the cursor of a panel hidden under one of
+// its own popup menu windows, which the popup, whose own cursor is the unchanged arrow, never puts back.
 func (w *Window) nativeCursorInContentArea() bool {
-	return w.wnd.view.MouseInRect(w.wnd.wnd.MouseLocationOutsideOfEventStream(), w.wnd.view.Frame())
+	loc := w.wnd.wnd.MouseLocationOutsideOfEventStream()
+	frame := w.wnd.view.Frame()
+	if !w.wnd.view.MouseInRect(loc, frame) {
+		return false
+	}
+	return !w.macCovered(w.nativePointToScreen(geom.NewPoint(loc.X, frame.Height-loc.Y)))
 }
 
 func (w *Window) nativeCursorPosition() geom.Point {
@@ -399,6 +532,53 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 // for the application to hand back. The release itself, when it arrives, is dropped by mouseUp, since the button has
 // already been recorded as up.
 func (w *Window) nativeCancelMouseCapture() {
+}
+
+// macMenuStackWindow is the window whose open menu stack the monitor installed by nativeMenuStackChanged serves, or nil
+// while none is installed.
+var macMenuStackWindow *Window
+
+// macInstallMenuStackMonitor and macRemoveMenuStackMonitor are cocoa.InstallMenuStackMonitor and
+// cocoa.RemoveMenuStackMonitor, replaceable by the tests, which run off the main thread.
+var (
+	macInstallMenuStackMonitor = cocoa.InstallMenuStackMonitor
+	macRemoveMenuStackMonitor  = cocoa.RemoveMenuStackMonitor
+)
+
+// nativeMenuStackChanged watches, while the window's menu stack is open, for the presses that close native menus but
+// leave the window key, and so would otherwise leave its menus open: one on the Dock, on a menu bar extra or in
+// Notification Center, and one on the application's own menu bar, which no event monitor sees and which is reported as
+// the bar's menu begins tracking instead (see cocoa.InstallMenuStackMonitor). One on another application's window is
+// seen too, and closes the menus as it is made rather than once that application's activation takes the key status
+// from the window. A press in the window itself or in one of its popup menu windows is left to their root panels,
+// which close whatever menus it makes obsolete. A change of the active Space closes the menus too, since the popup
+// windows join every Space and would otherwise follow the user to the new one without their owner. A stack opened for
+// another window takes the monitor over, and only the window it serves takes it down.
+func (w *Window) nativeMenuStackChanged(open bool) {
+	if !open {
+		if macMenuStackWindow == w {
+			macMenuStackWindow = nil
+			macRemoveMenuStackMonitor()
+		}
+		return
+	}
+	macMenuStackWindow = w
+	macInstallMenuStackMonitor(func(macWnd cocoa.Window) {
+		if !w.macPressWithinMenuStack(macWnd) && w.root != nil {
+			w.root.closeMenuStackStoppingAt(nil)
+		}
+	})
+}
+
+// macPressWithinMenuStack returns true if a press in macWnd, as the menu stack monitor reports it, is one the root
+// panels of w's menu stack handle: one in w itself or in one of its popup menu windows. A press in any other window, or
+// in none of the application's (0), is not.
+func (w *Window) macPressWithinMenuStack(macWnd cocoa.Window) bool {
+	if macWnd == 0 {
+		return false
+	}
+	other := macFindWindow(macWnd)
+	return other != nil && other.menuOwner() == w
 }
 
 // nativeUpdateFrameTheme makes the application appearance follow an explicit SetThemeMode() choice, so that the frame,
@@ -486,11 +666,16 @@ func (w *Window) nativeDestroy() {
 			w.wnd.wnd.SetDelegate(0)
 			delegate.Release()
 		}
+		if w.isPopup() {
+			cocoa.ClearAXViewAlias(w.wnd.view)
+		}
 		w.wnd.view.Release()
 		w.wnd.wnd.Close()
 		w.wnd.wnd = 0
 	}
-	nativePollEvents()
+	// Nothing polls events here to let AppKit catch up: that would dispatch whatever is queued from inside the
+	// caller, which is often an event handler, such as the press that closed a popup menu, with its release queued
+	// behind it. The event loop catches up once the handler returns.
 }
 
 func macModifiersFromEventModifierFlags(flags cocoa.EventModifierFlags) mod.Modifiers {

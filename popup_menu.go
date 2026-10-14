@@ -206,9 +206,9 @@ func (p *PopupMenu[T]) Text() string {
 	}
 }
 
-// Click performs any animation associated with a click and triggers the popup menu to appear. The menu is built in the
-// active window, so a popup in any other window shows nothing and WillShowMenuCallback is not run: positioned from its
-// own window, the menu would land in the active one at coordinates taken from the other. See axMayPopupMenu.
+// Click performs any animation associated with a click and triggers the popup menu to appear. The menu is opened for
+// the active window, so a popup in any other window shows nothing and WillShowMenuCallback is not run: positioned from
+// its own window, the menu would be placed for the active one at coordinates taken from the other. See axMayPopupMenu.
 func (p *PopupMenu[T]) Click() {
 	if !axMayPopupMenu(p.AsPanel()) {
 		return
@@ -496,9 +496,10 @@ func (p *PopupMenu[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repe
 
 // ProvideAccessibility describes the popup menu to assistive technologies. The choices themselves are not part of the
 // description: they exist only while the menu is open, as a native menu on the platforms that have one and as panels
-// within the window elsewhere, and either way they are described then rather than now. Whether they are showing is
-// still reported, since that is the difference between a popup a person has opened and one they have not, and while
-// they are, the menu they are showing in is pointed at, so that an assistive technology can tie the two together.
+// in a popup window owned by this one elsewhere, and either way they are described then rather than now. Whether they
+// are showing is still reported, since that is the difference between a popup a person has opened and one they have
+// not, and while they are, the menu they are showing in is pointed at, so that an assistive technology can tie the two
+// together.
 //
 // A popup with nothing to choose from opens nothing: Click refuses one that holds no item other than separators. So
 // such a popup does not offer to expand either, rather than reporting that it had expanded and leaving an assistive
@@ -600,8 +601,8 @@ func axControlName(p *Panel) string {
 // to expand, shows its choices; asking it to collapse takes them away again. Both are idempotent, since an assistive
 // technology that has been told the popup is already the way it is asking for expects nothing to change. A popup with
 // nothing to choose from refuses to expand, since nothing would come of it, and so does one whose window is not the one
-// a menu would open in — see axMayPopupMenu. Collapsing is not gated that way: it takes down a menu in this popup's own
-// window, which is exactly where the menu it opened went.
+// a menu would open in — see axMayPopupMenu. Collapsing is not gated that way: it takes down the menu stack of this
+// popup's own window, which is exactly where the menu it opened went.
 func (p *PopupMenu[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.Press:
@@ -677,7 +678,7 @@ func axCollapseMenu(p *Panel, m Menu) {
 	if !axMenuIsOpen(m) {
 		return
 	}
-	if wnd := p.Window(); wnd != nil {
+	if wnd := p.Window().menuOwner(); wnd != nil {
 		wnd.root.closeMenuStackStoppingAt(nil)
 	}
 }

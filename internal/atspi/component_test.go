@@ -95,3 +95,73 @@ func TestContainsAgreesWithTheHitTest(t *testing.T) {
 			uint32(CoordWindow)), "the list must place %s where the row that claims it is", one.why)
 	}
 }
+
+// overlayWindow is the window the overlay tests publish.
+const overlayWindow WindowKey = 11
+
+// overlayTree is a small window with an open menu, shown in a window of its own, that extends beyond its right and
+// bottom edges. The menu is an overlay, so what it holds is confined to it rather than to the window.
+//
+//	90 window "Small"         (0,0 100x100)  active
+//	├─ 91 menu  [overlay]     (80,20 60x120)
+//	│  ├─ 92 item "Open"      (80,20 60x20)
+//	│  └─ 93 item "Close"     (80,120 60x20) below the window
+//	└─ 94 button "OK"         (10,10 20x20)
+func overlayTree() *accessibility.Tree {
+	return treeOf(1,
+		&accessibility.Node{
+			ID: 90, Role: role.Window, Name: "Small", Focused: true, Bounds: geom.NewRect(0, 0, 100, 100),
+			Children: []accessibility.NodeID{91, 94},
+		},
+		&accessibility.Node{
+			ID: 91, Parent: 90, Role: role.Menu, Name: "File", Overlay: true, Bounds: geom.NewRect(80, 20, 60, 120),
+			Children: []accessibility.NodeID{92, 93},
+		},
+		&accessibility.Node{ID: 92, Parent: 91, Role: role.MenuItem, Name: "Open", Bounds: geom.NewRect(80, 20, 60, 20)},
+		&accessibility.Node{
+			ID: 93, Parent: 91, Role: role.MenuItem, Name: "Close", Bounds: geom.NewRect(80, 120, 60, 20),
+		},
+		&accessibility.Node{ID: 94, Parent: 90, Role: role.Button, Name: "OK", Bounds: geom.NewRect(10, 10, 20, 20)},
+	)
+}
+
+// TestContainsReachesOverlaysBeyondTheWindow covers mouse review over the part of an open menu that extends beyond its
+// window. Orca asks the window whether it contains the pointer before asking it what is there, so the window has to
+// claim the points its overlays cover, and the menu's items have to claim the points they cover outside the window.
+func TestContainsReachesOverlaysBeyondTheWindow(t *testing.T) {
+	t.Parallel()
+	ta := newTestAdapter(t)
+	c := ta.c
+	ta.Publish(overlayWindow, overlayTree(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
+	for _, one := range []struct {
+		why      string
+		x        int32
+		y        int32
+		contains bool
+		at       accessibility.NodeID
+	}{
+		{why: "an item right of the window", x: 130, y: 30, contains: true, at: 92},
+		{why: "an item below the window", x: 100, y: 130, contains: true, at: 93},
+		{why: "the menu between its items, outside the window", x: 130, y: 80, contains: true, at: 91},
+		{why: "the part of an item inside the window", x: 90, y: 30, contains: true, at: 92},
+		{why: "a button inside the window", x: 20, y: 20, contains: true, at: 94},
+		{why: "the window where it holds nothing", x: 50, y: 80, contains: true},
+		{why: "a point outside both the window and the menu", x: 300, y: 300},
+		{why: "a point beside the menu, below the window", x: 40, y: 130},
+	} {
+		c.Equal(one.contains, ta.one(NodePath(90), InterfaceComponent, "Contains", "iiu", one.x, one.y,
+			uint32(CoordWindow)), "the window must claim %s", one.why)
+		expected := nullReference()
+		if one.at != 0 {
+			expected = nodeRef(one.at)
+		}
+		c.Equal(expected, ta.one(NodePath(90), InterfaceComponent, "GetAccessibleAtPoint", "iiu", one.x, one.y,
+			uint32(CoordWindow)), "the window must place %s", one.why)
+	}
+	c.Equal(true, ta.one(NodePath(93), InterfaceComponent, "Contains", "iiu", int32(100), int32(130),
+		uint32(CoordWindow)), "an item below the window claims the point it covers")
+	c.Equal(false, ta.one(NodePath(94), InterfaceComponent, "Contains", "iiu", int32(130), int32(30),
+		uint32(CoordWindow)), "a button does not claim a point of the menu")
+	c.Equal(false, ta.one(NodePath(91), InterfaceComponent, "Contains", "iiu", int32(20), int32(20),
+		uint32(CoordWindow)), "the menu does not claim a point of the window it does not cover")
+}

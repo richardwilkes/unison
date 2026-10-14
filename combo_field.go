@@ -226,8 +226,9 @@ func (f *Field) installDropdown(titles func() []string, current func() string, c
 	}
 	// show gives the field the focus and pops the menu up, reporting whether it did. Nothing to choose from opens
 	// nothing, exactly as PopupMenu.Click shows no menu for a popup holding nothing: an empty menu panel has nothing to
-	// offer anyone. Neither does a field in any window but the active one, where the menu is built: positioned from the
-	// field's own window, it would land in the active one at coordinates taken from the other. See axMayPopupMenu.
+	// offer anyone. Neither does a field in any window but the active one, which the menu is opened for: positioned
+	// from the field's own window, it would be placed for the active one at coordinates taken from the other. See
+	// axMayPopupMenu.
 	show := func() bool {
 		if !f.Enabled() {
 			// The button is not disabled along with the field, so a disabled field refuses to open here.
@@ -299,7 +300,7 @@ func (f *Field) installDropdown(titles func() []string, current func() string, c
 				// meantime has nowhere to show a menu, so nothing is done for it either, and neither is anything done
 				// for one that has been disabled since: the dispatcher checked that at the moment the request arrived,
 				// but the work happens a task later, and a click could not open the menu of a disabled field. The menu
-				// is built in the active window rather than in this field's, so a request aimed at a field in a
+				// is opened for the active window rather than for this field's, so a request aimed at a field in a
 				// background window is refused outright — see axMayPopupMenu — and refused again when the task runs,
 				// since the window may have lost the focus in between.
 				if axMenuIsOpen(openMenu) {

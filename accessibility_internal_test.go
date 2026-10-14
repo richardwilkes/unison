@@ -1183,6 +1183,7 @@ func TestAccessibilityCaretBlockLosesFocusToAnOpenMenu(t *testing.T) {
 		mp = newTestMenuPanel(20, 20, 120, 80)
 		mp.Accessibility.Role = role.Menu
 		mp.Accessibility.Name = "Edit"
+		newTestPopupWindow(wnd, mp)
 		wnd.root.insertMenu(mp)
 		wnd.MarkForRedraw()
 	})
@@ -3610,4 +3611,25 @@ func TestEditorHintsAreNotTabStops(t *testing.T) {
 		c.Equal("Pixels", node.Description)
 	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAxInContentExcludesOpenMenus verifies that a panel inside an open menu, which is the content of its popup menu
+// window's root, is not in any window's content for the purposes of taking the focus as static text, while a panel in
+// the owner's content is.
+func TestAxInContentExcludesOpenMenus(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{}
+	owner.root = newRootPanel(owner)
+	content := NewPanel()
+	owner.root.setContent(content)
+	inContent := NewPanel()
+	content.AddChild(inContent)
+	c.True(inContent.axInContent(false) == owner)
+	mp := newTestMenuPanel(0, 0, 100, 100)
+	popup := newTestPopupWindow(owner, mp)
+	inMenu := NewPanel()
+	mp.AddChild(inMenu)
+	c.True(popup.root.contentPanel == mp.AsPanel(), "the menu is the popup's content")
+	c.True(inMenu.axInContent(false) == nil, "a panel in a menu is in no window's content")
+	c.True(inMenu.axInContent(true) == nil)
 }

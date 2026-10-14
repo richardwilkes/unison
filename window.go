@@ -80,6 +80,7 @@ type Window struct {
 	surface              *surface
 	glCtx                *apiGLContext
 	root                 *rootPanel
+	owner                *Window // the top-level window whose menu stack a popup menu window belongs to; see menuOwner
 	ax                   *windowAccessibility
 	focus                *Panel
 	cursor               *Cursor
@@ -114,13 +115,15 @@ type Window struct {
 	// contextMenuChordKey is the key of the chord that opened an in-window contextual menu, until keyReleased sees its
 	// key up, or KeyNone. It is not recorded for a native menu, whose tracking loop swallows the key up. The Windows
 	// platform code keeps such an F10 from DefWindowProc, which would otherwise open the system menu on its release.
-	contextMenuChordKey         KeyCode
-	kind                        WindowKind
-	lastDragOp                  drag.Op
-	contextMenuReplay           bool
-	rightPressTaken             bool
-	valid                       bool
-	keepHidden                  bool
+	contextMenuChordKey KeyCode
+	kind                WindowKind
+	lastDragOp          drag.Op
+	contextMenuReplay   bool
+	rightPressTaken     bool
+	valid               bool
+	keepHidden          bool
+	// hidden is true while the application has hidden the window with Hide(); see firstVisibleTopLevelWindow.
+	hidden                      bool
 	focused                     bool
 	transient                   bool
 	notResizable                bool
@@ -129,6 +132,7 @@ type Window struct {
 	floating                    bool
 	inModal                     bool
 	inMouseDown                 bool
+	cpuOnly                     bool // always renders on the CPU and never has an OpenGL context; see popupWindowOption
 	cursorHiddenUntilMouseMoves bool
 	cursorHidden                bool
 	dropRunes                   bool
@@ -205,15 +209,91 @@ func TitleIconsWindowOption(images []*Image) WindowOption {
 	}
 }
 
-// WindowCount returns the number of windows that are open.
-func WindowCount() int {
-	return len(windowList)
+// newPopupWindow creates a hidden, borderless window for one level of owner's menu stack. It never takes the focus or
+// renders through OpenGL.
+func newPopupWindow(owner *Window, title string) (*Window, error) {
+	return NewWindow(title, WindowKindWindowOption(WindowKindMenu), TransientWindowOption(), UndecoratedWindowOption(),
+		NotResizableWindowOption(), TitleIconsWindowOption(nil), popupWindowOption(owner))
 }
 
-// Windows returns a slice containing the current set of open windows.
+// popupWindowOption makes the window a popup menu window of owner's top-level window, rendered on the CPU. Its content
+// size is left unconstrained, since the default limits come from the content's preferred size and would undo a menu
+// widened to match the field it drops down from.
+func popupWindowOption(owner *Window) WindowOption {
+	return func(w *Window) error {
+		if owner == nil {
+			return errs.New("a popup window requires an owner")
+		}
+		w.owner = owner.menuOwner()
+		w.cpuOnly = true
+		w.MinMaxContentSizeCallback = func() (minimum, maximum geom.Size) {
+			return geom.Size{}, geom.NewSize(DefaultMaxSize, DefaultMaxSize)
+		}
+		return nil
+	}
+}
+
+// menuOwner returns the window that holds the menu stack this window takes part in: the owner of a popup menu window,
+// or the window itself otherwise. Returns nil for a nil window.
+func (w *Window) menuOwner() *Window {
+	if w == nil {
+		return nil
+	}
+	if w.owner != nil {
+		return w.owner
+	}
+	return w
+}
+
+// isPopup returns true if this is one of the toolkit's popup menu windows.
+func (w *Window) isPopup() bool {
+	return w != nil && w.owner != nil
+}
+
+// firstTopLevelWindow returns the first window in windowList that is not a popup menu window, or nil if there is none.
+func firstTopLevelWindow() *Window {
+	for _, w := range windowList {
+		if !w.isPopup() {
+			return w
+		}
+	}
+	return nil
+}
+
+// firstVisibleTopLevelWindow returns the first window in windowList that is neither a popup menu window nor hidden, or
+// nil if there is none. It is what a closing window hands the focus to: ToFront shows the window it is given, so one
+// the application hid must not be chosen over a visible one further down the list. A minimized window still counts,
+// since ToFront restores it, unless the application hid it while it was minimized, which leaves it minimized on the
+// platforms that keep that state for a hidden window.
+func firstVisibleTopLevelWindow() *Window {
+	for _, w := range windowList {
+		if !w.isPopup() && (w.IsVisible() || (w.IsMinimized() && !w.hidden)) {
+			return w
+		}
+	}
+	return nil
+}
+
+// WindowCount returns the number of windows that are open. The toolkit's own popup menu windows are not counted.
+func WindowCount() int {
+	count := 0
+	for _, w := range windowList {
+		if !w.isPopup() {
+			count++
+		}
+	}
+	return count
+}
+
+// Windows returns a slice containing the current set of open windows. The toolkit's own popup menu windows are not
+// listed.
 func Windows() []*Window {
-	list := make([]*Window, len(windowList))
-	copy(list, windowList)
+	list := make([]*Window, 0, len(windowList))
+	for _, w := range windowList {
+		if !w.isPopup() {
+			list = append(list, w)
+		}
+	}
 	return list
 }
 
@@ -272,9 +352,10 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 			return nil, err
 		}
 	}
+	w.surface.cpuOnly = w.cpuOnly
 	windowList = append(windowList, w)
 	err := w.apiInit()
-	if err == nil && !cpuRenderingActive {
+	if err == nil && !cpuRenderingActive && !w.cpuOnly {
 		if glErr := w.glCtx.apiCreate(w); glErr != nil {
 			fallbackToCPURendering(glErr)
 		}
@@ -291,8 +372,9 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	return w, nil
 }
 
+// okToProcess returns true if no modal window blocks this one. A popup menu window follows its owner.
 func (w *Window) okToProcess() bool {
-	return len(modalStack) == 0 || modalStack[len(modalStack)-1] == w
+	return len(modalStack) == 0 || modalStack[len(modalStack)-1] == w.menuOwner()
 }
 
 // UndoManager returns the UndoManager for the currently focused panel in the Window. May return nil.
@@ -464,6 +546,25 @@ func (w *Window) AttemptClose() bool {
 
 // Dispose of the window.
 func (w *Window) Dispose() {
+	if w.isPopup() && w.root != nil && w.owner.root != nil && w.root.contentPanel != nil {
+		// A popup menu window still in its owner's menu stack is closed through the stack, as rootPanel.removeMenu
+		// does, so that neither the stack nor the menu it shows goes on holding a window that is gone; the menus above
+		// it go with it. A platform's close request, such as WM_CLOSE on Windows, arrives here directly.
+		if mp, ok := w.root.contentPanel.Self.(*menuPanel); ok && slices.Contains(w.owner.root.openMenuPanels, mp) {
+			w.owner.root.closeMenuStackStoppingAt(mp.menu.titleItem.menu)
+			return
+		}
+	}
+	// Popup menu windows go first, since Windows destroys owned windows along with their owner. Any not in the menu
+	// stack are swept up too, since Windows() leaves them out and closeAllWindows would otherwise never empty the list.
+	if w.root != nil {
+		w.root.closeMenuStackStoppingAt(nil)
+	}
+	for _, other := range slices.Clone(windowList) {
+		if other.owner == w && other.IsValid() {
+			other.Dispose()
+		}
+	}
 	active := ActiveWindow()
 	if active == w {
 		w.ShowCursor()
@@ -487,8 +588,10 @@ func (w *Window) Dispose() {
 	if len(windowList) == 0 && quitAfterLastWindowClosed() {
 		quitting()
 	}
-	if active != nil && active == w && len(windowList) != 0 {
-		windowList[0].ToFront()
+	if active != nil && active == w {
+		if next := firstVisibleTopLevelWindow(); next != nil {
+			next.ToFront()
+		}
 	}
 }
 
@@ -704,19 +807,36 @@ func (w *Window) MoveToModalCenter(other *Window) {
 	if other == nil {
 		other = FrontmostWindow()
 	}
+	var d *Display
 	var within geom.Rect
 	if other != nil && other != w {
+		d = other.Display()
 		within = other.FrameRect()
-	} else if d := PrimaryDisplay(); d != nil {
+	} else if d = PrimaryDisplay(); d != nil {
 		within = d.apiUsableInWindowUnits()
 	}
-	wndFrame := w.FrameRect()
-	within.Y += (within.Height - wndFrame.Height) / 3
-	within.Height = wndFrame.Height
-	within.X += (within.Width - wndFrame.Width) / 2
-	within.Width = wndFrame.Width
-	w.SetFrameRect(within.Align())
+	w.SetFrameRect(modalCenterFrame(d, within, w.FrameRect()).Align())
 	w.EnsureOnDisplay()
+}
+
+// modalCenterFrame returns the frame rect, in the space window rects use, of a window of frame's size centered
+// horizontally within within and a third of the way down it, which is where MoveToModalCenter puts a window. The math
+// is done in the space of d, the display within is on, since on Windows the window-rect space keeps a raw-pixel origin
+// with a logical size, in which the center cannot be computed; see Display.apiRectToWindowUnits. With no display it is
+// done in place.
+func modalCenterFrame(d *Display, within, frame geom.Rect) geom.Rect {
+	if d != nil {
+		within = d.apiRectFromWindowUnits(within)
+		frame = d.apiRectFromWindowUnits(frame)
+	}
+	within.Y += (within.Height - frame.Height) / 3
+	within.Height = frame.Height
+	within.X += (within.Width - frame.Width) / 2
+	within.Width = frame.Width
+	if d != nil {
+		within = d.apiRectToWindowUnits(within)
+	}
+	return within
 }
 
 // DefaultInitialWindowContentLocation selects an upper-left corner for a window by offsetting the current active
@@ -993,6 +1113,7 @@ func (w *Window) IsTransparent() bool {
 // mode, this function does nothing.
 func (w *Window) Show() {
 	if w.IsValid() {
+		w.hidden = false
 		w.apiShow()
 		// As in Hide, but the other way round: a window that is back on the screen has to be described again, since a
 		// platform that withdrew it while it was off the screen holds nothing about it at all. The mark is made after
@@ -1009,6 +1130,10 @@ func (w *Window) Show() {
 // function does nothing.
 func (w *Window) Hide() {
 	if w.IsValid() {
+		if w.root != nil {
+			w.root.closeMenuStackStoppingAt(nil)
+		}
+		w.hidden = true
 		w.apiHide()
 		// A window that has gone off the screen has to be taken out of what an assistive technology has been told, and
 		// the event loop does that for the windows it finds it cannot draw. See Window.axMarkForPublish.
@@ -1017,7 +1142,8 @@ func (w *Window) Hide() {
 }
 
 // ToFront attempts to bring the window to the foreground and give it the keyboard focus. If it is hidden, it will be
-// made visible first. Does nothing for windows marked keepHidden.
+// made visible first. Does nothing for windows marked keepHidden or for the toolkit's own popup menu windows, which
+// never take the focus.
 //
 // The window is shown immediately, but the platform activation is performed by the event loop at the end of the
 // current pass rather than here, and repeated requests made within one pass collapse into the last one. Doing it here
@@ -1026,7 +1152,7 @@ func (w *Window) Hide() {
 // finish its own handling of that event afterwards and undo the activation. Deferring also means that a sequence such
 // as a menu closing (which fronts the window underneath) followed by a dialog opening activates only the dialog.
 func (w *Window) ToFront() {
-	if w.IsValid() && !w.keepHidden {
+	if w.IsValid() && !w.keepHidden && !w.isPopup() {
 		w.Show()
 		w.focused = true // Don't wait for the focus event to set this, as Linux delays the notification too much
 		requestFront(w)
@@ -1068,6 +1194,9 @@ func (w *Window) IsMinimized() bool {
 // Minimize performs the minimize function on the window, or restores it if it is already minimized.
 func (w *Window) Minimize() {
 	if w.IsValid() {
+		if w.root != nil {
+			w.root.closeMenuStackStoppingAt(nil)
+		}
 		w.apiMinimize()
 		// As in Hide: a window that has just been minimized, or restored, is described again rather than being left as
 		// whatever it was last said to be.
@@ -1172,8 +1301,10 @@ func (w *Window) draw() {
 		if pixels := w.surface.rasterPixmap(); pixels != nil {
 			// The window may have a live GL context even though rendering fell back to the CPU (the fallback was
 			// triggered while preparing this window's canvas). Destroy it so it cannot obscure the CPU-rendered
-			// content.
-			w.discardGLCtx()
+			// content. A CPU-only window never had one.
+			if !w.cpuOnly {
+				w.discardGLCtx()
+			}
 			w.apiPresentCPUPixels(pixels)
 		} else {
 			w.glCtx.apiSwapBuffers()
@@ -1185,7 +1316,16 @@ func (w *Window) draw() {
 				// canvas, so nothing here depends on the rendering state this leaves behind, and a panel that marks
 				// itself for redraw while being described is simply drawn again on the next pass, exactly as one that
 				// does it from its DrawCallback is.
-				w.publishAccessibility()
+				//
+				// A popup menu window is described as part of its owner, which does not repaint when the highlight
+				// moves within the popup, so the owner is published instead.
+				if w.isPopup() {
+					if w.owner.IsVisible() {
+						w.owner.publishAccessibility()
+					}
+				} else {
+					w.publishAccessibility()
+				}
 			} else {
 				// A window that is not on the screen is described no more, whatever painted it. The event loop never
 				// reaches here for one — it withdraws the window instead, see finishProcessingEvents — but
@@ -1204,9 +1344,10 @@ func (w *Window) draw() {
 }
 
 // usesGLRendering returns true if this window's drawing should go through its OpenGL context. Windows created before a
-// CPU-rendering fallback keep using their existing GL rendering surface; windows created after it never get one.
+// CPU-rendering fallback keep using their existing GL rendering surface; windows created after it, and CPU-only
+// windows, never get one.
 func (w *Window) usesGLRendering() bool {
-	return !cpuRenderingActive || w.surface.context != nil
+	return !w.cpuOnly && (!cpuRenderingActive || w.surface.context != nil)
 }
 
 // discardGLCtx destroys the window's OpenGL context, if any, releasing it first if it is the current one.
@@ -1286,10 +1427,16 @@ func (w *Window) HideCursorUntilMouseMoves() {
 	}
 }
 
+// restoreHiddenCursor shows the cursor HideCursorUntilMouseMoves hid, as the mouse moving does. A popup menu window
+// restores its owner's as well, since typing in the owner is what hid it, and a move over one of the owner's menus is
+// a move all the same.
 func (w *Window) restoreHiddenCursor() {
 	if w.cursorHiddenUntilMouseMoves {
 		w.cursorHiddenUntilMouseMoves = false
 		w.ShowCursor()
+	}
+	if w.isPopup() {
+		w.owner.restoreHiddenCursor()
 	}
 }
 
@@ -1829,6 +1976,12 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 }
 
 func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
+	if w.owner != nil {
+		// No platform should deliver a key to a popup menu window, but should one arrive, it belongs to the owner,
+		// which routes it to the open menus.
+		w.owner.keyPressed(key, mods)
+		return
+	}
 	if !w.okToProcess() {
 		// A window blocked by a modal may still hold the platform focus (see the comment in gainedFocus), so route
 		// keyboard input to the top modal window rather than processing it here.
@@ -1916,6 +2069,11 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 }
 
 func (w *Window) runeTyped(ch rune) {
+	if w.owner != nil {
+		// See the comment in keyPressed.
+		w.owner.runeTyped(ch)
+		return
+	}
 	if !w.okToProcess() {
 		// See the comment in keyPressed.
 		modalStack[len(modalStack)-1].runeTyped(ch)
@@ -1954,6 +2112,11 @@ func (w *Window) runeTyped(ch rune) {
 }
 
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
+	if w.owner != nil {
+		// See the comment in keyPressed.
+		w.owner.keyReleased(key, mods)
+		return
+	}
 	w.lastKeyModifiers = mods
 	w.dropRunes = false
 	if key == w.contextMenuChordKey {

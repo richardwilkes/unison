@@ -165,6 +165,8 @@ type HeadlessScreen struct {
 	drag    *headlessDragSession
 	buttons map[int]bool
 	input   []func()
+	// menuStackOwner is the window whose menu stack is open, or nil. See headlessWindow.menuStackChanged.
+	menuStackOwner *Window
 	// recorded is what Errors() reports. It is named for its role rather than for its content, since this file also
 	// calls into the errs package.
 	recorded []error

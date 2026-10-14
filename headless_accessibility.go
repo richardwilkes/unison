@@ -86,11 +86,16 @@ func (s *HeadlessScreen) EnableAccessibility() {
 
 // AccessibilityTree returns the most recent description of the window, as a platform adapter would have been handed it,
 // turning accessibility support on first if it is not on already and then rebuilding the description so that what comes
-// back reflects the window as it is now. Returns nil if the session has ended, the window is not one of this session's,
-// or accessibility support has been refused.
+// back reflects the window as it is now. A popup menu window is described as part of the window that opened it, so
+// that window's description is returned for one. Returns nil if the session has ended, the window is not one of this
+// session's or has been disposed of, or accessibility support has been refused.
 func (s *HeadlessScreen) AccessibilityTree(w *Window) *accessibility.Tree {
 	described := false
 	if !s.Do(func() {
+		if !w.IsValid() {
+			return
+		}
+		w = w.menuOwner()
 		if !activateAccessibility() || !w.IsValid() {
 			return
 		}
@@ -116,13 +121,16 @@ func (s *HeadlessScreen) AccessibilityTree(w *Window) *accessibility.Tree {
 // AccessibilityEvents returns the events published for the window since the last time it was asked, and forgets them,
 // so a test asserts on what happened between two points rather than on everything that ever has. Enable accessibility
 // support first, with EnableAccessibility or AccessibilityTree; a window nothing has ever been published for has no
-// events.
+// events. The events of a popup menu window are those of the window that opened it, as AccessibilityTree describes it.
 //
 // Only the most recent headlessMaxAXEvents are kept, so a test that runs a long interaction before asking may find the
 // beginning of it gone. Ask between the steps that matter rather than once at the end.
 func (s *HeadlessScreen) AccessibilityEvents(w *Window) []accessibility.Event {
 	var events []accessibility.Event
 	s.Do(func() {
+		if w.IsValid() {
+			w = w.menuOwner()
+		}
 		if hw := headlessWindowFor(w); hw != nil {
 			events = hw.axEvents
 			hw.axEvents = nil
@@ -199,7 +207,8 @@ func (s *HeadlessScreen) AccessibilityNodeFor(p Paneler) *accessibility.Node {
 		if panel.Accessibility.id == 0 || panel.Accessibility.owner != panel {
 			return
 		}
-		if w := panel.Window(); w != nil && w.ax != nil {
+		// A panel of a popup menu window is described as part of the window that opened the menu.
+		if w := panel.Window().menuOwner(); w != nil && w.ax != nil {
 			node = w.ax.last.Node(panel.Accessibility.id)
 		}
 	})

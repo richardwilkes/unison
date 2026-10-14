@@ -156,6 +156,59 @@ func TestTreeHitTest(t *testing.T) {
 	c.Equal(axID(0), absent.HitTest(geom.NewPoint(0, 0)))
 }
 
+// TestTreeHitTestOverlay covers an open menu shown in a window of its own, which is described as an overlay hanging off
+// the root: it is hit beyond the edge of the window, its own children are confined to it rather than to the window,
+// and where it covers the content it wins, since it comes first among the root's children.
+//
+//	1 window                  (0,0 100x100)
+//	├─ 2 menu  [overlay]      (80,20 60x120)
+//	│  ├─ 4 item              (80,20 60x20)
+//	│  ├─ 6 item              (80,60 100x20)   wider than the menu
+//	│  └─ 5 item              (80,120 60x20)   below the window
+//	├─ 3 group                (0,0 100x100)
+//	│  ├─ 8 button            (85,30 10x10)    under item 4
+//	│  └─ 9 button            (0,120 20x20)    below the window
+//	└─ 10 button              (-50,-50 20x20)  above and left of the window
+func TestTreeHitTestOverlay(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	tree := newTree(0,
+		&axNode{ID: 1, Role: role.Window, Bounds: geom.NewRect(0, 0, 100, 100), Children: []axID{2, 3, 10}},
+		&axNode{
+			ID: 2, Parent: 1, Role: role.Menu, Overlay: true, Bounds: geom.NewRect(80, 20, 60, 120),
+			Children: []axID{4, 6, 5},
+		},
+		&axNode{ID: 4, Parent: 2, Role: role.MenuItem, Bounds: geom.NewRect(80, 20, 60, 20)},
+		&axNode{ID: 6, Parent: 2, Role: role.MenuItem, Bounds: geom.NewRect(80, 60, 100, 20)},
+		&axNode{ID: 5, Parent: 2, Role: role.MenuItem, Bounds: geom.NewRect(80, 120, 60, 20)},
+		&axNode{
+			ID: 3, Parent: 1, Role: role.Group, Bounds: geom.NewRect(0, 0, 100, 100), Children: []axID{8, 9},
+		},
+		&axNode{ID: 8, Parent: 3, Role: role.Button, Bounds: geom.NewRect(85, 30, 10, 10)},
+		&axNode{ID: 9, Parent: 3, Role: role.Button, Bounds: geom.NewRect(0, 120, 20, 20)},
+		&axNode{ID: 10, Parent: 1, Role: role.Button, Bounds: geom.NewRect(-50, -50, 20, 20)},
+	)
+	c.Equal(axID(4), tree.HitTest(geom.NewPoint(130, 30)), "an item of the overlay right of the window is hit")
+	c.Equal(axID(5), tree.HitTest(geom.NewPoint(100, 130)), "an item of the overlay below the window is hit")
+	c.Equal(axID(2), tree.HitTest(geom.NewPoint(130, 100)), "the overlay itself is hit between its items")
+	c.Equal(axID(6), tree.HitTest(geom.NewPoint(120, 70)))
+	c.Equal(axID(0), tree.HitTest(geom.NewPoint(160, 70)), "an overlay's child is confined to the overlay")
+	c.Equal(axID(0), tree.HitTest(geom.NewPoint(10, 130)), "a child of an ordinary node is confined to the window")
+	c.Equal(axID(0), tree.HitTest(geom.NewPoint(-40, -40)), "an ordinary child of the root is confined to it")
+	c.Equal(axID(0), tree.HitTest(geom.NewPoint(150, 150)))
+	c.Equal(axID(4), tree.HitTest(geom.NewPoint(90, 35)), "the overlay comes first, so it wins over the content")
+	c.Equal(axID(3), tree.HitTest(geom.NewPoint(50, 50)), "the content is hit where the overlay does not reach")
+
+	// The order of the root's children decides which of the two is on top.
+	tree.Node(1).Children = []axID{3, 2, 10}
+	c.Equal(axID(8), tree.HitTest(geom.NewPoint(90, 35)))
+	c.Equal(axID(4), tree.HitTest(geom.NewPoint(130, 30)))
+
+	// An offscreen overlay is passed over like any other node.
+	tree.Node(2).Offscreen = true
+	c.Equal(axID(0), tree.HitTest(geom.NewPoint(130, 30)))
+}
+
 func TestTreeUnignoredChildren(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)

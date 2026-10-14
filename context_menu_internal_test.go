@@ -746,12 +746,9 @@ func (m *cmCountingMenu) Popup(where geom.Rect, itemIndex int) {
 	}
 }
 
-// newKeyMenuTestWindow returns the active window holding a focused panel whose menu is a cmCountingMenu and whose key
-// callbacks count into keysDown and keysUp.
-func newKeyMenuTestWindow(t *testing.T, popups, keysDown, keysUp *int, native bool) *Window {
-	t.Helper()
-	w := newMouseButtonTestWindow()
-	activateForContextMenu(t, w)
+// newKeyMenuTestOwner returns a focusable panel whose menu is a cmCountingMenu and whose key callbacks count into
+// keysDown and keysUp.
+func newKeyMenuTestOwner(popups, keysDown, keysUp *int, native bool) *Panel {
 	owner := NewPanel()
 	owner.SetFrameRect(geom.NewRect(10, 10, 50, 50))
 	owner.SetFocusable(true)
@@ -764,9 +761,41 @@ func newKeyMenuTestWindow(t *testing.T, popups, keysDown, keysUp *int, native bo
 		*keysUp++
 		return true
 	}
+	return owner
+}
+
+// newKeyMenuTestWindow returns the active window holding a focused newKeyMenuTestOwner. Only a native menu can be
+// shown from it, since an in-window menu needs a session to open its popup window in; see startKeyMenuTest.
+func newKeyMenuTestWindow(t *testing.T, popups, keysDown, keysUp *int, native bool) *Window {
+	t.Helper()
+	w := newMouseButtonTestWindow()
+	activateForContextMenu(t, w)
+	owner := newKeyMenuTestOwner(popups, keysDown, keysUp, native)
 	w.root.contentPanel.AddChild(owner)
 	owner.RequestFocus()
 	return w
+}
+
+// startKeyMenuTest starts a session holding a window, shown and active, whose focused panel is a newKeyMenuTestOwner
+// with an in-window menu.
+func startKeyMenuTest(t *testing.T, popups, keysDown, keysUp *int) (*HeadlessScreen, *Window) {
+	t.Helper()
+	var w *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			if w = newHeadlessTestWindow(t, "keys", geom.NewRect(0, 0, 200, 200)); w == nil {
+				return
+			}
+			w.Content().SetLayout(nil)
+			owner := newKeyMenuTestOwner(popups, keysDown, keysUp, false)
+			w.Content().AddChild(owner)
+			w.ToFront()
+			owner.RequestFocus()
+		}))
+	if w == nil {
+		t.FailNow()
+	}
+	return screen, w
 }
 
 // TestContextMenuKeyAfterANativeMenu verifies that, although a native menu's tracking loop swallows the chord's key up,
@@ -794,18 +823,20 @@ func TestContextMenuKeyAfterANativeMenu(t *testing.T) {
 func TestContextMenuKeyHeldOverAnInWindowMenu(t *testing.T) {
 	c := check.New(t)
 	var popups, keysDown, keysUp int
-	w := newKeyMenuTestWindow(t, &popups, &keysDown, &keysUp, false)
-	w.keyPressed(KeyMenu, 0)
-	c.Equal(1, popups)
-	c.Equal(1, len(w.root.openMenuPanels), "the in-window menu is still open")
-	w.root.closeMenuStackStoppingAt(nil)
-	w.keyPressed(KeyMenu, 0)
-	c.Equal(1, popups, "a repeat does not open the menu again")
-	c.Equal(1, keysDown, "and is passed on to the panel holding the focus as one")
-	w.keyReleased(KeyMenu, 0)
-	w.keyPressed(KeyMenu, 0)
-	c.Equal(2, popups, "the next press after the key was let go opens it again")
-	w.root.closeMenuStackStoppingAt(nil)
+	screen, w := startKeyMenuTest(t, &popups, &keysDown, &keysUp)
+	c.True(screen.Do(func() {
+		w.keyPressed(KeyMenu, 0)
+		c.Equal(1, popups)
+		c.Equal(1, len(w.root.openMenuPanels), "the in-window menu is still open")
+		w.root.closeMenuStackStoppingAt(nil)
+		w.keyPressed(KeyMenu, 0)
+		c.Equal(1, popups, "a repeat does not open the menu again")
+		c.Equal(1, keysDown, "and is passed on to the panel holding the focus as one")
+		w.keyReleased(KeyMenu, 0)
+		w.keyPressed(KeyMenu, 0)
+		c.Equal(2, popups, "the next press after the key was let go opens it again")
+		w.root.closeMenuStackStoppingAt(nil)
+	}))
 }
 
 // TestShowContextMenuOnlyInTheActiveWindow verifies that a menu is shown, and the callback asked, only for a panel in
@@ -1313,28 +1344,30 @@ func TestContextMenuRowRequestEndsAHeldPress(t *testing.T) {
 func TestContextMenuKeyUpNotSentToTheOwner(t *testing.T) {
 	c := check.New(t)
 	var popups, keysDown, keysUp int
-	w := newKeyMenuTestWindow(t, &popups, &keysDown, &keysUp, false)
-	w.keyPressed(KeyMenu, 0)
-	c.Equal(1, popups)
-	c.Equal(1, len(w.root.openMenuPanels), "the in-window menu is open")
-	w.keyReleased(KeyMenu, 0)
-	c.Equal(0, keysUp, "the key up of the chord is not sent to the owner")
-	w.keyPressed(KeyDown, 0)
-	w.keyReleased(KeyDown, 0)
-	c.Equal(1, len(w.root.openMenuPanels), "the menu takes the keys that drive it")
-	w.keyPressed(KeyEscape, 0)
-	c.Equal(0, len(w.root.openMenuPanels), "and Escape closes it")
-	w.keyReleased(KeyEscape, 0)
-	c.Equal(0, keysDown, "the owner saw none of the key downs")
-	c.Equal(0, keysUp, "and is sent none of the key ups, that of the key that closed the menu included")
+	screen, w := startKeyMenuTest(t, &popups, &keysDown, &keysUp)
+	c.True(screen.Do(func() {
+		w.keyPressed(KeyMenu, 0)
+		c.Equal(1, popups)
+		c.Equal(1, len(w.root.openMenuPanels), "the in-window menu is open")
+		w.keyReleased(KeyMenu, 0)
+		c.Equal(0, keysUp, "the key up of the chord is not sent to the owner")
+		w.keyPressed(KeyDown, 0)
+		w.keyReleased(KeyDown, 0)
+		c.Equal(1, len(w.root.openMenuPanels), "the menu takes the keys that drive it")
+		w.keyPressed(KeyEscape, 0)
+		c.Equal(0, len(w.root.openMenuPanels), "and Escape closes it")
+		w.keyReleased(KeyEscape, 0)
+		c.Equal(0, keysDown, "the owner saw none of the key downs")
+		c.Equal(0, keysUp, "and is sent none of the key ups, that of the key that closed the menu included")
 
-	// A chord whose menu was closed some other way while the key was still down.
-	w.keyPressed(KeyF10, mod.Shift)
-	c.Equal(2, popups)
-	w.root.closeMenuStackStoppingAt(nil)
-	w.keyReleased(KeyF10, mod.Shift)
-	c.Equal(0, keysUp, "the key up of the chord is not sent to the owner then either")
-	c.Equal(0, keysDown)
+		// A chord whose menu was closed some other way while the key was still down.
+		w.keyPressed(KeyF10, mod.Shift)
+		c.Equal(2, popups)
+		w.root.closeMenuStackStoppingAt(nil)
+		w.keyReleased(KeyF10, mod.Shift)
+		c.Equal(0, keysUp, "the key up of the chord is not sent to the owner then either")
+		c.Equal(0, keysDown)
+	}))
 }
 
 // cmWithholdingTable and cmWithholdingList stand in for a Table and a List whose widget type implements
@@ -2324,39 +2357,43 @@ func TestContextMenuChordDuringASliderOrDividerDrag(t *testing.T) {
 func TestContextMenuChordKeyRecorded(t *testing.T) {
 	c := check.New(t)
 	var popups, keysDown, keysUp int
-	w := newKeyMenuTestWindow(t, &popups, &keysDown, &keysUp, false)
-	owner := w.CurrentFocus()
-	c.NotNil(owner)
-	c.Equal(KeyNone, w.contextMenuChordKey)
-	w.keyPressed(KeyF10, mod.Shift)
-	c.Equal(1, popups)
-	c.Equal(KeyF10, w.contextMenuChordKey, "the F10 of the chord that opened the menu is recorded")
-	w.keyReleased(KeyF10, mod.Shift)
-	c.Equal(KeyNone, w.contextMenuChordKey, "until its key up")
-	w.keyPressed(KeyEscape, 0)
-	w.keyReleased(KeyEscape, 0)
-	w.keyPressed(KeyMenu, 0)
-	c.Equal(2, popups)
-	c.Equal(KeyMenu, w.contextMenuChordKey, "and so is the Menu key")
-	w.keyReleased(KeyLShift, 0)
-	c.Equal(KeyMenu, w.contextMenuChordKey, "which another key's key up leaves alone")
-	w.keyReleased(KeyMenu, 0)
-	c.Equal(KeyNone, w.contextMenuChordKey)
-	w.keyPressed(KeyEscape, 0)
-	w.keyReleased(KeyEscape, 0)
+	screen, w := startKeyMenuTest(t, &popups, &keysDown, &keysUp)
+	c.True(screen.Do(func() {
+		owner := w.CurrentFocus()
+		c.NotNil(owner)
+		if owner == nil {
+			return
+		}
+		c.Equal(KeyNone, w.contextMenuChordKey)
+		w.keyPressed(KeyF10, mod.Shift)
+		c.Equal(1, popups)
+		c.Equal(KeyF10, w.contextMenuChordKey, "the F10 of the chord that opened the menu is recorded")
+		w.keyReleased(KeyF10, mod.Shift)
+		c.Equal(KeyNone, w.contextMenuChordKey, "until its key up")
+		w.keyPressed(KeyEscape, 0)
+		w.keyReleased(KeyEscape, 0)
+		w.keyPressed(KeyMenu, 0)
+		c.Equal(2, popups)
+		c.Equal(KeyMenu, w.contextMenuChordKey, "and so is the Menu key")
+		w.keyReleased(KeyLShift, 0)
+		c.Equal(KeyMenu, w.contextMenuChordKey, "which another key's key up leaves alone")
+		w.keyReleased(KeyMenu, 0)
+		c.Equal(KeyNone, w.contextMenuChordKey)
+		w.keyPressed(KeyEscape, 0)
+		w.keyReleased(KeyEscape, 0)
 
-	callback := owner.ContextMenuCallback
-	owner.ContextMenuCallback = func(geom.Point) Menu { return nil }
-	w.keyPressed(KeyF10, mod.Shift)
-	c.Equal(2, popups, "the test needs the chord to open nothing")
-	c.Equal(KeyNone, w.contextMenuChordKey, "a chord that opened nothing is not recorded")
-	w.keyReleased(KeyF10, mod.Shift)
-	owner.ContextMenuCallback = callback
+		owner.ContextMenuCallback = func(geom.Point) Menu { return nil }
+		w.keyPressed(KeyF10, mod.Shift)
+		c.Equal(2, popups, "the test needs the chord to open nothing")
+		c.Equal(KeyNone, w.contextMenuChordKey, "a chord that opened nothing is not recorded")
+		w.keyReleased(KeyF10, mod.Shift)
 
-	native := newKeyMenuTestWindow(t, &popups, &keysDown, &keysUp, true)
-	native.keyPressed(KeyF10, mod.Shift)
-	c.Equal(3, popups)
-	c.Equal(KeyNone, native.contextMenuChordKey, "a chord that opened a native menu is not recorded")
+		owner.ContextMenuCallback = func(geom.Point) Menu { return newCMCountingMenu(&popups, true) }
+		w.keyPressed(KeyF10, mod.Shift)
+		c.Equal(3, popups)
+		c.Equal(KeyNone, w.contextMenuChordKey, "a chord that opened a native menu is not recorded")
+		w.keyReleased(KeyF10, mod.Shift)
+	}))
 }
 
 // TestContextMenuActivationChangeWithoutAFocusEvent verifies that a window that stops being the active one without

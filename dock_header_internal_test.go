@@ -166,8 +166,8 @@ func TestDockHeaderDropIndicatorAnchorsToVisibleTabs(t *testing.T) {
 
 // TestDockHeaderOverflowMenuOnlyInTheActiveWindow verifies that the "More Tabs" button of a header in a background
 // window opens nothing, whether clicked or pressed on behalf of an assistive technology, which is not offered the press
-// at all, since the menu it pops up is built in the active window at coordinates taken from the button's own window;
-// and that the same button opens its menu in its own window once that is the active one.
+// at all, since the menu it pops up is opened for the active window at coordinates taken from the button's own window;
+// and that the same button opens its menu for its own window once that is the active one.
 func TestDockHeaderOverflowMenuOnlyInTheActiveWindow(t *testing.T) {
 	c := check.New(t)
 	var back, front *Window
@@ -250,15 +250,10 @@ func TestDockHeaderOverflowMenuOnlyInTheActiveWindow(t *testing.T) {
 		Node:   restored.ID,
 		Action: accessibility.Press,
 	}), "and carries it out")
-	var openedIn *Window
 	c.True(screen.Do(func() {
 		look()
-		if backOpen == 1 {
-			openedIn = back.root.openMenuPanels[0].Window()
-		}
 	}))
-	c.Equal(1, backOpen, "the menu opens in the button's own window once that is the active one")
+	c.Equal(1, backOpen, "the menu opens for the button's own window once that is the active one")
 	c.Equal(0, frontOpen)
-	c.True(openedIn == back)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

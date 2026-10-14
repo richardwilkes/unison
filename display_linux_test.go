@@ -65,7 +65,7 @@ func TestX11DisplayLogicalSpaceMatchesWindowRects(t *testing.T) {
 	// which is what BestDisplayForRect keys off of. Before the fix, this rect was inside the left display's raw frame,
 	// so the left display won.
 	wnd := geom.NewRect(2000, 100, 800, 600)
-	c.True(wnd.In(right.Usable))
+	c.True(right.Usable.Contains(wnd))
 	c.False(wnd.Intersects(left.Usable))
 
 	// Centering within the primary display's usable area (MoveToModalCenter's fallback) must produce logical
@@ -74,7 +74,7 @@ func TestX11DisplayLogicalSpaceMatchesWindowRects(t *testing.T) {
 	within.X += (within.Width - wnd.Width) / 2
 	within.Y += (within.Height - wnd.Height) / 3
 	within.Size = wnd.Size
-	c.True(within.In(left.Usable))
+	c.True(left.Usable.Contains(within))
 }
 
 // TestUsableInWindowUnits verifies that on this platform the usable rect is handed to cross-platform window math
@@ -83,6 +83,16 @@ func TestUsableInWindowUnits(t *testing.T) {
 	c := check.New(t)
 	d := x11NewDisplay(geom.NewRect(0, 0, 3840, 2160), geom.NewRect(0, 32, 3840, 2128), 2, 163, true)
 	c.Equal(d.Usable, d.apiUsableInWindowUnits())
+}
+
+// TestRectToAndFromWindowUnits verifies that on this platform a rect converts into the window-rect space and back
+// unchanged, since x11NewDisplay already puts display rects into that space.
+func TestRectToAndFromWindowUnits(t *testing.T) {
+	c := check.New(t)
+	d := x11NewDisplay(geom.NewRect(0, 0, 3840, 2160), geom.NewRect(0, 32, 3840, 2128), 2, 163, true)
+	r := geom.NewRect(100, 200, 300, 400)
+	c.Equal(r, d.apiRectToWindowUnits(r))
+	c.Equal(r, d.apiRectFromWindowUnits(r))
 }
 
 // TestX11DisplaysWithoutConnection verifies that asking about displays before Start has connected to an X server --

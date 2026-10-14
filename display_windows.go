@@ -93,8 +93,19 @@ func w32DisplayDPI(dpi uint32) uint32 {
 // mixes display extents with window extents (e.g. the fallback path of Window.MoveToModalCenter) is wrong whenever the
 // monitor scale is not 1.
 func (d *Display) nativeUsableInWindowUnits() geom.Rect {
-	r := d.Usable
+	return d.nativeRectToWindowUnits(d.Usable)
+}
+
+// nativeRectToWindowUnits keeps the raw-pixel origin and converts the size to logical units; see
+// nativeUsableInWindowUnits.
+func (d *Display) nativeRectToWindowUnits(r geom.Rect) geom.Rect {
 	r.Size = r.Size.DivPt(d.Scale)
+	return r
+}
+
+// nativeRectFromWindowUnits is the inverse of nativeRectToWindowUnits.
+func (d *Display) nativeRectFromWindowUnits(r geom.Rect) geom.Rect {
+	r.Size = r.Size.MulPt(d.Scale)
 	return r
 }
 

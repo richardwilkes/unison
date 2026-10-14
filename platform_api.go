@@ -202,6 +202,25 @@ func (d *Display) apiUsableInWindowUnits() geom.Rect {
 	return d.nativeUsableInWindowUnits()
 }
 
+// apiRectToWindowUnits converts a rect from the display's own coordinate space into the space window rects use, the
+// conversion apiUsableInWindowUnits applies to the usable area, and apiRectFromWindowUnits is its inverse. Math that
+// compares or clamps rects has to happen in the display's space: on Windows the window-rect space keeps a raw-pixel
+// origin with a logical size, so a window rect's far edges cannot be computed in it at any display scale but 1.
+func (d *Display) apiRectToWindowUnits(r geom.Rect) geom.Rect {
+	if d.headless {
+		return r
+	}
+	return d.nativeRectToWindowUnits(r)
+}
+
+// apiRectFromWindowUnits is the inverse of apiRectToWindowUnits.
+func (d *Display) apiRectFromWindowUnits(r geom.Rect) geom.Rect {
+	if d.headless {
+		return r
+	}
+	return d.nativeRectFromWindowUnits(r)
+}
+
 // Cursors.
 
 func apiNewCursor(src *cursorSource) *Cursor {
@@ -395,6 +414,35 @@ func (w *Window) apiSetContentRect(rect geom.Rect) {
 		return
 	}
 	w.nativeSetContentRect(rect)
+}
+
+// apiPointToScreen converts pt from the window's content coordinates into the space window rects use, which is the one
+// SetContentRect takes and Display.apiUsableInWindowUnits returns. On Windows that space places a window at a raw-pixel
+// position while sizing it in logical units, so the offset is scaled by the backing scale before it is added to the
+// content origin; everywhere else the space is logical throughout.
+func (w *Window) apiPointToScreen(pt geom.Point) geom.Point {
+	if hw := w.wnd.hw; hw != nil {
+		return hw.pointToScreen(pt)
+	}
+	return w.nativePointToScreen(pt)
+}
+
+// apiPointFromScreen is the inverse of apiPointToScreen.
+func (w *Window) apiPointFromScreen(pt geom.Point) geom.Point {
+	if hw := w.wnd.hw; hw != nil {
+		return hw.pointFromScreen(pt)
+	}
+	return w.nativePointFromScreen(pt)
+}
+
+// apiMenuStackChanged is called on a window whose menu stack has just gained its first popup menu window (open is
+// true) or lost its last one.
+func (w *Window) apiMenuStackChanged(open bool) {
+	if hw := w.wnd.hw; hw != nil {
+		hw.menuStackChanged(open)
+		return
+	}
+	w.nativeMenuStackChanged(open)
 }
 
 // apiCurrentKeyModifiers is reached through Window.CurrentKeyModifiers, which is not guarded by IsValid(), from windows

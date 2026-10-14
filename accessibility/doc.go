@@ -19,8 +19,9 @@
 //
 // Coordinates in a tree are window-local, with a top-left origin, in logical units. A node's bounds are its whole
 // extent, not what its ancestors leave visible of it; Node.Offscreen says when none of it can be seen, and Tree.HitTest
-// confines each node to its ancestors. Text offsets are rune indexes, not bytes and not UTF-16 code units; adapters
-// convert as their platform requires.
+// confines each node to its ancestors, except a Node.Overlay, such as an open menu, which is confined by its own bounds
+// alone and so can be hit beyond the edge of the window. Text offsets are rune indexes, not bytes and not UTF-16 code
+// units; adapters convert as their platform requires.
 //
 // This package depends on nothing else in unison beyond the two enumerations it needs for roles and check states. It
 // must never import the root unison package, and a test enforces that.

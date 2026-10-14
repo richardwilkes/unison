@@ -2065,10 +2065,15 @@ func TestMenuAccessibilityKeyboardNavigation(t *testing.T) {
 	axPressMenuKey(c, screen, wnd, unison.KeyUp, "Cut")
 	axPressMenuKey(c, screen, wnd, unison.KeyDown, "Wrap")
 
-	// Moving onto an item with a sub-menu opens it and points at what is inside, which is where the focus goes.
-	screen.KeyPress(unison.KeyDown, mod.None)
+	// Moving onto an item with a sub-menu only highlights it.
+	axPressMenuKey(c, screen, wnd, unison.KeyDown, "More")
 	tree = screen.AccessibilityTree(wnd)
-	c.Equal(2, len(axNodesWithRole(tree, role.Menu)), "arrowing onto an item with a sub-menu opens it")
+	c.Equal(1, len(axNodesWithRole(tree, role.Menu)), "arrowing onto an item with a sub-menu leaves it closed")
+
+	// Right opens it and points at what is inside, which is where the focus goes.
+	screen.KeyPress(unison.KeyRight, mod.None)
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(2, len(axNodesWithRole(tree, role.Menu)), "Right opens the sub-menu")
 	deeper := axNamed(tree, "Deeper")
 	c.True(deeper != nil)
 	if deeper == nil {

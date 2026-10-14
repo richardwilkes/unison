@@ -16,9 +16,9 @@ package cocoa
 // Everything here runs on the main thread. AppKit delivers accessibility queries through the run loop, so they arrive
 // inside nativeWaitEvents or a nested modal loop — never part-way through a draw — and the answers are read from the
 // snapshot rather than from any live widget. There is no KVO, no polling, no goroutine and no notification observer:
-// nothing in this file runs until an assistive technology sends the content view one of the three selectors that can
-// activate accessibility support (see view_darwin.go), and nothing runs afterwards except in answer to a query, a
-// published snapshot, or a window being torn down.
+// apart from recording view aliases (see SetAXViewAlias), nothing in this file runs until an assistive technology sends
+// the content view one of the three selectors that can activate accessibility support (see view_darwin.go), and nothing
+// runs afterwards except in answer to a query, a published snapshot, or a window being torn down.
 //
 // An assistive technology's request is handed to AccessibilityActionCallback, and the answer given back is optimistic:
 // "yes, this element advertises that action" rather than "yes, that has been done". What happens next is the callback's
@@ -238,6 +238,28 @@ type AXAdapter struct {
 // down — runs on the main thread.
 var axAdapters map[View]*AXAdapter
 
+// axViewAliases maps the content view of a window that another window's tree describes to that other window's content
+// view; see SetAXViewAlias. It is main thread only, for the same reasons axAdapters is.
+var axViewAliases map[View]View
+
+// SetAXViewAlias makes the content view alias answer accessibility queries through target's adapter: a hit test is
+// resolved in target's tree, and no children or focused element are reported for alias itself. It is meant for a popup
+// window whose content is described as part of the window that opened it. Main thread only.
+func SetAXViewAlias(alias, target View) {
+	if alias == 0 || target == 0 || alias == target {
+		return
+	}
+	if axViewAliases == nil {
+		axViewAliases = make(map[View]View)
+	}
+	axViewAliases[alias] = target
+}
+
+// ClearAXViewAlias undoes SetAXViewAlias for alias. Main thread only.
+func ClearAXViewAlias(alias View) {
+	delete(axViewAliases, alias)
+}
+
 var (
 	axElementClassOnce sync.Once
 	axElementClass     objc.Class
@@ -368,8 +390,9 @@ func (a *AXAdapter) publishModal(tree *accessibility.Tree) {
 }
 
 // Shutdown tells the accessibility system that every element the adapter handed out is gone, releases everything the
-// adapter holds and forgets it. It serves both a window being destroyed and support being turned off while the window
-// stays on the screen. Main thread only.
+// adapter holds and forgets it. Any alias that targets its view is kept, since the popup windows the aliases belong to
+// outlive the adapter; see ClearAXViewAlias. It serves both a window being destroyed and support being turned off while
+// the window stays on the screen. Main thread only.
 func (a *AXAdapter) Shutdown() {
 	if a == nil {
 		return
@@ -396,6 +419,8 @@ func (a *AXAdapter) Shutdown() {
 		// works in. An element that has just been announced as destroyed is asked what window and parent it belonged
 		// to, and axElementTarget answers that from the adapter registered for the view: unregistering first would
 		// leave each of those notifications describing an element with no window, no parent and no role at all.
+		// The aliases pointing at the view are kept: they belong to the popup windows, which outlive support being
+		// turned off, and are what lets the next query through one of them turn it back on for the target.
 		delete(axAdapters, a.view)
 		a.tree = nil
 	})
@@ -4136,8 +4161,12 @@ func axViewIsAdapted(v View) bool {
 
 // axViewAdapter returns the adapter for a content view, asking AccessibilityActivateCallback to create one if there is
 // not one yet. This is the only path that turns accessibility support on, and it is reached only from the three content
-// view selectors an assistive technology has to send before it can learn anything about the window.
+// view selectors an assistive technology has to send before it can learn anything about the window. A view with an
+// alias (see SetAXViewAlias) is answered for by its target, which is also the view whose window is activated.
 func axViewAdapter(v View) *AXAdapter {
+	if target, ok := axViewAliases[v]; ok {
+		v = target
+	}
 	if a, ok := axAdapters[v]; ok {
 		return a
 	}
@@ -4151,8 +4180,12 @@ func axViewAdapter(v View) *AXAdapter {
 }
 
 // axViewChildren answers the content view's accessibilityChildren from the window's root node, or reports that the view
-// has nothing to say and AppKit's own answer should stand.
+// has nothing to say and AppKit's own answer should stand. A view with an alias has no children, since its content is
+// listed by its target.
 func axViewChildren(v View) (children objc.ID, ok bool) {
+	if _, aliased := axViewAliases[v]; aliased {
+		return NSArrayFromIDs(), true
+	}
 	a := axViewAdapter(v)
 	if a == nil || a.tree == nil {
 		return 0, false
@@ -4163,8 +4196,12 @@ func axViewChildren(v View) (children objc.ID, ok bool) {
 // axViewFocusedElement answers the content view's accessibilityFocusedUIElement. The view itself stands in when nothing
 // within the window holds the focus, since the view is what represents the window's root. The node named may be a
 // virtual child a panel reported its focus on rather than the panel's own node — a list's or a table's current row —
-// which is what VoiceOver follows onto the row, exactly as it follows WebKit and Chromium onto an active descendant.
+// which is what VoiceOver follows onto the row, exactly as it follows WebKit and Chromium onto an active descendant. A
+// view with an alias answers nil, since the focus is reported by its target.
 func axViewFocusedElement(v View) (element objc.ID, ok bool) {
+	if _, aliased := axViewAliases[v]; aliased {
+		return 0, true
+	}
 	a := axViewAdapter(v)
 	if a == nil || a.tree == nil {
 		return 0, false
@@ -4172,12 +4209,14 @@ func axViewFocusedElement(v View) (element objc.ID, ok bool) {
 	return a.focusedElement(a.tree.Focus), true
 }
 
-// axViewHitTest answers the content view's accessibilityHitTest:.
+// axViewHitTest answers the content view's accessibilityHitTest:. A view with an alias is answered from its target's
+// tree, which describes the alias's content in the target's coordinates, even when that finds nothing.
 func axViewHitTest(v View, pt NSPoint) (element objc.ID, ok bool) {
+	_, aliased := axViewAliases[v]
 	a := axViewAdapter(v)
 	if a == nil || a.tree == nil {
-		return 0, false
+		return 0, aliased
 	}
 	element = a.hitTest(pt)
-	return element, element != 0
+	return element, aliased || element != 0
 }

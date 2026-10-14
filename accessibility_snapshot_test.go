@@ -11,6 +11,7 @@ package unison
 
 import (
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -324,6 +325,383 @@ func TestAccessibilityMenuSeparatorIsNeverTheFocus(t *testing.T) {
 	var stillFocused bool
 	screen.Do(func() { stillFocused = field.Is(wnd.CurrentFocus()) })
 	c.True(stillFocused, "the keyboard focus itself does not move while a menu is open")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityRemovedMenuItemStillShownTakesTheFocus covers an item removed from a menu while its popup is open,
+// which the popup goes on drawing and choosing. Highlighting it with the pointer reports the focus on it, and it offers
+// the focus, which moves the highlight onto it, as every other item the popup shows does.
+func TestAccessibilityRemovedMenuItemStillShownTakesTheFocus(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var kept, removed *Panel
+	c.True(screen.Do(func() {
+		m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two", "Three")
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		if m.popupPanel == nil {
+			return
+		}
+		kept = m.items[0].panel
+		removed = m.items[1].panel
+		m.RemoveItem(1)
+	}))
+	c.NotNil(removed)
+	if removed == nil {
+		return
+	}
+	screen.MouseMove(screen.PanelCenter(removed), mod.None)
+	tree := screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	node := screen.AccessibilityNodeFor(removed)
+	c.NotNil(node)
+	if tree == nil || node == nil {
+		return
+	}
+	c.Equal(node.ID, tree.Focus, "the removed item the pointer highlights is the focus")
+	c.True(node.Focused)
+	c.True(node.Focusable, "a removed item the popup shows is focusable like the rest")
+	c.True(node.Actions.Has(accessibility.Focus))
+
+	screen.MouseMove(screen.PanelCenter(kept), mod.None)
+	tree = screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{Node: node.ID, Action: accessibility.Focus}),
+		"the focus action moves the highlight onto the removed item")
+	tree = screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	if tree != nil {
+		c.Equal(node.ID, tree.Focus)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityMenuInPopupIsDescribedByItsOwner covers a menu shown in a popup window of its own that overflows the
+// small window it was opened from. The popup publishes nothing: the menu is described as part of its owner, with its
+// bounds translated into the owner's space and marked as an overlay, so an assistive technology hit-testing beyond the
+// owner's edge still finds its items, and the requests it makes of them are carried out.
+func TestAccessibilityMenuInPopupIsDescribedByItsOwner(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 200, 100))
+	var chosen []string
+	var m, sub *menu
+	var popup *Window
+	var menuPanel *Panel
+	var itemPanels []*Panel
+	var subTitle *Panel
+	var expected []geom.Rect
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		m = newTestMenu(f, UserBaseID, &chosen, menuItemTitles(12)...)
+		sub = newTestMenu(f, UserBaseID+100, &chosen, "Deep", "Deeper")
+		m.InsertMenu(-1, sub)
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		if m.popupPanel == nil {
+			return
+		}
+		popup = m.popupPanel.Window()
+		menuPanel = m.popupPanel.AsPanel()
+		offset := popup.ContentRect().Point.Sub(owner.ContentRect().Point)
+		for _, item := range m.items {
+			if item.subMenu != nil {
+				subTitle = item.panel
+				continue
+			}
+			itemPanels = append(itemPanels, item.panel)
+			r := item.panel.RectToRoot(item.panel.ContentRect(true))
+			r.Point = r.Point.Add(offset)
+			expected = append(expected, r)
+		}
+	}))
+	c.NotNil(popup)
+	c.NotNil(subTitle)
+	if popup == nil || subTitle == nil || len(itemPanels) == 0 {
+		return
+	}
+
+	tree := screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	if tree == nil {
+		return
+	}
+	root := tree.Node(tree.Root)
+	menuNode := screen.AccessibilityNodeFor(menuPanel)
+	c.NotNil(menuNode, "the menu is described in its owner's tree")
+	if root == nil || menuNode == nil {
+		return
+	}
+	c.Equal(role.Menu, menuNode.Role)
+	c.True(menuNode.Overlay, "the menu is drawn above its owner, so it is an overlay")
+	c.Equal(tree.Root, menuNode.Parent)
+	c.True(len(root.Children) != 0 && root.Children[0] == menuNode.ID, "the menu comes first, above the content")
+	c.False(root.Overlay, "nothing else is an overlay")
+
+	var outside *accessibility.Node
+	for i, panel := range itemPanels {
+		node := screen.AccessibilityNodeFor(panel)
+		c.NotNil(node)
+		if node == nil {
+			continue
+		}
+		c.Equal(expected[i], node.Bounds, "an item's bounds are its popup's, moved into the owner's space")
+		c.False(node.Overlay)
+		if outside == nil && !node.Bounds.Center().In(root.Bounds) {
+			outside = node
+		}
+	}
+	c.NotNil(outside, "the menu overflows its owner")
+	if outside != nil {
+		c.Equal(outside.ID, tree.HitTest(outside.Bounds.Center()), "an item beyond the owner's edge is hit")
+	}
+	if first := screen.AccessibilityNodeFor(itemPanels[0]); first != nil {
+		c.True(first.Bounds.Center().In(root.Bounds))
+		c.Equal(first.ID, tree.HitTest(first.Bounds.Center()), "an item over the owner's content is hit")
+	}
+
+	// The popup publishes nothing of its own: asking for its description describes its owner.
+	popupTree := screen.AccessibilityTree(popup)
+	c.NotNil(popupTree)
+	if popupTree != nil {
+		c.Equal(tree.Root, popupTree.Root)
+	}
+	var popupAX *windowAccessibility
+	c.True(screen.Do(func() { popupAX = popup.ax }))
+	c.Nil(popupAX)
+
+	// Expanding the item that holds the sub-menu opens it in a popup of its own, and the next description of the owner
+	// holds its items.
+	subTitleNode := screen.AccessibilityNodeFor(subTitle)
+	c.NotNil(subTitleNode)
+	if subTitleNode == nil {
+		return
+	}
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node: subTitleNode.ID, Action: accessibility.Expand,
+	}))
+	screen.Sync()
+	var subPanel *Panel
+	var deeper *Panel
+	c.True(screen.Do(func() {
+		if sub.popupPanel != nil {
+			subPanel = sub.popupPanel.AsPanel()
+			deeper = sub.items[1].panel
+		}
+	}))
+	c.NotNil(subPanel, "the sub-menu has opened")
+	if subPanel == nil {
+		return
+	}
+	tree = screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	subNode := screen.AccessibilityNodeFor(subPanel)
+	deeperNode := screen.AccessibilityNodeFor(deeper)
+	c.NotNil(subNode)
+	c.NotNil(deeperNode, "the sub-menu's items join the owner's tree")
+	if tree == nil || subNode == nil || deeperNode == nil {
+		return
+	}
+	c.True(subNode.Overlay)
+	c.Equal(subNode.ID, tree.Node(tree.Root).Children[0], "the newest menu comes first")
+	c.Equal(deeperNode.ID, tree.HitTest(deeperNode.Bounds.Center()))
+
+	// Pressing an item in a popup chooses it.
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node: deeperNode.ID, Action: accessibility.Press,
+	}))
+	screen.Sync()
+	var picked []string
+	var open int
+	c.True(screen.Do(func() {
+		picked = append(picked, chosen...)
+		open = len(owner.root.openMenuPanels)
+	}))
+	c.Equal([]string{"Deeper"}, picked)
+	c.Equal(0, open, "choosing an item closes the menus")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAxSpaceForRescalesAPopupOnAnotherDisplay verifies that the mapping from a popup's root space into its owner's
+// rescales as well as moves when the two windows' backing scales differ, as they do on Windows when a menu lands on a
+// monitor of another scale than its owner's, and that it is a plain move where the window-rect space is logical
+// throughout.
+func TestAxSpaceForRescalesAPopupOnAnotherDisplay(t *testing.T) {
+	c := check.New(t)
+	// Windows' window-rect space keeps a raw-pixel origin with logical sizes: the owner sits at raw (100, 50) on a 100%
+	// display and the popup at raw (2000, 300) on a 200% one.
+	popupToScreen := func(pt geom.Point) geom.Point { return geom.NewPoint(2000, 300).Add(pt.Mul(2)) }
+	ownerFromScreen := func(pt geom.Point) geom.Point { return pt.Sub(geom.NewPoint(100, 50)) }
+	space := axSpaceFor(popupToScreen, ownerFromScreen)
+	c.Equal(geom.NewPoint(2, 2), space.scale)
+	c.Equal(geom.NewPoint(1900, 250), space.offset)
+	r := geom.NewRect(10, 20, 30, 40)
+	c.Equal(geom.NewRect(1920, 290, 60, 80), space.to(r), "an item's bounds are rescaled as well as moved")
+	c.Equal(r, space.from(space.to(r)))
+	// The owner on the 200% display and the popup on the 100% one.
+	space = axSpaceFor(func(pt geom.Point) geom.Point { return geom.NewPoint(100, 50).Add(pt) },
+		func(pt geom.Point) geom.Point { return pt.Sub(geom.NewPoint(2000, 300)).Div(2) })
+	c.Equal(geom.NewPoint(0.5, 0.5), space.scale)
+	c.Equal(geom.NewRect(-945, -115, 15, 20), space.to(r))
+	// Everywhere else the space is logical throughout, so only the origin moves.
+	space = axSpaceFor(func(pt geom.Point) geom.Point { return pt.Add(geom.NewPoint(5, 5)) },
+		func(pt geom.Point) geom.Point { return pt.Sub(geom.NewPoint(1, 2)) })
+	c.Equal(axSpace{scale: geom.NewPoint(1, 1), offset: geom.NewPoint(4, 3)}, space)
+	c.Equal(geom.NewRect(14, 23, 30, 40), space.to(r))
+}
+
+// axTextLinesPanel describes itself, a virtual child and a virtual document with text laid out on one line, handing all
+// three the same lines, as a widget that caches its measurements may. It gives the virtual child its text only after
+// adding it, as TableHeader does for a column.
+type axTextLinesPanel struct {
+	info *accessibility.TextInfo
+	Panel
+}
+
+// newAXTextLinesPanel creates the panel with its frame set, since it is described without a window to lay it out.
+func newAXTextLinesPanel() *axTextLinesPanel {
+	p := &axTextLinesPanel{info: &accessibility.TextInfo{
+		Text:  "ab",
+		Lines: []accessibility.Line{{Advances: []float32{0, 8, 20}, End: 2, Bounds: geom.NewRect(5, 6, 20, 10)}},
+	}}
+	p.Self = p
+	p.SetFrameRect(geom.NewRect(0, 0, 100, 50))
+	return p
+}
+
+func (p *axTextLinesPanel) ProvideAccessibility(b *AccessibilityBuilder) {
+	b.Node().Role = role.Paragraph
+	b.Node().Text = p.info
+	var child *accessibility.Node
+	b.AddVirtualChild("text", func(n *accessibility.Node) {
+		n.Role = role.Paragraph
+		n.Bounds = geom.NewRect(0, 20, 50, 20)
+		child = n
+	})
+	if child != nil {
+		child.Text = p.info
+	}
+	b.AddVirtualChild("document", func(n *accessibility.Node) {
+		n.Role = role.Document
+		n.Bounds = geom.NewRect(50, 20, 50, 20)
+		n.Document = &accessibility.DocumentInfo{Text: *p.info}
+	})
+}
+
+// TestAccessibilityTextGeometryFollowsTheSpace verifies that the lines of a node described in another window's space,
+// as an item of a menu shown on a display of another scale than its owner's is, are rescaled along with its bounds,
+// since an adapter adds them to its origin, and that the lines the widget handed over are left as they were.
+func TestAccessibilityTextGeometryFollowsTheSpace(t *testing.T) {
+	c := check.New(t)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300})
+	var nodes []*accessibility.Node
+	var original accessibility.Line
+	c.True(screen.Do(func() {
+		p := newAXTextLinesPanel()
+		s := &axSnapshot{
+			tree:    &accessibility.Tree{Nodes: make(map[accessibility.NodeID]*accessibility.Node)},
+			targets: make(map[accessibility.NodeID]axTarget),
+			space:   axIdentitySpace,
+		}
+		s.visitInSpace(p.AsPanel(), 0, axSpace{scale: geom.NewPoint(2, 3), offset: geom.NewPoint(30, 40)})
+		if node := s.tree.Nodes[p.Accessibility.id]; node != nil {
+			nodes = append(nodes, node)
+			for _, id := range node.Children {
+				nodes = append(nodes, s.tree.Nodes[id])
+			}
+		}
+		original = p.info.Lines[0]
+	}))
+	c.Equal(3, len(nodes))
+	if len(nodes) != 3 {
+		return
+	}
+	c.Equal(geom.NewRect(30, 40, 200, 150), nodes[0].Bounds)
+	c.Equal(geom.NewRect(30, 100, 100, 60), nodes[1].Bounds)
+	want := accessibility.Line{Advances: []float32{0, 16, 40}, End: 2, Bounds: geom.NewRect(10, 18, 40, 30)}
+	for i, node := range nodes {
+		var info *accessibility.TextInfo
+		if node.Document != nil {
+			info = &node.Document.Text
+		} else {
+			info = node.Text
+		}
+		c.NotNil(info)
+		if info != nil {
+			c.Equal([]accessibility.Line{want}, info.Lines, "node %d's lines are in the space of its bounds", i)
+		}
+	}
+	c.Equal(accessibility.Line{Advances: []float32{0, 8, 20}, End: 2, Bounds: geom.NewRect(5, 6, 20, 10)}, original,
+		"the widget's own lines are left alone")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestAccessibilityIsWithinStopsOnAParentCycle verifies that asking whether a node is beneath another stops on a cycle
+// of parent links, which an Accessibility.Callback may write, rather than walking it forever on the UI thread. The walk
+// takes microseconds, so the deadline only tells an endless walk from a finished one and is not timing-sensitive.
+func TestAccessibilityIsWithinStopsOnAParentCycle(t *testing.T) {
+	c := check.New(t)
+	s := &axSnapshot{tree: &accessibility.Tree{Nodes: map[accessibility.NodeID]*accessibility.Node{
+		1: {ID: 1},
+		2: {ID: 2, Parent: 3},
+		3: {ID: 3, Parent: 2},
+		4: {ID: 4, Parent: 4},
+		5: {ID: 5, Parent: 6},
+		6: {ID: 6, Parent: 1},
+	}}}
+	done := make(chan []bool, 1)
+	go func() {
+		done <- []bool{
+			s.isWithin(s.tree.Nodes[2], 1),
+			s.isWithin(s.tree.Nodes[4], 1),
+			s.isWithin(s.tree.Nodes[2], 3),
+			s.isWithin(s.tree.Nodes[5], 1),
+		}
+	}()
+	select {
+	case within := <-done:
+		c.Equal([]bool{false, false, true, true}, within)
+	case <-time.After(10 * time.Second):
+		t.Fatal("isWithin followed a cycle of parent links rather than stopping")
+	}
+
+	// What reaches it from a description: a node claiming the focus beside a field that holds it, on a platform where
+	// such a claim is weighed, and naming itself as its own parent.
+	var wnd *Window
+	var field *Field
+	var cyclic *Panel
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			if wnd = newHeadlessTestWindow(t, "cycle", geom.NewRect(10, 10, 300, 200)); wnd == nil {
+				return
+			}
+			field = NewField()
+			cyclic = NewPanel()
+			cyclic.Accessibility.Name = "Cyclic"
+			cyclic.Accessibility.Callback = func(n *accessibility.Node) {
+				n.Focused = true
+				n.Parent = n.ID
+			}
+			wnd.Content().SetLayout(&FlexLayout{Columns: 1})
+			wnd.Content().AddChild(field)
+			wnd.Content().AddChild(cyclic)
+			wnd.SetFocus(field)
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	saved := axCaretBlockReportsFocus
+	defer screen.Do(func() { axCaretBlockReportsFocus = saved })
+	screen.Do(func() { axCaretBlockReportsFocus = true })
+	tree := screen.AccessibilityTree(wnd)
+	c.NotNil(tree)
+	node := screen.AccessibilityNodeFor(cyclic)
+	fieldNode := screen.AccessibilityNodeFor(field)
+	c.NotNil(node)
+	c.NotNil(fieldNode)
+	if tree != nil && node != nil && fieldNode != nil {
+		c.False(node.Focused, "a claim from outside the panel holding the focus is taken away")
+		c.Equal(fieldNode.ID, tree.Focus)
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

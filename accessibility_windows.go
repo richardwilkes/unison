@@ -77,7 +77,12 @@ var axHeadingsTakeFocus = false
 // the snapshot it answers from. Both paths that reach it — a WM_GETOBJECT arriving for a window that has no adapter,
 // and the ordinary after-draw publish of a window that gained one when some other window was asked about — therefore
 // end up in nativeAccessibilityPublish with the first tree in hand.
+//
+// A popup menu window has no adapter of its own and reports its owner's, whose tree holds the popup's menu.
 func (w *Window) w32AccessibilityAdapter() *uia.Window {
+	if w.isPopup() {
+		return w.menuOwner().w32AccessibilityAdapter()
+	}
 	// The flag makes this re-entrant safe. Creating the adapter raises the events a window appearing for the first time
 	// raises, and UI Automation answers an event by asking about what it names, so a second request for this window can
 	// arrive before the first has finished being answered. Such a request is told there is no provider yet, which costs
@@ -110,7 +115,8 @@ func (w *Window) w32AccessibilityAdapter() *uia.Window {
 // nativeAccessibilityPublish hands a freshly built snapshot, and the events describing how it differs from the one
 // before it, to the platform's assistive-technology adapter.
 func (w *Window) nativeAccessibilityPublish(tree *accessibility.Tree, events []accessibility.Event) {
-	if w.wnd.wnd == 0 || tree == nil {
+	// A popup menu window is described as part of its owner and never gets an adapter of its own.
+	if w.wnd.wnd == 0 || tree == nil || w.isPopup() {
 		return
 	}
 	if w.wnd.uia == nil {
@@ -145,6 +151,14 @@ func (w *Window) nativeAccessibilityShutdown() {
 		// and raises the event that says the window has closed, both of which name it.
 		w.wnd.uia.Destroy()
 		w.wnd.uia = nil
+	}
+	if w.wnd.uiaAnsweredForOwner {
+		// A popup menu window that answered with its owner's root withdraws its own handle, as uia.Window.Destroy does
+		// for the owner's.
+		w.wnd.uiaAnsweredForOwner = false
+		if w.wnd.wnd != 0 {
+			uia.ReturnRawElementProvider(w.wnd.wnd, 0, 0, nil)
+		}
 	}
 }
 

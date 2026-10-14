@@ -55,3 +55,24 @@ func TestSetContentNilSupported(t *testing.T) {
 	w.SetContent(panel)
 	c.Equal(panel, w.Content())
 }
+
+// TestRootPanelChildOrderIgnoresOpenMenus verifies that the content and the tooltip take their places among the root's
+// children whatever menus are open, since those are shown in popup windows of their own rather than as children.
+func TestRootPanelChildOrderIgnoresOpenMenus(t *testing.T) {
+	c := check.New(t)
+	w := newContentTestWindow()
+	bar, ok := NewInWindowMenuFactory().NewMenu(RootMenuID, "", nil).(*menu)
+	c.True(ok)
+	w.root.setMenuBar(bar)
+	mp := newTestMenuPanel(0, 0, 100, 100)
+	newTestPopupWindow(w, mp)
+	w.root.insertMenu(mp)
+	tip := NewPanel()
+	w.root.setTooltip(tip)
+	content := NewPanel()
+	w.root.setContent(content)
+	c.Equal([]*Panel{w.root.menuBarPanel.AsPanel(), tip, content}, w.root.Children())
+	w.root.setTooltip(nil)
+	w.root.setTooltip(tip)
+	c.Equal([]*Panel{w.root.menuBarPanel.AsPanel(), tip, content}, w.root.Children())
+}

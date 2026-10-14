@@ -89,26 +89,39 @@ func (d *Display) FitRectOnto(r geom.Rect) geom.Rect {
 	return r
 }
 
-// BestDisplayForRect returns the display with the greatest overlap with the rectangle, or the primary display if there
-// is no overlap.
+// BestDisplayForRect returns the display with the greatest overlap with the rectangle, or, for an empty rectangle, the
+// display holding its origin. It returns the primary display when there is no such display.
 func BestDisplayForRect(r geom.Rect) *Display {
-	var bestArea float32
-	var bestDisplay *Display
-	for _, display := range AllDisplays() {
-		if r.In(display.Usable) {
-			return display
+	if best := bestDisplayAmong(AllDisplays(), r); best != nil {
+		return best
+	}
+	return PrimaryDisplay()
+}
+
+// bestDisplayAmong returns the one of displays whose usable area contains r or, failing that, overlaps it most, or nil
+// when none overlaps it. An empty r can do neither, so it belongs to the display whose usable area holds its origin.
+func bestDisplayAmong(displays []*Display, r geom.Rect) *Display {
+	if r.Empty() {
+		origin := r.Point
+		for _, d := range displays {
+			if origin.In(d.Usable) {
+				return d
+			}
 		}
-		ri := r.Intersect(display.Usable)
-		if !ri.Empty() {
-			area := ri.Width * ri.Height
-			if bestArea < area {
+		return nil
+	}
+	var best *Display
+	var bestArea float32
+	for _, d := range displays {
+		if d.Usable.Contains(r) {
+			return d
+		}
+		if ri := r.Intersect(d.Usable); !ri.Empty() {
+			if area := ri.Width * ri.Height; bestArea < area {
 				bestArea = area
-				bestDisplay = display
+				best = d
 			}
 		}
 	}
-	if bestDisplay == nil {
-		return PrimaryDisplay()
-	}
-	return bestDisplay
+	return best
 }
