@@ -307,6 +307,19 @@ func (w Window) SetAcceptsMouseMovedEvents(accepts bool) {
 	objc.ID(w).Send(Sel("setAcceptsMouseMovedEvents:"), accepts)
 }
 
+// Number returns the window's number, which identifies it to the window server.
+func (w Window) Number() int {
+	return int(objc.Send[int64](objc.ID(w), Sel("windowNumber")))
+}
+
+// WindowNumberAtPoint returns the number of the window, of any application, that is frontmost at pt, in screen
+// coordinates with AppKit's bottom-left origin, or 0 when there is none. A window that ignores mouse events is passed
+// over, as a press there would pass over it.
+func WindowNumberAtPoint(pt geom.Point) int {
+	return int(objc.Send[int64](objc.ID(Cls("NSWindow")), Sel("windowNumberAtPoint:belowWindowWithWindowNumber:"),
+		NSPointFromPoint(pt), int64(0)))
+}
+
 // MouseLocationOutsideOfEventStream returns the current mouse position in the window's coordinate system.
 func (w Window) MouseLocationOutsideOfEventStream() geom.Point {
 	return PointFromNSPoint(objc.Send[NSPoint](objc.ID(w), Sel("mouseLocationOutsideOfEventStream")))

@@ -27,6 +27,10 @@ const (
 // nsWorkspaceActiveSpaceDidChangeNotification is the name of NSWorkspace's notification that the active Space changed.
 const nsWorkspaceActiveSpaceDidChangeNotification = "NSWorkspaceActiveSpaceDidChangeNotification"
 
+// nsMenuDidBeginTrackingNotification is the name of NSMenu's notification that a menu has begun tracking, which the
+// application's own menu bar posts as one of its menus opens.
+const nsMenuDidBeginTrackingNotification = "NSMenuDidBeginTrackingNotification"
+
 var (
 	menuStackObserverClassOnce sync.Once
 	menuStackObserverClass     objc.Class
@@ -42,10 +46,13 @@ var (
 )
 
 // InstallMenuStackMonitor arranges for f to be called on every mouse button press until RemoveMenuStackMonitor is
-// called, with the window of this application the press was made in, or 0 for one made in none of them: in the
-// application's own menu bar, or, through a global event monitor, in another application's window, the Dock, a menu bar
-// extra or Notification Center, none of which take the key status from the window whose menus are open. f is also
-// called with 0 when the active Space changes. A further install replaces f. Main thread only.
+// called, with the window of this application the press was made in, or 0 for one made in none of them, which the
+// global event monitor reports: in another application's window, the Dock, a menu bar extra or Notification Center,
+// none of which take the key status from the window whose menus are open. A press on the application's own menu bar
+// reaches neither monitor, since menu tracking consumes it before it is dispatched through sendEvent:, so f is called
+// with 0 as a menu of the bar begins tracking instead, which also covers a menu opened from the keyboard or by an
+// assistive technology. f is also called with 0 when the active Space changes. A further install replaces f. Main
+// thread only.
 func InstallMenuStackMonitor(f func(w Window)) {
 	menuStackCallback = f
 	if menuStackLocalMonitor != 0 {
@@ -71,18 +78,26 @@ func InstallMenuStackMonitor(f func(w Window)) {
 		}
 		workspaceNotificationCenter().Send(Sel("addObserver:selector:name:object:"), menuStackObserver,
 			Sel("activeSpaceDidChange:"), NSStringFromGo(nsWorkspaceActiveSpaceDidChangeNotification), 0)
+		defaultNotificationCenter().Send(Sel("addObserver:selector:name:object:"), menuStackObserver,
+			Sel("menuDidBeginTracking:"), NSStringFromGo(nsMenuDidBeginTrackingNotification), 0)
 	})
 }
 
 // RemoveMenuStackMonitor undoes InstallMenuStackMonitor. Called from within the function the monitor is calling, it
-// takes effect once that function returns, since the block being run must not be released from inside its own run.
-// Main thread only.
+// takes effect on the next pass of the main run loop rather than at once, since the block being run must not be
+// released from inside its own run, which lasts until the event monitor's call into it returns, and a monitor
+// installed again before then stays. Main thread only.
 func RemoveMenuStackMonitor() {
 	menuStackCallback = nil
 	if menuStackInCallback {
 		menuStackRemovePending = true
 		return
 	}
+	removeMenuStackMonitorNow()
+}
+
+// removeMenuStackMonitorNow takes the monitors and observers down.
+func removeMenuStackMonitorNow() {
 	if menuStackLocalMonitor == 0 {
 		return
 	}
@@ -97,12 +112,16 @@ func RemoveMenuStackMonitor() {
 		WithPool(func() {
 			workspaceNotificationCenter().Send(Sel("removeObserver:name:object:"), menuStackObserver,
 				NSStringFromGo(nsWorkspaceActiveSpaceDidChangeNotification), 0)
+			defaultNotificationCenter().Send(Sel("removeObserver:name:object:"), menuStackObserver,
+				NSStringFromGo(nsMenuDidBeginTrackingNotification), 0)
 		})
 	}
 }
 
-// menuStackMonitorFired hands a press in w, or 0, to the installed function, if any, and carries out a removal the
-// function asked for once it has returned, unless the function installed another in the meantime.
+// menuStackMonitorFired hands a press in w, or 0, to the installed function, if any, and arranges for a removal the
+// function asked for to be carried out on the next pass of the main run loop, by which time the block that may be
+// running now has returned, unless the function installed another in the meantime. Without the observer to perform
+// that later, which is only the case when its class could not be registered, the removal is carried out at once.
 func menuStackMonitorFired(w Window) {
 	if menuStackCallback == nil {
 		return
@@ -113,17 +132,34 @@ func menuStackMonitorFired(w Window) {
 	if menuStackRemovePending {
 		menuStackRemovePending = false
 		if menuStackCallback == nil {
-			RemoveMenuStackMonitor()
+			if menuStackObserver != 0 {
+				menuStackObserver.Send(Sel("performSelectorOnMainThread:withObject:waitUntilDone:"),
+					Sel("removeMonitorLater:"), 0, false)
+			} else {
+				removeMenuStackMonitorNow()
+			}
 		}
 	}
 }
 
-// registerMenuStackObserverClass registers the class whose instance observes the active Space changing.
+// registerMenuStackObserverClass registers the class whose instance observes the active Space changing and a menu of
+// the application's menu bar beginning to track, and carries out a removal deferred by menuStackMonitorFired, unless
+// a monitor has been installed again since.
 func registerMenuStackObserverClass() {
 	menuStackObserverClass, menuStackObserverClassErr = objc.RegisterClass("macMenuStackObserver", Cls("NSObject"),
 		nil, nil, []objc.MethodDef{{
 			Cmd: Sel("activeSpaceDidChange:"),
 			Fn:  func(_ objc.ID, _ objc.SEL, _ objc.ID) { menuStackMonitorFired(0) },
+		}, {
+			Cmd: Sel("menuDidBeginTracking:"),
+			Fn:  func(_ objc.ID, _ objc.SEL, _ objc.ID) { menuStackMonitorFired(0) },
+		}, {
+			Cmd: Sel("removeMonitorLater:"),
+			Fn: func(_ objc.ID, _ objc.SEL, _ objc.ID) {
+				if menuStackCallback == nil {
+					removeMenuStackMonitorNow()
+				}
+			},
 		}})
 	if menuStackObserverClassErr != nil {
 		menuStackObserverClassErr = errs.NewWithCause("unable to register macMenuStackObserver class",
@@ -134,4 +170,9 @@ func registerMenuStackObserverClass() {
 // workspaceNotificationCenter returns the notification center of the shared NSWorkspace.
 func workspaceNotificationCenter() objc.ID {
 	return objc.ID(Cls("NSWorkspace")).Send(Sel("sharedWorkspace")).Send(Sel("notificationCenter"))
+}
+
+// defaultNotificationCenter returns the process's default NSNotificationCenter.
+func defaultNotificationCenter() objc.ID {
+	return objc.ID(Cls("NSNotificationCenter")).Send(Sel("defaultCenter"))
 }

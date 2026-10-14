@@ -1278,7 +1278,7 @@ func TestFirstVisibleTopLevelWindowSkipsHiddenWindows(t *testing.T) {
 		}))
 	c.NotNil(hidden)
 	var popup *Window
-	var first, firstVisible, firstMinimized, noneVisible, noWindows *Window
+	var first, firstVisible, firstMinimized, hiddenWhileMinimized, shownAgain, noneVisible, noWindows *Window
 	c.True(screen.Do(func() {
 		var err error
 		if popup, err = newPopupWindow(visible, "popup"); err != nil {
@@ -1294,6 +1294,10 @@ func TestFirstVisibleTopLevelWindowSkipsHiddenWindows(t *testing.T) {
 		firstVisible = firstVisibleTopLevelWindow()
 		windowList = []*Window{popup, hidden, minimized, visible}
 		firstMinimized = firstVisibleTopLevelWindow()
+		minimized.Hide()
+		hiddenWhileMinimized = firstVisibleTopLevelWindow()
+		minimized.Show()
+		shownAgain = firstVisibleTopLevelWindow()
 		windowList = []*Window{popup, hidden}
 		noneVisible = firstVisibleTopLevelWindow()
 		windowList = nil
@@ -1302,6 +1306,19 @@ func TestFirstVisibleTopLevelWindowSkipsHiddenWindows(t *testing.T) {
 	c.True(first == hidden, "any top-level window will do for the clipboard")
 	c.True(firstVisible == visible, "but only a visible one may be given the focus")
 	c.True(firstMinimized == minimized, "or a minimized one, which is restored")
+	c.True(hiddenWhileMinimized == visible, "but not one the application hid while it was minimized")
+	c.True(shownAgain == minimized, "until it is shown again")
 	c.True(noneVisible == nil)
 	c.True(noWindows == nil)
+}
+
+// TestModalCenterFrame verifies where a window is placed to sit over another: centered horizontally and a third of the
+// way down, whether the math is done in place or on a display whose space is the same as the window-rect space.
+func TestModalCenterFrame(t *testing.T) {
+	c := check.New(t)
+	within := geom.NewRect(100, 100, 800, 600)
+	frame := geom.NewRect(0, 0, 400, 300)
+	c.Equal(geom.NewRect(300, 200, 400, 300), modalCenterFrame(nil, within, frame))
+	d := &Display{Usable: geom.NewRect(0, 0, 1920, 1080), headless: true}
+	c.Equal(geom.NewRect(300, 200, 400, 300), modalCenterFrame(d, within, frame))
 }

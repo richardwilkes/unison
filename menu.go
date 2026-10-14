@@ -183,17 +183,16 @@ func (m *menu) insertItem(atIndex int, mi *menuItem) {
 	}
 }
 
+// RemoveItem takes the item at index out of the menu. The item keeps its reference to the menu, since its panel may
+// still be showing in the menu's open popup, which draws and chooses it through that reference; see menuItem.Menu.
 func (m *menu) RemoveItem(index int) {
 	if index >= 0 && index < len(m.items) {
-		m.items[index].menu = nil
 		m.items = slices.Delete(m.items, index, index+1)
 	}
 }
 
+// RemoveAll takes every item out of the menu. See RemoveItem for what the items keep.
 func (m *menu) RemoveAll() {
-	for _, mi := range m.items {
-		mi.menu = nil
-	}
 	m.items = nil
 }
 
@@ -232,22 +231,43 @@ func (m *menu) Popup(where geom.Rect, itemIndex int) {
 	where.Height = fr.Height
 	where.Width = max(fr.Width, where.Width)
 	where.Point = owner.apiPointToScreen(where.Point)
-	m.ensureOnDisplay(where, noTopLimit, owner, itemIndex)
+	m.ensureOnDisplay(where, menuFit{}, owner, itemIndex)
 	m.setKeyIndex(itemIndex)
 }
 
+// menuFit says how fitMenuRect places a menu that does not fit where it was asked to go, beyond shifting it onto the
+// display and shrinking it: a menu opened from the menu bar goes above the bar when the space below the bar would show
+// too little of it, and a sub-menu goes to the left of its item when it does not fit to the right of it. The edges are
+// in the space window rects use, whose origins are the display's own on every platform (see
+// Display.apiRectToWindowUnits), and minHeight is in window units until menuWindowRect converts it. The zero value asks
+// for neither.
+type menuFit struct {
+	// barTop and barBottom are the top and bottom of the title a menu bar menu opens from, and minHeight is the height
+	// the menu must be able to show below the bar to be placed there: that of its first menuMinVisibleItems items.
+	barTop, barBottom, minHeight float32
+	// leftOf is the x a sub-menu's right edge goes at when it does not fit to the right of where it was asked to go:
+	// the left edge of the item it opens from.
+	leftOf float32
+	bar    bool
+	sub    bool
+}
+
+// menuMinVisibleItems is how many of its items a menu opened from the menu bar must be able to show below the bar to be
+// placed there rather than above it.
+const menuMinVisibleItems = 3
+
 // ensureOnDisplay places the popup window at where, in the space window rects use, shifting it and, when that is not
-// enough, shrinking it so that it lies within the usable area of its display and no higher than top, highlights the
-// item at keyIndex, if there is one, as the one the keys act on, and then shows the window. A menu opened from the menu
-// bar passes the bar's bottom as top so that it scrolls rather than covering the bar. The display is the one where
-// overlaps most, or anchor's when where overlaps none. The fitting is done in the display's own space, since the
-// window-rect space is not one its edges can be computed in on every platform; see Display.apiRectFromWindowUnits.
+// enough, shrinking it so that it lies within the usable area of its display, placed as fit says, highlights the item
+// at keyIndex, if there is one, as the one the keys act on, and then shows the window. A menu opened from the menu bar
+// passes the bar's edges in fit so that it scrolls rather than covering the bar. The display is the one where overlaps
+// most, or anchor's when where overlaps none. The fitting is done in the display's own space, since the window-rect
+// space is not one its edges can be computed in on every platform; see Display.apiRectFromWindowUnits.
 //
 // The highlight comes before the show because on X11 the window is drawn as it is shown, and every draw of a popup
 // describes the owner's menus to assistive technologies (see Window.draw): a first draw with nothing highlighted would
 // report the focus on the menu, and the next one, once setKeyIndex had run, on the item, so a screen reader would
 // announce the menu only to be cut off by the item.
-func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window, keyIndex int) {
+func (m *menu) ensureOnDisplay(where geom.Rect, fit menuFit, anchor *Window, keyIndex int) {
 	if m.popupPanel == nil {
 		return
 	}
@@ -255,8 +275,7 @@ func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window, key
 	if !popup.IsValid() {
 		return
 	}
-	d := menuDisplayFor(where, anchor)
-	popup.SetContentRect(d.apiRectToWindowUnits(fitMenuRect(d.apiRectFromWindowUnits(where), d.Usable, top)))
+	popup.SetContentRect(menuWindowRect(where, fit, menuDisplayFor(where, anchor)))
 	popup.ValidateLayout()
 	m.highlightKeyIndex(keyIndex)
 	popup.Show()
@@ -273,9 +292,62 @@ func (m *menu) highlightKeyIndex(index int) {
 	}
 }
 
-// fitMenuRect returns where shifted and, when that is not enough, shrunk so that it lies within usable and no higher
-// than top. All three are in the same space.
-func fitMenuRect(where, usable geom.Rect, top float32) geom.Rect {
+// menuWindowRect returns where, in the space window rects use, fitted onto d as fit says (see fitMenuRect), or where as
+// it is when d is nil, which it is on macOS while every display is asleep: there is nothing to fit the menu onto, and
+// the popup is still shown so that the menu stack it has joined matches what is on the screen.
+func menuWindowRect(where geom.Rect, fit menuFit, d *Display) geom.Rect {
+	if d == nil {
+		return where
+	}
+	fit.minHeight = d.apiRectFromWindowUnits(geom.Rect{Size: geom.NewSize(0, fit.minHeight)}).Height
+	return d.apiRectToWindowUnits(fitMenuRect(d.apiRectFromWindowUnits(where), d.Usable, fit))
+}
+
+// minVisibleHeight returns the height of the popup showing the menu's first menuMinVisibleItems items that are not
+// separators, or every item when there are fewer, as the popup is laid out now.
+func (m *menu) minVisibleHeight() float32 {
+	var content *Panel
+	var bottom float32
+	count := 0
+	for _, mi := range m.items {
+		if mi.isSeparator || mi.panel == nil {
+			continue
+		}
+		content = mi.panel.Parent()
+		bottom = mi.panel.FrameRect().Bottom()
+		count++
+		if count == menuMinVisibleItems {
+			break
+		}
+	}
+	if content == nil || m.popupPanel == nil {
+		return 0
+	}
+	// What the popup adds around its content, the borders and the scroll panel, wraps the first items just the same.
+	return m.popupPanel.FrameRect().Height - content.FrameRect().Height + bottom
+}
+
+// fitMenuRect returns where shifted and, when that is not enough, shrunk so that it lies within usable. A menu bar menu
+// (fit.bar) is kept no higher than the bar's bottom, unless the space below the bar would show less than fit.minHeight
+// of it and the space above the bar would show more, in which case it is placed above the bar, with its bottom at the
+// bar's top, and no lower. A sub-menu (fit.sub) that does not fit to the right of where it was asked to go is placed
+// with its right edge at fit.leftOf first. The rects and edges are all in the same space.
+func fitMenuRect(where, usable geom.Rect, fit menuFit) geom.Rect {
+	top := noTopLimit
+	switch {
+	case fit.bar:
+		top = fit.barBottom
+		below := usable.Bottom() - max(fit.barBottom, usable.Y)
+		if above := min(fit.barTop, usable.Bottom()) - usable.Y; below < fit.minHeight && above > below {
+			usable.Height = above
+			where.Y = fit.barTop - where.Height
+			top = noTopLimit
+		}
+	case fit.sub:
+		if where.Right() > usable.Right() {
+			where.X = fit.leftOf - where.Width
+		}
+	}
 	top = min(max(top, usable.Y), usable.Bottom())
 	if where.Width > usable.Width {
 		where.Width = usable.Width

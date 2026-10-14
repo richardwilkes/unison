@@ -536,6 +536,9 @@ const x11MenuGrabEventMask = x11.EventMaskButtonPress | x11.EventMaskButtonRelea
 // still down in a window other than a popup menu window, the pointer is grabbed for that window instead, without owner
 // events, as the implicit grab would have been, and x11ProcessEvent releases it when the last button comes up.
 // Otherwise a release made over another client's window would never arrive and the press would be left stuck down.
+// Such a press may also have reached the server without having been read yet, as when the event loop lags behind a
+// double-click, so when no window records one the server is asked, and a button it reports down keeps this grab in
+// place until that press's release, with the window whose stack closed recording it.
 func (w *Window) nativeMenuStackChanged(open bool) {
 	if open {
 		if w.wnd.menuGrab || w.wnd.id == 0 || dragSource != nil {
@@ -555,16 +558,43 @@ func (w *Window) nativeMenuStackChanged(open bool) {
 			break
 		}
 	}
-	if holder != nil && x11Conn.GrabPointer(holder.wnd.id, false,
-		x11MenuGrabEventMask|x11.EventMaskEnterWindow|x11.EventMaskLeaveWindow, 0) {
+	switch {
+	case holder != nil && x11Conn.GrabPointer(holder.wnd.id, false,
+		x11MenuGrabEventMask|x11.EventMaskEnterWindow|x11.EventMaskLeaveWindow, 0):
 		holder.wnd.pressGrab = true
-	} else {
+	case holder == nil && x11ButtonsHeldOnServer():
+		w.wnd.pressGrab = true
+	default:
 		x11Conn.UngrabPointer()
 	}
 	x11Conn.Flush()
 }
 
-// x11TakeMenuGrab grabs the pointer for the window's open menu stack; see nativeMenuStackChanged, which decides when.
+// x11ButtonsMask covers Button1Mask through Button5Mask in a pointer state. The core protocol reports no state for
+// higher buttons.
+const x11ButtonsMask = 0x1f00
+
+// x11ButtonsHeldOnServer returns true if the X server reports one of the first five buttons down, as it does for a
+// press it has sent that the event loop has not read yet.
+func x11ButtonsHeldOnServer() bool {
+	qpr := x11Conn.QueryPointer(x11Conn.RootWindow())
+	return qpr != nil && qpr.Mask&x11ButtonsMask != 0
+}
+
+// x11MenuGrabRetryDelay is how long after the server refuses a menu grab it is asked for again; see x11TakeMenuGrab.
+const x11MenuGrabRetryDelay = 50 * time.Millisecond
+
+// x11MenuGrabRetryPending is true while a retry of a refused menu grab is scheduled.
+var x11MenuGrabRetryPending bool
+
+// x11ScheduleMenuGrabRetry schedules retry, which is x11RetryMenuGrab, for x11MenuGrabRetryDelay from now. It is
+// replaceable by the tests, which have no event loop to run the retry.
+var x11ScheduleMenuGrabRetry = func(retry func()) { InvokeTaskAfter(retry, x11MenuGrabRetryDelay) }
+
+// x11TakeMenuGrab grabs the pointer for the window's open menu stack; see nativeMenuStackChanged, which decides when. A
+// grab the server refuses, because another client holds the pointer (a window manager moving or resizing a window, a
+// screenshot tool) or the window is not viewable, is asked for again a little later, for as long as any window's menus
+// stay open without one, since nothing else would take it once the other client lets go.
 func (w *Window) x11TakeMenuGrab() {
 	// The grab shows the arrow wherever the pointer is. Without a cursor of its own, X would show the owner's current
 	// cursor everywhere outside the owner, menus included, which after a right-click on a text field is an I-beam.
@@ -578,8 +608,21 @@ func (w *Window) x11TakeMenuGrab() {
 		x11ForgetPressGrabs()
 		x11ForgetMenuGrabs()
 		w.wnd.menuGrab = true
+	} else if !x11MenuGrabRetryPending {
+		x11MenuGrabRetryPending = true
+		x11ScheduleMenuGrabRetry(x11RetryMenuGrab)
 	}
 	x11Conn.Flush()
+}
+
+// x11RetryMenuGrab takes the grab for the open menu stack of whichever window has one without a grab, if any still
+// does, once the retry a refused grab scheduled comes due. A drag in progress holds the pointer itself and restores
+// the grab when it ends, so nothing is taken during one.
+func x11RetryMenuGrab() {
+	x11MenuGrabRetryPending = false
+	if dragSource == nil {
+		x11RestoreMenuGrab(nil)
+	}
 }
 
 // x11ForgetMenuGrabs records that no window holds the pointer grab for its menu stack, for when another grab has just
@@ -1869,15 +1912,22 @@ func x11PointerEventPosition(w, target *Window, ev *x11.InputEvent) (x, y int16)
 }
 
 // x11EndPressGrabs releases each grab held in place of a press's implicit grab (see nativeMenuStackChanged) once its
-// window has no press in progress, or once the release ev leaves no button down. In the latter case, a press the
-// window still records is ended too: its release went to a window that was gone by the time it was read, such as a
-// popup menu window closed by the press itself.
+// window has no press in progress, or once the release ev leaves no button down, unless the server reports a button
+// down: that is a press not yet read, which formed no implicit grab of its own, so the grab stays until its release.
+// A press the window still records when ev leaves no button down is ended too: its release went to a window that was
+// gone by the time it was read, such as a popup menu window closed by the press itself.
 func x11EndPressGrabs(ev *x11.ButtonReleaseEvent) {
+	var held, asked bool
 	for _, w := range slices.Clone(windowList) {
 		if !w.wnd.pressGrab || (w.inMouseDown && (x11OtherButtonsDown(ev) || w.x11OtherButtonsHeld(ev.Detail))) {
 			continue
 		}
-		w.x11EndPressGrab()
+		if !asked {
+			held, asked = x11ButtonsHeldOnServer(), true
+		}
+		if !held {
+			w.x11EndPressGrab()
+		}
 		if w.inMouseDown {
 			w.synthesizeMouseUp()
 		}
@@ -1885,9 +1935,9 @@ func x11EndPressGrabs(ev *x11.ButtonReleaseEvent) {
 }
 
 // x11OtherButtonsDown returns true if the state a ButtonRelease carries, which is from before the release, has one of
-// the first five buttons down other than the one released. The core protocol reports no state for higher buttons.
+// the first five buttons down other than the one released.
 func x11OtherButtonsDown(ev *x11.ButtonReleaseEvent) bool {
-	held := ev.State & 0x1f00 // Button1Mask through Button5Mask
+	held := ev.State & x11ButtonsMask
 	if ev.Detail >= 1 && ev.Detail <= 5 {
 		held &^= 0x80 << ev.Detail // The released button's own mask
 	}

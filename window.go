@@ -115,13 +115,15 @@ type Window struct {
 	// contextMenuChordKey is the key of the chord that opened an in-window contextual menu, until keyReleased sees its
 	// key up, or KeyNone. It is not recorded for a native menu, whose tracking loop swallows the key up. The Windows
 	// platform code keeps such an F10 from DefWindowProc, which would otherwise open the system menu on its release.
-	contextMenuChordKey         KeyCode
-	kind                        WindowKind
-	lastDragOp                  drag.Op
-	contextMenuReplay           bool
-	rightPressTaken             bool
-	valid                       bool
-	keepHidden                  bool
+	contextMenuChordKey KeyCode
+	kind                WindowKind
+	lastDragOp          drag.Op
+	contextMenuReplay   bool
+	rightPressTaken     bool
+	valid               bool
+	keepHidden          bool
+	// hidden is true while the application has hidden the window with Hide(); see firstVisibleTopLevelWindow.
+	hidden                      bool
 	focused                     bool
 	transient                   bool
 	notResizable                bool
@@ -261,10 +263,11 @@ func firstTopLevelWindow() *Window {
 // firstVisibleTopLevelWindow returns the first window in windowList that is neither a popup menu window nor hidden, or
 // nil if there is none. It is what a closing window hands the focus to: ToFront shows the window it is given, so one
 // the application hid must not be chosen over a visible one further down the list. A minimized window still counts,
-// since ToFront restores it.
+// since ToFront restores it, unless the application hid it while it was minimized, which leaves it minimized on the
+// platforms that keep that state for a hidden window.
 func firstVisibleTopLevelWindow() *Window {
 	for _, w := range windowList {
-		if !w.isPopup() && (w.IsVisible() || w.IsMinimized()) {
+		if !w.isPopup() && (w.IsVisible() || (w.IsMinimized() && !w.hidden)) {
 			return w
 		}
 	}
@@ -804,19 +807,36 @@ func (w *Window) MoveToModalCenter(other *Window) {
 	if other == nil {
 		other = FrontmostWindow()
 	}
+	var d *Display
 	var within geom.Rect
 	if other != nil && other != w {
+		d = other.Display()
 		within = other.FrameRect()
-	} else if d := PrimaryDisplay(); d != nil {
+	} else if d = PrimaryDisplay(); d != nil {
 		within = d.apiUsableInWindowUnits()
 	}
-	wndFrame := w.FrameRect()
-	within.Y += (within.Height - wndFrame.Height) / 3
-	within.Height = wndFrame.Height
-	within.X += (within.Width - wndFrame.Width) / 2
-	within.Width = wndFrame.Width
-	w.SetFrameRect(within.Align())
+	w.SetFrameRect(modalCenterFrame(d, within, w.FrameRect()).Align())
 	w.EnsureOnDisplay()
+}
+
+// modalCenterFrame returns the frame rect, in the space window rects use, of a window of frame's size centered
+// horizontally within within and a third of the way down it, which is where MoveToModalCenter puts a window. The math
+// is done in the space of d, the display within is on, since on Windows the window-rect space keeps a raw-pixel origin
+// with a logical size, in which the center cannot be computed; see Display.apiRectToWindowUnits. With no display it is
+// done in place.
+func modalCenterFrame(d *Display, within, frame geom.Rect) geom.Rect {
+	if d != nil {
+		within = d.apiRectFromWindowUnits(within)
+		frame = d.apiRectFromWindowUnits(frame)
+	}
+	within.Y += (within.Height - frame.Height) / 3
+	within.Height = frame.Height
+	within.X += (within.Width - frame.Width) / 2
+	within.Width = frame.Width
+	if d != nil {
+		within = d.apiRectToWindowUnits(within)
+	}
+	return within
 }
 
 // DefaultInitialWindowContentLocation selects an upper-left corner for a window by offsetting the current active
@@ -1093,6 +1113,7 @@ func (w *Window) IsTransparent() bool {
 // mode, this function does nothing.
 func (w *Window) Show() {
 	if w.IsValid() {
+		w.hidden = false
 		w.apiShow()
 		// As in Hide, but the other way round: a window that is back on the screen has to be described again, since a
 		// platform that withdrew it while it was off the screen holds nothing about it at all. The mark is made after
@@ -1112,6 +1133,7 @@ func (w *Window) Hide() {
 		if w.root != nil {
 			w.root.closeMenuStackStoppingAt(nil)
 		}
+		w.hidden = true
 		w.apiHide()
 		// A window that has gone off the screen has to be taken out of what an assistive technology has been told, and
 		// the event loop does that for the windows it finds it cannot draw. See Window.axMarkForPublish.

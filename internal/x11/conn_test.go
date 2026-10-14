@@ -666,6 +666,21 @@ func TestNewConnForTestServesRequests(t *testing.T) {
 				}
 				continue
 			}
+			if header[0] == opQueryPointer {
+				// A reply is 32 bytes: the code, whether on the same screen, the sequence, the count of any additional
+				// words, the root, the child, the root and window positions, the button state, then padding. The
+				// root package's stand-in X server answers the same way, with the button state its tests set.
+				reply := make([]byte, 32)
+				reply[0] = 1
+				reply[1] = 1
+				binary.LittleEndian.PutUint16(reply[2:4], seq)
+				binary.LittleEndian.PutUint32(reply[8:12], uint32(root))
+				binary.LittleEndian.PutUint16(reply[24:26], 0x100)
+				if _, err := server.Write(reply); err != nil {
+					return
+				}
+				continue
+			}
 			if header[0] != opTranslateCoordinates {
 				continue // Nothing else this test sends expects an answer
 			}
@@ -727,6 +742,13 @@ func TestNewConnForTestServesRequests(t *testing.T) {
 	case extra := <-changed:
 		t.Errorf("the property change should have taken a single request, but another followed it: %+v", extra)
 	default:
+	}
+	qpr := conn.QueryPointer(root)
+	c.NotNil(qpr)
+	if qpr != nil {
+		c.Equal(root, qpr.Root)
+		c.Equal(uint16(0x100), qpr.Mask, "the button state is read from where the reply carries it")
+		c.True(qpr.SameScreen)
 	}
 }
 

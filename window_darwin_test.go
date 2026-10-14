@@ -101,28 +101,27 @@ func TestMacFrameMouseDownClosesMenus(t *testing.T) {
 	c.Nil(mp.menu.popupPanel)
 }
 
-// TestMacMenuCoversPoint verifies which mouse-moved events the owner of an open menu stack drops: those over one of its
-// popup menu windows, which AppKit sends the owner as the key window along with every other move, and none while no
-// menu is open or once a popup has been disposed of.
-func TestMacMenuCoversPoint(t *testing.T) {
+// TestMacCovered verifies which mouse-moved events a key window drops: those made while the window server finds
+// another window, of this application or any other, or none at all, on top at the pointer, which AppKit sends the key
+// window along with every other move, and none made over the window itself.
+func TestMacCovered(t *testing.T) {
 	c := check.New(t)
-	owner := &Window{wnd: &apiWindow{wnd: cocoa.Window(7)}}
-	owner.root = newRootPanel(owner)
-	rects := map[*Window]geom.Rect{}
-	contentRect := func(w *Window) geom.Rect { return rects[w] }
-	c.False(owner.macMenuCoversPoint(geom.NewPoint(150, 150), contentRect), "no menu is open")
-	mp := newTestMenuPanel(0, 0, 100, 100)
-	popup := newTestPopupWindow(owner, mp)
-	popup.valid = true
-	rects[popup] = geom.NewRect(100, 100, 100, 100)
-	owner.root.insertMenu(mp)
-	c.True(owner.macMenuCoversPoint(geom.NewPoint(150, 150), contentRect), "a move over the popup")
-	c.False(owner.macMenuCoversPoint(geom.NewPoint(50, 50), contentRect), "one beside it")
-	c.False(owner.macMenuCoversPoint(geom.NewPoint(200, 150), contentRect), "the popup's far edge is not within it")
-	popup.valid = false
-	c.False(owner.macMenuCoversPoint(geom.NewPoint(150, 150), contentRect), "a disposed popup covers nothing")
-	c.False((&Window{wnd: &apiWindow{}}).macMenuCoversPoint(geom.NewPoint(150, 150), contentRect),
-		"a window without a root panel has no menus")
+	prior := macWindowNumberAt
+	t.Cleanup(func() { macWindowNumberAt = prior })
+	var under int
+	var asked []geom.Point
+	macWindowNumberAt = func(pt geom.Point) int {
+		asked = append(asked, pt)
+		return under
+	}
+	w := &Window{wnd: &apiWindow{number: 7}}
+	under = 7
+	c.False(w.macCovered(geom.NewPoint(150, 150)), "the window itself is on top")
+	c.Equal([]geom.Point{geom.NewPoint(150, 150)}, asked)
+	under = 8
+	c.True(w.macCovered(geom.NewPoint(150, 150)), "another window is on top")
+	under = 0
+	c.True(w.macCovered(geom.NewPoint(150, 150)), "no window is under the pointer")
 }
 
 // TestMacMenuStackMonitorClosesOutsidePresses verifies that an open menu stack installs the monitor that closes its
@@ -188,4 +187,27 @@ func TestMacMenuStackMonitorClosesOutsidePresses(t *testing.T) {
 	other.root.insertMenu(otherMenu)
 	other.root.closeMenuStackStoppingAt(nil)
 	c.Equal(1, removals)
+}
+
+// TestMacCoveredMoveExitsOnce verifies that a key window, which AppKit sends the mouse-moved events made over the
+// windows above it, exits what the pointer left once per crossing, as the crossing events of the other platforms do,
+// rather than on every move: a window's MouseExitCallback that keeps the panel it is told about would otherwise be told
+// of the same crossing on every move over the other window.
+func TestMacCoveredMoveExitsOnce(t *testing.T) {
+	c := check.New(t)
+	w := &Window{wnd: &apiWindow{}}
+	w.root = newRootPanel(w)
+	exits := 0
+	w.MouseExitCallback = func() bool {
+		exits++
+		return true
+	}
+	c.True(w.macCoveredMove(true))
+	c.True(w.macCoveredMove(true))
+	c.True(w.macCoveredMove(true))
+	c.Equal(1, exits, "a run of moves over another window exits once")
+	c.False(w.macCoveredMove(false))
+	c.Equal(1, exits, "a move back over the window exits nothing")
+	c.True(w.macCoveredMove(true))
+	c.Equal(2, exits, "the next crossing exits again")
 }

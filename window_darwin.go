@@ -33,6 +33,10 @@ type nativeWindow struct {
 	wnd            cocoa.Window
 	view           cocoa.View
 	nsCursorHidden bool
+	// covered is true while the last mouse-moved event was over another window; see macCoveredMove.
+	covered bool
+	// number is the window's number, which identifies it to the window server, or 0 until macNumber reads it.
+	number int
 }
 
 func macFindWindow(macWnd cocoa.Window) *Window {
@@ -246,33 +250,53 @@ func macFrameMouseDown(macWnd cocoa.Window) {
 
 // macMouseMoved handles a mouse-moved or mouse-dragged event AppKit delivered to the window at pt, in its content
 // coordinates. AppKit sends every mouse-moved event to the key window, wherever the pointer is, so the owner of an open
-// menu stack is sent the moves over its popup menu windows too. Such a move is dropped rather than hit-tested against
-// the panels hidden under the menu, which would get crossings, tooltips and the cursor meant for them, and the panel
-// the pointer left for the menu is exited, as the crossing events of the other platforms do. A drag goes to the window
-// holding the press wherever the pointer is, as on the other platforms.
+// menu stack is sent the moves over its popup menu windows, and a key window those over any window above it: another
+// of the application's shown or floating over it, or another application's. Such a move is dropped rather than
+// hit-tested against the panels hidden under the other window, which would get crossings, tooltips and the cursor meant
+// for it, and the panel the pointer left is exited, as the crossing events of the other platforms do. A drag goes to
+// the window holding the press wherever the pointer is, as on the other platforms.
 func (w *Window) macMouseMoved(pt geom.Point, mods mod.Modifiers) {
-	if !w.inMouseDown && w.macMenuCoversPoint(w.nativePointToScreen(pt), (*Window).nativeContentRect) {
-		if w.lastMouseOverPanel != nil {
-			w.mouseExit()
-		}
+	if w.macCoveredMove(!w.inMouseDown && w.macCovered(w.nativePointToScreen(pt))) {
 		return
 	}
 	w.mouseMovedOrDragged(pt, mods)
 }
 
-// macMenuCoversPoint returns true if pt, in the space window rects use, lies over one of the popup menu windows of w's
-// open menu stack. contentRect returns a window's content rect in that space; it is nativeContentRect outside the
-// tests.
-func (w *Window) macMenuCoversPoint(pt geom.Point, contentRect func(*Window) geom.Rect) bool {
-	if w.root == nil {
+// macCoveredMove records whether the mouse-moved event being handled is over another window (see macCovered), and
+// returns covered. The first of a run of such moves exits whatever the pointer left, once, as the crossing event of the
+// other platforms does; the rest are dropped without that, since the window's MouseExitCallback may keep the panel it
+// is told about, and would otherwise be told of the same crossing on every move.
+func (w *Window) macCoveredMove(covered bool) bool {
+	if !covered {
+		w.wnd.covered = false
 		return false
 	}
-	for _, mp := range w.root.openMenuPanels {
-		if popup := mp.Window(); popup.isPopup() && popup.IsValid() && pt.In(contentRect(popup)) {
-			return true
-		}
+	if !w.wnd.covered {
+		w.wnd.covered = true
+		w.mouseExit()
 	}
-	return false
+	return true
+}
+
+// macWindowNumberAt returns the number of the window, of any application, that is frontmost at pt, in the space window
+// rects use, or 0 for none. It is replaceable by the tests, which have no windows on the screen.
+var macWindowNumberAt = func(pt geom.Point) int {
+	return cocoa.WindowNumberAtPoint(geom.NewPoint(pt.X, macTransformY(pt.Y)))
+}
+
+// macCovered returns true if pt, in the space window rects use, is over a window other than this one: one of its popup
+// menu windows, another of the application's windows ordered above it, another application's, or no window at all.
+func (w *Window) macCovered(pt geom.Point) bool {
+	return macWindowNumberAt(pt) != w.macNumber()
+}
+
+// macNumber returns the window's number, which identifies it to the window server, read from the window the first time
+// it is asked for.
+func (w *Window) macNumber() int {
+	if w.wnd.number == 0 {
+		w.wnd.number = w.wnd.wnd.Number()
+	}
+	return w.wnd.number
 }
 
 // macDragSourceFinished is the WindowDragSourceFinishedCallback: AppKit's report that a drag begun from macWnd's view
@@ -439,8 +463,16 @@ func (w *Window) nativeUpdateCursorImage() {
 	}
 }
 
+// nativeCursorInContentArea reports whether the pointer is over the window's content, which it is not while over
+// another window above it (see macCovered): the window would otherwise show the cursor of a panel hidden under one of
+// its own popup menu windows, which the popup, whose own cursor is the unchanged arrow, never puts back.
 func (w *Window) nativeCursorInContentArea() bool {
-	return w.wnd.view.MouseInRect(w.wnd.wnd.MouseLocationOutsideOfEventStream(), w.wnd.view.Frame())
+	loc := w.wnd.wnd.MouseLocationOutsideOfEventStream()
+	frame := w.wnd.view.Frame()
+	if !w.wnd.view.MouseInRect(loc, frame) {
+		return false
+	}
+	return !w.macCovered(w.nativePointToScreen(geom.NewPoint(loc.X, frame.Height-loc.Y)))
 }
 
 func (w *Window) nativeCursorPosition() geom.Point {
@@ -484,12 +516,13 @@ var (
 )
 
 // nativeMenuStackChanged watches, while the window's menu stack is open, for the presses that leave the window key and
-// so would otherwise leave its menus open: one on the application's own menu bar, on another application's window, on
-// the Dock, on a menu bar extra or in Notification Center, all of which close native menus. A press in the window
-// itself or in one of its popup menu windows is left to their root panels, which close whatever menus it makes
-// obsolete. A change of the active Space closes the menus too, since the popup windows join every Space and would
-// otherwise follow the user to the new one without their owner. A stack opened for another window takes the monitor
-// over, and only the window it serves takes it down.
+// so would otherwise leave its menus open: one on another application's window, on the Dock, on a menu bar extra or in
+// Notification Center, all of which close native menus, and one on the application's own menu bar, which no event
+// monitor sees and which is reported as the bar's menu begins tracking instead (see cocoa.InstallMenuStackMonitor). A
+// press in the window itself or in one of its popup menu windows is left to their root panels, which close whatever
+// menus it makes obsolete. A change of the active Space closes the menus too, since the popup windows join every Space
+// and would otherwise follow the user to the new one without their owner. A stack opened for another window takes the
+// monitor over, and only the window it serves takes it down.
 func (w *Window) nativeMenuStackChanged(open bool) {
 	if !open {
 		if macMenuStackWindow == w {

@@ -15,6 +15,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -176,6 +177,14 @@ const (
 // x11ButtonReleaseCode is the ButtonRelease event code.
 const x11ButtonReleaseCode = 5
 
+// x11QueryPointerOpcode is the request that asks where the pointer is and which buttons are down, which the stand-in X
+// server answers with no position and the button state a test has set, and x11TestButton1Mask is Button1Mask in that
+// state.
+const (
+	x11QueryPointerOpcode = 38
+	x11TestButton1Mask    = 0x100
+)
+
 // x11GetInputFocusOpcode is the request that asks which window has the keyboard focus. The connection sends one after
 // each request that can fail without a reply, such as DeleteProperty, so that the reply to it says that the request
 // before it did not fail.
@@ -225,7 +234,8 @@ type x11Grab struct {
 // manager's frame does to a real one, and records each of them so that a test can see whether one was made at all. It
 // records each ChangeProperty and DeleteProperty request too, which need no answer, so that a test can see what was
 // done to a window's properties, and answers the GetInputFocus that follows a DeleteProperty with no window, since all
-// the connection wants of it is a reply. It records each GrabPointer, granting it, and each UngrabPointer.
+// the connection wants of it is a reply. It records each GrabPointer, granting it unless refuseGrabs is set, and each
+// UngrabPointer, and answers QueryPointer with the button state in pointerMask.
 // [x11.NewConnForTest] wires the connection the platform code uses to it, and internal/x11's own
 // TestNewConnForTestServesRequests is where the bytes below are checked, since nothing in this file builds anywhere but
 // Linux.
@@ -237,11 +247,13 @@ type x11Grab struct {
 // answered with an error rather than ignored, since one that expects a reply would otherwise wait for it forever and
 // hang the test instead of failing it.
 type x11TestServer struct {
-	t       *testing.T
-	side    net.Conn
-	asked   chan x11Translation
-	changed chan x11PropertyChange
-	grabbed chan x11Grab
+	t           *testing.T
+	side        net.Conn
+	asked       chan x11Translation
+	changed     chan x11PropertyChange
+	grabbed     chan x11Grab
+	pointerMask atomic.Uint32
+	refuseGrabs atomic.Bool
 }
 
 // startX11TestServer installs a connection to a stand-in X server as the one the platform code uses, putting the
@@ -304,9 +316,13 @@ func (s *x11TestServer) run() {
 				eventMask:   binary.LittleEndian.Uint16(body[4:6]),
 				ownerEvents: header[1] != 0,
 			})
-			// A reply is 32 bytes: the code, the status, which is zero for a grab granted, the sequence, then padding.
+			// A reply is 32 bytes: the code, the status, which is zero for a grab granted and one for a pointer another
+			// client already holds, the sequence, then padding.
 			reply := make([]byte, 32)
 			reply[0] = 1
+			if s.refuseGrabs.Load() {
+				reply[1] = 1
+			}
 			binary.LittleEndian.PutUint16(reply[2:4], seq)
 			if _, err := s.side.Write(reply); err != nil {
 				return
@@ -314,6 +330,19 @@ func (s *x11TestServer) run() {
 			continue
 		case x11UngrabPointerOpcode:
 			s.recordGrab(x11Grab{released: true})
+			continue
+		case x11QueryPointerOpcode:
+			// A reply is 32 bytes: the code, whether on the same screen, the sequence, the count of any additional
+			// words, the root, the child, the root and window positions, the button state, then padding.
+			reply := make([]byte, 32)
+			reply[0] = 1
+			reply[1] = 1
+			binary.LittleEndian.PutUint16(reply[2:4], seq)
+			binary.LittleEndian.PutUint32(reply[8:12], uint32(x11TestRootWindow))
+			binary.LittleEndian.PutUint16(reply[24:26], uint16(s.pointerMask.Load()))
+			if _, err := s.side.Write(reply); err != nil {
+				return
+			}
 			continue
 		case x11GetInputFocusOpcode:
 			// A reply is 32 bytes: the code, the byte the reply's own first value occupies — here what the focus reverts
@@ -1306,4 +1335,106 @@ func TestX11DragReplacesAndRestoresTheMenuGrab(t *testing.T) {
 	x11RestoreMenuGrab(owner)
 	c.False(owner.wnd.menuGrab)
 	c.Equal(nothing, server.grabs(), "nothing is taken once the menus have closed")
+}
+
+// TestX11PressGrabWaitsForAnUnreadPress covers a press that reached the server while the menu grab was held but has not
+// been read yet, as when the event loop lags behind a double-click: it formed no implicit grab, so the menus closing
+// keeps the grab in place for it rather than releasing it, a release read before the press leaves the grab alone, and
+// the press's own release, after which the server reports no button down, ends it.
+func TestX11PressGrabWaitsForAnUnreadPress(t *testing.T) {
+	c := check.New(t)
+	server := startX11TestServer(t)
+	priorDragSource, priorArrow, priorSettings := dragSource, arrowCursor, builtCursorSettings
+	t.Cleanup(func() { dragSource, arrowCursor, builtCursorSettings = priorDragSource, priorArrow, priorSettings })
+	dragSource = nil
+	const arrowID = x11.CursorID(77)
+	arrowCursor, builtCursorSettings = &Cursor{cursor: arrowID}, nil
+	owner := &Window{valid: true, wnd: &apiWindow{}}
+	owner.wnd.id = x11TestWindowID
+	windowList = []*Window{owner}
+	menuGrab := x11Grab{window: x11TestWindowID, cursor: arrowID, eventMask: x11MenuGrabEventMask, ownerEvents: true}
+	var nothing []x11Grab
+
+	server.pointerMask.Store(x11TestButton1Mask)
+	owner.nativeMenuStackChanged(true)
+	c.Equal([]x11Grab{menuGrab}, server.grabs())
+	owner.nativeMenuStackChanged(false)
+	c.False(owner.wnd.menuGrab)
+	c.True(owner.wnd.pressGrab, "the grab stays for the press the server reports down")
+	c.Equal(nothing, server.grabs(), "neither released nor taken again")
+
+	release := &x11.ButtonReleaseEvent{}
+	release.Detail = 1
+	x11EndPressGrabs(release)
+	c.True(owner.wnd.pressGrab, "a release read before the press leaves the grab alone")
+	c.Equal(nothing, server.grabs())
+
+	server.pointerMask.Store(0)
+	x11EndPressGrabs(release)
+	c.False(owner.wnd.pressGrab, "the press's own release ends it")
+	c.Equal([]x11Grab{{released: true}}, server.grabs())
+
+	owner.nativeMenuStackChanged(true)
+	owner.nativeMenuStackChanged(false)
+	c.False(owner.wnd.pressGrab)
+	c.Equal([]x11Grab{menuGrab, {released: true}}, server.grabs(), "with no button down, the grab is released at once")
+}
+
+// TestX11MenuGrabRefusedIsRetried covers a menu grab the server refuses, as it does while another client holds the
+// pointer: the grab is asked for again once the retry comes due, and again after that, until it is granted or the
+// menus have closed, and not while a drag holds the pointer.
+func TestX11MenuGrabRefusedIsRetried(t *testing.T) {
+	c := check.New(t)
+	server := startX11TestServer(t)
+	priorDragSource, priorArrow, priorSettings, priorSchedule := dragSource, arrowCursor, builtCursorSettings,
+		x11ScheduleMenuGrabRetry
+	t.Cleanup(func() {
+		dragSource, arrowCursor, builtCursorSettings, x11ScheduleMenuGrabRetry = priorDragSource, priorArrow,
+			priorSettings, priorSchedule
+		x11MenuGrabRetryPending = false
+	})
+	dragSource = nil
+	const arrowID = x11.CursorID(77)
+	arrowCursor, builtCursorSettings = &Cursor{cursor: arrowID}, nil
+	scheduled := 0
+	x11ScheduleMenuGrabRetry = func(func()) { scheduled++ }
+	owner := &Window{valid: true, wnd: &apiWindow{}}
+	owner.wnd.id = x11TestWindowID
+	owner.root = newRootPanel(owner)
+	windowList = []*Window{owner}
+	menuGrab := x11Grab{window: x11TestWindowID, cursor: arrowID, eventMask: x11MenuGrabEventMask, ownerEvents: true}
+	var nothing []x11Grab
+
+	server.refuseGrabs.Store(true)
+	mp := newTestMenuPanel(0, 0, 100, 100)
+	owner.root.insertMenu(mp)
+	c.False(owner.wnd.menuGrab)
+	c.Equal([]x11Grab{menuGrab}, server.grabs())
+	c.Equal(1, scheduled, "a refused grab schedules a retry")
+	c.True(x11MenuGrabRetryPending)
+	x11RetryMenuGrab()
+	c.False(owner.wnd.menuGrab)
+	c.Equal([]x11Grab{menuGrab}, server.grabs(), "the retry asks again")
+	c.Equal(2, scheduled, "and, refused again, schedules another")
+	server.refuseGrabs.Store(false)
+	x11RetryMenuGrab()
+	c.True(owner.wnd.menuGrab, "granted at last")
+	c.Equal([]x11Grab{menuGrab}, server.grabs())
+	c.Equal(2, scheduled)
+	c.False(x11MenuGrabRetryPending)
+
+	owner.root.removeMenu(mp)
+	c.Equal([]x11Grab{{released: true}}, server.grabs())
+	x11RetryMenuGrab()
+	c.False(owner.wnd.menuGrab)
+	c.Equal(nothing, server.grabs(), "a retry coming due after the menus have closed takes nothing")
+
+	server.refuseGrabs.Store(true)
+	owner.root.insertMenu(mp)
+	c.Equal(3, scheduled)
+	dragSource = owner
+	x11RetryMenuGrab()
+	c.Equal(nothing, server.grabs(), "a retry coming due during a drag leaves the pointer to it")
+	c.False(x11MenuGrabRetryPending)
+	owner.root.removeMenu(mp)
 }

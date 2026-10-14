@@ -349,8 +349,8 @@ func (hw *headlessWindow) hide() {
 // The restoration is what AppKit's makeKeyAndOrderFront: does to a miniaturized window, and it is needed because a
 // minimized window is still visible: show() would leave it minimized, and raising and focusing it in that state would
 // make a focused window that receives every key event yet is skipped by hit-testing, by Capture() and by WindowAt().
-// This is reached without anything exotic, since Window.Dispose() calls ToFront() on the front of the window list and
-// RunModal's defer calls it on the window that was active.
+// This is reached without anything exotic, since Window.Dispose() calls ToFront() on the first visible or minimized
+// top-level window in the window list and RunModal's defer calls it on the window that was active.
 func (hw *headlessWindow) acquireFocusAndBringToFront() {
 	hw.show()
 	if hw.w.minimized {

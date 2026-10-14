@@ -13,6 +13,8 @@ import (
 	"image"
 	"math"
 	"runtime"
+	"slices"
+	"strings"
 	"unsafe"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -269,12 +271,12 @@ func (w *Window) nativeInit() error {
 }
 
 // w32CreationTitle returns the title the window is created with: none for a popup menu window, whose title is its
-// menu's, which is never shown and may hold a NUL, which CreateWindowExW refuses.
+// menu's, which is never shown, and otherwise the window's own, as w32WindowTitle makes it.
 func (w *Window) w32CreationTitle() string {
 	if w.isPopup() {
 		return ""
 	}
-	return w.title
+	return w32WindowTitle(w.title)
 }
 
 func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
@@ -446,12 +448,8 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			}
 			return 0
 		case w32.WM_CAPTURECHANGED:
-			// Another window took the capture away (e.g. OLE's drag-drop loop or a system menu/size-move loop). Any
-			// button release that happens while it holds the capture will never be delivered here, so synthesize the
-			// releases now to avoid stuck button state.
 			if windows.HWND(lParam) != hWnd && w.wnd.mouseCaptured {
-				w.wnd.mouseCaptured = false
-				w.synthesizeMouseUp()
+				w.w32CaptureLost()
 			}
 			return 0
 		case w32.WM_MOUSEWHEEL, w32.WM_MOUSEHWHEEL:
@@ -558,8 +556,12 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 		case w32.WM_DPICHANGED:
 			// The suggested rect scales the window's current size by the change in DPI. A popup menu window was sized
 			// for the DPI of the display it was placed on (see nativeSetContentRect), so for one the suggestion would
-			// scale it a second time.
-			if !w.isPopup() && w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+			// scale it a second time. Keeping its pixel size changes its logical size, with no WM_SIZE to lay the
+			// content out for it or WM_PAINT to draw it at the new scale, so both are done here.
+			if w.isPopup() {
+				w.resized()
+				w.MarkForRedraw()
+			} else if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 				rect := xruntime.PtrFromUintptr[w32.RECT](lParam)
 				w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, rect.Left, rect.Top, rect.Right-rect.Left,
 					rect.Bottom-rect.Top, w32.SWP_NOZORDER|w32.SWP_NOACTIVATE)
@@ -627,6 +629,21 @@ func (w *Window) w32GetObjectAdapter(lParam w32.LPARAM) *uia.Window {
 		w.wnd.uiaAnsweredForOwner = true
 	}
 	return adapter
+}
+
+// w32CaptureLost handles another window taking the capture away from this one (e.g. OLE's drag-drop loop or a system
+// menu/size-move loop). Any button release that happens while it holds the capture will never be delivered here, so the
+// releases are synthesized now to avoid stuck button state: this window's own, and those of any popup menu window that
+// a press made while this window held the capture was handed on to (see w32CaptureTarget), whose release would have
+// come through this window too.
+func (w *Window) w32CaptureLost() {
+	w.wnd.mouseCaptured = false
+	w.synthesizeMouseUp()
+	for _, other := range slices.Clone(windowList) {
+		if other.isPopup() && other.IsValid() && other.inMouseDown {
+			other.synthesizeMouseUp()
+		}
+	}
 }
 
 // w32NonClientMouseDown handles a press on the window's title bar or frame. It lands outside every menu, so the
@@ -750,7 +767,15 @@ func (w *Window) w32HandleMouseMove(pt geom.Point) {
 }
 
 func (w *Window) nativeSetTitle(title string) {
-	w32.SetWindowTextW(w.wnd.wnd, title)
+	w32.SetWindowTextW(w.wnd.wnd, w32WindowTitle(title))
+}
+
+// w32WindowTitle returns title cut at its first NUL, if it has one, since a title is a C string to Windows and
+// CreateWindowExW and SetWindowTextW refuse one holding a NUL, which would otherwise cost a window its creation or
+// leave its title unchanged.
+func w32WindowTitle(title string) string {
+	title, _, _ = strings.Cut(title, "\x00")
+	return title
 }
 
 func (w *Window) nativeSetTitleIcons(images []*image.NRGBA) {

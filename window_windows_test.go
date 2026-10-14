@@ -408,7 +408,8 @@ func TestW32CaptureTargetHandsPressesToThePopup(t *testing.T) {
 }
 
 // TestW32CreationTitle verifies that a popup menu window is created without a title, since its menu's title is never
-// shown and may hold a NUL, which CreateWindowExW refuses, while every other window is created with its own.
+// shown, while every other window is created with its own, cut at any NUL, which CreateWindowExW refuses and so would
+// otherwise cost the window its creation.
 func TestW32CreationTitle(t *testing.T) {
 	c := check.New(t)
 	owner := &Window{wnd: &apiWindow{}, title: "owner"}
@@ -416,6 +417,10 @@ func TestW32CreationTitle(t *testing.T) {
 	popup := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu, title: "File\x00"}
 	c.Equal("", popup.w32CreationTitle())
 	c.Equal("", (&Window{wnd: &apiWindow{}}).w32CreationTitle())
+	c.Equal("Report", (&Window{wnd: &apiWindow{}, title: "Report\x00ing"}).w32CreationTitle())
+	c.Equal("Report", w32WindowTitle("Report\x00"))
+	c.Equal("", w32WindowTitle("\x00Report"))
+	c.Equal("Report", w32WindowTitle("Report"))
 }
 
 // TestW32PopupContentScale verifies the scale a popup menu window's content rect is sized with: that of the display
@@ -444,4 +449,46 @@ func TestW32DestroyGivesUpTheCapture(t *testing.T) {
 	w.wnd.mouseCaptured = true
 	w.nativeDestroy()
 	c.False(w.wnd.mouseCaptured)
+}
+
+// TestW32CaptureLostReleasesHandedOnPresses verifies that a window losing the capture ends not only its own presses but
+// the one it handed on to a popup menu window (see w32CaptureTarget), whose release would have come through the window
+// that lost the capture and so will never arrive.
+func TestW32CaptureLostReleasesHandedOnPresses(t *testing.T) {
+	c := check.New(t)
+	priorWindows := windowList
+	t.Cleanup(func() { windowList = priorWindows })
+	owner := newMouseButtonTestWindow()
+	owner.valid = true
+	owner.wnd.mouseCaptured = true
+	popup := newMouseButtonTestWindow()
+	popup.valid = true
+	popup.owner = owner
+	popup.kind = WindowKindMenu
+	other := newMouseButtonTestWindow()
+	other.valid = true
+	windowList = []*Window{owner, popup, other}
+	pt := geom.NewPoint(10, 10)
+	owner.mouseDown(pt, ButtonLeft, 0)
+	popup.mouseDown(pt, ButtonRight, 0)
+	other.mouseDown(pt, ButtonLeft, 0)
+	owner.w32CaptureLost()
+	c.False(owner.wnd.mouseCaptured)
+	c.False(owner.inMouseDown, "the window's own press is ended")
+	c.False(popup.inMouseDown, "and so is the one handed on to the popup")
+	c.Equal(0, len(popup.pressedButtons))
+	c.True(other.inMouseDown, "another top-level window's press is left alone")
+}
+
+// TestModalCenterFrameInDisplaySpace verifies that a window is centered over another in the display's raw pixels
+// rather than in the window-rect space, which keeps a raw-pixel origin with a logical size: at 150%, a 400x300 dialog
+// over an 800x600 window at the origin lands 300 pixels in and 150 down, not 200 and 100.
+func TestModalCenterFrameInDisplaySpace(t *testing.T) {
+	c := check.New(t)
+	d := &Display{
+		Frame: geom.NewRect(0, 0, 2880, 1620), Usable: geom.NewRect(0, 0, 2880, 1620),
+		Scale: geom.NewPoint(1.5, 1.5),
+	}
+	c.Equal(geom.NewRect(300, 150, 400, 300),
+		modalCenterFrame(d, geom.NewRect(0, 0, 800, 600), geom.NewRect(0, 0, 400, 300)))
 }

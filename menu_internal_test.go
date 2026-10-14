@@ -229,24 +229,25 @@ func TestEnsureOnDisplayKeepsMenuBelowTop(t *testing.T) {
 		if created = m.createPopup(owner); !created {
 			return
 		}
-		place := func(where geom.Rect, top float32) {
-			m.ensureOnDisplay(where, top, owner, -1)
+		place := func(where geom.Rect, fit menuFit) {
+			m.ensureOnDisplay(where, fit, owner, -1)
 			rects = append(rects, m.popupPanel.Window().ContentRect())
 		}
+		bar := menuFit{bar: true, barTop: 10, barBottom: 30}
 		// Below the bar: no room to grow, so it shrinks and stays put.
-		place(geom.NewRect(10, 30, 100, 500), 30)
+		place(geom.NewRect(10, 30, 100, 500), bar)
 		// A menu that fits under the bar is left where it was asked to go.
-		place(geom.NewRect(10, 30, 100, 200), 30)
+		place(geom.NewRect(10, 30, 100, 200), bar)
 		// One that nearly fits is moved up to fit.
-		place(geom.NewRect(10, 60, 100, 260), 30)
+		place(geom.NewRect(10, 60, 100, 260), bar)
 		// One that would have to move above the bar to fit is shrunk instead, and moved up only as far as the bar.
-		place(geom.NewRect(10, 60, 100, 280), 30)
+		place(geom.NewRect(10, 60, 100, 280), bar)
 		// Without a limit, the same menu may cover the whole display height.
-		place(geom.NewRect(10, 30, 100, 500), noTopLimit)
+		place(geom.NewRect(10, 30, 100, 500), menuFit{})
 		// A sub-menu with no limit still slides up to fit.
-		place(geom.NewRect(10, 100, 100, 250), noTopLimit)
+		place(geom.NewRect(10, 100, 100, 250), menuFit{})
 		// One that overlaps no display is placed on its anchor's.
-		place(geom.NewRect(500, 400, 100, 50), noTopLimit)
+		place(geom.NewRect(500, 400, 100, 50), menuFit{})
 		m.closeMenuStack()
 	}))
 	c.True(created)
@@ -268,11 +269,12 @@ func TestEnsureOnDisplayKeepsMenuBelowTop(t *testing.T) {
 func TestFitMenuRectInDisplaySpace(t *testing.T) {
 	c := check.New(t)
 	usable := geom.NewRect(0, 0, 2880, 1620)
-	c.Equal(geom.NewRect(2400, 1200, 300, 225), fitMenuRect(geom.NewRect(2400, 1200, 300, 225), usable, noTopLimit))
-	c.Equal(geom.NewRect(2580, 1395, 300, 225), fitMenuRect(geom.NewRect(2700, 1500, 300, 225), usable, noTopLimit))
+	c.Equal(geom.NewRect(2400, 1200, 300, 225), fitMenuRect(geom.NewRect(2400, 1200, 300, 225), usable, menuFit{}))
+	c.Equal(geom.NewRect(2580, 1395, 300, 225), fitMenuRect(geom.NewRect(2700, 1500, 300, 225), usable, menuFit{}))
 	usable = geom.NewRect(0, 0, 3840, 2160)
-	c.Equal(geom.NewRect(100, 1100, 400, 800), fitMenuRect(geom.NewRect(100, 1100, 400, 800), usable, 1100))
-	c.Equal(geom.NewRect(100, 1100, 400, 1060), fitMenuRect(geom.NewRect(100, 1100, 400, 2000), usable, 1100))
+	bar := menuFit{bar: true, barTop: 1050, barBottom: 1100, minHeight: 100}
+	c.Equal(geom.NewRect(100, 1100, 400, 800), fitMenuRect(geom.NewRect(100, 1100, 400, 800), usable, bar))
+	c.Equal(geom.NewRect(100, 1100, 400, 1060), fitMenuRect(geom.NewRect(100, 1100, 400, 2000), usable, bar))
 }
 
 // TestPopupWindowStacksAboveItsOwner verifies that a menu opens in a popup window of its own, placed from the owner's
@@ -509,11 +511,12 @@ func TestLongMenuShrinksToTheDisplayAndScrolls(t *testing.T) {
 	c.True(after.Y >= 0 && after.Bottom() <= rect.Height, "and is scrolled into view by the arrow keys: %v", after)
 }
 
-// TestBarMenuStaysBelowTheBar verifies that a menu opened from the menu bar of a window low on the screen is placed
-// below the bar, in screen coordinates, and shrinks to the space left beneath it rather than covering the bar.
+// TestBarMenuStaysBelowTheBar verifies that a menu opened from the menu bar of a window low on the screen, with room
+// for a few of its items beneath the bar, is placed below the bar, in screen coordinates, and shrinks to the space left
+// beneath it rather than covering the bar.
 func TestBarMenuStaysBelowTheBar(t *testing.T) {
 	c := check.New(t)
-	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 300, 300, 80))
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 250, 300, 80))
 	var chosen []string
 	var m *menu
 	c.True(screen.Do(func() {
@@ -541,7 +544,7 @@ func TestBarMenuStaysBelowTheBar(t *testing.T) {
 		barBottom = owner.apiPointToScreen(geom.NewPoint(0, title.RectToRoot(title.ContentRect(true)).Bottom())).Y
 	}))
 	c.True(opened)
-	c.True(barBottom > 300, "the test needs the bar on the screen")
+	c.True(barBottom > 250 && barBottom < 300, "the test needs the bar low on the screen: %v", barBottom)
 	c.Equal(barBottom, rect.Y, "the menu starts at the bottom of the bar")
 	c.Equal(400-barBottom, rect.Height, "and shrinks to the space left beneath it")
 }
@@ -869,7 +872,7 @@ func TestPopupHighlightsTheItemBeforeShowing(t *testing.T) {
 		}
 		popup := m.popupPanel.Window()
 		last := len(m.items) - 1
-		m.ensureOnDisplay(geom.NewRect(10, 10, 100, 2000), noTopLimit, owner, last)
+		m.ensureOnDisplay(geom.NewRect(10, 10, 100, 2000), menuFit{}, owner, last)
 		highlightedWhenShown = m.items[last].over
 		visibleWhenShown = popup.IsVisible()
 		subMenuOpenWhenShown = sub.popupPanel != nil
@@ -884,5 +887,186 @@ func TestPopupHighlightsTheItemBeforeShowing(t *testing.T) {
 	c.True(itemBounds.Y >= 0 && itemBounds.Bottom() <= height, "and scrolled into view: %v within %v", itemBounds,
 		height)
 	c.False(subMenuOpenWhenShown, "its sub-menu is not opened before the menu is shown")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestRemovedItemsKeepWorkingWhileShown verifies that an item removed from a menu, singly or with the rest, while the
+// menu's popup still shows its panel, which is how application code refreshing a menu while it is open changes it, goes
+// on drawing and being chosen from the popup, while Menu and Index say it is in no menu.
+func TestRemovedItemsKeepWorkingWhileShown(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m *menu
+	var shown []*menuItem
+	var popup *Window
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		m = newTestMenu(f, UserBaseID, &chosen, "One", "Two", "Three")
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		if m.popupPanel == nil {
+			return
+		}
+		popup = m.popupPanel.Window()
+		shown = slices.Clone(m.items)
+		m.RemoveItem(0)
+		m.RemoveAll()
+		for i, title := range []string{"Four", "Five"} {
+			m.InsertItem(-1, f.NewItem(UserBaseID+10+i, title, KeyBinding{}, nil, nil))
+		}
+	}))
+	c.NotNil(popup)
+	if popup == nil {
+		return
+	}
+	c.NotNil(screen.CaptureWindow(popup))
+	c.Equal(0, len(screen.Errors()), "drawing the removed items must not panic: %v", screen.Errors())
+	var inNone bool
+	var index int
+	c.True(screen.Do(func() {
+		inNone = shown[0].Menu() == nil && shown[1].Menu() == nil
+		index = shown[1].Index()
+	}))
+	c.True(inNone, "a removed item is in no menu")
+	c.Equal(-1, index)
+	screen.Click(screen.PanelCenter(shown[1].panel))
+	var open int
+	var picked []string
+	c.True(screen.Do(func() {
+		open = len(owner.root.openMenuPanels)
+		picked = slices.Clone(chosen)
+	}))
+	c.Equal([]string{"Two"}, picked, "a removed item the popup still shows can be chosen")
+	c.Equal(0, open, "and choosing it closes the menu")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestMenuWindowRectWithoutADisplay verifies that a menu is fitted onto its display when it has one and left where it
+// was asked to go when it has none, as on macOS while every display is asleep, rather than crashing on the display.
+func TestMenuWindowRectWithoutADisplay(t *testing.T) {
+	c := check.New(t)
+	where := geom.NewRect(500, 400, 100, 50)
+	c.Equal(where, menuWindowRect(where, menuFit{}, nil))
+	d := &Display{Usable: geom.NewRect(0, 0, 400, 300), headless: true}
+	c.Equal(geom.NewRect(300, 250, 100, 50), menuWindowRect(where, menuFit{}, d))
+}
+
+// TestBarMenuOpensAboveABarWithNoRoomBelow verifies that a menu opened from a menu bar title with too little room
+// beneath it for its first three items is placed above the bar, with its bottom at the bar's top and shrunk to the
+// space above when it has to be, while one with room for them stays below, shrunk to that room, and one whose bar has
+// even less room above it than below stays below as well.
+func TestBarMenuOpensAboveABarWithNoRoomBelow(t *testing.T) {
+	c := check.New(t)
+	usable := geom.NewRect(0, 0, 400, 300)
+	fit := func(barTop, barBottom float32) menuFit {
+		return menuFit{bar: true, barTop: barTop, barBottom: barBottom, minHeight: 60}
+	}
+	c.Equal(geom.NewRect(10, 80, 100, 200), fitMenuRect(geom.NewRect(10, 300, 100, 200), usable, fit(280, 300)),
+		"a bar at the bottom of the display")
+	c.Equal(geom.NewRect(10, 50, 100, 200), fitMenuRect(geom.NewRect(10, 270, 100, 200), usable, fit(250, 270)),
+		"a bar with room for only a couple of items beneath it")
+	c.Equal(geom.NewRect(10, 0, 100, 250), fitMenuRect(geom.NewRect(10, 270, 100, 400), usable, fit(250, 270)),
+		"a menu taller than the space above the bar is shrunk to it")
+	c.Equal(geom.NewRect(10, 220, 100, 80), fitMenuRect(geom.NewRect(10, 220, 100, 200), usable, fit(200, 220)),
+		"a bar with room for three items keeps its menu below, shrunk to the room")
+	c.Equal(geom.NewRect(10, 30, 100, 200), fitMenuRect(geom.NewRect(10, 30, 100, 200), usable, fit(10, 30)),
+		"a bar at the top")
+	usable = geom.NewRect(0, 0, 400, 50)
+	c.Equal(geom.NewRect(10, 20, 100, 30), fitMenuRect(geom.NewRect(10, 20, 100, 200), usable, fit(0, 20)),
+		"a bar with less room above it than below keeps its menu below")
+}
+
+// TestBarMenuAtTheScreenBottomOpensAbove verifies, end to end, that a menu opened from the menu bar of a window whose
+// bar sits at the bottom of the screen is placed above the bar rather than squeezed into the sliver beneath it.
+func TestBarMenuAtTheScreenBottomOpensAbove(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 372, 300, 80))
+	var chosen []string
+	var m *menu
+	c.True(screen.Do(func() {
+		DefaultMenuFactory().BarForWindow(owner, func(bar Menu) {
+			if f, ok := bar.Factory().(*inWindowMenuFactory); ok {
+				m = newTestMenu(f, UserBaseID, &chosen, menuItemTitles(5)...)
+				bar.InsertMenu(-1, m)
+			}
+		})
+	}))
+	c.NotNil(m, "the test needs an in-window menu bar")
+	if m == nil {
+		return
+	}
+	screen.Sync()
+	screen.Click(screen.PanelCenter(m.titleItem.panel))
+	var rect geom.Rect
+	var barTop, barBottom, height float32
+	var opened bool
+	c.True(screen.Do(func() {
+		if opened = m.popupPanel != nil; opened {
+			rect = m.popupPanel.Window().ContentRect()
+			height = m.popupPanel.FrameRect().Height
+		}
+		title := m.titleItem.panel
+		tr := title.RectToRoot(title.ContentRect(true))
+		barTop = owner.apiPointToScreen(tr.Point).Y
+		barBottom = owner.apiPointToScreen(geom.NewPoint(0, tr.Bottom())).Y
+	}))
+	c.True(opened)
+	c.True(barBottom > 390 && barTop < 400, "the test needs the bar at the bottom of the screen: %v-%v", barTop,
+		barBottom)
+	c.Equal(barTop, rect.Bottom(), "the menu ends at the top of the bar")
+	c.Equal(height, rect.Height, "and keeps its height")
+}
+
+// TestSubMenuOpensOnTheLeftWhenItDoesNotFit verifies that a sub-menu that does not fit to the right of its item is placed
+// to the left of the item, with its right edge at the item's left edge, rather than shifted left over the parent menu,
+// and that one that does fit stays on the right.
+func TestSubMenuOpensOnTheLeftWhenItDoesNotFit(t *testing.T) {
+	c := check.New(t)
+	usable := geom.NewRect(0, 0, 400, 300)
+	fit := menuFit{sub: true, leftOf: 250}
+	c.Equal(geom.NewRect(350, 50, 40, 100), fitMenuRect(geom.NewRect(350, 50, 40, 100), usable, fit), "fits")
+	c.Equal(geom.NewRect(150, 50, 100, 100), fitMenuRect(geom.NewRect(350, 50, 100, 100), usable, fit),
+		"does not fit, so goes to the left of the item")
+	c.Equal(geom.NewRect(0, 50, 300, 100), fitMenuRect(geom.NewRect(350, 50, 300, 100), usable, fit),
+		"one too wide for the left as well is kept on the display")
+	c.Equal(geom.NewRect(300, 50, 100, 100), fitMenuRect(geom.NewRect(350, 50, 100, 100), usable, menuFit{}),
+		"a menu that is not a sub-menu is shifted left to fit")
+
+	screen, _ := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m, sub *menu
+	var opened bool
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		m = newTestMenu(f, UserBaseID, &chosen, "One")
+		sub = newTestMenu(f, UserBaseID+100, &chosen, "Deep", "Deeper")
+		m.InsertMenu(-1, sub)
+		m.Popup(geom.NewRect(380, 20, 0, 0), -1)
+		opened = m.popupPanel != nil
+	}))
+	c.True(opened)
+	if !opened {
+		return
+	}
+	screen.Click(screen.PanelCenter(sub.titleItem.panel))
+	var parent, child *Window
+	var at, parentRect geom.Rect
+	var itemLeft float32
+	c.True(screen.Do(func() {
+		parent = m.popupPanel.Window()
+		parentRect = parent.ContentRect()
+		if sub.popupPanel != nil {
+			child = sub.popupPanel.Window()
+			at = child.ContentRect()
+		}
+		item := sub.titleItem.panel
+		itemLeft = parent.apiPointToScreen(item.RectToRoot(item.ContentRect(true)).Point).X
+	}))
+	c.NotNil(child)
+	if child == nil {
+		return
+	}
+	c.True(parentRect.Right()+at.Width > 500, "the test needs a sub-menu that does not fit on the right")
+	c.Equal(itemLeft, at.Right(), "placed to the left of its item")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

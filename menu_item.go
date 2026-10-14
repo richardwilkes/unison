@@ -11,6 +11,7 @@ package unison
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/xmath"
@@ -110,8 +111,11 @@ func (mi *menuItem) IsSame(other MenuItem) bool {
 	return mi == other
 }
 
+// Menu returns the menu the item is in, or nil once it has been removed from it. The item's own reference outlives
+// its removal, since the menu's open popup may still be showing the item's panel, which draws the item and runs it
+// through that reference (see isRoot and execute), so membership is what decides.
 func (mi *menuItem) Menu() Menu {
-	if mi.menu == nil {
+	if mi.menu == nil || !slices.Contains(mi.menu.items, mi) {
 		// Return a true nil rather than a typed-nil *menu wrapped in the interface, which would pass != nil checks
 		// and then crash on the first method call. This also matches the behavior of the macOS implementation.
 		return nil
@@ -367,8 +371,10 @@ func (mi *menuItem) click() {
 	}
 }
 
-// showSubMenu opens the item's sub-menu in a popup window beside the item, or below it for an item on the menu bar,
-// which the popup never covers. Only an item of the active window's menus opens one. See axMayPopupMenu.
+// showSubMenu opens the item's sub-menu in a popup window beside the item, to its left when it does not fit to its
+// right, or below it for an item on the menu bar, which the popup never covers, except that one goes above the bar
+// when too little of it would fit below; see fitMenuRect. Only an item of the active window's menus opens one. See
+// axMayPopupMenu.
 func (mi *menuItem) showSubMenu() {
 	if !mi.factory.showInProgress && mi.subMenu != nil && mi.subMenu.popupPanel == nil && axMayPopupMenu(mi.panel) {
 		mi.factory.showInProgress = true
@@ -378,12 +384,20 @@ func (mi *menuItem) showSubMenu() {
 			return
 		}
 		fr := mi.subMenu.popupPanel.FrameRect()
-		fr.Point = subMenuOrigin(mi.panel.RectToRoot(mi.panel.ContentRect(true)), mi.isRoot(), wnd.apiPointToScreen)
-		top := noTopLimit
+		pr := mi.panel.RectToRoot(mi.panel.ContentRect(true))
+		fr.Point = subMenuOrigin(pr, mi.isRoot(), wnd.apiPointToScreen)
+		var fit menuFit
 		if mi.isRoot() {
-			top = fr.Y
+			fit = menuFit{
+				bar:       true,
+				barTop:    wnd.apiPointToScreen(pr.Point).Y,
+				barBottom: fr.Y,
+				minHeight: mi.subMenu.minVisibleHeight(),
+			}
+		} else {
+			fit = menuFit{sub: true, leftOf: wnd.apiPointToScreen(pr.Point).X}
 		}
-		mi.subMenu.ensureOnDisplay(fr, top, wnd, -1)
+		mi.subMenu.ensureOnDisplay(fr, fit, wnd, -1)
 	}
 }
 
