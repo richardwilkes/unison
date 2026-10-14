@@ -568,3 +568,114 @@ func TestPopupMenuInModalDialog(t *testing.T) {
 	c.False(menuWnd.IsValid())
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestBarTitlePressTogglesItsMenu verifies that a press on the title of the open menu closes it, rather than closing
+// it and opening it again, whether a press or the pointer passing over the title opened it.
+func TestBarTitlePressTogglesItsMenu(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var first, second *menu
+	c.True(screen.Do(func() {
+		DefaultMenuFactory().BarForWindow(owner, func(bar Menu) {
+			if f, ok := bar.Factory().(*inWindowMenuFactory); ok {
+				first = newTestMenu(f, UserBaseID, &chosen, "One", "Two")
+				second = newTestMenu(f, UserBaseID+100, &chosen, "Three")
+				bar.InsertMenu(-1, first)
+				bar.InsertMenu(-1, second)
+			}
+		})
+	}))
+	c.NotNil(first, "the test needs an in-window menu bar")
+	if first == nil {
+		return
+	}
+	screen.Sync()
+	open := func() (count int, firstOpen, secondOpen bool) {
+		c.True(screen.Do(func() {
+			count = len(owner.root.openMenuPanels)
+			firstOpen = first.popupPanel != nil
+			secondOpen = second.popupPanel != nil
+		}))
+		return count, firstOpen, secondOpen
+	}
+	screen.Click(screen.PanelCenter(first.titleItem.panel))
+	count, firstOpen, secondOpen := open()
+	c.Equal(1, count)
+	c.True(firstOpen)
+	c.False(secondOpen)
+	var popup *Window
+	c.True(screen.Do(func() { popup = first.popupPanel.Window() }))
+
+	screen.Click(screen.PanelCenter(first.titleItem.panel))
+	count, firstOpen, secondOpen = open()
+	c.Equal(0, count, "a press on the open menu's title closes it")
+	c.False(firstOpen)
+	c.False(secondOpen)
+	c.False(popup.IsValid())
+
+	screen.Click(screen.PanelCenter(first.titleItem.panel))
+	count, firstOpen, _ = open()
+	c.Equal(1, count, "and the next press opens it again")
+	c.True(firstOpen)
+
+	screen.MouseMove(screen.PanelCenter(second.titleItem.panel), 0)
+	count, firstOpen, secondOpen = open()
+	c.Equal(1, count, "the pointer arriving over another title switches menus")
+	c.False(firstOpen)
+	c.True(secondOpen)
+
+	screen.Click(screen.PanelCenter(second.titleItem.panel))
+	count, _, secondOpen = open()
+	c.Equal(0, count, "and a press on the title of the menu the pointer opened closes it too")
+	c.False(secondOpen)
+	c.Equal(0, len(chosen))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestPressOnItemWithOpenSubMenuKeepsIt verifies that a press on an item whose sub-menu is open leaves that sub-menu
+// up, in the same popup window, rather than closing it and opening it again.
+func TestPressOnItemWithOpenSubMenuKeepsIt(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m, sub *menu
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		m = newTestMenu(f, UserBaseID, &chosen, "One")
+		sub = newTestMenu(f, UserBaseID+100, &chosen, "Deep", "Deeper")
+		m.InsertMenu(-1, sub)
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+	}))
+	c.NotNil(m.popupPanel)
+	if m.popupPanel == nil {
+		return
+	}
+	screen.Click(screen.PanelCenter(sub.titleItem.panel))
+	var child *Window
+	var stack int
+	c.True(screen.Do(func() {
+		if sub.popupPanel != nil {
+			child = sub.popupPanel.Window()
+		}
+		stack = len(owner.root.openMenuPanels)
+	}))
+	c.NotNil(child)
+	c.Equal(2, stack)
+	if child == nil {
+		return
+	}
+	screen.Click(screen.PanelCenter(sub.titleItem.panel))
+	var again *Window
+	c.True(screen.Do(func() {
+		if sub.popupPanel != nil {
+			again = sub.popupPanel.Window()
+		}
+		stack = len(owner.root.openMenuPanels)
+	}))
+	c.Equal(2, stack)
+	c.True(again == child, "the sub-menu stays in the popup window it was in")
+	c.True(child.IsValid())
+	c.Equal(0, len(chosen))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

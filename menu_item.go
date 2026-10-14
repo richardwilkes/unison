@@ -336,10 +336,19 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 	}
 }
 
+// mouseDown opens the item's sub-menu. A press on a title of the menu bar whose menu is already open closes it
+// instead, as the platforms' own menu bars do; see rootPanel.preMouseDown, which leaves such a press to the title.
 func (mi *menuItem) mouseDown(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
-	if mi.subMenu != nil {
-		mi.showSubMenu()
+	if mi.subMenu == nil {
+		return true
 	}
+	if mi.isRoot() && mi.subMenu.popupPanel != nil {
+		if wnd := mi.panel.Window().menuOwner(); wnd != nil {
+			wnd.root.closeMenuStackStoppingAt(nil)
+		}
+		return true
+	}
+	mi.showSubMenu()
 	return true
 }
 
