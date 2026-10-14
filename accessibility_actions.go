@@ -243,8 +243,11 @@ func (p *Panel) axShowContextMenu() bool {
 }
 
 // axMayShowContextMenu reports whether an assistive technology's request for the panel's contextual menu may be carried
-// out: the panel offers a menu (see offersContextMenu) and is in the active window. A widget with something to do
-// before the default behavior opens the menu asks it first, so that a request about to be refused changes nothing.
+// out: the panel offers a menu (see offersContextMenu) and is in the active window or in one of its popup menu windows
+// (see axMayPopupMenu). A widget with something to do before the default behavior opens the menu asks it first, so that
+// a request about to be refused changes nothing. The paths that open the menu pass the panel's root coordinates to
+// Menu.Popup, which reads them as the active window's, so they are right for a panel in a popup menu window only
+// because a menu holds nothing but menu items, which offer no contextual menu.
 func axMayShowContextMenu(p *Panel) bool {
 	return p.offersContextMenu() && axMayPopupMenu(p)
 }

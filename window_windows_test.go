@@ -342,10 +342,11 @@ func TestW32NonClientMouseDownClosesMenus(t *testing.T) {
 	(&Window{wnd: &apiWindow{}}).w32NonClientMouseDown()
 }
 
-// TestW32WheelTarget verifies where a wheel message goes: to the popup menu window of ours under the pointer when the
-// message reached its owner, since a never-activated popup is not the focus window the wheel is sent to, and otherwise
-// to the window it reached.
-func TestW32WheelTarget(t *testing.T) {
+// TestW32PopupUnder verifies where a mouse message delivered to a window although the pointer is over a popup menu
+// window goes: to the popup menu window of ours under the pointer, since a never-activated popup is neither the focus
+// window a wheel is sent to nor the window holding the capture a press is sent to, and otherwise to the window it
+// reached.
+func TestW32PopupUnder(t *testing.T) {
 	c := check.New(t)
 	priorWindows := windowList
 	t.Cleanup(func() { windowList = priorWindows })
@@ -359,14 +360,80 @@ func TestW32WheelTarget(t *testing.T) {
 	underIs := func(hwnd windows.HWND) func(w32.POINT) windows.HWND {
 		return func(w32.POINT) windows.HWND { return hwnd }
 	}
-	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(2)) == popup, "handed on to the popup under the pointer")
-	c.True(popup.w32WheelTarget(w32.POINT{}, underIs(2)) == popup, "a popup sent the wheel itself keeps it")
-	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(1)) == owner)
-	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(3)) == owner, "another top-level window of ours is not a popup")
-	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(9)) == owner, "nor is another program's window")
-	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(0)) == owner)
+	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(2)) == popup, "handed on to the popup under the pointer")
+	c.True(popup.w32PopupUnder(w32.POINT{}, underIs(2)) == popup, "a popup sent the message itself keeps it")
+	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(1)) == owner)
+	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(3)) == owner, "another top-level window of ours is not a popup")
+	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(9)) == owner, "nor is another program's window")
+	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(0)) == owner)
 	popup.valid = false
-	c.True(owner.w32WheelTarget(w32.POINT{}, underIs(2)) == owner, "a disposed popup takes nothing")
+	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(2)) == owner, "a disposed popup takes nothing")
+}
+
+// TestW32CaptureTargetHandsPressesToThePopup verifies that a press delivered to the window holding the capture while
+// the pointer is over a popup menu window of ours goes to that popup, that the release of a button a popup records as
+// down goes to the popup whichever window is under the pointer, and that every other message stays with the window it
+// reached. The windows have no HWNDs, so the conversions between their client areas are left to Windows, which does
+// nothing for them, and the position comes back unchanged.
+func TestW32CaptureTargetHandsPressesToThePopup(t *testing.T) {
+	c := check.New(t)
+	priorWindows := windowList
+	t.Cleanup(func() { windowList = priorWindows })
+	owner := &Window{valid: true, wnd: &apiWindow{}, pressedButtons: map[int]bool{ButtonLeft: true}}
+	owner.wnd.wnd = 1
+	popup := &Window{valid: true, wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu, pressedButtons: map[int]bool{}}
+	popup.wnd.wnd = 2
+	windowList = []*Window{owner, popup}
+	underIs := func(hwnd windows.HWND) func(w32.POINT) windows.HWND {
+		return func(w32.POINT) windows.HWND { return hwnd }
+	}
+	pos := geom.NewPoint(10, 20)
+	target, where := owner.w32CaptureTarget(true, ButtonRight, pos, underIs(2))
+	c.True(target == popup, "a press over the popup is handed on to it")
+	c.Equal(pos, where)
+	target, where = owner.w32CaptureTarget(true, ButtonRight, pos, underIs(1))
+	c.True(target == owner, "one over the owner stays with it")
+	c.Equal(pos, where)
+	target, _ = owner.w32CaptureTarget(false, ButtonRight, pos, underIs(1))
+	c.True(target == owner, "the release of a button no popup records stays with the owner")
+	popup.pressedButtons[ButtonRight] = true
+	target, where = owner.w32CaptureTarget(false, ButtonRight, pos, underIs(1))
+	c.True(target == popup, "the release of a button the popup records as down goes to the popup")
+	c.Equal(pos, where)
+	target, _ = owner.w32CaptureTarget(false, ButtonLeft, pos, underIs(2))
+	c.True(target == owner, "the release of the owner's own button stays with it, even over the popup")
+	popup.valid = false
+	target, _ = owner.w32CaptureTarget(false, ButtonRight, pos, underIs(1))
+	c.True(target == owner, "a disposed popup is sent nothing")
+}
+
+// TestW32CreationTitle verifies that a popup menu window is created without a title, since its menu's title is never
+// shown and may hold a NUL, which CreateWindowExW refuses, while every other window is created with its own.
+func TestW32CreationTitle(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{wnd: &apiWindow{}, title: "owner"}
+	c.Equal("owner", owner.w32CreationTitle())
+	popup := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu, title: "File\x00"}
+	c.Equal("", popup.w32CreationTitle())
+	c.Equal("", (&Window{wnd: &apiWindow{}}).w32CreationTitle())
+}
+
+// TestW32PopupContentScale verifies the scale a popup menu window's content rect is sized with: that of the display
+// holding the rect's origin, so that a menu fitted to a secondary display at another scale than the primary's, where
+// the popup was created, gets the pixel size it was fitted for, or the window's own scale when no display holds it.
+func TestW32PopupContentScale(t *testing.T) {
+	c := check.New(t)
+	primary := &Display{Frame: geom.NewRect(0, 0, 3840, 2160), Scale: geom.NewPoint(2, 2), Primary: true}
+	secondary := &Display{Frame: geom.NewRect(3840, 0, 1920, 1080), Scale: geom.NewPoint(1, 1)}
+	displays := []*Display{primary, secondary}
+	own := geom.NewPoint(2, 2)
+	c.Equal(geom.NewPoint(1, 1), w32PopupContentScale(geom.NewPoint(4000, 100), displays, own))
+	c.Equal(geom.NewPoint(2, 2), w32PopupContentScale(geom.NewPoint(100, 100), displays, own))
+	c.Equal(geom.NewPoint(1, 1), w32PopupContentScale(geom.NewPoint(3840, 0), displays, own),
+		"the shared edge belongs to the display starting there")
+	c.Equal(own, w32PopupContentScale(geom.NewPoint(-50, -50), displays, own),
+		"a point on no display keeps the own scale")
+	c.Equal(own, w32PopupContentScale(geom.NewPoint(100, 100), nil, own))
 }
 
 // TestW32DestroyGivesUpTheCapture verifies that destroying a window releases the mouse capture it holds, so that the

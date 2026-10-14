@@ -100,3 +100,92 @@ func TestMacFrameMouseDownClosesMenus(t *testing.T) {
 	c.Equal(0, len(owner.root.openMenuPanels))
 	c.Nil(mp.menu.popupPanel)
 }
+
+// TestMacMenuCoversPoint verifies which mouse-moved events the owner of an open menu stack drops: those over one of its
+// popup menu windows, which AppKit sends the owner as the key window along with every other move, and none while no
+// menu is open or once a popup has been disposed of.
+func TestMacMenuCoversPoint(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{wnd: &apiWindow{wnd: cocoa.Window(7)}}
+	owner.root = newRootPanel(owner)
+	rects := map[*Window]geom.Rect{}
+	contentRect := func(w *Window) geom.Rect { return rects[w] }
+	c.False(owner.macMenuCoversPoint(geom.NewPoint(150, 150), contentRect), "no menu is open")
+	mp := newTestMenuPanel(0, 0, 100, 100)
+	popup := newTestPopupWindow(owner, mp)
+	popup.valid = true
+	rects[popup] = geom.NewRect(100, 100, 100, 100)
+	owner.root.insertMenu(mp)
+	c.True(owner.macMenuCoversPoint(geom.NewPoint(150, 150), contentRect), "a move over the popup")
+	c.False(owner.macMenuCoversPoint(geom.NewPoint(50, 50), contentRect), "one beside it")
+	c.False(owner.macMenuCoversPoint(geom.NewPoint(200, 150), contentRect), "the popup's far edge is not within it")
+	popup.valid = false
+	c.False(owner.macMenuCoversPoint(geom.NewPoint(150, 150), contentRect), "a disposed popup covers nothing")
+	c.False((&Window{wnd: &apiWindow{}}).macMenuCoversPoint(geom.NewPoint(150, 150), contentRect),
+		"a window without a root panel has no menus")
+}
+
+// TestMacMenuStackMonitorClosesOutsidePresses verifies that an open menu stack installs the monitor that closes its
+// menus on a press the owner is never told about: one in another of the application's windows, in none of its windows
+// or in another application's. A press in the owner or in one of its popups is left to them, a stack opened for
+// another window takes the monitor over, and only the window the monitor serves takes it down.
+func TestMacMenuStackMonitorClosesOutsidePresses(t *testing.T) {
+	c := check.New(t)
+	prevList, prevInstall, prevRemove := windowList, macInstallMenuStackMonitor, macRemoveMenuStackMonitor
+	defer func() {
+		windowList, macInstallMenuStackMonitor, macRemoveMenuStackMonitor = prevList, prevInstall, prevRemove
+		macMenuStackWindow = nil
+	}()
+	var monitor func(cocoa.Window)
+	var installs, removals int
+	macInstallMenuStackMonitor = func(f func(cocoa.Window)) {
+		installs++
+		monitor = f
+	}
+	macRemoveMenuStackMonitor = func() {
+		removals++
+		monitor = nil
+	}
+	owner := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(7)}}
+	owner.root = newRootPanel(owner)
+	other := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(9)}}
+	other.root = newRootPanel(other)
+	mp := newTestMenuPanel(0, 0, 100, 100)
+	popup := newTestPopupWindow(owner, mp)
+	popup.wnd = &apiWindow{wnd: cocoa.Window(8)}
+	windowList = []*Window{owner, popup, other}
+
+	owner.root.insertMenu(mp)
+	c.Equal(1, installs, "the first menu installs the monitor")
+	c.True(macMenuStackWindow == owner)
+	c.NotNil(monitor)
+	if monitor == nil {
+		return
+	}
+	for _, macWnd := range []cocoa.Window{7, 8} {
+		monitor(macWnd)
+		c.Equal(1, len(owner.root.openMenuPanels), "a press in window %d is left to its root panel", macWnd)
+	}
+	monitor(9)
+	c.Equal(0, len(owner.root.openMenuPanels), "a press in another window of the application's closes the menus")
+	c.Equal(1, removals, "and the empty stack takes the monitor down")
+	c.Nil(macMenuStackWindow)
+
+	owner.root.insertMenu(mp)
+	monitor(0)
+	c.Equal(0, len(owner.root.openMenuPanels), "a press in no window of the application's closes them too")
+
+	owner.root.insertMenu(mp)
+	otherMenu := newTestMenuPanel(0, 0, 100, 100)
+	newTestPopupWindow(other, otherMenu)
+	other.root.insertMenu(otherMenu)
+	c.True(macMenuStackWindow == other, "a stack opened for another window takes the monitor over")
+	monitor(7)
+	c.Equal(0, len(other.root.openMenuPanels), "whose monitor treats the first window as outside")
+	removals = 0
+	owner.root.closeMenuStackStoppingAt(nil)
+	c.Equal(0, removals, "the window that lost the monitor does not take it down")
+	other.root.insertMenu(otherMenu)
+	other.root.closeMenuStackStoppingAt(nil)
+	c.Equal(1, removals)
+}

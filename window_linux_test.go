@@ -875,41 +875,60 @@ func TestX11MenuGrabInterceptsPress(t *testing.T) {
 	c.Equal(result{}, decide(other, press(1, 10, 20), underIs(nil)))
 }
 
-// TestX11PointerTargetFollowsThePress covers where a motion or release goes while the menus hold the pointer: to the
-// window holding a press, as the press's implicit grab would have sent it, and otherwise to the window X delivered it
-// to, except that one reaching the owner from outside it is over another client's window and is dropped.
+// TestX11PointerTargetFollowsThePress covers where a motion or release goes while the menus hold the pointer: a release
+// to the window recording its button as down, a motion to the window holding a press, as the press's implicit grab
+// would have sent them, and otherwise to the window X delivered it to, except that one reaching the owner from outside
+// it is over another client's window and is dropped. One X reported to a window that is gone goes where that window
+// would have sent it.
 func TestX11PointerTargetFollowsThePress(t *testing.T) {
 	c := check.New(t)
 	owner, popup, other := x11MenuGrabTestWindows(t)
 
-	c.Equal(owner, x11PointerTarget(owner, true))
-	c.Equal(popup, x11PointerTarget(popup, true))
-	c.Equal(other, x11PointerTarget(other, true))
-	c.True(x11PointerTarget(owner, false) == nil, "with no press held, an event from outside the owner is dropped")
-	c.Equal(popup, x11PointerTarget(popup, false), "only the owner is reported events from outside it")
+	c.Equal(owner, x11PointerTarget(owner, true, -1))
+	c.Equal(popup, x11PointerTarget(popup, true, -1))
+	c.Equal(other, x11PointerTarget(other, true, -1))
+	c.True(x11PointerTarget(owner, false, -1) == nil, "with no press held, an event from outside the owner is dropped")
+	c.Equal(popup, x11PointerTarget(popup, false, -1), "only the owner is reported events from outside it")
+	c.True(x11PointerTarget(nil, false, ButtonLeft) == nil, "a release to a gone window with no press held is dropped")
 	owner.wnd.pointerInside = false
-	c.True(x11PointerTarget(owner, true) == nil,
+	c.True(x11PointerTarget(owner, true, -1) == nil,
 		"one within the owner's bounds after the pointer left it is over another client's window on top")
 	owner.wnd.pointerInside = true
 
 	popup.inMouseDown = true
-	c.Equal(popup, x11PointerTarget(owner, false), "a drag off a popup over another client's window stays with it")
-	c.Equal(popup, x11PointerTarget(owner, true), "as does one over the owner's content")
-	c.Equal(popup, x11PointerTarget(other, true), "and one over another window of ours")
+	popup.pressedButtons = map[int]bool{ButtonLeft: true}
+	c.Equal(popup, x11PointerTarget(owner, false, -1), "a drag off a popup over another client's window stays with it")
+	c.Equal(popup, x11PointerTarget(owner, true, -1), "as does one over the owner's content")
+	c.Equal(popup, x11PointerTarget(other, true, -1), "and one over another window of ours")
+	c.Equal(popup, x11PointerTarget(owner, false, ButtonLeft), "so does the release of the button it holds")
+	c.Equal(popup, x11PointerTarget(nil, false, ButtonLeft), "even one reported to a window that is gone")
+	c.Equal(popup, x11PointerTarget(nil, false, -1), "as is a motion reported to one")
 
 	owner.inMouseDown = true
-	c.Equal(popup, x11PointerTarget(other, true), "a popup holding a press is preferred")
-	c.Equal(owner, x11PointerTarget(owner, false), "a window holding a press keeps what it is sent")
+	owner.pressedButtons = map[int]bool{ButtonRight: true}
+	c.Equal(popup, x11PointerTarget(other, true, -1), "a popup holding a press is preferred")
+	c.Equal(owner, x11PointerTarget(owner, false, -1), "a window holding a press keeps the motion it is sent")
+	c.Equal(owner, x11PointerTarget(popup, true, ButtonRight),
+		"the release of a button the owner holds goes to the owner, whichever window it is sent to")
+	c.Equal(popup, x11PointerTarget(owner, true, ButtonLeft), "and that of one the popup holds to the popup")
+	c.Equal(owner, x11PointerTarget(owner, true, ButtonMiddle),
+		"the release of a button no window records stays where it was sent")
+	c.Equal(owner, x11PointerTarget(nil, false, ButtonRight), "a release to a gone window goes to the button's holder")
 	popup.inMouseDown = false
-	c.Equal(owner, x11PointerTarget(popup, true), "a press on the owner keeps the events a popup is sent")
+	popup.pressedButtons = nil
+	c.Equal(owner, x11PointerTarget(popup, true, -1), "a press on the owner keeps the events a popup is sent")
 
 	popup.inMouseDown = true
+	popup.pressedButtons = map[int]bool{ButtonLeft: true}
 	popup.valid = false
-	c.Equal(owner, x11PointerTarget(other, true), "a disposed popup holds nothing")
+	c.Equal(owner, x11PointerTarget(other, true, -1), "a disposed popup holds nothing")
+	c.Equal(owner, x11PointerTarget(other, true, ButtonLeft))
 
 	owner.wnd.menuGrab = false
-	c.Equal(other, x11PointerTarget(other, true), "without a menu grab, X already routes the events")
-	c.Equal(owner, x11PointerTarget(owner, false))
+	c.Equal(other, x11PointerTarget(other, true, -1), "without a menu grab, X already routes the events")
+	c.Equal(owner, x11PointerTarget(owner, false, -1))
+	c.Equal(popup, x11PointerTarget(popup, true, ButtonRight))
+	c.True(x11PointerTarget(nil, false, ButtonRight) == nil, "and a release to a gone window has nowhere to go")
 }
 
 // TestX11IgnoreEnter covers which EnterNotify events are ignored: one a grab reports as it takes effect, which enters
@@ -1052,6 +1071,42 @@ func TestX11MenuStackGrab(t *testing.T) {
 	c.Equal(nothing, server.grabs())
 }
 
+// TestX11MenuGrabMovesBetweenWindows covers the one pointer grab the server holds for the client: a menu stack opened
+// for a second window takes it from the first, which stops saying it holds the grab, so that the first window's menus
+// closing releases nothing and the second window's closing releases the grab.
+func TestX11MenuGrabMovesBetweenWindows(t *testing.T) {
+	c := check.New(t)
+	server := startX11TestServer(t)
+	priorDragSource, priorArrow, priorSettings := dragSource, arrowCursor, builtCursorSettings
+	t.Cleanup(func() { dragSource, arrowCursor, builtCursorSettings = priorDragSource, priorArrow, priorSettings })
+	dragSource = nil
+	const arrowID = x11.CursorID(77)
+	arrowCursor, builtCursorSettings = &Cursor{cursor: arrowID}, nil
+	first := &Window{valid: true, wnd: &apiWindow{}}
+	first.wnd.id = x11TestWindowID
+	second := &Window{valid: true, wnd: &apiWindow{}}
+	second.wnd.id = x11TestWindowID + 1
+	windowList = []*Window{first, second}
+	var nothing []x11Grab
+
+	first.nativeMenuStackChanged(true)
+	c.True(first.wnd.menuGrab)
+	c.Equal([]x11Grab{{window: first.wnd.id, cursor: arrowID, eventMask: x11MenuGrabEventMask, ownerEvents: true}},
+		server.grabs())
+	second.nativeMenuStackChanged(true)
+	c.True(second.wnd.menuGrab)
+	c.False(first.wnd.menuGrab, "the second window's grab replaced the first's")
+	c.Equal([]x11Grab{{window: second.wnd.id, cursor: arrowID, eventMask: x11MenuGrabEventMask, ownerEvents: true}},
+		server.grabs())
+	c.True(x11MenuGrabOwner() == second)
+	first.nativeMenuStackChanged(false)
+	c.Equal(nothing, server.grabs(), "the first window's menus closing releases nothing")
+	c.True(second.wnd.menuGrab)
+	second.nativeMenuStackChanged(false)
+	c.False(second.wnd.menuGrab)
+	c.Equal([]x11Grab{{released: true}}, server.grabs())
+}
+
 // TestX11DestroyLeavesQueuedEventsAlone covers the event handling destroying a window does not do: a popup menu
 // window's destroy and a top-level window's both leave the queue to the event loop, since a window is disposed of from
 // inside the handling of an event, such as the press that closed a popup's menu, and a release queued behind that press
@@ -1175,6 +1230,9 @@ func TestX11PointerEventPositionUsesTheTargetOrigin(t *testing.T) {
 	x, y = x11PointerEventPosition(owner, popup, ev)
 	c.Equal(int16(-10), x, "a drag off the popup's left edge")
 	c.Equal(int16(-20), y)
+	x, y = x11PointerEventPosition(nil, popup, ev)
+	c.Equal(int16(-10), x, "an event reported to a window that is gone has only its root position")
+	c.Equal(int16(-20), y)
 }
 
 // TestX11OtherButtonsHeld covers the window's own record of held buttons, which is what tells a held back or forward
@@ -1203,7 +1261,8 @@ func TestX11OtherButtonsHeld(t *testing.T) {
 
 // TestX11DragReplacesAndRestoresTheMenuGrab covers the menu grab a drag's own grab replaces: the window that held it
 // stops saying so, since the drag's release ends it, and once the drag has released its grab the menu grab is taken
-// again if the menus are still open, before the drag is forgotten, and not otherwise.
+// again if the menus are still open, before the drag is forgotten, and not otherwise. A menu opened during the drag,
+// which took no grab, is given one then too.
 func TestX11DragReplacesAndRestoresTheMenuGrab(t *testing.T) {
 	c := check.New(t)
 	server := startX11TestServer(t)
@@ -1228,6 +1287,10 @@ func TestX11DragReplacesAndRestoresTheMenuGrab(t *testing.T) {
 	owner.root.insertMenu(mp)
 	c.False(owner.wnd.menuGrab)
 	c.Equal(nothing, server.grabs())
+	x11RestoreMenuGrab(nil)
+	c.True(owner.wnd.menuGrab,
+		"a menu opened during the drag, which replaced no grab, is given one once the drag is over")
+	c.Equal([]x11Grab{menuGrab}, server.grabs())
 
 	owner.wnd.menuGrab = true
 	c.True(x11DragReplacedMenuGrab() == owner)

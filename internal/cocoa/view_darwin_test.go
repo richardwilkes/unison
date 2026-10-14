@@ -792,9 +792,10 @@ func trackingOptions(t *testing.T, v View) uint64 {
 }
 
 // TestNewPopupViewTracking proves the tracking area of a view made by NewPopupView: since its window never becomes
-// key, the area reports mouse moves and stays active whichever window is key, and it does not assume the pointer
-// starts inside. The choice survives the area being rebuilt, an ordinary view keeps its key-window-only set, and the
-// events the popup's area delivers reach the same callbacks an ordinary view's do.
+// key, the area reports mouse moves and stays active whichever window of the application is key, through
+// ActiveInActiveApp rather than ActiveAlways, which does not support the cursor updates the area also asks for, and it
+// does not assume the pointer starts inside. The choice survives the area being rebuilt, an ordinary view keeps its
+// key-window-only set, and the events the popup's area delivers reach the same callbacks an ordinary view's do.
 func TestNewPopupViewTracking(t *testing.T) {
 	defer func() {
 		WindowMouseMovedCallback = nil
@@ -822,7 +823,8 @@ func TestNewPopupViewTracking(t *testing.T) {
 			{name: "MouseEnteredAndExited", bit: nsTrackingMouseEnteredAndExited, want: true},
 			{name: "MouseMoved", bit: nsTrackingMouseMoved, want: true},
 			{name: "CursorUpdate", bit: nsTrackingCursorUpdate, want: true},
-			{name: "ActiveAlways", bit: nsTrackingActiveAlways, want: true},
+			{name: "ActiveInActiveApp", bit: nsTrackingActiveInActiveApp, want: true},
+			{name: "ActiveAlways", bit: nsTrackingActiveAlways, want: false},
 			{name: "ActiveInKeyWindow", bit: nsTrackingActiveInKeyWindow, want: false},
 			{name: "AssumeInside", bit: nsTrackingAssumeInside, want: false},
 		} {

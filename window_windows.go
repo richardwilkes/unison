@@ -245,7 +245,8 @@ func (w *Window) nativeInit() error {
 		// An owned window stays above its owner and is hidden and destroyed along with it.
 		owner = w.owner.wnd.wnd
 	}
-	w.wnd.wnd = w32.CreateWindowExW(exStyle, class.name, w.title, style, 0, 0, 1, 1, owner, 0, w32MainInstance, 0)
+	w.wnd.wnd = w32.CreateWindowExW(exStyle, class.name, w.w32CreationTitle(), style, 0, 0, 1, 1, owner, 0,
+		w32MainInstance, 0)
 	if w.wnd.wnd == 0 {
 		return errs.New("unable to create window")
 	}
@@ -265,6 +266,15 @@ func (w *Window) nativeInit() error {
 	w.lastWidth = float32(rect.Right - rect.Left)
 	w.lastHeight = float32(rect.Bottom - rect.Top)
 	return nil
+}
+
+// w32CreationTitle returns the title the window is created with: none for a popup menu window, whose title is its
+// menu's, which is never shown and may hold a NUL, which CreateWindowExW refuses.
+func (w *Window) w32CreationTitle() string {
+	if w.isPopup() {
+		return ""
+	}
+	return w.title
 }
 
 func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LPARAM) uintptr {
@@ -370,6 +380,8 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 					button = ButtonMiddle + 2
 				}
 			}
+			target := w
+			pos := w32MouseMessagePoint(lParam)
 			// Capture the mouse on the first button press so that moves and the eventual release keep being delivered
 			// while the cursor is outside the client area. Without capture, Windows stops sending mouse messages once
 			// the cursor leaves the window, so a release that happens outside is never seen (leaving stuck button
@@ -377,8 +389,13 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			if w32MouseCaptureTransition(true, w.wnd.mouseCaptured, wParam) == w32CaptureAcquire {
 				w32.SetCapture(hWnd)
 				w.wnd.mouseCaptured = true
+			} else {
+				// A further press while the capture is held is delivered here wherever the pointer is, so one over a
+				// popup menu window of ours is handed on to it, as the owner-events grab does on X11, rather than taken
+				// for a press outside every menu.
+				target, pos = w.w32CaptureTarget(true, button, pos, w32.WindowFromPoint)
 			}
-			w.mouseDown(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
+			target.mouseDown(target.w32ConvertRawMouse(pos), button, target.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONDOWN {
 				return 1
 			}
@@ -411,7 +428,9 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				w.wnd.mouseCaptured = false
 				w32.ReleaseCapture()
 			}
-			w.mouseUp(w.w32ConvertRawMouse(w32MouseMessagePoint(lParam)), button, w.CurrentKeyModifiers())
+			// The release of a press that was handed on to a popup menu window goes to that popup too.
+			target, pos := w.w32CaptureTarget(false, button, w32MouseMessagePoint(lParam), w32.WindowFromPoint)
+			target.mouseUp(target.w32ConvertRawMouse(pos), button, target.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONUP {
 				return 1
 			}
@@ -439,7 +458,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 			var pos w32.POINT
 			pos.X = int32(int16(lParam & 0xFFFF))
 			pos.Y = int32(int16((lParam >> 16) & 0xFFFF))
-			target := w.w32WheelTarget(pos, w32.WindowFromPoint)
+			target := w.w32PopupUnder(pos, w32.WindowFromPoint)
 			w32.ScreenToClient(target.wnd.wnd, &pos)
 			amount := float32(int16((wParam>>16)&0xFFFF)) / float32(w32.WHEEL_DELTA)
 			delta := geom.NewPoint(0, amount)
@@ -537,7 +556,10 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				return 1
 			}
 		case w32.WM_DPICHANGED:
-			if w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
+			// The suggested rect scales the window's current size by the change in DPI. A popup menu window was sized
+			// for the DPI of the display it was placed on (see nativeSetContentRect), so for one the suggestion would
+			// scale it a second time.
+			if !w.isPopup() && w32IsWindows10BuildOrGreater(w32.Windows10CreatorsUpdateBuild) {
 				rect := xruntime.PtrFromUintptr[w32.RECT](lParam)
 				w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, rect.Left, rect.Top, rect.Right-rect.Left,
 					rect.Bottom-rect.Top, w32.SWP_NOZORDER|w32.SWP_NOACTIVATE)
@@ -615,15 +637,47 @@ func (w *Window) w32NonClientMouseDown() {
 	}
 }
 
-// w32WheelTarget returns the window a wheel message at screen position pt is for. Windows sends the wheel to the focus
-// window unless it is set to scroll inactive windows under the pointer, and a popup menu window is never the focus
-// window, so a wheel turned over one of ours reaches its owner and is handed on to the popup. under finds the window
-// at pt; it is w32.WindowFromPoint outside the tests.
-func (w *Window) w32WheelTarget(pt w32.POINT, under func(w32.POINT) windows.HWND) *Window {
+// w32PopupUnder returns the popup menu window of ours at screen position pt, or w when there is none there, for a
+// mouse message Windows delivered to w although the pointer is over the popup: a wheel, which goes to the focus window
+// unless Windows is set to scroll inactive windows under the pointer, and a popup menu window is never the focus
+// window, or a press made while w holds the capture. under finds the window at pt; it is w32.WindowFromPoint outside
+// the tests.
+func (w *Window) w32PopupUnder(pt w32.POINT, under func(w32.POINT) windows.HWND) *Window {
 	if target := w32FindWindowByHWND(under(pt)); target != nil && target.isPopup() && target.IsValid() {
 		return target
 	}
 	return w
+}
+
+// w32CaptureTarget returns the window a button message Windows delivered to w is for, along with the message's
+// position pos, which is in w's client area, converted into the target's: for a press made while w holds the capture,
+// the popup menu window of ours under the pointer (see w32PopupUnder), and for a release, the popup menu window
+// recording button as down, which was handed the press. Either is w itself when there is no such popup. under finds the
+// window at a screen position; it is w32.WindowFromPoint outside the tests.
+func (w *Window) w32CaptureTarget(pressed bool, button int, pos geom.Point,
+	under func(w32.POINT) windows.HWND,
+) (target *Window, where geom.Point) {
+	target = w
+	screen := w32.POINT{X: int32(pos.X), Y: int32(pos.Y)}
+	if pressed {
+		w32.ClientToScreen(w.wnd.wnd, &screen)
+		target = w.w32PopupUnder(screen, under)
+	} else {
+		for _, other := range windowList {
+			if other.isPopup() && other.IsValid() && other.pressedButtons[button] {
+				target = other
+				break
+			}
+		}
+	}
+	if target == w {
+		return w, pos
+	}
+	if !pressed {
+		w32.ClientToScreen(w.wnd.wnd, &screen)
+	}
+	w32.ScreenToClient(target.wnd.wnd, &screen)
+	return target, geom.NewPoint(float32(screen.X), float32(screen.Y))
 }
 
 // w32MouseActivate answers WM_MOUSEACTIVATE, reporting whether it answered at all. A click on a popup menu window must
@@ -850,11 +904,30 @@ func (w *Window) nativeContentRectForFrameRect(frameRect geom.Rect) geom.Rect {
 
 func (w *Window) nativeSetContentRect(rect geom.Rect) {
 	scale := w.nativeBackingScale()
+	if w.isPopup() {
+		// A popup menu window is created on the primary display and placed, before it is shown, from a rect fitted to
+		// the display it lands on in that display's scale (see menu.ensureOnDisplay), so its size is converted with
+		// that display's scale rather than the primary's, which is still its own. The DPI change Windows reports for
+		// the move is left alone for the same reason; see WM_DPICHANGED.
+		scale = w32PopupContentScale(rect.Point, AllDisplays(), scale)
+	}
 	rect = w32ApplyFrameInsets(rect, w.w32FrameInsets(), scale, false)
 	rect.Size = rect.Size.MulPt(scale)
 	rect = rect.Align()
 	w32.SetWindowPos(w.wnd.wnd, w32.HWND_TOP, int32(rect.X), int32(rect.Y), int32(rect.Width), int32(rect.Height),
 		w32.SWP_NOACTIVATE|w32.SWP_NOZORDER|w32.SWP_NOOWNERZORDER)
+}
+
+// w32PopupContentScale returns the scale a popup menu window's content rect placed at pt, in the raw pixel space
+// display rects use, is sized with: that of the display whose frame holds pt, or own, the window's own scale, when none
+// does.
+func w32PopupContentScale(pt geom.Point, displays []*Display, own geom.Point) geom.Point {
+	for _, d := range displays {
+		if pt.In(d.Frame) {
+			return d.Scale
+		}
+	}
+	return own
 }
 
 func (w *Window) nativeCurrentKeyModifiers() mod.Modifiers {

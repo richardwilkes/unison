@@ -390,8 +390,9 @@ func (a *AXAdapter) publishModal(tree *accessibility.Tree) {
 }
 
 // Shutdown tells the accessibility system that every element the adapter handed out is gone, releases everything the
-// adapter holds and forgets it, along with any alias that targets its view. It serves both a window being destroyed and
-// support being turned off while the window stays on the screen. Main thread only.
+// adapter holds and forgets it. Any alias that targets its view is kept, since the popup windows the aliases belong to
+// outlive the adapter; see ClearAXViewAlias. It serves both a window being destroyed and support being turned off while
+// the window stays on the screen. Main thread only.
 func (a *AXAdapter) Shutdown() {
 	if a == nil {
 		return

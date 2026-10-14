@@ -232,17 +232,22 @@ func (m *menu) Popup(where geom.Rect, itemIndex int) {
 	where.Height = fr.Height
 	where.Width = max(fr.Width, where.Width)
 	where.Point = owner.apiPointToScreen(where.Point)
-	m.ensureOnDisplay(where, noTopLimit, owner)
+	m.ensureOnDisplay(where, noTopLimit, owner, itemIndex)
 	m.setKeyIndex(itemIndex)
 }
 
 // ensureOnDisplay places the popup window at where, in the space window rects use, shifting it and, when that is not
-// enough, shrinking it so that it lies within the usable area of its display and no higher than top, and then shows
-// it. A menu opened from the menu bar passes the bar's bottom as top so that it scrolls rather than covering the bar.
-// The display is the one where overlaps most, or anchor's when where overlaps none. The fitting is done in the
-// display's own space, since the window-rect space is not one its edges can be computed in on every platform; see
-// Display.apiRectFromWindowUnits.
-func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window) {
+// enough, shrinking it so that it lies within the usable area of its display and no higher than top, highlights the
+// item at keyIndex, if there is one, as the one the keys act on, and then shows the window. A menu opened from the menu
+// bar passes the bar's bottom as top so that it scrolls rather than covering the bar. The display is the one where
+// overlaps most, or anchor's when where overlaps none. The fitting is done in the display's own space, since the
+// window-rect space is not one its edges can be computed in on every platform; see Display.apiRectFromWindowUnits.
+//
+// The highlight comes before the show because on X11 the window is drawn as it is shown, and every draw of a popup
+// describes the owner's menus to assistive technologies (see Window.draw): a first draw with nothing highlighted would
+// report the focus on the menu, and the next one, once setKeyIndex had run, on the item, so a screen reader would
+// announce the menu only to be cut off by the item.
+func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window, keyIndex int) {
 	if m.popupPanel == nil {
 		return
 	}
@@ -253,7 +258,19 @@ func (m *menu) ensureOnDisplay(where geom.Rect, top float32, anchor *Window) {
 	d := menuDisplayFor(where, anchor)
 	popup.SetContentRect(d.apiRectToWindowUnits(fitMenuRect(d.apiRectFromWindowUnits(where), d.Usable, top)))
 	popup.ValidateLayout()
+	m.highlightKeyIndex(keyIndex)
 	popup.Show()
+}
+
+// highlightKeyIndex highlights the item at index, if there is one, as the one the keys act on and scrolls it into view.
+// Unlike setKeyIndex, it leaves the item's sub-menu closed, since one opened before the menu is shown would be stacked
+// below it.
+func (m *menu) highlightKeyIndex(index int) {
+	m.popupPanel.itemIndex = index
+	if index >= 0 && index < len(m.items) {
+		m.items[index].highlight()
+		m.items[index].scrollIntoView()
+	}
 }
 
 // fitMenuRect returns where shifted and, when that is not enough, shrunk so that it lies within usable and no higher
@@ -283,13 +300,22 @@ func fitMenuRect(where, usable geom.Rect, top float32) geom.Rect {
 }
 
 // menuDisplayFor returns the display a menu placed at where, in the space window rects use, belongs on: the one where
-// overlaps most, or anchor's when where overlaps none. Each display's overlap is measured in that display's own space.
+// overlaps most, or anchor's when where overlaps none.
 func menuDisplayFor(where geom.Rect, anchor *Window) *Display {
+	if best := menuDisplayAmong(AllDisplays(), where); best != nil {
+		return best
+	}
+	return anchor.Display()
+}
+
+// menuDisplayAmong returns the one of displays that where, in the space window rects use, overlaps most, or nil when it
+// overlaps none. Each display's overlap is measured in that display's own space.
+func menuDisplayAmong(displays []*Display, where geom.Rect) *Display {
 	var best *Display
 	var bestArea float32
-	for _, d := range AllDisplays() {
+	for _, d := range displays {
 		r := d.apiRectFromWindowUnits(where)
-		if r.In(d.Usable) {
+		if d.Usable.Contains(r) {
 			return d
 		}
 		if ri := r.Intersect(d.Usable); !ri.Empty() {
@@ -298,9 +324,6 @@ func menuDisplayFor(where geom.Rect, anchor *Window) *Display {
 				best = d
 			}
 		}
-	}
-	if best == nil {
-		return anchor.Display()
 	}
 	return best
 }
@@ -458,6 +481,8 @@ func (m *menu) doExitEnter(previousIndex int) {
 	}
 }
 
+// setKeyIndex makes the item at index, if there is one, the one the keys act on: it is highlighted and scrolled into
+// view, and its sub-menu, if it has one, is opened.
 func (m *menu) setKeyIndex(index int) {
 	if m.popupPanel == nil {
 		// The popup may not exist if createPopup had no window to open it for.
@@ -474,9 +499,11 @@ func (m *menu) Dispose() {
 }
 
 func (m *menu) preKeyDown(wnd *Window, keyCode KeyCode, mods mod.Modifiers, repeat bool) bool {
-	if m.updater != nil && mods.OSMenuCommandDown() {
-		// We only call the updater for key presses with the cmd modifier down. This is because the updater may be doing
-		// relatively expensive operations to setup the menu and we don't want to impact every key a user types.
+	if m.updater != nil && m.popupPanel == nil && mods.OSMenuCommandDown() {
+		// The updater runs only for key presses with the command modifier down, since it may do relatively expensive
+		// work to set the menu up and must not slow down every key a user types, and not while the menu is open: its
+		// popup shows the items the updater produced when it opened, and replacing them would leave the popup showing
+		// panels of items that no longer belong to the menu.
 		m.updater(m)
 	}
 	for _, mi := range m.items {

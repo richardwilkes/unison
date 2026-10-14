@@ -68,6 +68,7 @@ const (
 	nsTrackingMouseMoved             uint64 = 0x02
 	nsTrackingCursorUpdate           uint64 = 0x04
 	nsTrackingActiveInKeyWindow      uint64 = 0x20
+	nsTrackingActiveInActiveApp      uint64 = 0x40
 	nsTrackingActiveAlways           uint64 = 0x80
 	nsTrackingAssumeInside           uint64 = 0x100
 	nsTrackingInVisibleRect          uint64 = 0x200
@@ -79,9 +80,11 @@ const (
 
 	// nsTrackingPopupOptions is the option set for a view created by NewPopupView. Its window never becomes key, so it
 	// gets no mouse-moved events of its own and its tracking area has to report moves and stay active whichever window
-	// is key. AssumeInside is left out: the pointer is usually outside a popup when it opens, and assuming otherwise
-	// would swallow the first entry.
-	nsTrackingPopupOptions = nsTrackingMouseEnteredAndExited | nsTrackingMouseMoved | nsTrackingActiveAlways |
+	// of the application is key, which ActiveInActiveApp does; ActiveAlways would too, but NSTrackingArea.h documents
+	// it as not supported with CursorUpdate, and a menu is only ever shown while its application is active.
+	// AssumeInside is left out: the pointer is usually outside a popup when it opens, and assuming otherwise would
+	// swallow the first entry.
+	nsTrackingPopupOptions = nsTrackingMouseEnteredAndExited | nsTrackingMouseMoved | nsTrackingActiveInActiveApp |
 		nsTrackingEnabledDuringMouseDrag | nsTrackingCursorUpdate | nsTrackingInVisibleRect
 )
 

@@ -96,10 +96,10 @@ func (hw *headlessWindow) destroy() {
 	hw.releasePointer(false)
 	if hs.focused == w {
 		// Hand the focus back to the frontmost window that can hold it, as hide() does and as the platforms do when the
-		// key window closes. This cannot be left to Window.Dispose(), which refocuses firstTopLevelWindow() only when
-		// the window was the ActiveWindow(): a transient window never is, so disposing of one that had taken the focus
-		// with ToFront() would otherwise leave nothing focused and every key event dropped until the next click. The
-		// two do not fight over it: the window chosen here is at the front of the window list by the time Dispose()
+		// key window closes. This cannot be left to Window.Dispose(), which refocuses firstVisibleTopLevelWindow() only
+		// when the window was the ActiveWindow(): a transient window never is, so disposing of one that had taken the
+		// focus with ToFront() would otherwise leave nothing focused and every key event dropped until the next click.
+		// The two do not fight over it: the window chosen here is at the front of the window list by the time Dispose()
 		// looks, so its ToFront() finds the focus already where it would have put it. The focus is cleared before the
 		// handoff rather than resigned by it, since the window is mid-destruction and, on the Dispose() path, has
 		// already had its content torn out — which means lostFocus() never runs for it, so the flag it would have

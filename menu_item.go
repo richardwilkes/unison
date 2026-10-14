@@ -383,7 +383,7 @@ func (mi *menuItem) showSubMenu() {
 		if mi.isRoot() {
 			top = fr.Y
 		}
-		mi.subMenu.ensureOnDisplay(fr, top, wnd)
+		mi.subMenu.ensureOnDisplay(fr, top, wnd, -1)
 	}
 }
 

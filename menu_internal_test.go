@@ -230,7 +230,7 @@ func TestEnsureOnDisplayKeepsMenuBelowTop(t *testing.T) {
 			return
 		}
 		place := func(where geom.Rect, top float32) {
-			m.ensureOnDisplay(where, top, owner)
+			m.ensureOnDisplay(where, top, owner, -1)
 			rects = append(rects, m.popupPanel.Window().ContentRect())
 		}
 		// Below the bar: no room to grow, so it shrinks and stays put.
@@ -763,4 +763,126 @@ func TestRemoveAllClearsItemMenus(t *testing.T) {
 	c.True(one.Menu() == nil)
 	c.True(two.Menu() == nil)
 	c.Equal(-1, one.Index())
+}
+
+// TestCommandKeyLeavesTheOpenMenuAlone verifies that a key press with the command modifier down, which runs the
+// updaters of the menu bar's menus, leaves the open menu's updater alone, so that the items its popup shows are still
+// the menu's own and can be navigated to and chosen.
+func TestCommandKeyLeavesTheOpenMenuAlone(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m *menu
+	var updates int
+	c.True(screen.Do(func() {
+		DefaultMenuFactory().BarForWindow(owner, func(bar Menu) {
+			if f, ok := bar.Factory().(*inWindowMenuFactory); ok {
+				m = f.newMenu(UserBaseID, "Test", func(menu Menu) {
+					updates++
+					menu.RemoveAll()
+					for i, title := range []string{"One", "Two"} {
+						menu.InsertItem(-1, f.NewItem(UserBaseID+1+i, title, KeyBinding{}, nil, func(mi MenuItem) {
+							chosen = append(chosen, mi.Title())
+						}))
+					}
+				})
+				bar.InsertMenu(-1, m)
+			}
+		})
+	}))
+	c.NotNil(m, "the test needs an in-window menu bar")
+	if m == nil {
+		return
+	}
+	screen.Sync()
+	screen.Click(screen.PanelCenter(m.titleItem.panel))
+	var shown []*menuItem
+	var opened bool
+	c.True(screen.Do(func() {
+		if opened = m.popupPanel != nil; opened {
+			shown = slices.Clone(m.items)
+		}
+	}))
+	c.True(opened)
+	if !opened {
+		return
+	}
+	screen.KeyPress(KeyB, mod.OSMenuCommand())
+	screen.KeyPress(KeyDown, 0)
+	var items []*menuItem
+	var updated, highlighted int
+	c.True(screen.Do(func() {
+		items = slices.Clone(m.items)
+		updated = updates
+		highlighted = m.popupPanel.itemIndex
+	}))
+	c.Equal(shown, items, "the open menu's items are left as its popup shows them")
+	c.Equal(1, updated, "the updater ran only when the menu opened")
+	c.Equal(0, highlighted, "and the arrow keys move through them")
+	screen.Click(screen.PanelCenter(shown[0].panel))
+	var open int
+	var picked []string
+	c.True(screen.Do(func() {
+		open = len(owner.root.openMenuPanels)
+		picked = slices.Clone(chosen)
+	}))
+	c.Equal([]string{"One"}, picked, "and a click chooses one")
+	c.Equal(0, open)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestMenuDisplayAmongPicksTheMostOverlapped verifies that a menu belongs on the display it overlaps most, rather than
+// on the one holding its top-left corner, so that one hanging off the bottom of a display above another is placed on
+// the lower one, where it fits, and one wholly within a display is placed there.
+func TestMenuDisplayAmongPicksTheMostOverlapped(t *testing.T) {
+	c := check.New(t)
+	upper := &Display{Usable: geom.NewRect(0, 0, 1920, 1080), headless: true}
+	lower := &Display{Usable: geom.NewRect(0, 1080, 1920, 1080), headless: true}
+	displays := []*Display{upper, lower}
+	c.True(menuDisplayAmong(displays, geom.NewRect(100, 1075, 300, 300)) == lower,
+		"a menu whose corner is on the upper display but which mostly hangs down onto the lower one belongs there")
+	c.True(menuDisplayAmong(displays, geom.NewRect(100, 1000, 300, 100)) == upper,
+		"one that overlaps the upper display more belongs there")
+	c.True(menuDisplayAmong(displays, geom.NewRect(100, 100, 300, 300)) == upper, "one wholly within a display")
+	c.True(menuDisplayAmong(displays, geom.NewRect(100, 1200, 300, 300)) == lower)
+	c.True(menuDisplayAmong(displays, geom.NewRect(2000, 100, 300, 300)) == nil, "one overlapping none")
+}
+
+// TestPopupHighlightsTheItemBeforeShowing verifies that a menu popped up on an item has that item highlighted, and
+// scrolled into view, by the time its window is shown, so that the window's first draw, which on X11 happens as it is
+// shown and describes the owner's menus to assistive technologies, already reports the focus on the item rather than on
+// the menu. The item's sub-menu, which has to stack above the menu, is opened only afterwards.
+func TestPopupHighlightsTheItemBeforeShowing(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(400, 300), geom.NewRect(0, 0, 400, 300))
+	var highlightedWhenShown, visibleWhenShown, subMenuOpenWhenShown, placed bool
+	var itemBounds geom.Rect
+	var height float32
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		var chosen []string
+		m := newTestMenu(f, UserBaseID, &chosen, menuItemTitles(40)...)
+		sub := newTestMenu(f, UserBaseID+100, &chosen, "Deep")
+		m.InsertMenu(-1, sub)
+		if placed = m.createPopup(owner); !placed {
+			return
+		}
+		popup := m.popupPanel.Window()
+		last := len(m.items) - 1
+		m.ensureOnDisplay(geom.NewRect(10, 10, 100, 2000), noTopLimit, owner, last)
+		highlightedWhenShown = m.items[last].over
+		visibleWhenShown = popup.IsVisible()
+		subMenuOpenWhenShown = sub.popupPanel != nil
+		itemBounds = m.items[last].panel.RectToRoot(m.items[last].panel.ContentRect(true))
+		height = popup.ContentRect().Height
+		m.setKeyIndex(last)
+		m.closeMenuStack()
+	}))
+	c.True(placed)
+	c.True(visibleWhenShown)
+	c.True(highlightedWhenShown, "the item is highlighted by the time the window is shown")
+	c.True(itemBounds.Y >= 0 && itemBounds.Bottom() <= height, "and scrolled into view: %v within %v", itemBounds,
+		height)
+	c.False(subMenuOpenWhenShown, "its sub-menu is not opened before the menu is shown")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
