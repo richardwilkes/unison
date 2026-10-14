@@ -1568,6 +1568,88 @@ func TestHeadlessStandardMenus(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestHeadlessMenuWindows verifies that MenuWindows hands back the popup windows of a window's open menus, which
+// Windows() leaves out, in the order they were opened: the menu opened from the bar first and its sub-menu after it. A
+// popup stands in for the window it serves, and nothing is returned once Escape has closed them.
+func TestHeadlessMenuWindows(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			wnd = newHeadlessWindow(t, "menus", geom.NewRect(0, 0, 300, 200), unison.NewPanel())
+			if wnd == nil {
+				return
+			}
+			unison.DefaultMenuFactory().BarForWindow(wnd, func(m unison.Menu) {
+				f := m.Factory()
+				sub := f.NewMenu(unison.UserBaseID+1, "Test", nil)
+				sub.InsertItem(-1, f.NewItem(unison.UserBaseID+2, "Do It", unison.KeyBinding{}, nil, nil))
+				more := f.NewMenu(unison.UserBaseID+3, "More", nil)
+				more.InsertItem(-1, f.NewItem(unison.UserBaseID+4, "Do More", unison.KeyBinding{}, nil, nil))
+				sub.InsertMenu(-1, more)
+				m.InsertMenu(-1, sub)
+			})
+			wnd.ToFront()
+		}))
+	c.NotNil(wnd)
+	screen.Sync() // the bar has to have been laid out before there is anywhere to aim at
+	c.Nil(screen.MenuWindows(wnd), "no menu is open yet")
+	c.Nil(screen.MenuWindows(nil))
+
+	// A menu panel, bar or popup alike, holds a scroll panel whose content has one child per item.
+	itemPanels := func(menuPanel *unison.Panel) []*unison.Panel {
+		var items []*unison.Panel
+		screen.Do(func() {
+			if menuPanel == nil || len(menuPanel.Children()) == 0 {
+				return
+			}
+			if sp, ok := menuPanel.Children()[0].Self.(*unison.ScrollPanel); ok && sp.Content() != nil {
+				items = sp.Content().AsPanel().Children()
+			}
+		})
+		return items
+	}
+	var bar *unison.Panel
+	screen.Do(func() {
+		if root, ok := wnd.Content().Parent().Self.(interface{ MenuBar() *unison.Panel }); ok {
+			bar = root.MenuBar()
+		}
+	})
+	titles := itemPanels(bar)
+	c.Equal(1, len(titles), "the menu bar should carry the one title that was added to it")
+	screen.Click(screen.PanelCenter(titles[0]))
+
+	menus := screen.MenuWindows(wnd)
+	c.Equal(1, len(menus), "clicking the title should have opened its menu")
+	var title string
+	var listed bool
+	screen.Do(func() {
+		title = menus[0].Title()
+		listed = slices.Contains(unison.Windows(), menus[0])
+	})
+	c.Equal("Test", title)
+	c.False(listed, "Windows() leaves the popup menu windows out")
+	var items []*unison.Panel
+	screen.Do(func() { items = itemPanels(menus[0].Content()) })
+	c.Equal(2, len(items), "the popup's content should be the menu's panel")
+	screen.Click(screen.PanelCenter(items[1]))
+
+	menus = screen.MenuWindows(wnd)
+	c.Equal(2, len(menus), "clicking the sub-menu's item should have opened it")
+	var subTitle string
+	screen.Do(func() { title, subTitle = menus[0].Title(), menus[1].Title() })
+	c.Equal("Test", title)
+	c.Equal("More", subTitle)
+	c.Equal(menus, screen.MenuWindows(menus[1]), "a popup stands in for the window whose menus it shows")
+
+	screen.KeyPress(unison.KeyEscape, mod.None)
+	menus = screen.MenuWindows(wnd)
+	c.Equal(1, len(menus), "Escape should have closed the sub-menu alone")
+	screen.KeyPress(unison.KeyEscape, mod.None)
+	c.Nil(screen.MenuWindows(wnd), "a second Escape should have closed the menu")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestHeadlessToFrontCoalescesWithinCallback verifies that the activations asked for during one callback collapse into
 // the last one, performed once the callback is over: the window fronted first never receives the focus, and the
 // active window reported during the callback is already the one about to be activated.

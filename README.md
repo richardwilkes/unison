@@ -131,7 +131,9 @@ callback drives the screen: there the events are only queued and the call return
 `InvokeTaskAfter()` is deliberately not waited for. Anything a test wants to read out of the application belongs to the
 UI thread, so read it inside `Do()`. An application that never goes quiet — one whose `DrawCallback` marks itself for
 redraw, say — would leave that wait hanging, so it is bounded by `HeadlessConfig.SyncTimeout` (10 seconds by default)
-and giving up is reported through `Errors()`.
+and giving up is reported through `Errors()`. The menus are the toolkit's own, each open one shown in a borderless
+window that `Windows()` leaves out; `MenuWindows()` returns the ones open for a window, so a test can reach the items of
+a menu it opened and click one.
 
 Drag & drop works too. A drag the application starts itself needs nothing special: `Drag()` posts the press and motions,
 and a widget calling `StartDrag()` from its `MouseDragCallback` turns them into a drag exactly as it would on a real

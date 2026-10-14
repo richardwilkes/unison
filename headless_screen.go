@@ -692,6 +692,25 @@ func (s *HeadlessScreen) FocusedWindow() *Window {
 	return result
 }
 
+// MenuWindows returns the popup windows of the menus open for w, in the order they were opened, so the last one shows
+// the deepest sub-menu, or nil if none is open. Windows() leaves these windows out; each one's content is the panel of
+// the menu it shows. w may be one of them, in which case the stack it belongs to is returned.
+func (s *HeadlessScreen) MenuWindows(w *Window) []*Window {
+	var result []*Window
+	s.run(func() {
+		owner := w.menuOwner()
+		if owner == nil || owner.root == nil {
+			return
+		}
+		for _, mp := range owner.root.openMenuPanels {
+			if popup := mp.Window(); popup.isPopup() {
+				result = append(result, popup)
+			}
+		}
+	})
+	return result
+}
+
 // Cursor returns the cursor most recently resolved by any window, or nil if none has been.
 func (s *HeadlessScreen) Cursor() *Cursor {
 	var result *Cursor
