@@ -47,12 +47,12 @@ var (
 
 // InstallMenuStackMonitor arranges for f to be called on every mouse button press until RemoveMenuStackMonitor is
 // called, with the window of this application the press was made in, or 0 for one made in none of them, which the
-// global event monitor reports: in another application's window, the Dock, a menu bar extra or Notification Center,
-// none of which take the key status from the window whose menus are open. A press on the application's own menu bar
-// reaches neither monitor, since menu tracking consumes it before it is dispatched through sendEvent:, so f is called
-// with 0 as a menu of the bar begins tracking instead, which also covers a menu opened from the keyboard or by an
-// assistive technology. f is also called with 0 when the active Space changes. A further install replaces f. Main
-// thread only.
+// global event monitor reports: in another application's window, which activates that application and so takes the
+// key status from the window whose menus are open, or on the Dock, a menu bar extra or Notification Center, none of
+// which do. A press on the application's own menu bar reaches neither monitor, since menu tracking consumes it before
+// it is dispatched through sendEvent:, so f is called with 0 as a menu of the bar begins tracking instead, which also
+// covers a menu opened from the keyboard or by an assistive technology. f is also called with 0 when the active Space
+// changes. A further install replaces f. Main thread only.
 func InstallMenuStackMonitor(f func(w Window)) {
 	menuStackCallback = f
 	if menuStackLocalMonitor != 0 {

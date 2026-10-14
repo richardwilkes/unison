@@ -33,8 +33,9 @@ const CPURenderingEnvKey = "UNISON_CPU_RENDERING"
 // as popup menu windows are, renders on the CPU even while this is false. Only accessed on the UI thread.
 var cpuRenderingActive bool
 
-// IsCPURenderingActive returns true if rendering is being performed on the CPU rather than with hardware acceleration
-// (OpenGL), whether because OpenGL was unavailable or because CPURenderingEnvKey asked for it.
+// IsCPURenderingActive returns true if the process has fallen back to rendering on the CPU rather than with hardware
+// acceleration (OpenGL), whether because OpenGL was unavailable or because CPURenderingEnvKey asked for it. Popup menu
+// windows always render on the CPU, which this does not report.
 func IsCPURenderingActive() bool {
 	return cpuRenderingActive
 }

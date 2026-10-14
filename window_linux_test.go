@@ -1380,6 +1380,98 @@ func TestX11PressGrabWaitsForAnUnreadPress(t *testing.T) {
 	c.Equal([]x11Grab{menuGrab, {released: true}}, server.grabs(), "with no button down, the grab is released at once")
 }
 
+// TestX11UnreadPressTakesTheGrabForItsWindow covers a press not yet read when the menus close, made on another of our
+// top-level windows and released off it: once read, the window it reached takes the grab, without owner events or the
+// menu grab's arrow, so that its release ends its press, whether reported to that window or, queued before the grab
+// moved, to the owner. A press on the owner itself takes the grab in the same way, and one on a popup menu window
+// leaves it alone.
+func TestX11UnreadPressTakesTheGrabForItsWindow(t *testing.T) {
+	c := check.New(t)
+	server := startX11TestServer(t)
+	priorDragSource, priorArrow, priorSettings := dragSource, arrowCursor, builtCursorSettings
+	t.Cleanup(func() { dragSource, arrowCursor, builtCursorSettings = priorDragSource, priorArrow, priorSettings })
+	dragSource = nil
+	const arrowID = x11.CursorID(77)
+	arrowCursor, builtCursorSettings = &Cursor{cursor: arrowID}, nil
+	// No window is marked valid, so that handling their pointer events asks the stand-in X server nothing about their
+	// geometry; see x11TestServer.
+	owner := &Window{wnd: &apiWindow{}, pressedButtons: map[int]bool{}, lastWidth: 400, lastHeight: 300}
+	owner.wnd.id = x11TestWindowID
+	owner.root = newRootPanel(owner)
+	other := &Window{wnd: &apiWindow{}, pressedButtons: map[int]bool{}, lastWidth: 400, lastHeight: 300}
+	other.wnd.id = x11TestWindowID + 1
+	other.root = newRootPanel(other)
+	popup := &Window{wnd: &apiWindow{}, owner: owner}
+	popup.wnd.id = x11TestWindowID + 2
+	windowList = []*Window{owner, other, popup}
+	menuGrab := x11Grab{window: owner.wnd.id, cursor: arrowID, eventMask: x11MenuGrabEventMask, ownerEvents: true}
+	const pressGrabMask = x11MenuGrabEventMask | x11.EventMaskEnterWindow | x11.EventMaskLeaveWindow
+	pressGrab := func(w *Window) x11Grab { return x11Grab{window: w.wnd.id, eventMask: pressGrabMask} }
+	released := x11Grab{released: true}
+	var nothing []x11Grab
+	closeMenusWithPressUnread := func() {
+		t.Helper()
+		server.pointerMask.Store(x11TestButton1Mask)
+		owner.nativeMenuStackChanged(true)
+		owner.nativeMenuStackChanged(false)
+		c.True(owner.wnd.pressGrab)
+		c.Equal([]x11Grab{menuGrab}, server.grabs())
+	}
+	press := func(w *Window) {
+		t.Helper()
+		ev := &x11.ButtonPressEvent{}
+		ev.Detail = 1
+		ev.Event = w.wnd.id
+		x11ProcessEvent(ev)
+	}
+	// release reports to the window given a release of button 1 made outside it, after which the server reports no
+	// button down.
+	release := func(to *Window) {
+		t.Helper()
+		server.pointerMask.Store(0)
+		ev := &x11.ButtonReleaseEvent{}
+		ev.Detail = 1
+		ev.State = x11TestButton1Mask
+		ev.Event = to.wnd.id
+		ev.EventX, ev.EventY = -50, 10
+		x11ProcessEvent(ev)
+	}
+
+	closeMenusWithPressUnread()
+	press(other)
+	c.True(other.inMouseDown)
+	c.False(owner.wnd.pressGrab)
+	c.True(other.wnd.pressGrab, "the window the press reached takes the grab")
+	c.Equal([]x11Grab{pressGrab(other)}, server.grabs())
+	release(other)
+	c.False(other.inMouseDown)
+	c.False(other.wnd.pressGrab)
+	c.Equal([]x11Grab{released}, server.grabs())
+
+	closeMenusWithPressUnread()
+	press(other)
+	c.Equal([]x11Grab{pressGrab(other)}, server.grabs())
+	release(owner)
+	c.False(other.inMouseDown, "a release reported to the owner, which records no press, still ends the press")
+	c.False(other.pressedButtons[ButtonLeft])
+	c.False(other.wnd.pressGrab)
+	c.Equal([]x11Grab{released}, server.grabs())
+
+	closeMenusWithPressUnread()
+	popup.x11AdoptPressGrab()
+	c.True(owner.wnd.pressGrab, "a press on a popup menu window leaves the grab where it is")
+	c.False(popup.wnd.pressGrab)
+	c.Equal(nothing, server.grabs())
+	press(owner)
+	c.True(owner.inMouseDown)
+	c.True(owner.wnd.pressGrab)
+	c.Equal([]x11Grab{pressGrab(owner)}, server.grabs(), "a press on the owner drops the owner events and the arrow")
+	release(owner)
+	c.False(owner.inMouseDown)
+	c.False(owner.wnd.pressGrab)
+	c.Equal([]x11Grab{released}, server.grabs())
+}
+
 // TestX11MenuGrabRefusedIsRetried covers a menu grab the server refuses, as it does while another client holds the
 // pointer: the grab is asked for again once the retry comes due, and again after that, until it is granted or the
 // menus have closed, and not while a drag holds the pointer.

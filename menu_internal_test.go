@@ -12,10 +12,12 @@ package unison
 import (
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/mod"
 )
 
@@ -941,6 +943,137 @@ func TestRemovedItemsKeepWorkingWhileShown(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestMenuKeysActOnTheItemsShown verifies that the arrow keys and Return act on the items the open popup shows, not on
+// the menu's items as application code has changed them since it opened, just as a click does (see
+// TestRemovedItemsKeepWorkingWhileShown), and that an item an assistive technology focuses is where the arrow keys
+// carry on from.
+func TestMenuKeysActOnTheItemsShown(t *testing.T) {
+	const two, three = "Two", "Three"
+	for _, one := range []struct {
+		change func(m *menu)
+		name   string
+		want   string
+		keys   []KeyCode
+	}{
+		{name: "removed", change: func(m *menu) { m.RemoveItem(0) }, keys: []KeyCode{KeyReturn}, want: two},
+		{
+			name: "replaced",
+			change: func(m *menu) {
+				m.RemoveAll()
+				m.InsertItem(-1, m.factory.NewItem(UserBaseID+10, "Four", KeyBinding{}, nil, nil))
+			},
+			keys: []KeyCode{KeyDown, KeyReturn},
+			want: three,
+		},
+		{
+			name: "focused",
+			change: func(m *menu) {
+				last := m.items[2]
+				m.RemoveItem(0)
+				last.performAccessibilityAction(accessibility.ActionRequest{Action: accessibility.Focus})
+			},
+			keys: []KeyCode{KeyUp, KeyReturn},
+			want: two,
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+			var chosen []string
+			var m *menu
+			var opened bool
+			c.True(screen.Do(func() {
+				m = newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", two, three)
+				m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+				opened = m.popupPanel != nil
+			}))
+			c.True(opened)
+			if !opened {
+				return
+			}
+			screen.KeyPress(KeyDown, 0)
+			screen.KeyPress(KeyDown, 0)
+			c.True(screen.Do(func() { one.change(m) }))
+			for _, key := range one.keys {
+				screen.KeyPress(key, 0)
+			}
+			var open int
+			var picked []string
+			c.True(screen.Do(func() {
+				open = len(owner.root.openMenuPanels)
+				picked = slices.Clone(chosen)
+			}))
+			c.Equal([]string{one.want}, picked, "the highlighted item is the one chosen")
+			c.Equal(0, open)
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
+}
+
+// TestArrowKeysLeaveSubMenusClosed verifies that the arrow keys only highlight an item that has a sub-menu, so that the
+// next arrow key moves past it, while Right or Return opens the sub-menu and highlights its first item, without opening
+// that item's own sub-menu, and Left closes it again, leaving the item it was opened from highlighted.
+func TestArrowKeysLeaveSubMenusClosed(t *testing.T) {
+	for _, one := range []struct {
+		name   string
+		keys   []KeyCode
+		chosen []string
+		open   int
+		nested bool
+	}{
+		{name: "onto", keys: []KeyCode{KeyDown, KeyDown}, open: 1},
+		{name: "past", keys: []KeyCode{KeyDown, KeyDown, KeyDown, KeyReturn}, chosen: []string{"C"}},
+		{name: "right", keys: []KeyCode{KeyDown, KeyDown, KeyRight, KeyReturn}, chosen: []string{"S1"}},
+		{name: "return", keys: []KeyCode{KeyDown, KeyDown, KeyReturn, KeyReturn}, chosen: []string{"S1"}},
+		{name: "left", keys: []KeyCode{KeyDown, KeyDown, KeyRight, KeyLeft, KeyDown, KeyReturn}, chosen: []string{"C"}},
+		{name: "nested", keys: []KeyCode{KeyDown, KeyDown, KeyRight}, open: 2, nested: true},
+		{
+			name:   "nested down",
+			keys:   []KeyCode{KeyDown, KeyDown, KeyRight, KeyDown, KeyReturn},
+			chosen: []string{"S2"},
+			nested: true,
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+			var chosen []string
+			var opened bool
+			c.True(screen.Do(func() {
+				f := &inWindowMenuFactory{}
+				m := newTestMenu(f, UserBaseID, &chosen, "A")
+				sub := newTestMenu(f, UserBaseID+100, &chosen, "S1", "S2")
+				if one.nested {
+					sub.RemoveItem(0)
+					sub.InsertMenu(0, newTestMenu(f, UserBaseID+200, &chosen, "I1"))
+				}
+				m.InsertMenu(-1, sub)
+				m.InsertItem(-1, f.NewItem(UserBaseID+50, "C", KeyBinding{}, nil, func(mi MenuItem) {
+					chosen = append(chosen, mi.Title())
+				}))
+				m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+				opened = m.popupPanel != nil
+			}))
+			c.True(opened)
+			if !opened {
+				return
+			}
+			for _, key := range one.keys {
+				screen.KeyPress(key, 0)
+			}
+			var open int
+			var picked []string
+			c.True(screen.Do(func() {
+				open = len(owner.root.openMenuPanels)
+				picked = slices.Clone(chosen)
+			}))
+			c.Equal(one.open, open)
+			c.Equal(one.chosen, picked)
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
+}
+
 // TestMenuWindowRectWithoutADisplay verifies that a menu is fitted onto its display when it has one and left where it
 // was asked to go when it has none, as on macOS while every display is asleep, rather than crashing on the display.
 func TestMenuWindowRectWithoutADisplay(t *testing.T) {
@@ -1015,6 +1148,82 @@ func TestBarMenuAtTheScreenBottomOpensAbove(t *testing.T) {
 		barBottom)
 	c.Equal(barTop, rect.Bottom(), "the menu ends at the top of the bar")
 	c.Equal(height, rect.Height, "and keeps its height")
+}
+
+// TestKeyClosedSubMenuStaysClosedUnderThePointer verifies that a sub-menu too wide for either side of its item, and so
+// placed over the item the pointer opened it from, stays closed when Escape, Left or an assistive technology's collapse
+// closes it, rather than being opened again by the crossing into the parent's popup that its own closing causes, and
+// that it opens again once the pointer moves.
+func TestKeyClosedSubMenuStaysClosedUnderThePointer(t *testing.T) {
+	for _, one := range []struct {
+		closeSub func(screen *HeadlessScreen, sub *menu)
+		name     string
+	}{
+		{name: "escape", closeSub: func(screen *HeadlessScreen, _ *menu) { screen.KeyPress(KeyEscape, 0) }},
+		{name: "left", closeSub: func(screen *HeadlessScreen, _ *menu) { screen.KeyPress(KeyLeft, 0) }},
+		{
+			name: "collapse",
+			closeSub: func(screen *HeadlessScreen, sub *menu) {
+				req := accessibility.ActionRequest{Action: accessibility.Collapse}
+				screen.Do(func() { sub.titleItem.performAccessibilityAction(req) })
+			},
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+			var chosen []string
+			var m, sub *menu
+			var opened bool
+			c.True(screen.Do(func() {
+				f := &inWindowMenuFactory{}
+				m = newTestMenu(f, UserBaseID, &chosen, "One")
+				sub = newTestMenu(f, UserBaseID+100, &chosen, strings.Repeat("A long title ", 6))
+				m.InsertMenu(-1, sub)
+				m.Popup(geom.NewRect(150, 20, 0, 0), -1)
+				opened = m.popupPanel != nil
+			}))
+			c.True(opened)
+			if !opened {
+				return
+			}
+			pt := screen.PanelCenter(sub.titleItem.panel)
+			screen.MouseMove(pt, 0)
+			var stack int
+			var covering *Window
+			c.True(screen.Do(func() {
+				stack = len(owner.root.openMenuPanels)
+				if sub.popupPanel != nil {
+					covering = sub.popupPanel.Window()
+				}
+			}))
+			c.Equal(2, stack, "the pointer opens the sub-menu")
+			c.True(covering != nil && screen.WindowAt(pt) == covering,
+				"the test needs a sub-menu placed over the item it opened from")
+			one.closeSub(screen, sub)
+			// The crossing into the parent's popup, which X11 and Windows report once the sub-menu's window has gone.
+			c.True(screen.Do(func() {
+				parent := m.popupPanel.Window()
+				parent.mouseEnter(windowLocal(parent, pt), 0)
+				stack = len(owner.root.openMenuPanels)
+			}))
+			c.Equal(1, stack, "the sub-menu stays closed")
+			pt.X++
+			screen.MouseMove(pt, 0)
+			c.True(screen.Do(func() { stack = len(owner.root.openMenuPanels) }))
+			c.Equal(2, stack, "until the pointer moves")
+			screen.KeyPress(KeyEscape, 0)
+			screen.KeyPress(KeyEscape, 0)
+			var held bool
+			c.True(screen.Do(func() {
+				stack = len(owner.root.openMenuPanels)
+				held = owner.root.menuHoverHeld
+			}))
+			c.Equal(0, stack)
+			c.False(held, "closing every menu ends the hold")
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
 }
 
 // TestSubMenuOpensOnTheLeftWhenItDoesNotFit verifies that a sub-menu that does not fit to the right of its item is placed

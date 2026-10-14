@@ -356,6 +356,7 @@ func (b *AccessibilityBuilder) AddVirtualChildOf(parent accessibility.NodeID, ke
 	node.Offscreen = !raw.Intersects(b.clip) && !raw.Empty()
 	b.snapshot.tree.Nodes[id] = node
 	b.snapshot.targets[id] = axTarget{panel: b.panel, key: key}
+	b.snapshot.addedInSpace(node)
 	parentNode.Children = append(parentNode.Children, id)
 	return id
 }

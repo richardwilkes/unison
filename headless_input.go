@@ -96,6 +96,7 @@ func (s *headlessState) buttonPressed(pt geom.Point, button int, mods mod.Modifi
 	if target == nil {
 		target = s.windowAt(pt)
 	}
+	s.closeMenuStackOutside(target)
 	if target == nil {
 		return
 	}

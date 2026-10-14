@@ -1428,9 +1428,8 @@ func (w *Window) HideCursorUntilMouseMoves() {
 }
 
 // restoreHiddenCursor shows the cursor HideCursorUntilMouseMoves hid, as the mouse moving does. A popup menu window
-// restores its owner's as well: typing in the owner is what hid it, and on macOS the hide is undone only through the
-// window that made it, so a move over a menu opened from the keyboard would otherwise leave the pointer hidden until
-// it came back to the owner.
+// restores its owner's as well, since typing in the owner is what hid it, and a move over one of the owner's menus is
+// a move all the same.
 func (w *Window) restoreHiddenCursor() {
 	if w.cursorHiddenUntilMouseMoves {
 		w.cursorHiddenUntilMouseMoves = false

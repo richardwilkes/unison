@@ -25,8 +25,21 @@ func TestMenuStackMonitor(t *testing.T) {
 	c := check.New(t)
 	runOnMain(func() {
 		defer RemoveMenuStackMonitor()
+		// The real monitors also report, as 0, any press in another application or change of the active Space made
+		// while the run loop runs, so what is reported then is not recorded.
 		var reported []Window
-		InstallMenuStackMonitor(func(w Window) { reported = append(reported, w) })
+		recording := true
+		record := func(w Window) {
+			if recording {
+				reported = append(reported, w)
+			}
+		}
+		pump := func(done func() bool) {
+			recording = false
+			pumpMainRunLoop(done)
+			recording = true
+		}
+		InstallMenuStackMonitor(record)
 		c.True(menuStackLocalMonitor != 0)
 		c.True(menuStackGlobalMonitor != 0)
 		c.True(menuStackObserver != 0)
@@ -40,7 +53,7 @@ func TestMenuStackMonitor(t *testing.T) {
 
 		reported = nil
 		InstallMenuStackMonitor(func(w Window) {
-			reported = append(reported, w)
+			record(w)
 			RemoveMenuStackMonitor()
 			c.True(menuStackLocalMonitor != 0, "the removal waits for the function to return")
 		})
@@ -49,18 +62,18 @@ func TestMenuStackMonitor(t *testing.T) {
 		c.True(menuStackLocalMonitor != 0, "and for the block that called it to return")
 		menuStackMonitorFired(4)
 		c.Equal([]Window{3}, reported, "nothing is reported once removed")
-		pumpMainRunLoop(func() bool { return menuStackLocalMonitor == 0 })
+		pump(func() bool { return menuStackLocalMonitor == 0 })
 		c.Equal(objc.ID(0), menuStackLocalMonitor, "the removal is carried out on the next pass of the run loop")
 		c.Equal(objc.ID(0), menuStackGlobalMonitor)
 
 		InstallMenuStackMonitor(func(w Window) {
-			reported = append(reported, w)
+			record(w)
 			RemoveMenuStackMonitor()
-			InstallMenuStackMonitor(func(w Window) { reported = append(reported, w+100) })
+			InstallMenuStackMonitor(func(w Window) { record(w + 100) })
 		})
 		menuStackMonitorFired(5)
 		c.True(menuStackLocalMonitor != 0, "a replacement installed from within the function stays")
-		pumpMainRunLoop(func() bool { return false })
+		pump(func() bool { return false })
 		c.True(menuStackLocalMonitor != 0, "even once the deferred removal has had its chance")
 		menuStackMonitorFired(6)
 		c.Equal([]Window{3, 5, 106}, reported)

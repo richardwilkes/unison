@@ -393,9 +393,10 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 				w.wnd.mouseCaptured = true
 			} else {
 				// A further press while the capture is held is delivered here wherever the pointer is, so one over a
-				// popup menu window of ours is handed on to it, as the owner-events grab does on X11, rather than taken
-				// for a press outside every menu.
+				// popup menu window of ours, or over the owner of the popup holding the capture, is handed on to it, as
+				// the owner-events grab does on X11, rather than taken for a press outside every menu.
 				target, pos = w.w32CaptureTarget(true, button, pos, w32.WindowFromPoint)
+				w.w32HandOverCapture(target)
 			}
 			target.mouseDown(target.w32ConvertRawMouse(pos), button, target.CurrentKeyModifiers())
 			if uMsg == w32.WM_XBUTTONDOWN {
@@ -635,13 +636,14 @@ func (w *Window) w32GetObjectAdapter(lParam w32.LPARAM) *uia.Window {
 // menu/size-move loop). Any button release that happens while it holds the capture will never be delivered here, so the
 // releases are synthesized now to avoid stuck button state: this window's own, and those of any popup menu window that
 // a press made while this window held the capture was handed on to (see w32CaptureTarget), whose release would have
-// come through this window too.
+// come through this window too. They are delivered at offPanelPoint, as endPressesForContextMenu's are, so that the
+// panel holding a press does not count its release as a click.
 func (w *Window) w32CaptureLost() {
 	w.wnd.mouseCaptured = false
-	w.synthesizeMouseUp()
+	w.synthesizeMouseUpAt(offPanelPoint)
 	for _, other := range slices.Clone(windowList) {
 		if other.isPopup() && other.IsValid() && other.inMouseDown {
-			other.synthesizeMouseUp()
+			other.synthesizeMouseUpAt(offPanelPoint)
 		}
 	}
 }
@@ -654,23 +656,36 @@ func (w *Window) w32NonClientMouseDown() {
 	}
 }
 
-// w32PopupUnder returns the popup menu window of ours at screen position pt, or w when there is none there, for a
-// mouse message Windows delivered to w although the pointer is over the popup: a wheel, which goes to the focus window
-// unless Windows is set to scroll inactive windows under the pointer, and a popup menu window is never the focus
-// window, or a press made while w holds the capture. under finds the window at pt; it is w32.WindowFromPoint outside
-// the tests.
+// w32PopupUnder returns the popup menu window of ours at screen position pt, or w's owner when w is a popup menu window
+// and the owner is there, or else w, for a mouse message Windows delivered to w although the pointer is over that
+// window: a wheel, which goes to the focus window unless Windows is set to scroll inactive windows under the pointer,
+// and a popup menu window is never the focus window, or a press made while w holds the capture. under finds the window
+// at pt; it is w32.WindowFromPoint outside the tests.
 func (w *Window) w32PopupUnder(pt w32.POINT, under func(w32.POINT) windows.HWND) *Window {
-	if target := w32FindWindowByHWND(under(pt)); target != nil && target.isPopup() && target.IsValid() {
+	if target := w32FindWindowByHWND(under(pt)); target != nil && (target.isPopup() || target == w.owner) &&
+		target.IsValid() {
 		return target
 	}
 	return w
 }
 
+// w32HandOverCapture gives target the capture w holds when w is a popup menu window handing a press on to its owner.
+// The press closes the menus, w with them, so the owner would otherwise see its release only over its client area. w's
+// own presses end, as when any other window takes the capture.
+func (w *Window) w32HandOverCapture(target *Window) {
+	if target == w || target.isPopup() {
+		return
+	}
+	w.w32CaptureLost()
+	w32.SetCapture(target.wnd.wnd)
+	target.wnd.mouseCaptured = true
+}
+
 // w32CaptureTarget returns the window a button message Windows delivered to w is for, along with the message's
 // position pos, which is in w's client area, converted into the target's: for a press made while w holds the capture,
-// the popup menu window of ours under the pointer (see w32PopupUnder), and for a release, the popup menu window
-// recording button as down, which was handed the press. Either is w itself when there is no such popup. under finds the
-// window at a screen position; it is w32.WindowFromPoint outside the tests.
+// the popup menu window of ours, or w's owner, under the pointer (see w32PopupUnder), and for a release, the popup menu
+// window recording button as down, which was handed the press. Either is w itself when there is no such window. under
+// finds the window at a screen position; it is w32.WindowFromPoint outside the tests.
 func (w *Window) w32CaptureTarget(pressed bool, button int, pos geom.Point,
 	under func(w32.POINT) windows.HWND,
 ) (target *Window, where geom.Point) {
@@ -1047,7 +1062,13 @@ func (w *Window) nativeCursorInContentArea() bool {
 	bottomRight.X = area.Right
 	bottomRight.Y = area.Bottom
 	w32.ClientToScreen(w.wnd.wnd, &bottomRight)
-	return pos.X >= topLeft.X && pos.X <= bottomRight.X && pos.Y >= topLeft.Y && pos.Y <= bottomRight.Y
+	return w32InClientArea(pos, topLeft, bottomRight)
+}
+
+// w32InClientArea returns true if screen position pos lies in the client area whose corners, in screen coordinates, are
+// topLeft and bottomRight. bottomRight is the first pixel outside the area, as a RECT's right and bottom edges are.
+func w32InClientArea(pos, topLeft, bottomRight w32.POINT) bool {
+	return pos.X >= topLeft.X && pos.X < bottomRight.X && pos.Y >= topLeft.Y && pos.Y < bottomRight.Y
 }
 
 func (w *Window) nativeCursorPosition() geom.Point {

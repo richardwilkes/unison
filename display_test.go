@@ -56,6 +56,24 @@ func TestBestDisplayAmong(t *testing.T) {
 	c.Nil(bestDisplayAmong(nil, geom.NewRect(100, 100, 800, 600)))
 }
 
+// TestBestDisplayAmongEmptyRect verifies that an empty rect, which neither lies within nor overlaps any display,
+// belongs to the display whose usable area holds its origin.
+func TestBestDisplayAmongEmptyRect(t *testing.T) {
+	c := check.New(t)
+	left := &Display{Frame: geom.NewRect(0, 0, 1920, 1080), Usable: geom.NewRect(0, 24, 1920, 1056), Primary: true}
+	right := &Display{Frame: geom.NewRect(1920, 0, 1920, 1080), Usable: geom.NewRect(1920, 0, 1920, 1080)}
+	displays := []*Display{left, right}
+
+	c.Equal(right, bestDisplayAmong(displays, geom.NewRect(2500, 500, 0, 0)))
+	c.Equal(right, bestDisplayAmong(displays, geom.NewRect(2500, 500, 100, 0)))
+	c.Equal(left, bestDisplayAmong(displays, geom.NewRect(100, 500, 0, 100)))
+
+	// An origin outside every usable area, including one in the left display's frame but above its usable area, belongs
+	// to none.
+	c.Nil(bestDisplayAmong(displays, geom.NewRect(-1000, -1000, 0, 0)))
+	c.Nil(bestDisplayAmong(displays, geom.NewRect(100, 10, 0, 0)))
+}
+
 // TestBestDisplayForRectFallsBackToPrimary verifies that a rect overlapping no display is placed on the primary one.
 func TestBestDisplayForRectFallsBackToPrimary(t *testing.T) {
 	c := check.New(t)

@@ -179,8 +179,26 @@ func (hw *headlessWindow) pointFromScreen(pt geom.Point) geom.Point {
 	return pt.Sub(hw.rect.Point)
 }
 
-// menuStackChanged does nothing: the headless input router has no pointer grab to install.
-func (hw *headlessWindow) menuStackChanged(_ bool) {
+// menuStackChanged records whether the window's menu stack is open, so that a press outside it closes it (see
+// closeMenuStackOutside), as the platforms' event monitors and pointer grabs do. A stack opened for another window
+// takes over, and only the window it serves clears it.
+func (hw *headlessWindow) menuStackChanged(open bool) {
+	hs := hw.hs
+	switch {
+	case open:
+		hs.menuStackOwner = hw.w
+	case hs.menuStackOwner == hw.w:
+		hs.menuStackOwner = nil
+	}
+}
+
+// closeMenuStackOutside closes the open menu stack for a press on target, or on no window when target is nil, unless
+// target is the stack's owner or one of its popup menu windows, whose root panels handle the press themselves. The
+// press is delivered afterwards, as it is on macOS.
+func (s *headlessState) closeMenuStackOutside(target *Window) {
+	if owner := s.menuStackOwner; owner != nil && target.menuOwner() != owner && owner.root != nil {
+		owner.root.closeMenuStackStoppingAt(nil)
+	}
 }
 
 // frameRectForContentRect is the identity, since a headless window has no decorations around its content.
@@ -421,7 +439,7 @@ func (hw *headlessWindow) presentCPUPixels(pixels *raster.Pixmap) {
 // are in it. All of the following are UI thread only.
 
 // raise moves w to the top of its tier of the z-order, below every window of a higher tier. The tiers match the
-// window levels the platforms give them: menu windows above floating ones, and floating ones above the rest. See
+// window levels the platforms give them: popup menu windows above floating ones, and floating ones above the rest. See
 // windowStackLevel.
 func (s *headlessState) raise(w *Window) {
 	s.stack = slices.DeleteFunc(s.stack, func(other *Window) bool { return other == w })
@@ -433,10 +451,11 @@ func (s *headlessState) raise(w *Window) {
 	s.stack = slices.Insert(s.stack, i, w)
 }
 
-// windowStackLevel returns the z-order tier of w: 2 for a menu window, 1 for a floating window and 0 for any other.
+// windowStackLevel returns the z-order tier of w: 2 for a popup menu window, 1 for a floating window and 0 for any
+// other, including an application's own window of the menu kind.
 func windowStackLevel(w *Window) int {
 	switch {
-	case w.kind == WindowKindMenu:
+	case w.isPopup():
 		return 2
 	case w.floating:
 		return 1

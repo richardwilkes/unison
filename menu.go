@@ -75,12 +75,15 @@ type MenuTheme struct {
 	MenuBorder Border
 }
 
-// noTopLimit is the top passed to menu.ensureOnDisplay for a menu that may cover anything above it. Zero cannot serve,
-// since a display above the primary one has negative coordinates.
+// noTopLimit is fitMenuRect's top for a menu that may cover anything above it. Zero cannot serve, since a display above
+// the primary one has negative coordinates.
 var noTopLimit = float32(math.Inf(-1))
 
 type menuPanel struct {
 	menu *menu
+	// items are those the panel shows, in order, which itemIndex indexes. They are the menu's items as of when the
+	// panel was built, which application code may have changed since.
+	items []*menuItem
 	Panel
 	itemIndex int
 }
@@ -222,7 +225,7 @@ func (m *menu) Popup(where geom.Rect, itemIndex int) {
 		// menu for.
 		return
 	}
-	if itemIndex >= 0 && itemIndex < len(m.items) {
+	if itemIndex >= 0 && itemIndex < len(m.popupPanel.items) {
 		if sp, ok := m.popupPanel.Children()[0].Self.(*ScrollPanel); ok {
 			where.Y -= sp.Content().AsPanel().Children()[itemIndex].FrameRect().Y
 		}
@@ -282,13 +285,13 @@ func (m *menu) ensureOnDisplay(where geom.Rect, fit menuFit, anchor *Window, key
 }
 
 // highlightKeyIndex highlights the item at index, if there is one, as the one the keys act on and scrolls it into view.
-// Unlike setKeyIndex, it leaves the item's sub-menu closed, since one opened before the menu is shown would be stacked
-// below it.
+// Unlike setKeyIndex, it leaves the item's sub-menu closed, as the arrow keys do; besides, one opened before the menu
+// is shown would be stacked below it.
 func (m *menu) highlightKeyIndex(index int) {
 	m.popupPanel.itemIndex = index
-	if index >= 0 && index < len(m.items) {
-		m.items[index].highlight()
-		m.items[index].scrollIntoView()
+	if index >= 0 && index < len(m.popupPanel.items) {
+		m.popupPanel.items[index].highlight()
+		m.popupPanel.items[index].scrollIntoView()
 	}
 }
 
@@ -447,6 +450,7 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 		mi.validate()
 		child := mi.newPanel()
 		content.AddChild(child)
+		p.items = append(p.items, mi)
 		if !forBar {
 			child.SetLayoutData(&FlexLayoutData{
 				HAlign: align.Fill,
@@ -468,10 +472,10 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 				if next < 0 {
 					next = 0
 				}
-				if next >= len(p.menu.items) {
+				if next >= len(p.items) {
 					break
 				}
-				if !p.menu.items[next].isSeparator {
+				if !p.items[next].isSeparator {
 					m.popupPanel.itemIndex = next
 					break
 				}
@@ -486,13 +490,13 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 				if next < 0 {
 					break
 				}
-				if next >= len(p.menu.items) {
-					next = len(p.menu.items) - 1
+				if next >= len(p.items) {
+					next = len(p.items) - 1
 					if next < 0 {
 						break
 					}
 				}
-				if !p.menu.items[next].isSeparator {
+				if !p.items[next].isSeparator {
 					m.popupPanel.itemIndex = next
 					break
 				}
@@ -500,18 +504,24 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 			m.doExitEnter(old)
 			return true
 		case KeyReturn, KeyNumPadEnter, KeySpace:
-			if m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(p.menu.items) {
-				m.items[m.popupPanel.itemIndex].click()
+			if i := m.popupPanel.itemIndex; i >= 0 && i < len(p.items) {
+				if p.items[i].subMenu != nil {
+					p.items[i].openSubMenu(0)
+				} else {
+					p.items[i].click()
+				}
 				return true
 			}
 		case KeyEscape, KeyLeft:
 			if wnd := p.Window().menuOwner(); wnd != nil {
+				wnd.root.holdMenuHover()
 				wnd.root.closeMenuStackStoppingAt(m.titleItem.menu)
 			}
 			return true
 		case KeyRight:
-			if m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(m.items) && m.items[m.popupPanel.itemIndex].subMenu != nil {
-				m.doExitEnter(-1)
+			if i := m.popupPanel.itemIndex; i >= 0 && i < len(p.items) && p.items[i].subMenu != nil {
+				p.items[i].openSubMenu(0)
+				return true
 			}
 		}
 		return false
@@ -540,16 +550,15 @@ func (m *menu) newPanel(forBar bool) *menuPanel {
 	return p
 }
 
+// doExitEnter moves the highlight from the item at previousIndex to the one the keys now act on. An item with a
+// sub-menu is only highlighted, as the platforms' menus do: Right or Return opens it.
 func (m *menu) doExitEnter(previousIndex int) {
-	if previousIndex != m.popupPanel.itemIndex && m.popupPanel.itemIndex >= 0 && m.popupPanel.itemIndex < len(m.items) {
-		if previousIndex >= 0 && previousIndex < len(m.items) {
-			m.items[previousIndex].mouseExit()
+	p := m.popupPanel
+	if previousIndex != p.itemIndex && p.itemIndex >= 0 && p.itemIndex < len(p.items) {
+		if previousIndex >= 0 && previousIndex < len(p.items) {
+			p.items[previousIndex].mouseExit()
 		}
-		m.items[m.popupPanel.itemIndex].mouseEnter(geom.Point{}, 0) // params are unused
-		m.items[m.popupPanel.itemIndex].scrollIntoView()
-		if subMenu := m.items[m.popupPanel.itemIndex].subMenu; subMenu != nil {
-			subMenu.setKeyIndex(0)
-		}
+		m.highlightKeyIndex(p.itemIndex)
 	}
 }
 
@@ -561,9 +570,9 @@ func (m *menu) setKeyIndex(index int) {
 		return
 	}
 	m.popupPanel.itemIndex = index
-	if index >= 0 && index < len(m.items) {
-		m.items[index].mouseEnter(geom.Point{}, 0) // params are unused
-		m.items[index].scrollIntoView()
+	if index >= 0 && index < len(m.popupPanel.items) {
+		m.popupPanel.items[index].mouseEnter(geom.Point{}, 0) // params are unused
+		m.popupPanel.items[index].scrollIntoView()
 	}
 }
 

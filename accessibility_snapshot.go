@@ -112,6 +112,8 @@ type axSnapshot struct {
 	// captions holds the panels whose text this description found naming another node, for
 	// axSnapshot.settleCaptionFocus. It stays nil in every window where no label names a control.
 	captions []*Panel
+	// rescaled holds the nodes described in a space that rescales, for visitInSpace to map the text of.
+	rescaled []*accessibility.Node
 	focus    accessibility.NodeID
 	// delegatedFocus is the virtual child a panel that holds the keyboard focus has handed the reported focus to — a
 	// list's or table's current row. It stays zero in every window where nothing delegates, which is nearly all of
@@ -347,21 +349,75 @@ func (s axSpace) from(r geom.Rect) geom.Rect {
 	return r
 }
 
+// toText maps the lines of the text a node carries into the space of the window being described. They are panel-local
+// and an adapter adds them to the node's origin, which to has already mapped, so only the scale applies. What is
+// changed is copied first, since a widget may hand the same lines to every description.
+func (s axSpace) toText(node *accessibility.Node) {
+	if node.Text != nil {
+		info := *node.Text
+		info.Lines = s.toLines(info.Lines)
+		node.Text = &info
+	}
+	if node.Document != nil {
+		doc := *node.Document
+		doc.Text.Lines = s.toLines(doc.Text.Lines)
+		node.Document = &doc
+	}
+}
+
+// toLines returns a copy of lines rescaled for toText.
+func (s axSpace) toLines(lines []accessibility.Line) []accessibility.Line {
+	if len(lines) == 0 {
+		return lines
+	}
+	scaled := make([]accessibility.Line, len(lines))
+	for i, line := range lines {
+		line.Bounds.Point = line.Bounds.Point.MulPt(s.scale)
+		line.Bounds.Size = line.Bounds.Size.MulPt(s.scale)
+		advances := make([]float32, len(line.Advances))
+		for j, advance := range line.Advances {
+			advances[j] = advance * s.scale.X
+		}
+		line.Advances = advances
+		scaled[i] = line
+	}
+	return scaled
+}
+
 // visitMenu describes an open menu as a child of parent. The menu is shown in a popup window of its own, so its bounds
 // are mapped from that window's root space into this window's, and are confined by the menu's own bounds rather than
 // by this window's, since the popup may extend beyond it. Its node is marked as an overlay for the same reason.
 func (s *axSnapshot) visitMenu(panel *menuPanel, parent accessibility.NodeID) {
 	p := panel.AsPanel()
-	saved := s.space
-	defer func() { s.space = saved }()
-	s.space = axIdentitySpace
+	space := axIdentitySpace
 	if popup := p.Window(); popup != s.window && popup.IsValid() && s.window.IsValid() {
-		s.space = axSpaceBetween(popup, s.window)
+		space = axSpaceBetween(popup, s.window)
 	}
-	s.visit(p, parent, s.space.to(p.RectToRoot(p.ContentRect(true))))
+	s.visitInSpace(p, parent, space)
 	// A menu panel that is not described has no node to mark; its items hang off parent and stay confined to it.
 	if node := s.tree.Nodes[p.Accessibility.id]; node != nil && s.targets[node.ID].panel == p {
 		node.Overlay = true
+	}
+}
+
+// visitInSpace describes p as a child of parent, as visit does, with space mapping p's window's root space into this
+// window's, and confined by p's own bounds. The text of the nodes described is mapped only once all of them have been,
+// since a widget may set a node's text after adding it, as TableHeader does for a column.
+func (s *axSnapshot) visitInSpace(p *Panel, parent accessibility.NodeID, space axSpace) {
+	saved := s.space
+	defer func() { s.space, s.rescaled = saved, nil }()
+	s.space = space
+	s.visit(p, parent, space.to(p.RectToRoot(p.ContentRect(true))))
+	for _, node := range s.rescaled {
+		space.toText(node)
+	}
+}
+
+// addedInSpace records a node just added to the tree for visitInSpace to map the text of, if the space it was described
+// in rescales.
+func (s *axSnapshot) addedInSpace(node *accessibility.Node) {
+	if s.space.scale != axIdentitySpace.scale {
+		s.rescaled = append(s.rescaled, node)
 	}
 }
 
@@ -409,8 +465,9 @@ func (s *axSnapshot) recordCaption(p *Panel) {
 	s.captions = append(s.captions, p)
 }
 
-// markOpenMenuItems publishes every item of every open menu as something the focus can be moved onto, which for a menu
-// item means being what the menu is pointing at.
+// markOpenMenuItems publishes every item an open menu shows as something the focus can be moved onto, which for a menu
+// item means being what the menu is pointing at. That includes an item removed from the menu while it is open, which
+// the menu's panel goes on showing; see menu.RemoveItem.
 //
 // It is not enough to say so of the item that is already highlighted. All three adapters refuse to pass a focus request
 // on to a node that does not offer the focus action — see internal/atspi.Component, w32AccessibilityProvider and the
@@ -439,10 +496,10 @@ func (s *axSnapshot) markOpenMenuItems() {
 // markMenuItemsFocusable marks each item of one menu panel as something the focus can be moved onto. See
 // markOpenMenuItems.
 func (s *axSnapshot) markMenuItemsFocusable(panel *menuPanel) {
-	if panel == nil || panel.menu == nil {
+	if panel == nil {
 		return
 	}
-	for _, item := range panel.menu.items {
+	for _, item := range panel.items {
 		if node := s.menuItemNode(item); node != nil {
 			node.Focusable = true
 			node.Actions = node.Actions.With(accessibility.Focus)
@@ -532,12 +589,14 @@ func (s *axSnapshot) resolveCompanionFocus() {
 }
 
 // isWithin reports whether a node is a descendant of the given one. Zero is nothing's ancestor, which is the answer for
-// a focus panel that was never described.
+// a focus panel that was never described. The walk is bounded by the number of nodes in the tree, since an
+// Accessibility.Callback may write a Parent that makes a cycle.
 func (s *axSnapshot) isWithin(node *accessibility.Node, ancestor accessibility.NodeID) bool {
 	if ancestor == 0 {
 		return false
 	}
-	for n := node; n != nil && n.Parent != 0; n = s.tree.Nodes[n.Parent] {
+	nodes := s.tree.Nodes
+	for n, steps := node, len(nodes); n != nil && n.Parent != 0 && steps > 0; n, steps = nodes[n.Parent], steps-1 {
 		if n.Parent == ancestor {
 			return true
 		}
@@ -668,8 +727,9 @@ func (s *axSnapshot) openMenuFocus() accessibility.NodeID {
 	return s.highlightedMenuItem(root.menuBarPanel)
 }
 
-// highlightedMenuItem returns the node id of the item a menu panel has highlighted, or zero when it has none, holds no
-// menu, or the item it has highlighted is not one the focus can be reported on.
+// highlightedMenuItem returns the node id of the item a menu panel shows highlighted, or zero when it shows none or the
+// item it shows highlighted is not one the focus can be reported on. An item removed from the menu while it is open
+// counts, since the panel still shows it; see menu.RemoveItem.
 //
 // A disabled item is not one. An item is highlighted by the pointer merely passing over it, whether or not it can be
 // chosen — the item's panel is never disabled, so nothing stops the highlight; it is the node that is published as
@@ -684,10 +744,10 @@ func (s *axSnapshot) openMenuFocus() accessibility.NodeID {
 // role.Separator. Reporting the focus on it would tell a screen reader the person had moved onto a divider, and would
 // say a divider is focusable besides, every time the pointer merely passed over one.
 func (s *axSnapshot) highlightedMenuItem(panel *menuPanel) accessibility.NodeID {
-	if panel == nil || panel.menu == nil {
+	if panel == nil {
 		return 0
 	}
-	for _, item := range panel.menu.items {
+	for _, item := range panel.items {
 		if !item.over {
 			continue
 		}
@@ -765,6 +825,7 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	// panic partway through still leaves a usable node behind.
 	s.tree.Nodes[node.ID] = node
 	s.targets[node.ID] = target
+	s.addedInSpace(node)
 	if parentNode := s.tree.Nodes[parent]; parentNode != nil {
 		parentNode.Children = append(parentNode.Children, node.ID)
 	}

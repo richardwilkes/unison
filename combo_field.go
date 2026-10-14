@@ -300,7 +300,7 @@ func (f *Field) installDropdown(titles func() []string, current func() string, c
 				// meantime has nowhere to show a menu, so nothing is done for it either, and neither is anything done
 				// for one that has been disabled since: the dispatcher checked that at the moment the request arrived,
 				// but the work happens a task later, and a click could not open the menu of a disabled field. The menu
-				// is built in the active window rather than in this field's, so a request aimed at a field in a
+				// is opened for the active window rather than for this field's, so a request aimed at a field in a
 				// background window is refused outright — see axMayPopupMenu — and refused again when the task runs,
 				// since the window may have lost the focus in between.
 				if axMenuIsOpen(openMenu) {

@@ -107,6 +107,45 @@ func w32ClipboardText(text string) []uint16 {
 	return append(utf16.Encode([]rune(text)), 0)
 }
 
+// w32ClipboardBytes returns a movable memory block holding data for SetClipboardData, or 0 if one cannot be had. Empty
+// data gets a single zero byte, since GlobalAlloc(GMEM_MOVEABLE, 0) returns a discarded block that GlobalLock cannot
+// lock.
+func w32ClipboardBytes(data []byte) syscall.Handle {
+	size := max(len(data), 1)
+	obj := w32.GlobalAlloc(w32.GMemMoveable, size)
+	if obj == 0 {
+		return 0
+	}
+	buf := w32.GlobalLock(obj)
+	if buf == 0 {
+		w32.GlobalFree(obj)
+		return 0
+	}
+	dst := unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), size)
+	dst[0] = 0
+	copy(dst, data)
+	w32.GlobalUnlock(obj)
+	return obj
+}
+
+// w32ClipboardOwner is the message-only window that w32ClipboardWriteHWND creates, or 0 until it has.
+var w32ClipboardOwner windows.HWND
+
+// w32ClipboardWriteHWND returns the window to open the clipboard with for writing: the first top-level window, or else
+// a message-only window kept for the purpose. It must not be NULL, since OpenClipboard's documentation says that
+// EmptyClipboard then sets the clipboard owner to NULL, which causes SetClipboardData to fail. Returns 0 only if the
+// message-only window cannot be created.
+func w32ClipboardWriteHWND() windows.HWND {
+	if w := firstTopLevelWindow(); w != nil && w.wnd.wnd != 0 {
+		return w.wnd.wnd
+	}
+	if w32ClipboardOwner == 0 && w32MainWndClass.register() == nil {
+		w32ClipboardOwner = w32.CreateWindowExW(0, w32MainWndClass.name, "", 0, 0, 0, 0, 0, w32.HWND_MESSAGE, 0,
+			w32MainInstance, 0)
+	}
+	return w32ClipboardOwner
+}
+
 func nativeClipboardSetData(data ...drag.Data) {
 	type entry struct {
 		format w32.ClipboardFormat
@@ -132,28 +171,15 @@ func nativeClipboardSetData(data ...drag.Data) {
 			}
 			copy(unsafe.Slice(xruntime.PtrFromUintptr[uint16](buf), len(s)), s)
 			w32.GlobalUnlock(obj)
-		} else {
-			obj = w32.GlobalAlloc(w32.GMemMoveable, len(d.Data))
-			if obj == 0 {
-				continue
-			}
-			buf := w32.GlobalLock(obj)
-			if buf == 0 {
-				w32.GlobalFree(obj)
-				continue
-			}
-			copy(unsafe.Slice(xruntime.PtrFromUintptr[byte](buf), len(d.Data)), d.Data)
-			w32.GlobalUnlock(obj)
+		} else if obj = w32ClipboardBytes(d.Data); obj == 0 {
+			continue
 		}
 		entries = append(entries, entry{t, obj})
 	}
 	if len(entries) == 0 {
 		return
 	}
-	var wnd windows.HWND
-	if w := firstTopLevelWindow(); w != nil {
-		wnd = w.wnd.wnd
-	}
+	wnd := w32ClipboardWriteHWND()
 	tries := 3
 	for !w32.OpenClipboard(wnd) {
 		time.Sleep(time.Millisecond)

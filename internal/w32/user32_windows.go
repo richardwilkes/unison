@@ -511,6 +511,7 @@ const (
 )
 
 const (
+	HWND_MESSAGE   windows.HWND = windows.HWND(^uintptr(2)) // -3 as uintptr
 	HWND_NOTOPMOST windows.HWND = windows.HWND(^uintptr(1)) // -2 as uintptr
 	HWND_TOPMOST   windows.HWND = windows.HWND(^uintptr(0)) // -1 as uintptr
 	HWND_TOP       windows.HWND = 0

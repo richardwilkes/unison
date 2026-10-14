@@ -15,6 +15,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/mod"
 )
 
 // TestSubMenuOriginConvertsTheCorner verifies that a sub-menu is placed from the converted far corner of its item rather
@@ -152,4 +153,99 @@ func TestShowSubMenuOnlyInTheActiveWindow(t *testing.T) {
 	c.Equal(1, backOpen)
 	c.Equal(0, frontOpen)
 	c.Equal(want, at, "placed below its title")
+}
+
+// TestDisabledItemLeavesTheMenuOpen verifies that clicking a disabled item, or pressing Return or Space on it, runs
+// nothing and leaves the menu open, as the platforms' own menus do, while choosing an enabled item still closes it.
+func TestDisabledItemLeavesTheMenuOpen(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m *menu
+	var opened bool
+	c.True(screen.Do(func() {
+		f := &inWindowMenuFactory{}
+		m = f.newMenu(UserBaseID, "Test", nil)
+		record := func(mi MenuItem) { chosen = append(chosen, mi.Title()) }
+		m.InsertItem(-1, f.NewItem(UserBaseID+1, "Off", KeyBinding{}, func(MenuItem) bool { return false }, record))
+		m.InsertItem(-1, f.NewItem(UserBaseID+2, "On", KeyBinding{}, nil, record))
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		opened = m.popupPanel != nil
+	}))
+	c.True(opened)
+	if !opened {
+		return
+	}
+	state := func() (open int, picked []string) {
+		c.True(screen.Do(func() {
+			open = len(owner.root.openMenuPanels)
+			picked = append(picked, chosen...)
+		}))
+		return open, picked
+	}
+	screen.Click(screen.PanelCenter(m.items[0].panel))
+	open, picked := state()
+	c.Equal(1, open, "a click on a disabled item leaves the menu open")
+	c.Equal(0, len(picked))
+	screen.KeyPress(KeyDown, 0)
+	for _, key := range []KeyCode{KeyReturn, KeySpace} {
+		screen.KeyPress(key, 0)
+		open, picked = state()
+		c.Equal(1, open, "%v on a disabled item leaves the menu open", key)
+		c.Equal(0, len(picked))
+	}
+	screen.KeyPress(KeyDown, 0)
+	screen.KeyPress(KeyReturn, 0)
+	open, picked = state()
+	c.Equal(0, open, "choosing an enabled item closes the menu")
+	c.Equal([]string{"On"}, picked)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHighlightClearsARemovedItemStillShown verifies that moving the highlight takes it off an item removed from the
+// menu while its popup still shows it, so that the popup never shows two items highlighted and the item the highlight
+// moved to is the one reported as the focus.
+func TestHighlightClearsARemovedItemStillShown(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m *menu
+	var removed *menuItem
+	var last *Panel
+	c.True(screen.Do(func() {
+		m = newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two", "Three")
+		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
+		if m.popupPanel != nil {
+			removed = m.items[1]
+			last = m.items[2].panel
+			m.RemoveItem(1)
+		}
+	}))
+	c.NotNil(removed)
+	if removed == nil {
+		return
+	}
+	screen.MouseMove(screen.PanelCenter(removed.panel), mod.None)
+	screen.AccessibilityTree(owner)
+	node := screen.AccessibilityNodeFor(last)
+	c.NotNil(node)
+	if node == nil {
+		return
+	}
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{Node: node.ID, Action: accessibility.Focus}))
+	var highlighted []string
+	c.True(screen.Do(func() {
+		for _, item := range m.popupPanel.items {
+			if item.over {
+				highlighted = append(highlighted, item.title)
+			}
+		}
+	}))
+	c.Equal([]string{"Three"}, highlighted, "the removed item the pointer highlighted loses the highlight")
+	tree := screen.AccessibilityTree(owner)
+	c.NotNil(tree)
+	if tree != nil {
+		c.Equal(node.ID, tree.Focus, "the item the highlight moved to is the focus")
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

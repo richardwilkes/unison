@@ -289,12 +289,12 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 		// technology moved to rather than from wherever the highlight was before, exactly as menu.doExitEnter leaves it
 		// when an arrow key does the moving.
 		//
-		// The sub-menu of an item that has one is deliberately not opened, which is the difference from what the
-		// pointer and the arrow keys do: that is what the separate Expand action is for, opening one runs the menu's
-		// updater and every one of its items' validators, and macOS carries a focus request out inline, from within the
-		// callback the assistive technology is waiting on. See the Expand case below for the same concern.
+		// The sub-menu of an item that has one is deliberately not opened, as with the arrow keys and unlike with the
+		// pointer: that is what the separate Expand action is for, opening one runs the menu's updater and every one of
+		// its items' validators, and macOS carries a focus request out inline, from within the callback the assistive
+		// technology is waiting on. See the Expand case below for the same concern.
 		if mi.menu != nil && mi.menu.popupPanel != nil {
-			mi.menu.popupPanel.itemIndex = mi.Index()
+			mi.menu.popupPanel.itemIndex = slices.Index(mi.menu.popupPanel.items, mi)
 		}
 		mi.highlight()
 		mi.scrollIntoView()
@@ -332,6 +332,7 @@ func (mi *menuItem) performAccessibilityAction(req accessibility.ActionRequest) 
 		if wnd := mi.panel.Window().menuOwner(); wnd != nil {
 			// Everything above the menu this item sits in goes, which is the item's own sub-menu and whatever was
 			// opened from that. The menu the item belongs to stays, since the item is still there to be chosen from.
+			wnd.root.holdMenuHover()
 			wnd.root.closeMenuStackStoppingAt(mi.menu)
 		}
 		return true
@@ -371,11 +372,16 @@ func (mi *menuItem) click() {
 	}
 }
 
-// showSubMenu opens the item's sub-menu in a popup window beside the item, to its left when it does not fit to its
-// right, or below it for an item on the menu bar, which the popup never covers, except that one goes above the bar
-// when too little of it would fit below; see fitMenuRect. Only an item of the active window's menus opens one. See
-// axMayPopupMenu.
+// showSubMenu opens the item's sub-menu with nothing in it highlighted; see openSubMenu.
 func (mi *menuItem) showSubMenu() {
+	mi.openSubMenu(-1)
+}
+
+// openSubMenu opens the item's sub-menu in a popup window beside the item, to its left when it does not fit to its
+// right, or below it for an item on the menu bar, which the popup never covers, except that one goes above the bar
+// when too little of it would fit below; see fitMenuRect. The sub-menu's item at keyIndex, if there is one, is
+// highlighted as the one the keys act on. Only an item of the active window's menus opens one. See axMayPopupMenu.
+func (mi *menuItem) openSubMenu(keyIndex int) {
 	if !mi.factory.showInProgress && mi.subMenu != nil && mi.subMenu.popupPanel == nil && axMayPopupMenu(mi.panel) {
 		mi.factory.showInProgress = true
 		defer func() { mi.factory.showInProgress = false }()
@@ -397,7 +403,7 @@ func (mi *menuItem) showSubMenu() {
 		} else {
 			fit = menuFit{sub: true, leftOf: wnd.apiPointToScreen(pr.Point).X}
 		}
-		mi.subMenu.ensureOnDisplay(fr, fit, wnd, -1)
+		mi.subMenu.ensureOnDisplay(fr, fit, wnd, keyIndex)
 	}
 }
 
@@ -416,15 +422,16 @@ func (mi *menuItem) scrollIntoView() {
 	mi.panel.ScrollIntoView()
 }
 
-// highlight moves the menu's highlight onto this item, taking it off whatever in the same menu had it. It is what the
-// pointer arriving over an item does, less the sub-menu that arriving over one opens, and it is what a request from an
-// assistive technology to focus an item does; see menuItem.performAccessibilityAction.
+// highlight moves the menu's highlight onto this item, taking it off any other item shown beside it, which may be one
+// removed from the menu while it is open; see menu.RemoveItem. It is what the pointer arriving over an item does, less
+// the sub-menu that arriving over one opens, and it is what a request from an assistive technology to focus an item
+// does; see menuItem.performAccessibilityAction.
 func (mi *menuItem) highlight() {
-	if mi.menu != nil {
-		for _, item := range mi.menu.items {
-			if item.over {
-				item.over = false
-				item.panel.MarkForRedraw()
+	if parent := mi.panel.Parent(); parent != nil {
+		for _, child := range parent.Children() {
+			if other, ok := child.Self.(*menuItemPanel); ok && other.item.over {
+				other.item.over = false
+				other.MarkForRedraw()
 			}
 		}
 	}
@@ -435,21 +442,28 @@ func (mi *menuItem) highlight() {
 func (mi *menuItem) mouseEnter(_ geom.Point, _ mod.Modifiers) bool {
 	mi.highlight()
 	if mi.subMenu != nil {
-		if wnd := mi.panel.Window().menuOwner(); wnd != nil && len(wnd.root.openMenuPanels) != 0 {
+		if wnd := mi.panel.Window().menuOwner(); wnd != nil && len(wnd.root.openMenuPanels) != 0 &&
+			!wnd.root.menuHoverIsHeld() {
 			mi.showSubMenu()
 		}
 	}
 	return false
 }
 
-func (mi *menuItem) mouseMove(_ geom.Point, _ mod.Modifiers) bool {
+func (mi *menuItem) mouseMove(where geom.Point, mods mod.Modifiers) bool {
+	w := mi.panel.Window().menuOwner()
+	if w == nil {
+		return false
+	}
+	if w.root.menuHoverHeld && !w.root.menuHoverIsHeld() {
+		// The first move since rootPanel.holdMenuHover is where the pointer arrives over the item.
+		mi.mouseEnter(where, mods)
+	}
 	stopAt := mi.menu
 	if mi.subMenu != nil && mi.subMenu.popupPanel != nil {
 		stopAt = mi.subMenu
 	}
-	if w := mi.panel.Window().menuOwner(); w != nil {
-		w.root.closeMenuStackStoppingAt(stopAt)
-	}
+	w.root.closeMenuStackStoppingAt(stopAt)
 	return false
 }
 
@@ -580,12 +594,13 @@ func (mi *menuItem) validate() {
 }
 
 func (mi *menuItem) execute() {
-	if mi.isSeparator {
+	if mi.isSeparator || !mi.enabled {
+		// Choosing a disabled item does nothing, leaving the menu open, as the platforms' own menus do.
 		return
 	}
 	mi.menu.closeMenuStack()
-	if mi.enabled && mi.handler != nil {
-		// Enablement is sampled now, while the menu is still the state the user chose from, but the handler itself
+	if mi.handler != nil {
+		// Enablement is sampled above, while the menu is still the state the user chose from, but the handler itself
 		// runs from the event loop rather than from inside the mouse or key event that chose the item. A handler that
 		// opens a window or runs a modal dialog is then not doing so from the middle of an event dispatch, which is
 		// where the platforms behave least predictably about which window ends up with the focus. processNextTask

@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/cocoa"
 )
@@ -210,4 +211,78 @@ func TestMacCoveredMoveExitsOnce(t *testing.T) {
 	c.Equal(1, exits, "a move back over the window exits nothing")
 	c.True(w.macCoveredMove(true))
 	c.Equal(2, exits, "the next crossing exits again")
+}
+
+// TestMacMouseExitedExitsOnce verifies that a crossing out of the key window exits once, though AppKit reports it both
+// through the window's tracking area and through the mouse-moved events it goes on sending the key window over
+// whatever the pointer is now over, and that the tracking area's report of the pointer coming back starts a new
+// crossing.
+func TestMacMouseExitedExitsOnce(t *testing.T) {
+	c := check.New(t)
+	w := &Window{wnd: &apiWindow{}, cursor: &Cursor{}}
+	w.root = newRootPanel(w)
+	exits := 0
+	w.MouseExitCallback = func() bool {
+		exits++
+		return true
+	}
+	w.MouseEnterCallback = func(_ geom.Point, _ mod.Modifiers) bool { return true }
+	w.macMouseExited()
+	c.True(w.macCoveredMove(true))
+	c.True(w.macCoveredMove(true))
+	c.Equal(1, exits, "the tracking area's exit and the moves after it exit once")
+
+	w.macMouseEntered(geom.NewPoint(10, 10), 0)
+	exits = 0
+	c.True(w.macCoveredMove(true))
+	w.macMouseExited()
+	c.Equal(1, exits, "as do the moves after the pointer came back and the tracking area's exit after them")
+
+	c.False(w.macCoveredMove(false))
+	w.macMouseExited()
+	c.Equal(2, exits, "a move back over the window starts a new crossing")
+}
+
+// TestMacPopupShowsCursorOwnerHid verifies that the cursor typing in a window hid comes back over one of the window's
+// popup menu windows, such as a list opened from the keyboard under the resting pointer. AppKit hides the cursor for
+// the whole application, and the owner, the pointer not being over its content, leaves it alone when the move over the
+// popup restores it, so the popup has to undo the hide as it applies its own cursor. Each hide is undone once, and an
+// owner hiding the cursor on purpose hides it again once the pointer is back over it.
+func TestMacPopupShowsCursorOwnerHid(t *testing.T) {
+	c := check.New(t)
+	prevHide, prevShow, prevHidden := macHideCursor, macShowCursor, macCursorHidden
+	defer func() { macHideCursor, macShowCursor, macCursorHidden = prevHide, prevShow, prevHidden }()
+	macCursorHidden = false
+	var hides, shows int
+	macHideCursor = func() { hides++ }
+	macShowCursor = func() { shows++ }
+	// Not focused, so that HideCursor and ShowCursor change only the state, as with the pointer away from the owner;
+	// calling nativeUpdateCursorImage stands for the owner applying its cursor with the pointer over its content.
+	owner := &Window{valid: true, wnd: &apiWindow{}, cursor: &Cursor{}}
+	owner.root = newRootPanel(owner)
+	popup := newTestPopupWindow(owner, newTestMenuPanel(0, 0, 100, 100))
+	popup.valid = true
+	popup.wnd = &apiWindow{}
+	popup.cursor = &Cursor{}
+
+	owner.HideCursorUntilMouseMoves()
+	owner.nativeUpdateCursorImage()
+	c.Equal(1, hides)
+
+	popup.restoreHiddenCursor()
+	c.False(owner.cursorHidden, "a move over the popup restores what its owner hid")
+	popup.nativeUpdateCursorImage()
+	c.Equal(1, shows, "the popup the pointer is over shows the cursor its owner hid")
+	popup.nativeUpdateCursorImage()
+	owner.nativeUpdateCursorImage()
+	c.Equal(1, hides)
+	c.Equal(1, shows, "a hide is undone once")
+
+	owner.HideCursor()
+	owner.nativeUpdateCursorImage()
+	c.Equal(2, hides)
+	popup.nativeUpdateCursorImage()
+	c.Equal(2, shows, "the cursor shows over a popup of an owner that hides it")
+	owner.nativeUpdateCursorImage()
+	c.Equal(3, hides, "and is hidden again back over the owner")
 }

@@ -26,6 +26,10 @@ type rootPanel struct {
 	contentPanel   *Panel
 	menuBar        *menu
 	Panel
+	// menuHoverHeldAt is where the pointer was, in the window's coordinates, when menuHoverHeld was set; see
+	// holdMenuHover.
+	menuHoverHeldAt geom.Point
+	menuHoverHeld   bool
 }
 
 func newRootPanel(wnd *Window) *rootPanel {
@@ -86,10 +90,30 @@ func (p *rootPanel) removeMenu(panel *menuPanel) {
 	} else {
 		panel.RemoveFromParent()
 	}
-	if len(p.openMenuPanels) == 0 && p.window.IsValid() {
-		p.window.apiMenuStackChanged(false)
+	if len(p.openMenuPanels) == 0 {
+		p.menuHoverHeld = false
+		if p.window.IsValid() {
+			p.window.apiMenuStackChanged(false)
+		}
 	}
 	p.MarkForRedraw()
+}
+
+// holdMenuHover keeps the pointer from opening sub-menus until it moves from where it is now, or every menu closes. A
+// menu closed other than by the pointer may leave the pointer over an item of a menu that stays open, and the crossing
+// the platforms report as the closed menu's window goes away would otherwise open that item's sub-menu, undoing the
+// close.
+func (p *rootPanel) holdMenuHover() {
+	p.menuHoverHeldAt = p.window.MouseLocation()
+	p.menuHoverHeld = true
+}
+
+// menuHoverIsHeld returns true if holdMenuHover still applies, releasing the hold once the pointer has moved.
+func (p *rootPanel) menuHoverIsHeld() bool {
+	if p.menuHoverHeld && p.window.MouseLocation() != p.menuHoverHeldAt {
+		p.menuHoverHeld = false
+	}
+	return p.menuHoverHeld
 }
 
 func (p *rootPanel) setContent(content Paneler) {

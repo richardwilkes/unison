@@ -538,7 +538,8 @@ const x11MenuGrabEventMask = x11.EventMaskButtonPress | x11.EventMaskButtonRelea
 // Otherwise a release made over another client's window would never arrive and the press would be left stuck down.
 // Such a press may also have reached the server without having been read yet, as when the event loop lags behind a
 // double-click, so when no window records one the server is asked, and a button it reports down keeps this grab in
-// place until that press's release, with the window whose stack closed recording it.
+// place, with the window whose stack closed recording it, until the press is read and x11AdoptPressGrab hands it to
+// the window the press reached, or until the press's release.
 func (w *Window) nativeMenuStackChanged(open bool) {
 	if open {
 		if w.wnd.menuGrab || w.wnd.id == 0 || dragSource != nil {
@@ -559,8 +560,7 @@ func (w *Window) nativeMenuStackChanged(open bool) {
 		}
 	}
 	switch {
-	case holder != nil && x11Conn.GrabPointer(holder.wnd.id, false,
-		x11MenuGrabEventMask|x11.EventMaskEnterWindow|x11.EventMaskLeaveWindow, 0):
+	case holder != nil && holder.x11GrabForPress():
 		holder.wnd.pressGrab = true
 	case holder == nil && x11ButtonsHeldOnServer():
 		w.wnd.pressGrab = true
@@ -568,6 +568,33 @@ func (w *Window) nativeMenuStackChanged(open bool) {
 		x11Conn.UngrabPointer()
 	}
 	x11Conn.Flush()
+}
+
+// x11GrabForPress grabs the pointer for the window without owner events, as a press's implicit grab would have been,
+// returning true if the server granted it.
+func (w *Window) x11GrabForPress() bool {
+	return x11Conn.GrabPointer(w.wnd.id, false,
+		x11MenuGrabEventMask|x11.EventMaskEnterWindow|x11.EventMaskLeaveWindow, 0)
+}
+
+// x11AdoptPressGrab moves the grab that stands in for a press not yet read (see nativeMenuStackChanged), held by a
+// window with no press of its own, to w, a window other than a popup menu window that a press has just reached, so
+// that the press's drags and release come to w wherever they are made, as its implicit grab would have sent them. If
+// the server refuses w the grab, the one still held stands in for w's press instead.
+func (w *Window) x11AdoptPressGrab() {
+	if w.isPopup() {
+		return
+	}
+	for _, one := range windowList {
+		if !one.wnd.pressGrab || one.inMouseDown {
+			continue
+		}
+		one.wnd.pressGrab = false
+		w.x11GrabForPress()
+		w.wnd.pressGrab = true
+		x11Conn.Flush()
+		return
+	}
 }
 
 // x11ButtonsMask covers Button1Mask through Button5Mask in a pointer state. The core protocol reports no state for
@@ -1515,6 +1542,7 @@ func x11ProcessEvent(e x11.Event) {
 				}
 				return
 			}
+			w.x11AdoptPressGrab()
 			mods := x11TranslateModifierState(ev.State)
 			where := w.x11ConvertRawMouse(geom.NewPoint(float32(ev.EventX), float32(ev.EventY)))
 			switch ev.Detail {

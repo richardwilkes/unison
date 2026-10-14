@@ -29,11 +29,11 @@ var macAppAppearance string
 
 type nativeWindow struct {
 	// ax is the NSAccessibility adapter serving this window, or nil until an assistive technology has asked about it.
-	ax             *cocoa.AXAdapter
-	wnd            cocoa.Window
-	view           cocoa.View
-	nsCursorHidden bool
-	// covered is true while the last mouse-moved event was over another window; see macCoveredMove.
+	ax   *cocoa.AXAdapter
+	wnd  cocoa.Window
+	view cocoa.View
+	// covered is true from the exit made for the pointer leaving the window's content until it comes back; see
+	// macCoveredMove and macMouseExited.
 	covered bool
 	// number is the window's number, which identifies it to the window server, or 0 until macNumber reads it.
 	number int
@@ -146,16 +146,14 @@ func macInitWindowCallbacks() {
 	}
 	cocoa.WindowMouseEnterCallback = func(macWnd cocoa.Window, pt geom.Point, mods uint) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeUpdateCursorImage()
-			w.mouseEnter(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
+			w.macMouseEntered(pt, macTranslateModifiers(cocoa.EventModifierFlags(mods)))
 		} else {
 			slog.Warn("received window mouse enter callback for unknown window", "window", macWnd)
 		}
 	}
 	cocoa.WindowMouseExitCallback = func(macWnd cocoa.Window) {
 		if w := macFindWindow(macWnd); w != nil {
-			w.nativeUpdateCursorImage()
-			w.mouseExit()
+			w.macMouseExited()
 		} else {
 			slog.Warn("received window mouse exit callback for unknown window", "window", macWnd)
 		}
@@ -263,9 +261,10 @@ func (w *Window) macMouseMoved(pt geom.Point, mods mod.Modifiers) {
 }
 
 // macCoveredMove records whether the mouse-moved event being handled is over another window (see macCovered), and
-// returns covered. The first of a run of such moves exits whatever the pointer left, once, as the crossing event of the
-// other platforms does; the rest are dropped without that, since the window's MouseExitCallback may keep the panel it
-// is told about, and would otherwise be told of the same crossing on every move.
+// returns covered. The first of a run of such moves exits whatever the pointer left, as the crossing event of the
+// other platforms does, unless macMouseExited already has; the rest are dropped without that, since the window's
+// MouseExitCallback may keep the panel it is told about, and would otherwise be told of the same crossing on every
+// move.
 func (w *Window) macCoveredMove(covered bool) bool {
 	if !covered {
 		w.wnd.covered = false
@@ -276,6 +275,25 @@ func (w *Window) macCoveredMove(covered bool) bool {
 		w.mouseExit()
 	}
 	return true
+}
+
+// macMouseEntered handles AppKit's report, through the window's tracking area, that the pointer entered its content,
+// which starts a new crossing for macCoveredMove.
+func (w *Window) macMouseEntered(pt geom.Point, mods mod.Modifiers) {
+	w.wnd.covered = false
+	w.nativeUpdateCursorImage()
+	w.mouseEnter(pt, mods)
+}
+
+// macMouseExited handles AppKit's report, through the window's tracking area, that the pointer left its content. It
+// exits unless macCoveredMove already has for a move over another window, and keeps the moves after it from exiting
+// again.
+func (w *Window) macMouseExited() {
+	w.nativeUpdateCursorImage()
+	if !w.wnd.covered {
+		w.wnd.covered = true
+		w.mouseExit()
+	}
 }
 
 // macWindowNumberAt returns the number of the window, of any application, that is frontmost at pt, in the space window
@@ -444,16 +462,28 @@ func (w *Window) nativeCurrentKeyModifiers() mod.Modifiers {
 	return macModifiersFromEventModifierFlags(cocoa.CurrentModifierFlags())
 }
 
+// macCursorHidden is true while the cursor is hidden through macHideCursor. AppKit hides it for the whole application
+// rather than for a window, so a window applying its cursor without hiding it undoes a hide another made, as a popup
+// menu window does when the pointer is over it after typing in its owner hid the cursor.
+var macCursorHidden bool
+
+// macHideCursor and macShowCursor are cocoa.HideCursor and cocoa.ShowCursor, replaceable by the tests, which run off
+// the main thread.
+var (
+	macHideCursor = cocoa.HideCursor
+	macShowCursor = cocoa.ShowCursor
+)
+
 func (w *Window) nativeUpdateCursorImage() {
 	if w.cursorHidden {
-		if !w.wnd.nsCursorHidden {
-			cocoa.HideCursor()
-			w.wnd.nsCursorHidden = true
+		if !macCursorHidden {
+			macHideCursor()
+			macCursorHidden = true
 		}
 	} else {
-		if w.wnd.nsCursorHidden {
-			cocoa.ShowCursor()
-			w.wnd.nsCursorHidden = false
+		if macCursorHidden {
+			macShowCursor()
+			macCursorHidden = false
 		}
 		if w.cursor != nil {
 			w.cursor.cursor.Set()
@@ -515,14 +545,15 @@ var (
 	macRemoveMenuStackMonitor  = cocoa.RemoveMenuStackMonitor
 )
 
-// nativeMenuStackChanged watches, while the window's menu stack is open, for the presses that leave the window key and
-// so would otherwise leave its menus open: one on another application's window, on the Dock, on a menu bar extra or in
-// Notification Center, all of which close native menus, and one on the application's own menu bar, which no event
-// monitor sees and which is reported as the bar's menu begins tracking instead (see cocoa.InstallMenuStackMonitor). A
-// press in the window itself or in one of its popup menu windows is left to their root panels, which close whatever
-// menus it makes obsolete. A change of the active Space closes the menus too, since the popup windows join every Space
-// and would otherwise follow the user to the new one without their owner. A stack opened for another window takes the
-// monitor over, and only the window it serves takes it down.
+// nativeMenuStackChanged watches, while the window's menu stack is open, for the presses that close native menus but
+// leave the window key, and so would otherwise leave its menus open: one on the Dock, on a menu bar extra or in
+// Notification Center, and one on the application's own menu bar, which no event monitor sees and which is reported as
+// the bar's menu begins tracking instead (see cocoa.InstallMenuStackMonitor). One on another application's window is
+// seen too, and closes the menus as it is made rather than once that application's activation takes the key status
+// from the window. A press in the window itself or in one of its popup menu windows is left to their root panels,
+// which close whatever menus it makes obsolete. A change of the active Space closes the menus too, since the popup
+// windows join every Space and would otherwise follow the user to the new one without their owner. A stack opened for
+// another window takes the monitor over, and only the window it serves takes it down.
 func (w *Window) nativeMenuStackChanged(open bool) {
 	if !open {
 		if macMenuStackWindow == w {
