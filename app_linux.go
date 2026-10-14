@@ -145,10 +145,6 @@ func nativeDoubleClickInterval() time.Duration {
 	return 500 * time.Millisecond
 }
 
-func nativePollEvents() {
-	x11ProcessEvent(x11Conn.PollEvents(nil))
-}
-
 func nativeWaitEvents() {
 	// Block until at least one event is available so the event loop idles instead of spinning. Then process that event
 	// along with any others that are already pending. They are handled one at a time rather than pulling them all at

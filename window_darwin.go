@@ -537,12 +537,9 @@ func (w *Window) nativeDestroy() {
 		w.wnd.wnd.Close()
 		w.wnd.wnd = 0
 	}
-	// Letting AppKit catch up here dispatches whatever is queued from inside the caller. A popup menu window is
-	// disposed of from inside the handling of the press that closed its menu, so a release queued behind that press
-	// would be handled before the press itself; the event loop catches up once the handler returns.
-	if !w.isPopup() {
-		nativePollEvents()
-	}
+	// Nothing polls events here to let AppKit catch up: that would dispatch whatever is queued from inside the
+	// caller, which is often an event handler, such as the press that closed a popup menu, with its release queued
+	// behind it. The event loop catches up once the handler returns.
 }
 
 func macModifiersFromEventModifierFlags(flags cocoa.EventModifierFlags) mod.Modifiers {

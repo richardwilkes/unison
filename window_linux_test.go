@@ -1052,35 +1052,31 @@ func TestX11MenuStackGrab(t *testing.T) {
 	c.Equal(nothing, server.grabs())
 }
 
-// TestX11PopupDestroyLeavesQueuedEventsAlone covers the event handling destroying a window does: a top-level window's
-// destroy handles the next queued event there and then, while a popup menu window's leaves the queue to the event
-// loop, since a popup is disposed of from inside the handling of the press that closed its menu, and a release queued
-// behind that press must not be handled before it.
-func TestX11PopupDestroyLeavesQueuedEventsAlone(t *testing.T) {
+// TestX11DestroyLeavesQueuedEventsAlone covers the event handling destroying a window does not do: a popup menu
+// window's destroy and a top-level window's both leave the queue to the event loop, since a window is disposed of from
+// inside the handling of an event, such as the press that closed a popup's menu, and a release queued behind that press
+// must not be handled before it.
+func TestX11DestroyLeavesQueuedEventsAlone(t *testing.T) {
 	c := check.New(t)
 	server := startX11TestServer(t)
 	owner, popup, other := x11MenuGrabTestWindows(t)
 	owner.wnd.menuGrab = false
-	// The release is reported to a window that is not one of ours, so handling it does nothing but consume it.
+	// The release is reported to a window that is not one of ours, so handling it would do nothing but consume it.
 	const elsewhere = x11.WindowID(900)
 	popup.wnd.id, popup.glCtx = x11.WindowID(43), &apiGLContext{}
 	other.wnd.id, other.glCtx = x11.WindowID(44), &apiGLContext{}
-
-	server.sendButtonRelease(elsewhere)
-	popup.nativeDestroy()
-	c.Equal(x11.WindowID(0), popup.wnd.id)
-	ev := x11Conn.PollEvents(nil)
-	c.NotNil(ev, "the release is still queued for the event loop after a popup menu window is destroyed")
-	if release, ok := ev.(*x11.ButtonReleaseEvent); ok {
-		c.Equal(elsewhere, release.Event)
-	} else {
-		c.Errorf("queued event = %T, want a ButtonRelease", ev)
+	for _, w := range []*Window{popup, other} {
+		server.sendButtonRelease(elsewhere)
+		w.nativeDestroy()
+		c.Equal(x11.WindowID(0), w.wnd.id)
+		ev := x11Conn.PollEvents(nil)
+		c.NotNil(ev, "the release is still queued for the event loop after the %s window is destroyed", w.title)
+		if release, ok := ev.(*x11.ButtonReleaseEvent); ok {
+			c.Equal(elsewhere, release.Event)
+		} else {
+			c.Errorf("queued event = %T, want a ButtonRelease", ev)
+		}
 	}
-
-	server.sendButtonRelease(elsewhere)
-	other.nativeDestroy()
-	c.Equal(x11.WindowID(0), other.wnd.id)
-	c.Nil(x11Conn.PollEvents(nil), "a top-level window's destroy handles the queued release itself")
 }
 
 // TestX11PopupWindowProperties covers the properties a popup menu window is given: its PID, its type, KWin's request

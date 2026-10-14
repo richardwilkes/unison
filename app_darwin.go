@@ -142,10 +142,6 @@ func nativeDoubleClickInterval() time.Duration {
 	return cocoa.DoubleClickInterval()
 }
 
-func nativePollEvents() {
-	cocoa.PollEvents()
-}
-
 func nativeWaitEvents() {
 	cocoa.WaitEvents()
 }
