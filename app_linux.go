@@ -130,6 +130,12 @@ func nativeTerminate() error {
 }
 
 func nativeBeep() {
+	if x11Conn == nil {
+		// There is no connection to an X server until Start has run (or once Terminate has finished), which is the
+		// permanent state of a headless process such as a test run on a machine without a display, so there is no
+		// bell to ring. A beep is only ever a hint, so there is nothing to make up for.
+		return
+	}
 	x11Conn.Bell(0)
 }
 
