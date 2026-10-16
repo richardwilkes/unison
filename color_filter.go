@@ -91,6 +91,8 @@ func NewAlphaFilter(alpha float32) *ColorFilter {
 }
 
 var (
+	alpha20FilterInstance *ColorFilter
+	alpha20FilterOnce     sync.Once
 	alpha30Filter         *ColorFilter
 	alpha30FilterOnce     sync.Once
 	alpha50Filter         *ColorFilter
@@ -98,6 +100,13 @@ var (
 	grayscale30Filter     *ColorFilter
 	grayscale30FilterOnce sync.Once
 )
+
+func alpha20Filter() *ColorFilter {
+	alpha20FilterOnce.Do(func() {
+		alpha20FilterInstance = NewAlphaFilter(0.2)
+	})
+	return alpha20FilterInstance
+}
 
 // Alpha30Filter returns a ColorFilter that transforms colors by applying a 30% alpha blend.
 func Alpha30Filter() *ColorFilter {

@@ -38,6 +38,38 @@ func TestNumericFieldFocusBorderRestoredOnFocusLoss(t *testing.T) {
 	c.Equal(unfocused, f.Border())
 }
 
+// TestNumericFieldBorderShowsInvalidState verifies that the border NewNumericField reinstalls draws its line in the
+// error ink while the text is invalid and in the normal ink once it is valid again.
+func TestNumericFieldBorderShowsInvalidState(t *testing.T) {
+	c := check.New(t)
+	f := unison.NewNumericField(5, 0, 100, strconv.Itoa, strconv.Atoi, nil)
+	lineColor := func() unison.Color {
+		img, err := unison.NewImageFromDrawing(20, 20, 72, func(cv *unison.Canvas) {
+			f.Border().Draw(cv, geom.NewRect(0, 0, 20, 20))
+		})
+		c.NoError(err)
+		if err != nil {
+			return 0
+		}
+		defer img.Dispose()
+		nrgba, err := img.ToNRGBA()
+		c.NoError(err)
+		if err != nil {
+			return 0
+		}
+		// The unfocused line is 1px wide, so the left column is fully covered by it.
+		return unison.ColorFromNRGBA(nrgba.NRGBAAt(0, 10))
+	}
+
+	f.SetText("abc")
+	c.True(f.Invalid())
+	c.Equal(unison.ThemeError.GetColor(), lineColor())
+
+	f.SetText("50")
+	c.False(f.Invalid())
+	c.Equal(unison.ThemeSurfaceEdge.GetColor(), lineColor())
+}
+
 func TestNumericFieldFocusLossStillNormalizesText(t *testing.T) {
 	c := check.New(t)
 	f := unison.NewNumericField(5, 0, 100, strconv.Itoa, strconv.Atoi, nil)

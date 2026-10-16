@@ -405,3 +405,56 @@ func TestFieldDefaultKeyDownConsumesOSMenuCommandKeys(t *testing.T) {
 		"cmd+A must not be reported as handled when everything is already selected")
 	c.False(f.DefaultKeyDown(KeyB, cmd, false), "an unbound command key must not be reported as handled")
 }
+
+// TestFieldDefaultDrawWashesInvalidFieldWithErrorInk verifies that an invalid field keeps its normal background with a
+// light wash of the error ink laid over it, and that the wash goes away once the field is valid again.
+func TestFieldDefaultDrawWashesInvalidFieldWithErrorInk(t *testing.T) {
+	c := check.New(t)
+	f := NewField()
+	f.SetFrameRect(geom.NewRect(0, 0, 60, 30))
+	f.EditableInk = White
+	centerPixel := func() uint32 {
+		cnv, pix := newPixmapCanvas(61, 31)
+		f.DefaultDraw(cnv, f.ContentRect(true))
+		center := f.ContentRect(false).Center()
+		return pix.Pix[int(center.Y)*int(pix.RowPixels)+int(center.X)]
+	}
+
+	f.ValidateCallback = func() bool { return false }
+	f.Validate()
+	c.True(f.Invalid())
+	px := centerPixel()
+	red := px & 0xFF
+	green := (px >> 8) & 0xFF
+	c.Equal(uint32(0xFF), px>>24, "the washed background should be opaque")
+	c.NotEqual(uint32(0xFFFFFFFF), px, "the background should be washed with the error ink")
+	c.True(red > 133 && red < 255, "the wash should be light, not the full error ink: red is %d", red)
+	c.True(red > green, "the wash should tint the background red: red %d, green %d", red, green)
+
+	f.ValidateCallback = nil
+	f.Validate()
+	c.False(f.Invalid())
+	c.Equal(uint32(0xFFFFFFFF), centerPixel(), "a valid field should show its plain background")
+}
+
+// TestInstallAccessoryPanelBorderIsErrorAware verifies that the borders InstallAccessoryPanel installs draw their line
+// with an ink that follows the field's validity, in both focus states.
+func TestInstallAccessoryPanelBorderIsErrorAware(t *testing.T) {
+	c := check.New(t)
+	f := NewField()
+	f.InstallAccessoryPanel(NewLabel())
+	for _, focused := range []bool{false, true, false} {
+		if focused {
+			f.GainedFocusCallback()
+		} else {
+			f.LostFocusCallback()
+		}
+		_, ok := f.Border().(*accessoryBorder)
+		c.True(ok, "the border should be an accessoryBorder (focused: %v)", focused)
+		ink, ok := lineInkOf(f.Border()).(*fieldBorderInk)
+		c.True(ok, "the wrapped line ink should be error-aware (focused: %v)", focused)
+		if ok {
+			c.True(ink.field == f, "the line ink should follow this field (focused: %v)", focused)
+		}
+	}
+}

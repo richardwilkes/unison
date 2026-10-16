@@ -44,7 +44,6 @@ var DefaultFieldTheme = FieldTheme{
 	SelectionInk:     ThemeFocus,
 	OnSelectionInk:   ThemeOnFocus,
 	ErrorInk:         ThemeError,
-	OnErrorInk:       ThemeOnError,
 	BlinkRate:        560 * time.Millisecond,
 	MinimumTextWidth: 10,
 	HAlign:           align.Start,
@@ -61,7 +60,6 @@ type FieldTheme struct {
 	SelectionInk           Ink
 	OnSelectionInk         Ink
 	ErrorInk               Ink
-	OnErrorInk             Ink
 	BlinkRate              time.Duration
 	MinimumTextWidth       float32
 	HAlign                 align.Enum
@@ -317,20 +315,20 @@ func (f *Field) obscureIfNeeded(in []rune) []rune {
 func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 	var bg, fg Ink
 	enabled := f.Enabled()
-	switch {
-	case f.invalid:
-		bg = f.ErrorInk
-		fg = f.OnErrorInk
-	case enabled:
+	if enabled {
 		bg = f.EditableInk
 		fg = f.OnEditableInk
-	default:
+	} else {
 		bg = f.BackgroundInk
 		fg = f.OnBackgroundInk
 	}
 	rect := f.ContentRect(true)
 	backgroundPaint := bg.Paint(canvas, rect, paintstyle.Fill)
 	canvas.DrawRect(rect, backgroundPaint)
+	if f.invalid {
+		wash := &ColorFilteredInk{OriginalInk: f.ErrorInk, ColorFilter: alpha20Filter()}
+		canvas.DrawRect(rect, wash.Paint(canvas, rect, paintstyle.Fill))
+	}
 	rect = f.ContentRect(false)
 	canvas.ClipRect(rect, pathop.Intersect, false)
 	f.prepareLines(rect.Width - 2)
@@ -434,6 +432,10 @@ func (f *Field) DefaultDraw(canvas *Canvas, _ geom.Rect) {
 // Invalid returns true if the field is currently marked as invalid.
 func (f *Field) Invalid() bool {
 	return f.invalid
+}
+
+func (f *Field) asField() *Field {
+	return f
 }
 
 func (f *Field) scheduleBlink() {
@@ -1709,8 +1711,8 @@ func (f *Field) InstallAccessoryPanel(panel Paneler) {
 	UninstallFocusBorders(f, f)
 	f.AddChild(panel.AsPanel())
 	f.SetLayout(&fieldAccessoryLayout{})
-	InstallFocusBorders(f, f, &accessoryBorder{Border: NewDefaultFieldBorder(true), field: f},
-		&accessoryBorder{Border: NewDefaultFieldBorder(false), field: f})
+	InstallFocusBorders(f, f, &accessoryBorder{Border: newDefaultFieldBorder(true, f), field: f},
+		&accessoryBorder{Border: newDefaultFieldBorder(false, f), field: f})
 }
 
 // accessoryBorder is a border with the room the field's accessory panel needs added on the right, as AccessoryInsets

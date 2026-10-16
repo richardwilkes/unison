@@ -11,6 +11,7 @@ package unison
 
 import (
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/paintstyle"
 )
 
 const previousFocusCallbacksKey = "unison.internal.previous.focus.callbacks"
@@ -38,8 +39,47 @@ func StdInsets() geom.Insets {
 	}
 }
 
-// NewDefaultFieldBorder creates the default border for a field.
+var _ Ink = &fieldBorderInk{}
+
+// fieldBorderInk paints with the field's ErrorInk while the field is invalid and with its normal ink otherwise.
+type fieldBorderInk struct {
+	normal Ink
+	field  *Field
+}
+
+// Paint implements Ink.
+func (i *fieldBorderInk) Paint(canvas *Canvas, rect geom.Rect, style paintstyle.Enum) *Paint {
+	if i.field.invalid {
+		return i.field.ErrorInk.Paint(canvas, rect, style)
+	}
+	return i.normal.Paint(canvas, rect, style)
+}
+
+// fieldProvider is satisfied by Field and anything that embeds it.
+type fieldProvider interface {
+	asField() *Field
+}
+
+// fieldOf returns the Field p is or embeds, looking at p itself and then at its Self, or nil if there is none.
+func fieldOf(p Paneler) *Field {
+	if fp, ok := p.(fieldProvider); ok {
+		return fp.asField()
+	}
+	if fp, ok := p.AsPanel().Self.(fieldProvider); ok {
+		return fp.asField()
+	}
+	return nil
+}
+
+// NewDefaultFieldBorder creates the default border for a field. A border made this way never shows a field's invalid
+// state; InstallDefaultFieldBorder installs borders that do.
 func NewDefaultFieldBorder(focused bool) Border {
+	return newDefaultFieldBorder(focused, nil)
+}
+
+// newDefaultFieldBorder creates the default border for a field. When field is not nil, the line is drawn in the field's
+// ErrorInk while it is invalid.
+func newDefaultFieldBorder(focused bool, field *Field) Border {
 	var adj float32
 	var ink Ink
 	if focused {
@@ -48,6 +88,9 @@ func NewDefaultFieldBorder(focused bool) Border {
 	} else {
 		adj = 1
 		ink = ThemeSurfaceEdge
+	}
+	if field != nil {
+		ink = &fieldBorderInk{normal: ink, field: field}
 	}
 	return NewCompoundBorder(
 		NewLineBorder(ink, geom.Size{}, geom.NewUniformInsets(2-adj), false),
@@ -96,7 +139,12 @@ func UninstallFocusBorders(focusTarget, borderTarget Paneler) {
 }
 
 // InstallDefaultFieldBorder installs the default field border on the borderTarget and chains into the focus handling of
-// the focusTarget to adjust the border as focus changes.
+// the focusTarget to adjust the border as focus changes. When the focusTarget, or failing that the borderTarget, is or
+// embeds a Field, the border's line is drawn in that field's ErrorInk while the field is invalid.
 func InstallDefaultFieldBorder(focusTarget, borderTarget Paneler) {
-	InstallFocusBorders(focusTarget, borderTarget, NewDefaultFieldBorder(true), NewDefaultFieldBorder(false))
+	field := fieldOf(focusTarget)
+	if field == nil {
+		field = fieldOf(borderTarget)
+	}
+	InstallFocusBorders(focusTarget, borderTarget, newDefaultFieldBorder(true, field), newDefaultFieldBorder(false, field))
 }
