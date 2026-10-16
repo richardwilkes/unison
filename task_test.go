@@ -225,6 +225,7 @@ func TestInvokeTaskAndWaitIgnoresANilFunction(t *testing.T) {
 func TestProcessNextTaskCompactsDeadPrefix(t *testing.T) {
 	c := check.New(t)
 	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
 	withRecoveryCallback(t, func(err error) { c.NoError(err) })
 
 	// Enough tasks that, partway through draining, the dead prefix exceeds both the 1024 threshold and the live
@@ -235,20 +236,26 @@ func TestProcessNextTaskCompactsDeadPrefix(t *testing.T) {
 		InvokeTask(func() { order = append(order, i) })
 	}
 
+	// A timer armed by an earlier test may fire while this runs and enqueue a task of its own (see the package
+	// comment in headless.go), so the queue is drained until it is empty, with slack for such tasks, rather than
+	// exactly count times. Those tasks do nothing once their window is gone, so running them here is harmless.
 	compacted := false
-	for range count {
+	drained := false
+	for range count + 100 {
 		processNextTask()
 		// Compaction is the only path that resets head to 0 while tasks remain queued; a full drain resets both
 		// length and head to 0.
-		if length, head := taskQueueState(); head == 0 && length > 0 {
+		length, head := taskQueueState()
+		if head == 0 && length > 0 {
 			compacted = true
+		}
+		if length == 0 {
+			drained = true
+			break
 		}
 	}
 	c.True(compacted)
-
-	length, head := taskQueueState()
-	c.Equal(0, length)
-	c.Equal(0, head)
+	c.True(drained, "the queue should have been fully drained")
 
 	want := make([]int, count)
 	for i := range want {
