@@ -302,7 +302,7 @@ func linuxFinishStartA11y(attempt uint64, adapter *atspi.Adapter, err error) {
 	// the event loop, but a window that is already on the screen should be reachable as soon as the registry knows
 	// about us rather than one frame later.
 	for _, wnd := range windowList {
-		// A popup menu window is described as part of its owner.
+		// A popup window is described as part of its owner.
 		if wnd.isPopup() || !wnd.IsValid() || wnd.root == nil || !wnd.IsVisible() {
 			continue
 		}

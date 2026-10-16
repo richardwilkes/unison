@@ -77,6 +77,7 @@ var (
 	setCursorProc                     = user32.NewProc("SetCursor")
 	setFocusProc                      = user32.NewProc("SetFocus")
 	setForegroundWindowProc           = user32.NewProc("SetForegroundWindow")
+	setLayeredWindowAttributesProc    = user32.NewProc("SetLayeredWindowAttributes")
 	setProcessDpiAwarenessContextProc = user32.NewProc("SetProcessDpiAwarenessContext")
 	setWindowPlacementProc            = user32.NewProc("SetWindowPlacement")
 	setWindowPosProc                  = user32.NewProc("SetWindowPos")
@@ -232,6 +233,13 @@ const (
 	WS_EX_WINDOWEDGE          = 256
 )
 
+// Flags for SetLayeredWindowAttributes
+// https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes
+const (
+	LWA_COLORKEY = 1
+	LWA_ALPHA    = 2
+)
+
 // QS_... constants for PeekMessage and GetQueueStatus
 // https://learn.microsoft.com/windows/win32/winmsg/queue-status-flags
 const (
@@ -279,6 +287,7 @@ const (
 	WM_CLOSE                       = 16
 	WM_QUIT                        = 18
 	WM_ERASEBKGND                  = 20
+	WM_SHOWWINDOW                  = 24
 	WM_SETCURSOR                   = 32
 	WM_MOUSEACTIVATE               = 33
 	WM_GETMINMAXINFO               = 36
@@ -1151,6 +1160,13 @@ func SetFocus(hwnd windows.HWND) windows.HWND {
 func SetForegroundWindow(hwnd windows.HWND) bool {
 	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
 	b, _, _ := setForegroundWindowProc.Call(uintptr(hwnd))
+	return b&0xff != 0
+}
+
+// SetLayeredWindowAttributes https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setlayeredwindowattributes
+func SetLayeredWindowAttributes(hwnd windows.HWND, key uint32, alpha byte, flags uint32) bool {
+	//nolint:errcheck // The result is enough for our purposes, and the error is not useful.
+	b, _, _ := setLayeredWindowAttributesProc.Call(uintptr(hwnd), uintptr(key), uintptr(alpha), uintptr(flags))
 	return b&0xff != 0
 }
 

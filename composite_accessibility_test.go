@@ -2222,9 +2222,10 @@ func TestMenuBarAccessibilityFocus(t *testing.T) {
 }
 
 // TestTooltipAccessibility verifies that a tooltip, while it is showing, is described as one — a child of the window
-// rather than of the panel it belongs to, since that is where it is drawn — and that the whole of what a tooltip says,
-// secondary text included, is what describes the panel it belongs to, which is the only way that text is ever heard by
-// someone who cannot see the tooltip itself.
+// rather than of the panel it belongs to, since that is the window it is shown for — and as an overlay, since the
+// window it is shown in may extend past that window's edges, that the whole of what a tooltip says, secondary text
+// included, is what describes the panel it belongs to, which is the only way that text is ever heard by someone who
+// cannot see the tooltip itself, and that the tooltip going is described too.
 func TestTooltipAccessibility(t *testing.T) {
 	c := check.New(t)
 	var button *unison.Button
@@ -2237,10 +2238,12 @@ func TestTooltipAccessibility(t *testing.T) {
 			button.Tooltip = unison.NewTooltipWithText("Write the file out")
 			// Without this the tooltip would not appear until the delay a person's pause has to last.
 			button.TooltipImmediate = true
+			// At the window's bottom edge, so that the tooltip below it lies outside the window.
+			button.SetLayoutData(&unison.FlexLayoutData{VAlign: align.End, VGrab: true})
 			label = unison.NewLabel()
 			label.SetTitle("Total")
 			label.Tooltip = unison.NewTooltipWithSecondaryText("Primary tip", "Secondary tip")
-			wnd = newHeadlessWindow(t, "tips", geom.NewRect(10, 10, 300, 200), axColumn(button, label))
+			wnd = newHeadlessWindow(t, "tips", geom.NewRect(10, 10, 300, 200), axColumn(label, button))
 		}))
 	c.NotNil(wnd)
 	c.True(screen.Do(func() { wnd.ToFront() }))
@@ -2254,15 +2257,35 @@ func TestTooltipAccessibility(t *testing.T) {
 	c.Equal(1, len(tips), "the tooltip that is showing should have been described")
 	if len(tips) == 1 {
 		c.Equal("Write the file out", tips[0].Name, "the tooltip's text is its name, line breaks and all")
-		c.Equal(tree.Root, tips[0].Parent, "a tooltip is drawn by the window rather than by the panel it explains")
+		c.Equal(tree.Root, tips[0].Parent, "a tooltip is shown for the window rather than for the panel it explains")
 		c.Equal(0, len(tips[0].Children),
 			"the labels the text is drawn with are hidden, so it is not announced a second time")
+		c.True(tips[0].Overlay, "a tooltip lies over the window, and may extend past it")
+		if root := tree.Nodes[tree.Root]; root != nil {
+			c.True(tips[0].Bounds.Bottom() > root.Bounds.Bottom(),
+				"a tooltip below a control at the window's bottom edge extends past it: %v, %v", tips[0].Bounds,
+				root.Bounds)
+		}
 	}
 	c.Equal("Write the file out", axMustNode(c, screen.AccessibilityNodeFor(button)).Description,
 		"the tooltip is the button's description as well")
 	labelNode := axMustNode(c, screen.AccessibilityNodeFor(label))
 	c.Equal("Primary tip\nSecondary tip", labelNode.Description,
 		"the secondary text is part of what the tooltip says, so it is part of the description")
+
+	// The window does not repaint for the tooltip going, yet its going is described all the same. The events are read
+	// rather than the tree, since asking for the tree would describe the window again whether or not anything had.
+	if len(tips) == 1 {
+		screen.AccessibilityEvents(wnd)
+		c.True(screen.Do(func() { wnd.ClearTooltip() }))
+		removed := false
+		for _, e := range screen.AccessibilityEvents(wnd) {
+			if e.Kind == accessibility.NodeRemoved && e.Node == tips[0].ID {
+				removed = true
+			}
+		}
+		c.True(removed, "taking the tooltip down should have removed it from the window's description")
+	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

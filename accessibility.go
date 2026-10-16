@@ -236,8 +236,9 @@ func (b *AccessibilityBuilder) Panel() *Panel {
 	return b.panel
 }
 
-// Window returns the window being described. For a panel of an open menu that is the window the menu belongs to,
-// rather than the popup menu window showing it, which Panel.Window would return; see axSnapshot.visitMenu.
+// Window returns the window being described. For a panel of an open menu or of the tooltip that is the window they
+// belong to, rather than the popup window showing them, which Panel.Window would return; see
+// axSnapshot.visitPopupContent.
 func (b *AccessibilityBuilder) Window() *Window {
 	return b.snapshot.window
 }
@@ -916,9 +917,9 @@ func (p *Panel) axContentWindow() *Window {
 //     own content.
 //   - It must not be an axCellHolder: a Table, List or TableHeader reaches its cells through its own cursor.
 //
-// The walk must end at the root panel of a window that is not a popup menu window, entered from its content panel. The
-// root's other children — the menu bar and the tooltip — are never in the tab order, and neither is an open menu, which
-// is the content of its popup menu window's root.
+// The walk must end at the root panel of a window that is not a popup window, entered from its content panel. The
+// root's other child, the menu bar, is never in the tab order, and neither is an open menu or the tooltip, each the
+// content of its own popup window's root.
 func (p *Panel) axInContent(asText bool) *Window {
 	below := p
 	for ancestor := p.parent; ancestor != nil; ancestor = ancestor.parent {

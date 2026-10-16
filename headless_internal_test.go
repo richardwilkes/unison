@@ -2211,6 +2211,39 @@ func TestHeadlessExternalDragExitsHoveredWindow(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestHeadlessExternalDragClearsTooltip verifies that a drag arriving from outside takes down the tooltip of the window
+// the pointer was in, as the pointer leaving that window does, and that the tooltip is armed again once the pointer is
+// back over its panel.
+func TestHeadlessExternalDragClearsTooltip(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	over := screen.PanelCenter(panel)
+	screen.MouseMove(over, mod.None)
+	c.NotNil(screen.TooltipWindow(owner))
+	var before, after int
+	c.True(screen.Do(func() { before = owner.tooltipSequence }))
+	outside := geom.NewPoint(390, 290)
+	c.Nil(screen.WindowAt(outside), "the drag enters outside every window")
+	d := screen.BeginExternalDrag(outside, drag.Copy, drag.Data{Type: uti.UTF8PlainText, Data: []byte("payload")})
+	var showing, lastIsNil bool
+	c.True(screen.Do(func() {
+		showing = owner.tooltipShowing()
+		lastIsNil = owner.lastTooltip == nil
+		after = owner.tooltipSequence
+	}))
+	c.False(showing, "the drag taking the pointer should have taken the tooltip down")
+	c.True(lastIsNil, "the tooltip asked for is forgotten, so coming back arms it again")
+	c.NotEqual(before, after, "a tooltip whose delay is running must not show mid-drag")
+	c.False(d.Drop().Dropped)
+	screen.MouseMove(over, mod.None)
+	c.NotNil(screen.TooltipWindow(owner), "coming back to the panel shows its tooltip again")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestHeadlessStartDragDuringDragRefused verifies that a source asking to start a drag while one is already in flight
 // is refused: the refusal is recorded, the source's cleanup still runs, and the drag that was in flight is left alone.
 func TestHeadlessStartDragDuringDragRefused(t *testing.T) {

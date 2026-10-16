@@ -168,7 +168,7 @@ func (w *Window) axActionRunsInline(req accessibility.ActionRequest) bool {
 // turned on for the whole application and this window is described immediately, synchronously, since the query that
 // caused this has nothing else to be answered from. It reports whether the window now has an adapter to answer with.
 //
-// A popup menu window's view normally reaches its owner's adapter through its alias (see cocoa.SetAXViewAlias), so a
+// A popup window's view normally reaches its owner's adapter through its alias (see cocoa.SetAXViewAlias), so a
 // popup's window arrives here only if that alias is gone. The owner is the one described then, since a popup is never
 // described on its own.
 func macAccessibilityActivate(macWnd cocoa.Window) bool {

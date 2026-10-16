@@ -73,7 +73,7 @@ func (s *headlessState) updateHover(pt geom.Point, mods mod.Modifiers) (target *
 	// The window being left may have been disposed while the pointer was in it — that is one of the ways the pointer
 	// comes to be somewhere else — and a disposed window has no root panel left to route the exit through.
 	if previous != nil && previous.IsValid() {
-		previous.mouseExit()
+		previous.pointerLeft()
 	}
 	if target != nil {
 		target.mouseEnter(windowLocal(target, pt), mods)

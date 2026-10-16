@@ -1650,6 +1650,46 @@ func TestHeadlessMenuWindows(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestHeadlessTooltipWindow verifies that TooltipWindow reports the popup window a tooltip is showing in, whose content
+// is the tooltip itself and which Windows() leaves out, only for as long as the tooltip is showing.
+func TestHeadlessTooltipWindow(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var button *unison.Button
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			button = unison.NewButton()
+			button.SetTitle("Save")
+			button.Tooltip = unison.NewTooltipWithText("Write the file out")
+			// Without this the tooltip would not appear until the delay a person's pause has to last.
+			button.TooltipImmediate = true
+			wnd = newHeadlessWindow(t, "tips", geom.NewRect(10, 10, 300, 200), button)
+			if wnd != nil {
+				wnd.ToFront()
+			}
+		}))
+	c.NotNil(wnd)
+	c.Nil(screen.TooltipWindow(wnd), "no tooltip is showing yet")
+	c.Nil(screen.TooltipWindow(nil))
+
+	screen.MouseMove(screen.PanelCenter(button), mod.None)
+	tw := screen.TooltipWindow(wnd)
+	c.NotNil(tw, "hovering the button should have shown its tooltip")
+	var content, tip *unison.Panel
+	var listed bool
+	screen.Do(func() {
+		content = tw.Content()
+		tip = button.Tooltip
+		listed = slices.Contains(unison.Windows(), tw)
+	})
+	c.True(content == tip, "the tooltip window's content should be the tooltip")
+	c.False(listed, "Windows() leaves the tooltip window out")
+
+	screen.Do(func() { wnd.ClearTooltip() })
+	c.Nil(screen.TooltipWindow(wnd), "clearing the tooltip should have taken it down")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestHeadlessToFrontCoalescesWithinCallback verifies that the activations asked for during one callback collapse into
 // the last one, performed once the callback is over: the window fronted first never receives the focus, and the
 // active window reported during the callback is already the one about to be activated.

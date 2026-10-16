@@ -22,7 +22,6 @@ type rootPanel struct {
 	window         *Window
 	openMenuPanels []*menuPanel
 	menuBarPanel   *menuPanel
-	tooltipPanel   *Panel
 	contentPanel   *Panel
 	menuBar        *menu
 	Panel
@@ -130,29 +129,10 @@ func (p *rootPanel) setContent(content Paneler) {
 		if p.menuBarPanel != nil {
 			index++
 		}
-		if p.tooltipPanel != nil {
-			index++
-		}
 		p.AddChildAtIndex(panel, index)
 	}
 	p.NeedsLayout = true
 	p.MarkForRedraw()
-}
-
-func (p *rootPanel) setTooltip(tip *Panel) {
-	if p.tooltipPanel != nil {
-		p.tooltipPanel.MarkForRedraw()
-		p.RemoveChild(p.tooltipPanel)
-	}
-	p.tooltipPanel = tip
-	if tip != nil {
-		index := 0
-		if p.menuBarPanel != nil {
-			index++
-		}
-		p.AddChildAtIndex(tip, index)
-		tip.MarkForRedraw()
-	}
 }
 
 func (p *rootPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
@@ -244,8 +224,8 @@ func (p *rootPanel) menuItemAt(where geom.Point) *menuItem {
 	return nil
 }
 
-// preMoved closes the open menus when their owner moves. A popup menu window moves only when it is placed, which must
-// leave its owner's menus alone.
+// preMoved closes the open menus when their owner moves. A popup window moves only when it is placed, which must leave
+// its owner's menus alone.
 func (p *rootPanel) preMoved(wnd *Window) {
 	if wnd.isPopup() {
 		return

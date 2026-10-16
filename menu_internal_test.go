@@ -836,21 +836,21 @@ func TestCommandKeyLeavesTheOpenMenuAlone(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestMenuDisplayAmongPicksTheMostOverlapped verifies that a menu belongs on the display it overlaps most, rather than
+// TestPopupDisplayAmongPicksTheMostOverlapped verifies that a menu belongs on the display it overlaps most, rather than
 // on the one holding its top-left corner, so that one hanging off the bottom of a display above another is placed on
 // the lower one, where it fits, and one wholly within a display is placed there.
-func TestMenuDisplayAmongPicksTheMostOverlapped(t *testing.T) {
+func TestPopupDisplayAmongPicksTheMostOverlapped(t *testing.T) {
 	c := check.New(t)
 	upper := &Display{Usable: geom.NewRect(0, 0, 1920, 1080), headless: true}
 	lower := &Display{Usable: geom.NewRect(0, 1080, 1920, 1080), headless: true}
 	displays := []*Display{upper, lower}
-	c.True(menuDisplayAmong(displays, geom.NewRect(100, 1075, 300, 300)) == lower,
+	c.True(popupDisplayAmong(displays, geom.NewRect(100, 1075, 300, 300)) == lower,
 		"a menu whose corner is on the upper display but which mostly hangs down onto the lower one belongs there")
-	c.True(menuDisplayAmong(displays, geom.NewRect(100, 1000, 300, 100)) == upper,
+	c.True(popupDisplayAmong(displays, geom.NewRect(100, 1000, 300, 100)) == upper,
 		"one that overlaps the upper display more belongs there")
-	c.True(menuDisplayAmong(displays, geom.NewRect(100, 100, 300, 300)) == upper, "one wholly within a display")
-	c.True(menuDisplayAmong(displays, geom.NewRect(100, 1200, 300, 300)) == lower)
-	c.True(menuDisplayAmong(displays, geom.NewRect(2000, 100, 300, 300)) == nil, "one overlapping none")
+	c.True(popupDisplayAmong(displays, geom.NewRect(100, 100, 300, 300)) == upper, "one wholly within a display")
+	c.True(popupDisplayAmong(displays, geom.NewRect(100, 1200, 300, 300)) == lower)
+	c.True(popupDisplayAmong(displays, geom.NewRect(2000, 100, 300, 300)) == nil, "one overlapping none")
 }
 
 // TestPopupHighlightsTheItemBeforeShowing verifies that a menu popped up on an item has that item highlighted, and

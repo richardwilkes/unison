@@ -78,7 +78,7 @@ var axHeadingsTakeFocus = false
 // and the ordinary after-draw publish of a window that gained one when some other window was asked about — therefore
 // end up in nativeAccessibilityPublish with the first tree in hand.
 //
-// A popup menu window has no adapter of its own and reports its owner's, whose tree holds the popup's menu.
+// A popup window has no adapter of its own and reports its owner's, whose tree holds the popup's content.
 func (w *Window) w32AccessibilityAdapter() *uia.Window {
 	if w.isPopup() {
 		return w.menuOwner().w32AccessibilityAdapter()
@@ -115,7 +115,7 @@ func (w *Window) w32AccessibilityAdapter() *uia.Window {
 // nativeAccessibilityPublish hands a freshly built snapshot, and the events describing how it differs from the one
 // before it, to the platform's assistive-technology adapter.
 func (w *Window) nativeAccessibilityPublish(tree *accessibility.Tree, events []accessibility.Event) {
-	// A popup menu window is described as part of its owner and never gets an adapter of its own.
+	// A popup window is described as part of its owner and never gets an adapter of its own.
 	if w.wnd.wnd == 0 || tree == nil || w.isPopup() {
 		return
 	}
@@ -153,7 +153,7 @@ func (w *Window) nativeAccessibilityShutdown() {
 		w.wnd.uia = nil
 	}
 	if w.wnd.uiaAnsweredForOwner {
-		// A popup menu window that answered with its owner's root withdraws its own handle, as uia.Window.Destroy does
+		// A popup window that answered with its owner's root withdraws its own handle, as uia.Window.Destroy does
 		// for the owner's.
 		w.wnd.uiaAnsweredForOwner = false
 		if w.wnd.wnd != 0 {

@@ -191,9 +191,9 @@ func TestMacMenuStackMonitorClosesOutsidePresses(t *testing.T) {
 }
 
 // TestMacCoveredMoveExitsOnce verifies that a key window, which AppKit sends the mouse-moved events made over the
-// windows above it, exits what the pointer left once per crossing, as the crossing events of the other platforms do,
-// rather than on every move: a window's MouseExitCallback that keeps the panel it is told about would otherwise be told
-// of the same crossing on every move over the other window.
+// windows above it, exits what the pointer left and takes down the tooltip once per crossing, as the crossing events of
+// the other platforms do, rather than on every move: a window's MouseExitCallback that keeps the panel it is told about
+// would otherwise be told of the same crossing on every move over the other window.
 func TestMacCoveredMoveExitsOnce(t *testing.T) {
 	c := check.New(t)
 	w := &Window{wnd: &apiWindow{}}
@@ -203,20 +203,24 @@ func TestMacCoveredMoveExitsOnce(t *testing.T) {
 		exits++
 		return true
 	}
+	w.lastTooltip = NewPanel()
 	c.True(w.macCoveredMove(true))
 	c.True(w.macCoveredMove(true))
 	c.True(w.macCoveredMove(true))
 	c.Equal(1, exits, "a run of moves over another window exits once")
+	c.Equal(1, w.tooltipSequence, "and clears the tooltip once")
+	c.Nil(w.lastTooltip, "forgetting the one asked for")
 	c.False(w.macCoveredMove(false))
 	c.Equal(1, exits, "a move back over the window exits nothing")
 	c.True(w.macCoveredMove(true))
 	c.Equal(2, exits, "the next crossing exits again")
+	c.Equal(2, w.tooltipSequence, "and clears the tooltip again")
 }
 
-// TestMacMouseExitedExitsOnce verifies that a crossing out of the key window exits once, though AppKit reports it both
-// through the window's tracking area and through the mouse-moved events it goes on sending the key window over
-// whatever the pointer is now over, and that the tracking area's report of the pointer coming back starts a new
-// crossing.
+// TestMacMouseExitedExitsOnce verifies that a crossing out of the key window exits and takes down the tooltip once,
+// though AppKit reports it both through the window's tracking area and through the mouse-moved events it goes on
+// sending the key window over whatever the pointer is now over, and that the tracking area's report of the pointer
+// coming back starts a new crossing.
 func TestMacMouseExitedExitsOnce(t *testing.T) {
 	c := check.New(t)
 	w := &Window{wnd: &apiWindow{}, cursor: &Cursor{}}
@@ -227,10 +231,13 @@ func TestMacMouseExitedExitsOnce(t *testing.T) {
 		return true
 	}
 	w.MouseEnterCallback = func(_ geom.Point, _ mod.Modifiers) bool { return true }
+	w.lastTooltip = NewPanel()
 	w.macMouseExited()
 	c.True(w.macCoveredMove(true))
 	c.True(w.macCoveredMove(true))
 	c.Equal(1, exits, "the tracking area's exit and the moves after it exit once")
+	c.Equal(1, w.tooltipSequence, "and clear the tooltip once")
+	c.Nil(w.lastTooltip, "forgetting the one asked for")
 
 	w.macMouseEntered(geom.NewPoint(10, 10), 0)
 	exits = 0

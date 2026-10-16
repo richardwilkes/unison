@@ -209,10 +209,10 @@ func NewWindow(contentRect geom.Rect, styleMask WindowStyleMask, canBeKey, canBe
 	return Window(wnd)
 }
 
-// NewPopupWindow returns a new borderless macWindow set up for one level of a popup menu, or 0 if the window could not
-// be created: it never becomes key or main, sits at the pop-up menu level in every space and beside full-screen
-// windows, stays out of the window cycle, shows and hides without animation, casts a shadow and is hidden from
-// assistive technologies (see SetAccessibilityHidden).
+// NewPopupWindow returns a new borderless macWindow set up for one level of a popup menu or for a tooltip, or 0 if the
+// window could not be created: it never becomes key or main, sits at the pop-up menu level in every space and beside
+// full-screen windows, stays out of the window cycle, shows and hides without animation, casts a shadow and is hidden
+// from assistive technologies (see SetAccessibilityHidden).
 func NewPopupWindow(contentRect geom.Rect) Window {
 	w := NewWindow(contentRect, WindowStyleMaskBorderless, false, false)
 	if w == 0 {
@@ -305,6 +305,12 @@ func (w Window) SetTabbingMode(mode WindowTabbingMode) {
 // SetAcceptsMouseMovedEvents sets whether the window receives mouse-moved events.
 func (w Window) SetAcceptsMouseMovedEvents(accepts bool) {
 	objc.ID(w).Send(Sel("setAcceptsMouseMovedEvents:"), accepts)
+}
+
+// SetIgnoresMouseEvents sets whether the window ignores mouse events. The window server's hit testing, and with it
+// WindowNumberAtPoint, passes over a window that does, so the events made over it go to whatever lies beneath.
+func (w Window) SetIgnoresMouseEvents(ignores bool) {
+	objc.ID(w).Send(Sel("setIgnoresMouseEvents:"), ignores)
 }
 
 // Number returns the window's number, which identifies it to the window server.

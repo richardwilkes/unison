@@ -427,7 +427,7 @@ func (s *HeadlessScreen) BeginExternalDrag(at geom.Point, opMask drag.Op, data .
 			if hovered := s.hover; hovered != nil {
 				s.hover = nil
 				if hovered.IsValid() {
-					hovered.mouseExit()
+					hovered.pointerLeft()
 				}
 			}
 			s.pointer = at
@@ -678,7 +678,7 @@ func (s *HeadlessScreen) SetDarkMode(enabled bool) {
 }
 
 // WindowAt returns the topmost window containing pt, which is in the screen's logical coordinate space, or nil if
-// there is none.
+// there is none. A tooltip window is passed over, since the pointer passes through it to the window beneath.
 func (s *HeadlessScreen) WindowAt(pt geom.Point) *Window {
 	var result *Window
 	s.run(func() { result = s.windowAt(pt) })
@@ -706,6 +706,20 @@ func (s *HeadlessScreen) MenuWindows(w *Window) []*Window {
 			if popup := mp.Window(); popup.isPopup() {
 				result = append(result, popup)
 			}
+		}
+	})
+	return result
+}
+
+// TooltipWindow returns the popup window showing the tooltip for w, or nil if none is showing. Windows() leaves this
+// window out; its content is the tooltip panel. w may be a popup window, such as a menu's, in which case its owner's
+// tooltip window is returned.
+func (s *HeadlessScreen) TooltipWindow(w *Window) *Window {
+	var result *Window
+	s.run(func() {
+		owner := w.menuOwner()
+		if owner != nil && owner.tooltipShowing() && owner.tooltipWindow.IsVisible() {
+			result = owner.tooltipWindow
 		}
 	})
 	return result

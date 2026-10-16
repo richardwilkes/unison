@@ -80,7 +80,8 @@ type Window struct {
 	surface              *surface
 	glCtx                *apiGLContext
 	root                 *rootPanel
-	owner                *Window // the top-level window whose menu stack a popup menu window belongs to; see menuOwner
+	owner                *Window // the top-level window a popup window belongs to; see menuOwner
+	tooltipWindow        *Window // the popup window this top-level window shows its tooltips in; see showTooltip
 	ax                   *windowAccessibility
 	focus                *Panel
 	cursor               *Cursor
@@ -91,7 +92,6 @@ type Window struct {
 	lastMouseOverPanel   *Panel
 	lastKeyDownPanel     *Panel
 	lastTooltip          *Panel
-	lastTooltipShownAt   time.Time
 	lastButtonTime       time.Time
 	pressedKeys          map[KeyCode]bool
 	pressedButtons       map[int]bool
@@ -209,16 +209,16 @@ func TitleIconsWindowOption(images []*Image) WindowOption {
 	}
 }
 
-// newPopupWindow creates a hidden, borderless window for one level of owner's menu stack. It never takes the focus or
-// renders through OpenGL.
-func newPopupWindow(owner *Window, title string) (*Window, error) {
-	return NewWindow(title, WindowKindWindowOption(WindowKindMenu), TransientWindowOption(), UndecoratedWindowOption(),
+// newPopupWindow creates a hidden, borderless window owned by owner's top-level window: one level of its menu stack for
+// WindowKindMenu, or its tooltip for WindowKindTooltip. It never takes the focus or renders through OpenGL.
+func newPopupWindow(owner *Window, title string, kind WindowKind) (*Window, error) {
+	return NewWindow(title, WindowKindWindowOption(kind), TransientWindowOption(), UndecoratedWindowOption(),
 		NotResizableWindowOption(), TitleIconsWindowOption(nil), popupWindowOption(owner))
 }
 
-// popupWindowOption makes the window a popup menu window of owner's top-level window, rendered on the CPU. Its content
-// size is left unconstrained, since the default limits come from the content's preferred size and would undo a menu
-// widened to match the field it drops down from.
+// popupWindowOption makes the window a popup window of owner's top-level window, rendered on the CPU. Its content size
+// is left unconstrained, since the default limits come from the content's preferred size and would undo a menu widened
+// to match the field it drops down from.
 func popupWindowOption(owner *Window) WindowOption {
 	return func(w *Window) error {
 		if owner == nil {
@@ -233,8 +233,8 @@ func popupWindowOption(owner *Window) WindowOption {
 	}
 }
 
-// menuOwner returns the window that holds the menu stack this window takes part in: the owner of a popup menu window,
-// or the window itself otherwise. Returns nil for a nil window.
+// menuOwner returns the window that holds the menu stack this window takes part in: the owner of a popup window, or the
+// window itself otherwise. Returns nil for a nil window.
 func (w *Window) menuOwner() *Window {
 	if w == nil {
 		return nil
@@ -245,12 +245,17 @@ func (w *Window) menuOwner() *Window {
 	return w
 }
 
-// isPopup returns true if this is one of the toolkit's popup menu windows.
+// isPopup returns true if this is one of the toolkit's popup windows: a menu's or a tooltip's.
 func (w *Window) isPopup() bool {
 	return w != nil && w.owner != nil
 }
 
-// firstTopLevelWindow returns the first window in windowList that is not a popup menu window, or nil if there is none.
+// isTooltipWindow returns true if this is the popup window a top-level window shows its tooltip in.
+func (w *Window) isTooltipWindow() bool {
+	return w.isPopup() && w.kind == WindowKindTooltip
+}
+
+// firstTopLevelWindow returns the first window in windowList that is not a popup window, or nil if there is none.
 func firstTopLevelWindow() *Window {
 	for _, w := range windowList {
 		if !w.isPopup() {
@@ -260,11 +265,11 @@ func firstTopLevelWindow() *Window {
 	return nil
 }
 
-// firstVisibleTopLevelWindow returns the first window in windowList that is neither a popup menu window nor hidden, or
-// nil if there is none. It is what a closing window hands the focus to: ToFront shows the window it is given, so one
-// the application hid must not be chosen over a visible one further down the list. A minimized window still counts,
-// since ToFront restores it, unless the application hid it while it was minimized, which leaves it minimized on the
-// platforms that keep that state for a hidden window.
+// firstVisibleTopLevelWindow returns the first window in windowList that is neither a popup window nor hidden, or nil
+// if there is none. It is what a closing window hands the focus to: ToFront shows the window it is given, so one the
+// application hid must not be chosen over a visible one further down the list. A minimized window still counts, since
+// ToFront restores it, unless the application hid it while it was minimized, which leaves it minimized on the platforms
+// that keep that state for a hidden window.
 func firstVisibleTopLevelWindow() *Window {
 	for _, w := range windowList {
 		if !w.isPopup() && (w.IsVisible() || (w.IsMinimized() && !w.hidden)) {
@@ -274,7 +279,8 @@ func firstVisibleTopLevelWindow() *Window {
 	return nil
 }
 
-// WindowCount returns the number of windows that are open. The toolkit's own popup menu windows are not counted.
+// WindowCount returns the number of windows that are open. The toolkit's own popup windows, for menus and tooltips, are
+// not counted.
 func WindowCount() int {
 	count := 0
 	for _, w := range windowList {
@@ -285,8 +291,8 @@ func WindowCount() int {
 	return count
 }
 
-// Windows returns a slice containing the current set of open windows. The toolkit's own popup menu windows are not
-// listed.
+// Windows returns a slice containing the current set of open windows. The toolkit's own popup windows, for menus and
+// tooltips, are not listed.
 func Windows() []*Window {
 	list := make([]*Window, 0, len(windowList))
 	for _, w := range windowList {
@@ -372,7 +378,7 @@ func NewWindow(title string, options ...WindowOption) (*Window, error) {
 	return w, nil
 }
 
-// okToProcess returns true if no modal window blocks this one. A popup menu window follows its owner.
+// okToProcess returns true if no modal window blocks this one. A popup window follows its owner.
 func (w *Window) okToProcess() bool {
 	return len(modalStack) == 0 || modalStack[len(modalStack)-1] == w.menuOwner()
 }
@@ -386,12 +392,14 @@ func (w *Window) UndoManager() *UndoManager {
 }
 
 func (w *Window) moved() {
+	w.forgetTooltip()
 	w.lastContentRect = w.ContentRect()
 	w.root.preMoved(w)
 	SafeCall(w.MovedCallback)
 }
 
 func (w *Window) resized() {
+	w.forgetTooltip()
 	SafeCall(w.ResizedCallback)
 	w.ValidateLayout()
 }
@@ -436,7 +444,9 @@ func (w *Window) lostFocus() {
 	w.restoreHiddenCursor()
 	wasActive := ActiveWindow()
 	w.focused = false
-	w.ClearTooltip()
+	// Forgotten rather than only taken down, so that the focus coming back with the pointer still over the same panel,
+	// as after a switch to another application and back, shows its tooltip again.
+	w.forgetTooltip()
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
@@ -546,6 +556,14 @@ func (w *Window) AttemptClose() bool {
 
 // Dispose of the window.
 func (w *Window) Dispose() {
+	if w.root != nil {
+		w.ClearTooltip()
+	}
+	if w.isTooltipWindow() && w.owner.tooltipWindow == w {
+		// Disposed of on its own, as by a close request from outside the toolkit, the window takes its owner's tooltip
+		// with it.
+		w.owner.forgetTooltip()
+	}
 	if w.isPopup() && w.root != nil && w.owner.root != nil && w.root.contentPanel != nil {
 		// A popup menu window still in its owner's menu stack is closed through the stack, as rootPanel.removeMenu
 		// does, so that neither the stack nor the menu it shows goes on holding a window that is gone; the menus above
@@ -555,8 +573,9 @@ func (w *Window) Dispose() {
 			return
 		}
 	}
-	// Popup menu windows go first, since Windows destroys owned windows along with their owner. Any not in the menu
-	// stack are swept up too, since Windows() leaves them out and closeAllWindows would otherwise never empty the list.
+	// Popup windows go first, since Windows destroys owned windows along with their owner. Any not in the menu stack,
+	// the tooltip window among them, are swept up too, since Windows() leaves them out and closeAllWindows would
+	// otherwise never empty the list.
 	if w.root != nil {
 		w.root.closeMenuStackStoppingAt(nil)
 	}
@@ -576,6 +595,9 @@ func (w *Window) Dispose() {
 	}
 	if w.root.contentPanel != nil {
 		w.root.contentPanel.RemoveFromParent()
+	}
+	if w.isTooltipWindow() && w.owner.tooltipWindow == w {
+		w.owner.tooltipWindow = nil
 	}
 	if w.IsValid() {
 		w.valid = false
@@ -1130,6 +1152,9 @@ func (w *Window) Show() {
 // function does nothing.
 func (w *Window) Hide() {
 	if w.IsValid() {
+		// Forgotten here rather than left to the platform, which need not report the pointer leaving a window that goes
+		// off the screen, so that the tooltip shows again once the window is back with the pointer over the same panel.
+		w.forgetTooltip()
 		if w.root != nil {
 			w.root.closeMenuStackStoppingAt(nil)
 		}
@@ -1142,8 +1167,8 @@ func (w *Window) Hide() {
 }
 
 // ToFront attempts to bring the window to the foreground and give it the keyboard focus. If it is hidden, it will be
-// made visible first. Does nothing for windows marked keepHidden or for the toolkit's own popup menu windows, which
-// never take the focus.
+// made visible first. Does nothing for windows marked keepHidden or for the toolkit's own popup windows, which never
+// take the focus.
 //
 // The window is shown immediately, but the platform activation is performed by the event loop at the end of the
 // current pass rather than here, and repeated requests made within one pass collapse into the last one. Doing it here
@@ -1194,6 +1219,8 @@ func (w *Window) IsMinimized() bool {
 // Minimize performs the minimize function on the window, or restores it if it is already minimized.
 func (w *Window) Minimize() {
 	if w.IsValid() {
+		// As in Hide.
+		w.forgetTooltip()
 		if w.root != nil {
 			w.root.closeMenuStackStoppingAt(nil)
 		}
@@ -1317,8 +1344,8 @@ func (w *Window) draw() {
 				// itself for redraw while being described is simply drawn again on the next pass, exactly as one that
 				// does it from its DrawCallback is.
 				//
-				// A popup menu window is described as part of its owner, which does not repaint when the highlight
-				// moves within the popup, so the owner is published instead.
+				// A popup window, a menu's or a tooltip's, is described as part of its owner, which does not repaint
+				// when the popup does, so the owner is published instead.
 				if w.isPopup() {
 					if w.owner.IsVisible() {
 						w.owner.publishAccessibility()
@@ -1465,26 +1492,109 @@ func (w *Window) updateTooltip(target *Panel, where geom.Point) {
 		}
 		target = target.parent
 	}
+	// No tooltip is shown while menus are open, wherever the pointer is, since the tooltip window would sit above the
+	// menu windows, nor in a window without the focus, and neither records the one asked for: were it remembered, the
+	// mouseEnter a focus gain makes, or the next move once the menus have closed, would find it unchanged and never
+	// show it.
+	if !w.Focused() || menusOpen() {
+		tip = nil
+	}
+	if w.lastTooltip == nil && tip == nil {
+		return
+	}
 	if !w.lastTooltip.Is(tip) {
-		wasShowing := w.root.tooltipPanel != nil
-		w.ClearTooltip()
+		wasShowing := w.tooltipShowing()
+		w.tooltipSequence++
 		w.lastTooltip = tip
-		if tip != nil {
-			ts := &tooltipSequencer{window: w, avoid: avoid, sequence: w.tooltipSequence}
-			if tip.TooltipImmediate || wasShowing || time.Since(w.lastTooltipShownAt) < DefaultTooltipTheme.Dismissal {
-				ts.show()
-			} else {
-				InvokeTaskAfter(ts.show, DefaultTooltipTheme.Delay)
-			}
+		if tip == nil {
+			w.hideTooltip()
+			return
+		}
+		ts := &tooltipSequencer{window: w, avoid: avoid, sequence: w.tooltipSequence}
+		if tip.TooltipImmediate || wasShowing {
+			// One replacing a tooltip that is showing takes its place in the same window, which is never hidden in
+			// between.
+			ts.show()
+		} else {
+			InvokeTaskAfter(ts.show, DefaultTooltipTheme.Delay)
 		}
 	}
+}
+
+// menusOpen returns true if any window has a popup menu open. Every window's stack counts, not only the hovered one's,
+// since menus left open in another window, as Windows leaves them when a focusable transient window takes the focus,
+// would be covered by a tooltip window just the same.
+func menusOpen() bool {
+	for _, w := range windowList {
+		if w.root != nil && len(w.root.openMenuPanels) != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // ClearTooltip clears any existing tooltip and resets the timer.
 func (w *Window) ClearTooltip() {
 	w.tooltipSequence++
-	w.lastTooltipShownAt = time.Time{}
-	w.root.setTooltip(nil)
+	w.hideTooltip()
+}
+
+// tooltipPanel returns the tooltip showing for this window, the content of its tooltip window, or nil if there is none.
+func (w *Window) tooltipPanel() *Panel {
+	if tw := w.tooltipWindow; tw != nil && tw.root != nil {
+		return tw.root.contentPanel
+	}
+	return nil
+}
+
+// tooltipShowing returns true if a tooltip is showing for this window.
+func (w *Window) tooltipShowing() bool {
+	return w.tooltipPanel() != nil
+}
+
+// showTooltip shows tip in this window's tooltip window at rect, in the space window rects use, creating the window the
+// first time. A tooltip already showing is replaced in place. Only a top-level window has a tooltip window.
+func (w *Window) showTooltip(tip *Panel, rect geom.Rect) {
+	if !w.IsValid() || w.isPopup() {
+		return
+	}
+	if w.tooltipWindow == nil {
+		tw, err := newPopupWindow(w, "", WindowKindTooltip)
+		if err != nil {
+			errs.Log(err)
+			return
+		}
+		w.tooltipWindow = tw
+	}
+	tw := w.tooltipWindow
+	// Not Window.SetContent, which would lay the panel out at the window's current size.
+	tw.root.setContent(tip)
+	tw.SetContentRect(rect)
+	tw.ValidateLayout()
+	// Drawn before it is shown: the window keeps the last tooltip's pixels while it is hidden, or the ones it is showing
+	// while it is replaced in place, and would put them on the screen, stretched to the new size, until the next pass
+	// of the event loop drew the new tooltip.
+	tw.MarkForRedraw()
+	tw.FlushDrawing()
+	tw.Show()
+}
+
+// hideTooltip takes down the tooltip showing for this window, if any, keeping its window for the next one. Whether one
+// is showing is decided by the toolkit's own state rather than by the window's visibility, since Windows hides an owned
+// window along with its minimized owner before the owner learns of the minimize; see w32KeepHidden.
+func (w *Window) hideTooltip() {
+	if w.tooltipPanel() == nil {
+		return
+	}
+	w.tooltipWindow.root.setContent(nil)
+	w.tooltipWindow.Hide()
+	// Emptying and hiding the window both mark it for redraw, and a hidden window stays in the set until it is shown
+	// again, asked whether it is visible on every pass of the event loop meanwhile, which on X11 is a round trip to the
+	// server. The window may stay hidden for the rest of this window's life, and showTooltip draws it before showing
+	// it in any case, so nothing is left pending for it.
+	delete(redrawSet, w.tooltipWindow)
+	// The tooltip is described as part of this window, which does not repaint for its going.
+	w.axMarkForPublish()
 }
 
 // UpdateCursorNow causes the cursor to be updated as if the mouse had moved.
@@ -1833,6 +1943,10 @@ func (w *Window) mouseUp(where geom.Point, button int, mods mod.Modifiers) {
 		stop := false
 		SafeCall(func() { stop = w.MouseUpCallback(where, button, mods) })
 		if stop {
+			// The release was the window's to consume, but the press it ends is over just the same.
+			if !gestureGoesOn {
+				w.lastMouseDownPanel = nil
+			}
 			return
 		}
 	}
@@ -1920,6 +2034,26 @@ func (w *Window) mouseMove(where geom.Point, mods mod.Modifiers) {
 	}
 }
 
+// pointerLeft is what a platform reports when the pointer leaves the window itself, as opposed to crossing between
+// panels within it: the panel under the pointer is exited and any tooltip taken down and forgotten (see forgetTooltip),
+// so that coming back to the same panel arms it again. Only the platforms' window-exit paths call this; crossings
+// within the window call mouseExit, since a tooltip there is kept or replaced as the pointer moves on.
+func (w *Window) pointerLeft() {
+	w.mouseExit()
+	w.forgetTooltip()
+}
+
+// forgetTooltip takes down any tooltip, as ClearTooltip does, and forgets the one asked for, so that the pointer moving
+// on over the same panel arms it again, which ClearTooltip leaves for the pointer reaching another panel. It does not
+// forget while a press is in progress, since a press, whether dragged out of the window and back or released outside
+// it, must not bring back the tooltip it took down.
+func (w *Window) forgetTooltip() {
+	w.ClearTooltip()
+	if w.lastMouseDownPanel == nil {
+		w.lastTooltip = nil
+	}
+}
+
 func (w *Window) mouseExit() {
 	if w.MouseExitCallback != nil {
 		stop := false
@@ -1977,8 +2111,8 @@ func (w *Window) mouseWheel(where, delta geom.Point, mods mod.Modifiers) {
 
 func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 	if w.owner != nil {
-		// No platform should deliver a key to a popup menu window, but should one arrive, it belongs to the owner,
-		// which routes it to the open menus.
+		// No platform should deliver a key to a popup window, but should one arrive, it belongs to the owner, which
+		// routes it to the open menus.
 		w.owner.keyPressed(key, mods)
 		return
 	}

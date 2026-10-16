@@ -122,7 +122,8 @@ type axSnapshot struct {
 	delegatedFocus accessibility.NodeID
 	generation     uint64
 	// space maps the root space of the window whose panels are being visited into that of the window being described.
-	// It is the identity except while the panel of an open menu, which a popup window shows, is visited; see visitMenu.
+	// It is the identity except while the content of a popup window, an open menu or the tooltip, is visited; see
+	// visitPopupContent.
 	space axSpace
 	// menusLandHere is axMayPopupMenu's answer for every panel of the window, worked out once.
 	menusLandHere bool
@@ -272,11 +273,11 @@ func (w *Window) buildAccessibilityTree() *accessibility.Tree {
 	return s.tree
 }
 
-// buildRoot describes the window itself and then its children. The root's children are taken from the root panel's own
-// fields rather than from its child list, so the order an assistive technology reads them in is fixed by what they are
-// — the menus that are open, then the menu bar, then the tooltip, then the content — rather than by the order in which
-// they happened to be inserted. The open menus, each shown in a popup window of its own, are visited newest first,
-// which is their z-order.
+// buildRoot describes the window itself and then its children. They are taken from the fields that hold them rather
+// than from the root panel's child list, so the order an assistive technology reads them in is fixed by what they are —
+// the menus that are open, then the menu bar, then the tooltip, then the content — rather than by the order in which
+// they happened to be inserted. The open menus and the tooltip are each shown in a popup window of their own; the menus
+// are visited newest first, which is their z-order.
 func (s *axSnapshot) buildRoot() {
 	w := s.window
 	root := w.root
@@ -303,7 +304,9 @@ func (s *axSnapshot) buildRoot() {
 	if root.menuBarPanel != nil {
 		s.visit(root.menuBarPanel.AsPanel(), node.ID, clip)
 	}
-	s.visit(root.tooltipPanel, node.ID, clip)
+	if tip := w.tooltipPanel(); tip != nil && w.tooltipWindow.IsVisible() {
+		s.visitPopupContent(tip, node.ID)
+	}
 	s.visit(root.contentPanel, node.ID, clip)
 	s.settleCaptionFocus()
 	s.markOpenMenuItems()
@@ -384,17 +387,21 @@ func (s axSpace) toLines(lines []accessibility.Line) []accessibility.Line {
 	return scaled
 }
 
-// visitMenu describes an open menu as a child of parent. The menu is shown in a popup window of its own, so its bounds
-// are mapped from that window's root space into this window's, and are confined by the menu's own bounds rather than
-// by this window's, since the popup may extend beyond it. Its node is marked as an overlay for the same reason.
+// visitMenu describes an open menu as a child of parent; see visitPopupContent.
 func (s *axSnapshot) visitMenu(panel *menuPanel, parent accessibility.NodeID) {
-	p := panel.AsPanel()
+	s.visitPopupContent(panel.AsPanel(), parent)
+}
+
+// visitPopupContent describes p, the content of a popup window, as a child of parent. Its bounds are mapped from that
+// window's root space into this window's, and are confined by p's own bounds rather than by this window's, since the
+// popup may extend beyond it. Its node is marked as an overlay for the same reason.
+func (s *axSnapshot) visitPopupContent(p *Panel, parent accessibility.NodeID) {
 	space := axIdentitySpace
 	if popup := p.Window(); popup != s.window && popup.IsValid() && s.window.IsValid() {
 		space = axSpaceBetween(popup, s.window)
 	}
 	s.visitInSpace(p, parent, space)
-	// A menu panel that is not described has no node to mark; its items hang off parent and stay confined to it.
+	// A panel that is not described has no node to mark; what it holds hangs off parent and stays confined to it.
 	if node := s.tree.Nodes[p.Accessibility.id]; node != nil && s.targets[node.ID].panel == p {
 		node.Overlay = true
 	}
@@ -1231,7 +1238,7 @@ func axTooltipText(p *Panel) string {
 // before it returns.
 func (w *Window) publishAccessibility() {
 	// The root panel is what a description is built from, so a window that has none — a bare Window a test assembled
-	// itself — has nothing to describe. A popup menu window is described as part of its owner instead.
+	// itself — has nothing to describe. A popup window is described as part of its owner instead.
 	if w.isPopup() || !accessibilityActive.Load() || !w.IsValid() || w.root == nil {
 		return
 	}

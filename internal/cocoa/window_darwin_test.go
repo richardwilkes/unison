@@ -11,11 +11,13 @@ package cocoa
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/role"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 // newTestWindow creates a window the way unison's nativeInit does (titled unless undecorated), on the caller's
@@ -320,6 +322,92 @@ func TestNewPopupWindow(t *testing.T) {
 			t.Error("popup window is key after OrderFront")
 		}
 	})
+}
+
+// TestSetIgnoresMouseEvents proves that each setting SetIgnoresMouseEvents makes reaches the window.
+func TestSetIgnoresMouseEvents(t *testing.T) {
+	runOnMain(func() {
+		w, _, cleanup := newTestPopupWindow(t, geom.NewRect(140, 140, 120, 80))
+		defer cleanup()
+		for _, ignores := range []bool{true, false, true} {
+			w.SetIgnoresMouseEvents(ignores)
+			if got := objc.Send[bool](objc.ID(w), Sel("ignoresMouseEvents")); got != ignores {
+				t.Errorf("ignoresMouseEvents = %v after SetIgnoresMouseEvents(%v)", got, ignores)
+			}
+		}
+	})
+}
+
+// TestWindowNumberAtPointPassesOverIgnoringWindows proves what a tooltip window relies on to leave its owner handling
+// the moves made over it: the window server's hit test finds a popup window ordered front at a point inside it, but
+// passes over one that ignores mouse events. The popup is set not to ignore them explicitly first, since by default
+// AppKit lets the events made over a window's transparent pixels through, and this one is never drawn.
+func TestWindowNumberAtPointPassesOverIgnoringWindows(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
+	mainID := MainDisplayID()
+	if mainID == 0 {
+		t.Skip("no main display (headless environment)")
+	}
+	var number, found, foundIgnoring int
+	var foreign bool
+	runOnMain(func() {
+		screen := ScreenForDisplayID(mainID)
+		if screen == 0 {
+			t.Error("no NSScreen found for the main display")
+			return
+		}
+		visible := screen.VisibleFrame()
+		r := geom.NewRect(visible.CenterX()-60, visible.CenterY()-40, 120, 80)
+		w, _, cleanup := newTestPopupWindow(t, r)
+		defer cleanup()
+		number = w.Number()
+		w.SetIgnoresMouseEvents(false)
+		w.OrderFront()
+		found = settledWindowNumberAt(r.Center(), func(n int) bool { return n == number })
+		foreign = found != number && found != 0 &&
+			objc.ID(Cls("NSApplication")).Send(Sel("sharedApplication")).Send(Sel("windowWithWindowNumber:"),
+				int64(found)) == 0
+		w.SetIgnoresMouseEvents(true)
+		foundIgnoring = settledWindowNumberAt(r.Center(), func(n int) bool { return n != number })
+	})
+	if t.Failed() {
+		return
+	}
+	if found != number {
+		// Asleep displays usually mean a locked session, whose lock screen covers every window, and so does another
+		// application's window at the test point while the displays are awake: nothing of ours sits above the pop-up
+		// menu level, so one there is the lock screen or something else the test cannot see past.
+		if DisplayIsAsleep(mainID) {
+			t.Skip("the popup is not found while the displays are asleep (likely a locked session)")
+		}
+		if foreign {
+			t.Skipf("another application's window (%d) covers the test point (likely a locked session)", found)
+		}
+		t.Fatalf("WindowNumberAtPoint = %d over a popup window that takes mouse events, want its number %d", found,
+			number)
+	}
+	if foundIgnoring == number {
+		t.Errorf("WindowNumberAtPoint = %d, the number of the popup window that ignores mouse events", foundIgnoring)
+	}
+}
+
+// settledWindowNumberAt returns what WindowNumberAtPoint answers for pt once want accepts it, running the main run loop
+// until then, or its last answer once two seconds have gone by. A window's ordering and whether it ignores mouse events
+// reach the window server's hit testing some milliseconds after the pass of the run loop that commits them. Main
+// thread only.
+func settledWindowNumberAt(pt geom.Point, want func(int) bool) int {
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		n := WindowNumberAtPoint(pt)
+		if want(n) || !time.Now().Before(deadline) {
+			return n
+		}
+		WithPool(func() {
+			date := objc.ID(Cls("NSDate")).Send(Sel("dateWithTimeIntervalSinceNow:"), 0.005)
+			objc.ID(Cls("NSRunLoop")).Send(Sel("currentRunLoop")).Send(Sel("runMode:beforeDate:"), defaultRunLoopMode(),
+				date)
+		})
+	}
 }
 
 // TestWindowAccessibilityHidden proves the overrides SetAccessibilityHidden turns on: a hidden window is no

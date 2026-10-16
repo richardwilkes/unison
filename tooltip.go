@@ -60,8 +60,8 @@ type tooltipSequencer struct {
 func NewTooltipBase() *Panel {
 	tip := NewPanel()
 	tip.SetBorder(DefaultTooltipTheme.BaseBorder)
-	// A tooltip panel becomes part of a window's description only while it is showing, and what it is then is a tooltip
-	// rather than the anonymous group a bare panel would be taken for.
+	// A tooltip panel becomes part of a window's description only while it is showing, as the content of that window's
+	// tooltip window, and what it is then is a tooltip rather than the anonymous group a bare panel would be taken for.
 	tip.Accessibility.Role = role.Tooltip
 	tip.DrawCallback = func(canvas *Canvas, _ geom.Rect) {
 		r := tip.ContentRect(true)
@@ -131,47 +131,97 @@ func NewTooltipWithSecondaryText(primary, secondary string) *Panel {
 }
 
 func (ts *tooltipSequencer) show() {
-	if ts.window.tooltipSequence == ts.sequence && ts.window.Focused() {
-		tip := ts.window.lastTooltip
-		_, pref, _ := tip.Sizes(geom.Size{})
-		rect := geom.NewRect(ts.avoid.X, ts.avoid.Bottom()+1, pref.Width, pref.Height)
-		if rect.X < 0 {
-			rect.X = 0
-		}
-		if rect.Y < 0 {
-			rect.Y = 0
-		}
-		viewSize := ts.window.root.ContentRect(true).Size
-		if viewSize.Width < rect.Width {
-			_, pref, _ = tip.Sizes(geom.NewSize(viewSize.Width, 0))
-			if viewSize.Width < pref.Width {
-				rect.X = 0
-				rect.Width = viewSize.Width
-			} else {
-				rect.Width = pref.Width
-			}
-			rect.Height = pref.Height
-		}
-		if viewSize.Width < rect.X+rect.Width {
-			rect.X = viewSize.Width - rect.Width
-		}
-		if viewSize.Height < rect.Y+rect.Height {
-			rect.Y = ts.avoid.Y - (rect.Height + 1)
-			if rect.Y < 0 {
-				rect.Y = 0
-			}
-		}
-		tip.SetFrameRect(rect)
-		ts.window.root.setTooltip(tip)
-		ts.window.lastTooltipShownAt = time.Now()
-		if !tip.TooltipImmediate {
-			InvokeTaskAfter(ts.close, DefaultTooltipTheme.Dismissal)
-		}
+	w := ts.window
+	if w.tooltipSequence != ts.sequence {
+		return
+	}
+	if !w.IsValid() || !w.Focused() || menusOpen() {
+		// The tooltip asked for is still the current one, so one showing in its place has to go.
+		w.hideTooltip()
+		return
+	}
+	tip := w.lastTooltip
+	w.showTooltip(tip, tooltipWindowRect(tip, ts.avoid, w))
+	if !tip.TooltipImmediate {
+		InvokeTaskAfter(ts.close, DefaultTooltipTheme.Dismissal)
 	}
 }
 
 func (ts *tooltipSequencer) close() {
 	if ts.window.tooltipSequence == ts.sequence {
-		ts.window.root.setTooltip(nil)
+		ts.window.hideTooltip()
 	}
+}
+
+// tooltipWindowRect returns the rect, in the space window rects use, of the window showing tip for a panel of owner
+// occupying avoid, in owner's root coordinates: just below the part of avoid within owner, or below avoid when none of
+// it is, fitted onto the display as tooltipWindowRectOn does.
+func tooltipWindowRect(tip *Panel, avoid geom.Rect, owner *Window) geom.Rect {
+	if visible := avoid.Intersect(owner.root.ContentRect(true)); !visible.Empty() {
+		avoid = visible
+	}
+	var where geom.Rect
+	_, where.Size, _ = tip.Sizes(geom.Size{})
+	where.Point = owner.apiPointToScreen(geom.NewPoint(avoid.X, avoid.Bottom()+1))
+	avoid.Point = owner.apiPointToScreen(avoid.Point)
+	d := tooltipDisplayAmong(AllDisplays(), where, avoid)
+	if d == nil {
+		d = owner.Display()
+	}
+	return tooltipWindowRectOn(tip, where, avoid, d)
+}
+
+// tooltipDisplayAmong returns the one of displays a tooltip placed at where, below a panel occupying avoid, belongs on:
+// the one where overlaps most, as for a menu, or else the one avoid overlaps most, since a tooltip asked for just below
+// the bottom of a display's usable area lies on none and belongs with its panel rather than on whichever display holds
+// the owner window. Returns nil when neither overlaps any. The rects are in the space window rects use.
+func tooltipDisplayAmong(displays []*Display, where, avoid geom.Rect) *Display {
+	if d := popupDisplayAmong(displays, where); d != nil {
+		return d
+	}
+	return popupDisplayAmong(displays, avoid)
+}
+
+// tooltipWindowRectOn returns where, the rect of the window showing tip below avoid, fitted onto d as fitTooltipRect
+// does, with tip narrowed to d's width first when it is wider; or where as it is, but no smaller than fitTooltipRect
+// makes it, when d is nil, which it is on macOS while every display is asleep. The rects are in the space window rects
+// use, and the fitting is done in the display's own space, as for a menu; see menuWindowRect.
+func tooltipWindowRectOn(tip *Panel, where, avoid geom.Rect, d *Display) geom.Rect {
+	if d == nil {
+		where.Width = max(where.Width, 1)
+		where.Height = max(where.Height, 1)
+		return where
+	}
+	maxWidth := d.apiRectToWindowUnits(geom.Rect{Size: geom.NewSize(d.Usable.Width, 0)}).Width
+	if where.Width > maxWidth {
+		_, where.Size, _ = tip.Sizes(geom.NewSize(maxWidth, 0))
+	}
+	gap := d.apiRectFromWindowUnits(geom.Rect{Size: geom.NewSize(0, 1)}).Height
+	return d.apiRectToWindowUnits(fitTooltipRect(d.apiRectFromWindowUnits(where), d.apiRectFromWindowUnits(avoid),
+		d.Usable, gap))
+}
+
+// fitTooltipRect returns where, a tooltip placed below avoid, moved so that it lies within usable: at least one unit
+// each way, since a window cannot be empty, narrowed to its width, shifted left or right onto it, and, when its bottom
+// would fall outside it, placed gap above avoid instead, but never above usable's top. The rects and gap are all in the
+// same space.
+func fitTooltipRect(where, avoid, usable geom.Rect, gap float32) geom.Rect {
+	where.Width = max(where.Width, 1)
+	where.Height = max(where.Height, 1)
+	if where.Width > usable.Width {
+		where.Width = usable.Width
+	}
+	if where.Right() > usable.Right() {
+		where.X = usable.Right() - where.Width
+	}
+	if where.X < usable.X {
+		where.X = usable.X
+	}
+	if where.Bottom() > usable.Bottom() {
+		where.Y = avoid.Y - where.Height - gap
+	}
+	if where.Y < usable.Y {
+		where.Y = usable.Y
+	}
+	return where
 }

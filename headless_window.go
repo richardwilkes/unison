@@ -139,7 +139,7 @@ func (hw *headlessWindow) releasePointer(exit bool) {
 		// exits the window it finds in hover, so that exit is delivered here, before hover is cleared, and updateHover
 		// then enters whatever the pointer has been left over.
 		if exit && hw.w.IsValid() {
-			hw.w.mouseExit()
+			hw.w.pointerLeft()
 		}
 		hs.hover = nil
 		if hs.drag == nil {
@@ -439,7 +439,7 @@ func (hw *headlessWindow) presentCPUPixels(pixels *raster.Pixmap) {
 // are in it. All of the following are UI thread only.
 
 // raise moves w to the top of its tier of the z-order, below every window of a higher tier. The tiers match the
-// window levels the platforms give them: popup menu windows above floating ones, and floating ones above the rest. See
+// window levels the platforms give them: popup windows above floating ones, and floating ones above the rest. See
 // windowStackLevel.
 func (s *headlessState) raise(w *Window) {
 	s.stack = slices.DeleteFunc(s.stack, func(other *Window) bool { return other == w })
@@ -451,8 +451,8 @@ func (s *headlessState) raise(w *Window) {
 	s.stack = slices.Insert(s.stack, i, w)
 }
 
-// windowStackLevel returns the z-order tier of w: 2 for a popup menu window, 1 for a floating window and 0 for any
-// other, including an application's own window of the menu kind.
+// windowStackLevel returns the z-order tier of w: 2 for a popup window, a menu's or a tooltip's, 1 for a floating
+// window and 0 for any other, including an application's own window of the menu or tooltip kind.
 func windowStackLevel(w *Window) int {
 	switch {
 	case w.isPopup():
@@ -465,10 +465,13 @@ func windowStackLevel(w *Window) int {
 }
 
 // windowAt returns the topmost window containing pt, or nil if there is none. pt is in the screen's logical
-// coordinate space.
+// coordinate space. A tooltip window is passed over, as the platforms pass mouse input through it to what is beneath.
 func (s *headlessState) windowAt(pt geom.Point) *Window {
 	for i := len(s.stack) - 1; i >= 0; i-- {
 		w := s.stack[i]
+		if w.isTooltipWindow() {
+			continue
+		}
 		if hw := headlessWindowFor(w); hw != nil && hw.visible && !w.minimized && pt.In(hw.rect) {
 			return w
 		}

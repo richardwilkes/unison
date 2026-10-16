@@ -16,9 +16,13 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
 )
+
+// ownerTitle is the title the tests give a window that owns popup windows.
+const ownerTitle = "owner"
 
 // newCursorTestWindow returns a minimal Window suitable for exercising cursor updates without a live windowing system.
 // The window deliberately reports itself as invalid so MouseLocation returns the origin instead of querying the
@@ -573,6 +577,35 @@ func TestMouseUpWithoutMatchingDownIsIgnored(t *testing.T) {
 	c.Equal(0, ups)
 }
 
+// TestWindowMouseUpCallbackStoppingReleaseEndsThePress verifies that a release the window's own MouseUpCallback
+// consumes still ends the press, so that the window does not go on acting as if one were in progress: panel exits are
+// skipped and tooltips kept while a press is held (see mouseExit and forgetTooltip), and the next release would go to
+// the panel of a press long over.
+func TestWindowMouseUpCallbackStoppingReleaseEndsThePress(t *testing.T) {
+	c := check.New(t)
+	w := newMouseButtonTestWindow()
+	content := w.root.contentPanel
+	content.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+	ups := 0
+	content.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool {
+		ups++
+		return true
+	}
+	w.MouseUpCallback = func(_ geom.Point, _ int, _ mod.Modifiers) bool { return true }
+	pt := geom.NewPoint(10, 10)
+	w.mouseDown(pt, ButtonLeft, 0)
+	c.NotNil(w.lastMouseDownPanel)
+	w.mouseUp(pt, ButtonLeft, 0)
+	c.Equal(0, ups, "the window's callback consumed the release")
+	c.Nil(w.lastMouseDownPanel, "but the press is over all the same")
+	w.mouseDown(pt, ButtonLeft, 0)
+	w.mouseDown(pt, ButtonRight, 0)
+	w.mouseUp(pt, ButtonLeft, 0)
+	c.NotNil(w.lastMouseDownPanel, "a gesture with a button still down goes on")
+	w.mouseUp(pt, ButtonRight, 0)
+	c.Nil(w.lastMouseDownPanel)
+}
+
 // TestSynthesizeMouseUpReleasesAllPressedButtons verifies that the synthetic releases used on focus loss and at drag
 // start cover every pressed button and leave the pressed set empty.
 func TestSynthesizeMouseUpReleasesAllPressedButtons(t *testing.T) {
@@ -656,19 +689,703 @@ func TestUpdateTooltipPassesAlignedAvoidRect(t *testing.T) {
 // any other key still clears it.
 func TestModifierKeyDownKeepsTooltip(t *testing.T) {
 	c := check.New(t)
-	w := newModalInputTestWindow()
-	tip := NewPanel()
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	screen.MouseMove(screen.PanelCenter(panel), mod.None)
+	showing := func() bool {
+		var result bool
+		c.True(screen.Do(func() { result = owner.tooltipShowing() }))
+		return result
+	}
+	c.True(showing())
 	modifiers := []KeyCode{
 		KeyLShift, KeyRShift, KeyLControl, KeyRControl, KeyLOption, KeyROption, KeyLCommand, KeyRCommand,
 	}
 	for _, key := range modifiers {
-		w.root.setTooltip(tip)
-		w.keyPressed(key, mod.Shift|mod.Command)
-		w.keyReleased(key, 0)
-		c.True(w.root.tooltipPanel == tip, key.String())
+		screen.KeyDown(key, mod.Shift|mod.Command)
+		screen.KeyUp(key, 0)
+		c.True(showing(), key.String())
 	}
-	w.keyPressed(KeyS, mod.Shift|mod.Command)
-	c.True(w.root.tooltipPanel == nil)
+	screen.KeyDown(KeyS, mod.Shift|mod.Command)
+	c.False(showing())
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// newTooltipTestPanel returns a panel at frame, for a content panel with no layout, whose tooltip is tipSize and shows
+// at once.
+func newTooltipTestPanel(frame geom.Rect, tipSize geom.Size) *Panel {
+	p := NewPanel()
+	p.SetFrameRect(frame)
+	tip := NewTooltipBase()
+	tip.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) { return tipSize, tipSize, tipSize })
+	p.Tooltip = tip
+	p.TooltipImmediate = true
+	return p
+}
+
+// startTooltipTest starts a 400x300 session holding an owner window, shown and focused at (20, 20, 200, 150), whose
+// content has no layout and holds the panels build returns, at the frames they were given.
+func startTooltipTest(t *testing.T, build func() []*Panel) (screen *HeadlessScreen, owner *Window) {
+	t.Helper()
+	screen = startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			if owner = newHeadlessTestWindow(t, ownerTitle, geom.NewRect(20, 20, 200, 150)); owner == nil {
+				return
+			}
+			content := owner.Content()
+			content.SetLayout(nil)
+			for _, p := range build() {
+				content.AddChild(p)
+			}
+			owner.ToFront()
+		}))
+	if owner == nil {
+		t.FailNow()
+	}
+	return screen, owner
+}
+
+// TestTooltipShowsInPopupWindow verifies that a tooltip is shown in a popup window of the tooltip kind belonging to the
+// window it is shown for, placed just below the panel in screen space and so free to extend past that window's edges.
+func TestTooltipShowsInPopupWindow(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(150, 130, 50, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	var tw, twOwner *Window
+	var valid, visible, isTooltip, cpuOnly, transient, listed bool
+	var kind WindowKind
+	var rect, ownerRect geom.Rect
+	var content, tip *Panel
+	c.True(screen.Do(func() { tw = owner.tooltipWindow }))
+	c.Nil(tw, "the tooltip window is created only when a tooltip is first shown")
+	screen.MouseMove(screen.PanelCenter(panel), mod.None)
+	c.True(screen.Do(func() {
+		tw = owner.tooltipWindow
+		valid = tw.IsValid()
+		visible = tw.IsVisible()
+		if !valid {
+			return
+		}
+		twOwner = tw.owner
+		isTooltip = tw.isTooltipWindow()
+		kind = tw.kind
+		cpuOnly = tw.cpuOnly
+		transient = tw.transient
+		listed = slices.Contains(Windows(), tw)
+		rect = tw.ContentRect()
+		ownerRect = owner.ContentRect()
+		content = owner.tooltipPanel()
+		tip = panel.Tooltip
+	}))
+	c.True(valid)
+	c.True(visible)
+	c.True(twOwner == owner)
+	c.True(isTooltip)
+	c.Equal(WindowKindTooltip, kind)
+	c.True(cpuOnly)
+	c.True(transient)
+	c.False(listed, "Windows() leaves the tooltip window out")
+	c.Equal(geom.NewRect(170, 171, 60, 20), rect, "placed one unit below the panel, in screen space")
+	c.True(rect.Right() > ownerRect.Right() && rect.Bottom() > ownerRect.Bottom(),
+		"the tooltip extends past the owner's edges rather than being squeezed into it")
+	c.True(content == tip)
+	c.True(screen.TooltipWindow(owner) == tw)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTooltipWindowIsReusedAcrossShows verifies that a window keeps one tooltip window for every tooltip it shows: one
+// replacing a tooltip that is showing takes its place at once, without waiting out the delay or the window being hidden
+// in between, and clearing the tooltip hides the window rather than disposing of it.
+func TestTooltipWindowIsReusedAcrossShows(t *testing.T) {
+	c := check.New(t)
+	var first, second *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		first = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		second = newTooltipTestPanel(geom.NewRect(50, 10, 40, 20), geom.NewSize(70, 30))
+		second.TooltipImmediate = false
+		return []*Panel{first, second}
+	})
+	type state struct {
+		tw      *Window
+		tip     *Panel
+		rect    geom.Rect
+		visible bool
+	}
+	look := func() state {
+		var st state
+		st.tw = owner.tooltipWindow
+		st.tip = owner.tooltipPanel()
+		st.visible = st.tw.IsVisible()
+		if st.tw != nil {
+			st.rect = st.tw.ContentRect()
+		}
+		return st
+	}
+	read := func() state {
+		var st state
+		c.True(screen.Do(func() { st = look() }))
+		return st
+	}
+	var firstTip, secondTip *Panel
+	c.True(screen.Do(func() { firstTip, secondTip = first.Tooltip, second.Tooltip }))
+	screen.MouseMove(screen.PanelCenter(first), mod.None)
+	one := read()
+	c.NotNil(one.tw)
+	c.True(one.visible)
+	c.True(one.tip == firstTip)
+	c.Equal(geom.NewRect(30, 51, 60, 20), one.rect)
+	// The second tooltip is not immediate, so showing it arms its dismissal. The move, the look at the tooltip and the
+	// clear are made in one visit to the UI thread, which the dismissal cannot interrupt however slow the runner.
+	at := screen.PanelCenter(second)
+	var two state
+	var valid bool
+	var visibleWhilePlaced []bool
+	c.True(screen.Do(func() {
+		// The second tooltip differs from the first in size and position, so placing it moves and resizes the window.
+		record := func() { visibleWhilePlaced = append(visibleWhilePlaced, one.tw.IsVisible()) }
+		one.tw.MovedCallback = record
+		one.tw.ResizedCallback = record
+		screen.pointerMoved(at, mod.None)
+		one.tw.MovedCallback = nil
+		one.tw.ResizedCallback = nil
+		two = look()
+		owner.ClearTooltip()
+		valid = one.tw.IsValid()
+	}))
+	c.True(two.tw == one.tw, "the same window shows the next tooltip")
+	c.True(len(visibleWhilePlaced) != 0, "placing the next tooltip should have moved and resized the window")
+	c.False(slices.Contains(visibleWhilePlaced, false), "the window is not hidden while the next tooltip is placed")
+	c.True(two.visible, "and a tooltip replacing one that was showing is shown at once")
+	c.True(two.tip == secondTip)
+	c.Equal(geom.NewRect(70, 51, 70, 30), two.rect, "placed below the panel it now belongs to")
+	cleared := read()
+	c.True(cleared.tw == one.tw, "clearing the tooltip keeps its window")
+	c.True(valid)
+	c.False(cleared.visible, "but hides it")
+	c.Nil(cleared.tip)
+	c.Nil(screen.TooltipWindow(owner))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHiddenTooltipWindowLeavesRedrawSet verifies that a tooltip window is not left among the windows waiting to be
+// drawn once its tooltip has been taken down, with accessibility support active, which marks a window for its hiding
+// as well: a hidden window in that set is asked whether it is visible on every pass of the event loop for as long as
+// it stays there, which for the tooltip window would be the life of its owner.
+func TestHiddenTooltipWindowLeavesRedrawSet(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	c.NotNil(screen.AccessibilityTree(owner), "accessibility support is active for the rest of the test")
+	screen.MouseMove(screen.PanelCenter(panel), mod.None)
+	tw := screen.TooltipWindow(owner)
+	c.NotNil(tw)
+	c.Nil(screen.WindowAt(geom.NewPoint(390, 290)), "the point left for is outside every window")
+	screen.MouseMove(geom.NewPoint(390, 290), mod.None)
+	c.Nil(screen.TooltipWindow(owner))
+	var active, valid, pending bool
+	c.True(screen.Do(func() {
+		active = accessibilityActive.Load()
+		valid = tw.IsValid()
+		_, pending = redrawSet[tw]
+	}))
+	c.True(active)
+	c.True(valid, "the tooltip window is kept for the next tooltip")
+	c.False(pending, "but is not left waiting to be drawn")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTooltipWaitsOutTheDelay verifies that a tooltip that is not immediate, hovered while none is showing, is armed to
+// show once the delay runs out rather than shown at once.
+func TestTooltipWaitsOutTheDelay(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		panel.TooltipImmediate = false
+		return []*Panel{panel}
+	})
+	// The move and the look are made in one visit to the UI thread, which the delay cannot interrupt however slow the
+	// runner.
+	at := screen.PanelCenter(panel)
+	var showing, armed bool
+	c.True(screen.Do(func() {
+		screen.pointerMoved(at, mod.None)
+		showing = owner.tooltipShowing()
+		armed = owner.lastTooltip == panel.Tooltip
+		owner.ClearTooltip()
+	}))
+	c.False(showing, "the tooltip waits out the delay")
+	c.True(armed, "but is armed to show once it has")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// showTestTooltip shows panel's tooltip for owner as the delay running out does, without the pointer having to be over
+// the panel.
+func showTestTooltip(owner *Window, panel *Panel) {
+	owner.tooltipSequence++
+	owner.lastTooltip = panel.Tooltip
+	avoid := panel.RectToRoot(panel.ContentRect(true))
+	(&tooltipSequencer{window: owner, avoid: avoid, sequence: owner.tooltipSequence}).show()
+}
+
+// TestTooltipClearsOnOwnerChanges verifies that moving, resizing, hiding or minimizing a window takes down the tooltip
+// it is showing, and that disposing of it disposes of its tooltip window first.
+func TestTooltipClearsOnOwnerChanges(t *testing.T) {
+	for _, one := range []struct {
+		change func(owner *Window)
+		name   string
+	}{
+		{name: "move", change: func(owner *Window) { owner.SetContentRect(geom.NewRect(30, 30, 200, 150)) }},
+		{name: "resize", change: func(owner *Window) { owner.SetContentRect(geom.NewRect(20, 20, 210, 160)) }},
+		{name: "hide", change: func(owner *Window) { owner.Hide() }},
+		{name: "minimize", change: func(owner *Window) { owner.Minimize() }},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			var panel *Panel
+			screen, owner := startTooltipTest(t, func() []*Panel {
+				panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+				return []*Panel{panel}
+			})
+			// Another window takes the focus and the tooltip is shown directly, so that it is not the focus moving away
+			// or the pointer leaving, both of which take a tooltip down as well, that does it here.
+			c.True(screen.Do(func() { newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100)).ToFront() }))
+			var tw *Window
+			var showing, valid, visible bool
+			c.True(screen.Do(func() {
+				owner.showTooltip(panel.Tooltip, geom.NewRect(30, 51, 60, 20))
+				tw = owner.tooltipWindow
+				showing = owner.tooltipShowing() && !owner.Focused()
+			}))
+			c.True(showing)
+			c.True(screen.Do(func() {
+				one.change(owner)
+				showing = owner.tooltipShowing()
+				valid = tw.IsValid()
+				visible = tw.IsVisible()
+			}))
+			c.False(showing)
+			c.True(valid, "the tooltip window is kept for the next tooltip")
+			c.False(visible)
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
+	t.Run("dispose", func(t *testing.T) {
+		c := check.New(t)
+		var panel *Panel
+		screen, owner := startTooltipTest(t, func() []*Panel {
+			panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+			return []*Panel{panel}
+		})
+		var order []string
+		var tw, after *Window
+		var valid, listed bool
+		c.True(screen.Do(func() {
+			// Keeps the session alive once the owner is gone.
+			newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100))
+			showTestTooltip(owner, panel)
+			tw = owner.tooltipWindow
+			if tw == nil {
+				return
+			}
+			tw.WillCloseCallback = func() { order = append(order, "tooltip") }
+			owner.WillCloseCallback = func() { order = append(order, ownerTitle) }
+			owner.Dispose()
+			valid = tw.IsValid()
+			listed = slices.Contains(windowList, tw)
+			after = owner.tooltipWindow
+		}))
+		c.NotNil(tw)
+		c.Equal([]string{"tooltip", ownerTitle}, order)
+		c.False(valid)
+		c.False(listed)
+		c.Nil(after, "the owner lets go of its disposed tooltip window")
+		c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+	})
+}
+
+// TestTooltipWindowClosedOnItsOwn verifies that a tooltip window closed by something other than the toolkit, as a
+// WM_CLOSE from another program would close it, takes its owner's tooltip with it: the owner's description loses the
+// tooltip, and the pointer moving on within the same panel shows the tooltip again, in a new window.
+func TestTooltipWindowClosedOnItsOwn(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	over := screen.PanelCenter(panel)
+	screen.MouseMove(over, mod.None)
+	tw := screen.TooltipWindow(owner)
+	c.NotNil(tw)
+	c.NotNil(screen.AccessibilityTree(owner))
+	var tipID accessibility.NodeID
+	c.True(screen.Do(func() { tipID = panel.Tooltip.Accessibility.id }))
+	c.NotEqual(accessibility.NodeID(0), tipID, "the tooltip should have been described")
+	screen.AccessibilityEvents(owner)
+	var after *Window
+	var lastIsNil bool
+	c.True(screen.Do(func() {
+		tw.requestClose()
+		after = owner.tooltipWindow
+		lastIsNil = owner.lastTooltip == nil
+	}))
+	c.Nil(after)
+	c.True(lastIsNil, "the tooltip asked for is forgotten, so moving on within the panel arms it again")
+	removed := false
+	for _, e := range screen.AccessibilityEvents(owner) {
+		if e.Kind == accessibility.NodeRemoved && e.Node == tipID {
+			removed = true
+		}
+	}
+	c.True(removed, "the tooltip should have been removed from the owner's description")
+	screen.MouseMove(over.Add(geom.NewPoint(1, 0)), mod.None)
+	next := screen.TooltipWindow(owner)
+	c.NotNil(next)
+	c.True(next != tw, "in a new window")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTooltipShowsOnceWindowGainsFocus verifies that the tooltip of a panel hovered while its window was not focused,
+// which is neither shown nor remembered then, shows once the window gains the focus with the pointer still over the
+// panel.
+func TestTooltipShowsOnceWindowGainsFocus(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	c.True(screen.Do(func() { newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100)).ToFront() }))
+	screen.MouseMove(screen.PanelCenter(panel), mod.None)
+	var focused bool
+	c.True(screen.Do(func() { focused = owner.Focused() }))
+	c.False(focused)
+	c.Nil(screen.TooltipWindow(owner), "no tooltip shows in a window without the focus")
+	var remembered *Panel
+	c.True(screen.Do(func() { remembered = owner.lastTooltip }))
+	c.Nil(remembered, "nor is one remembered, which would keep it from showing later")
+	c.True(screen.Do(func() { owner.ToFront() }))
+	c.NotNil(screen.TooltipWindow(owner), "the tooltip shows once the window has the focus")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTooltipComesBackWithTheFocus verifies that a tooltip taken down by the window losing the focus is forgotten, so
+// that it shows again when the focus returns with the pointer still over the same panel, as after switching to another
+// application and back without moving the pointer.
+func TestTooltipComesBackWithTheFocus(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	screen.MouseMove(screen.PanelCenter(panel), mod.None)
+	c.NotNil(screen.TooltipWindow(owner))
+	var other *Window
+	var lastIsNil bool
+	c.True(screen.Do(func() {
+		other = newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100))
+		other.ToFront()
+	}))
+	c.Nil(screen.TooltipWindow(owner), "losing the focus takes the tooltip down")
+	c.True(screen.Do(func() { lastIsNil = owner.lastTooltip == nil }))
+	c.True(lastIsNil, "and forgets it")
+	c.True(screen.Do(func() { owner.ToFront() }))
+	c.NotNil(screen.TooltipWindow(owner), "the tooltip of the panel under the pointer shows again with the focus")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHideAndMinimizeForgetTooltip verifies that hiding or minimizing a window forgets the tooltip asked for, whether
+// or not the platform reports the pointer leaving the window for it, as AppKit is not known to: the pointer is left
+// outside the window here, so that the headless backend has no exit to synthesize and the forgetting is the window's
+// own.
+func TestHideAndMinimizeForgetTooltip(t *testing.T) {
+	for _, one := range []struct {
+		away func(w *Window)
+		name string
+	}{
+		{name: "hide", away: func(w *Window) { w.Hide() }},
+		{name: "minimize", away: func(w *Window) { w.Minimize() }},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			var panel *Panel
+			screen, owner := startTooltipTest(t, func() []*Panel {
+				panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+				return []*Panel{panel}
+			})
+			c.Nil(screen.WindowAt(geom.NewPoint(390, 290)), "the pointer is left outside every window")
+			screen.MouseMove(geom.NewPoint(390, 290), mod.None)
+			var lastIsNil bool
+			c.True(screen.Do(func() {
+				// As a platform that reports no exit for the window going would leave it.
+				owner.lastTooltip = panel.Tooltip
+				one.away(owner)
+				lastIsNil = owner.lastTooltip == nil
+			}))
+			c.True(lastIsNil, "the tooltip asked for is forgotten")
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
+}
+
+// TestClickToFocusKeepsTooltipDown verifies that a press that gives a window the focus leaves the tooltip of the panel
+// it lands on down, on its release and as the pointer moves on within the panel, as a press in a window that had the
+// focus does.
+func TestClickToFocusKeepsTooltipDown(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		panel.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+		return []*Panel{panel}
+	})
+	c.True(screen.Do(func() { newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100)).ToFront() }))
+	over := screen.PanelCenter(panel)
+	screen.MouseMove(over, mod.None)
+	c.Nil(screen.TooltipWindow(owner))
+	screen.MouseDown(over, ButtonLeft, mod.None)
+	var focused bool
+	c.True(screen.Do(func() { focused = owner.Focused() }))
+	c.True(focused, "the press gives the window the focus")
+	c.Nil(screen.TooltipWindow(owner), "no tooltip shows for the press")
+	screen.MouseUp(over, ButtonLeft, mod.None)
+	c.Nil(screen.TooltipWindow(owner), "nor for its release")
+	screen.MouseMove(over.Add(geom.NewPoint(1, 0)), mod.None)
+	c.Nil(screen.TooltipWindow(owner), "nor as the pointer moves on within the panel")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTooltipReArmsAfterOwnerMovesOrResizes verifies that a tooltip a move or resize of its window took down comes back
+// as the pointer moves on within the same panel, though not on the release of a press during which the window changed.
+func TestTooltipReArmsAfterOwnerMovesOrResizes(t *testing.T) {
+	for _, one := range []struct {
+		name string
+		rect geom.Rect
+	}{
+		{name: "move", rect: geom.NewRect(30, 30, 200, 150)},
+		{name: "resize", rect: geom.NewRect(20, 20, 210, 160)},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			var panel *Panel
+			screen, owner := startTooltipTest(t, func() []*Panel {
+				panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+				panel.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+				return []*Panel{panel}
+			})
+			screen.MouseMove(screen.PanelCenter(panel), mod.None)
+			c.NotNil(screen.TooltipWindow(owner))
+			var remembered *Panel
+			c.True(screen.Do(func() {
+				owner.SetContentRect(one.rect)
+				remembered = owner.lastTooltip
+			}))
+			c.Nil(screen.TooltipWindow(owner), "the change takes the tooltip down")
+			c.Nil(remembered, "and forgets it")
+			over := screen.PanelCenter(panel)
+			screen.MouseMove(over, mod.None)
+			c.NotNil(screen.TooltipWindow(owner), "moving on within the panel shows it again")
+			screen.MouseDown(over, ButtonLeft, mod.None)
+			c.True(screen.Do(func() { owner.SetContentRect(geom.NewRect(20, 20, 200, 150)) }))
+			screen.MouseUp(screen.PanelCenter(panel), ButtonLeft, mod.None)
+			c.Nil(screen.TooltipWindow(owner), "but not on the release of a press")
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
+}
+
+// TestNoTooltipWhileMenusOpen verifies that no tooltip is shown while a menu is open, since its window would sit above
+// the menus: one showing is taken down when a menu opens, hovering arms none, and one whose delay runs out is not
+// shown. Once the menu closes, hovering arms the tooltip again.
+func TestNoTooltipWhileMenusOpen(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	over := screen.PanelCenter(panel)
+	screen.MouseMove(over, mod.None)
+	c.NotNil(screen.TooltipWindow(owner))
+	var open int
+	var showing, lastIsNil bool
+	c.True(screen.Do(func() {
+		var chosen []string
+		newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One").Popup(geom.NewRect(150, 10, 0, 0), -1)
+		open = len(owner.root.openMenuPanels)
+		showing = owner.tooltipShowing()
+	}))
+	c.Equal(1, open)
+	c.False(showing, "opening a menu takes the tooltip down")
+	screen.MouseMove(over.Add(geom.NewPoint(1, 0)), mod.None)
+	var delayedShowing bool
+	c.True(screen.Do(func() {
+		showing = owner.tooltipShowing()
+		lastIsNil = owner.lastTooltip == nil
+		showTestTooltip(owner, panel)
+		delayedShowing = owner.tooltipShowing()
+		owner.lastTooltip = nil
+	}))
+	c.False(showing, "hovering shows no tooltip while the menu is open")
+	c.True(lastIsNil)
+	c.False(delayedShowing, "nor does a delay running out")
+	screen.KeyPress(KeyEscape, mod.None)
+	c.True(screen.Do(func() { open = len(owner.root.openMenuPanels) }))
+	c.Equal(0, open)
+	screen.MouseMove(over, mod.None)
+	c.NotNil(screen.TooltipWindow(owner), "the tooltip is shown again once the menu has closed")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestNoTooltipWhileAnotherWindowsMenusOpen verifies that no tooltip is shown in a window while another window's menus
+// are open, since its tooltip window would sit above them: a focusable transient window takes the focus here, which
+// leaves the menus of the window it came from open, as it does on Windows, where no press outside them closes them.
+func TestNoTooltipWhileAnotherWindowsMenusOpen(t *testing.T) {
+	c := check.New(t)
+	screen, owner := startTooltipTest(t, func() []*Panel { return nil })
+	var transient *Window
+	var panel *Panel
+	c.True(screen.Do(func() {
+		var chosen []string
+		newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One").Popup(geom.NewRect(10, 10, 0, 0), -1)
+		var err error
+		if transient, err = NewWindow("transient", TransientWindowOption()); err != nil {
+			t.Errorf("unable to create transient window: %v", err)
+			return
+		}
+		transient.SetContentRect(geom.NewRect(300, 20, 90, 100))
+		content := transient.Content()
+		content.SetLayout(nil)
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		content.AddChild(panel)
+		transient.Show()
+		transient.ToFront()
+	}))
+	var open int
+	var focused bool
+	c.True(screen.Do(func() {
+		open = len(owner.root.openMenuPanels)
+		focused = transient.Focused()
+	}))
+	c.Equal(1, open, "the transient window taking the focus leaves the menu open")
+	c.True(focused)
+	over := screen.PanelCenter(panel)
+	screen.MouseMove(over, mod.None)
+	c.Nil(screen.TooltipWindow(transient), "no tooltip shows while another window's menu is open")
+	var lastIsNil bool
+	c.True(screen.Do(func() { lastIsNil = transient.lastTooltip == nil }))
+	c.True(lastIsNil, "nor is one remembered")
+	c.True(screen.Do(func() { owner.root.closeMenuStackStoppingAt(nil) }))
+	screen.MouseMove(over.Add(geom.NewPoint(1, 0)), mod.None)
+	c.NotNil(screen.TooltipWindow(transient), "the tooltip is shown once the menu has closed")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestPointerLeavingWindowClearsTooltip verifies that the tooltip goes when the pointer leaves the window, and that
+// coming back to the same panel shows it again.
+func TestPointerLeavingWindowClearsTooltip(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		return []*Panel{panel}
+	})
+	over := screen.PanelCenter(panel)
+	screen.MouseMove(over, mod.None)
+	c.NotNil(screen.TooltipWindow(owner))
+	c.Nil(screen.WindowAt(geom.NewPoint(390, 290)), "the point left for is outside every window")
+	screen.MouseMove(geom.NewPoint(390, 290), mod.None)
+	var showing, lastIsNil bool
+	c.True(screen.Do(func() {
+		showing = owner.tooltipShowing()
+		lastIsNil = owner.lastTooltip == nil
+	}))
+	c.False(showing)
+	c.True(lastIsNil, "the tooltip asked for is forgotten, so coming back arms it again")
+	screen.MouseMove(over, mod.None)
+	c.NotNil(screen.TooltipWindow(owner))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestPointerLeftDuringPressKeepsTooltipDown verifies that the pointer leaving the window while a press is in progress,
+// as macOS and X11 report for a press dragged out of the window, does not arm the pressed panel's tooltip again:
+// neither coming back over the panel during the press nor the release shows it.
+func TestPointerLeftDuringPressKeepsTooltipDown(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(10, 10, 40, 20), geom.NewSize(60, 20))
+		panel.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool { return true }
+		return []*Panel{panel}
+	})
+	over := screen.PanelCenter(panel)
+	screen.MouseMove(over, mod.None)
+	c.NotNil(screen.TooltipWindow(owner))
+	var showing bool
+	screen.MouseDown(over, ButtonLeft, mod.None)
+	c.True(screen.Do(func() {
+		// The press dragged out of the window and back over the panel.
+		owner.pointerLeft()
+		owner.mouseEnter(windowLocal(owner, over), mod.None)
+		showing = owner.tooltipShowing()
+	}))
+	c.False(showing, "coming back over the panel during the press shows no tooltip")
+	screen.MouseUp(over, ButtonLeft, mod.None)
+	c.Nil(screen.TooltipWindow(owner), "nor does the release")
+	screen.MouseDown(over, ButtonLeft, mod.None)
+	c.True(screen.Do(func() { owner.pointerLeft() }))
+	screen.MouseUp(over, ButtonLeft, mod.None)
+	c.Nil(screen.TooltipWindow(owner), "nor a release with the pointer not having come back first")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestHoverOverTooltipWindowPassesThrough verifies that the pointer passes through a tooltip window to the window
+// beneath it, as the platforms make it do: moving over the part of the owner the tooltip covers leaves the owner
+// hovered and the tooltip showing, and a press there reaches the panel beneath.
+func TestHoverOverTooltipWindowPassesThrough(t *testing.T) {
+	c := check.New(t)
+	var panel *Panel
+	presses := 0
+	screen, owner := startTooltipTest(t, func() []*Panel {
+		panel = newTooltipTestPanel(geom.NewRect(0, 0, 200, 150), geom.NewSize(100, 30))
+		// The tooltip goes below this part of the panel, and so over the rest of it.
+		panel.UpdateTooltipCallback = func(_ geom.Point, _ geom.Rect) geom.Rect { return geom.NewRect(10, 10, 20, 20) }
+		panel.MouseDownCallback = func(_ geom.Point, _, _ int, _ mod.Modifiers) bool {
+			presses++
+			return true
+		}
+		return []*Panel{panel}
+	})
+	screen.MouseMove(geom.NewPoint(40, 40), mod.None)
+	tw := screen.TooltipWindow(owner)
+	c.NotNil(tw)
+	var rect geom.Rect
+	c.True(screen.Do(func() { rect = tw.ContentRect() }))
+	c.Equal(geom.NewRect(30, 51, 100, 30), rect)
+	under := geom.NewPoint(60, 65)
+	c.True(under.In(rect))
+	c.True(screen.WindowAt(under) == owner, "the tooltip window is passed over")
+	screen.MouseMove(under, mod.None)
+	var hovered *Panel
+	c.True(screen.Do(func() { hovered = owner.lastMouseOverPanel }))
+	c.True(hovered == panel, "the owner keeps the hover")
+	c.True(screen.TooltipWindow(owner) == tw, "and the tooltip stays")
+	screen.Click(under)
+	var pressed int
+	c.True(screen.Do(func() { pressed = presses }))
+	c.Equal(1, pressed, "a press over the tooltip reaches the panel beneath it")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // swapRedrawSet installs a fresh, empty redrawSet for the duration of the test, restoring the previous set when the
@@ -837,10 +1554,10 @@ func startPopupTest(t *testing.T) (screen *HeadlessScreen, owner, popup *Window)
 	t.Helper()
 	screen = startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
 		StartupFinishedCallback(func() {
-			owner = newHeadlessTestWindow(t, "owner", geom.NewRect(20, 20, 200, 150))
+			owner = newHeadlessTestWindow(t, ownerTitle, geom.NewRect(20, 20, 200, 150))
 			owner.ToFront()
 			var err error
-			if popup, err = newPopupWindow(owner, "popup"); err != nil {
+			if popup, err = newPopupWindow(owner, "popup", WindowKindMenu); err != nil {
 				t.Errorf("unable to create popup window: %v", err)
 				return
 			}
@@ -853,25 +1570,27 @@ func startPopupTest(t *testing.T) (screen *HeadlessScreen, owner, popup *Window)
 	return screen, owner, popup
 }
 
-// TestNewPopupWindow verifies what newPopupWindow sets up: a CPU-rendered, transient, undecorated menu window that
-// belongs to the top-level window even when created from another popup, whose size is not limited by its content, and
-// which Windows and WindowCount leave out.
+// TestNewPopupWindow verifies what newPopupWindow sets up: a CPU-rendered, transient, undecorated menu or tooltip
+// window that belongs to the top-level window even when created from another popup, whose size is not limited by its
+// content, and which Windows and WindowCount leave out.
 func TestNewPopupWindow(t *testing.T) {
 	c := check.New(t)
 	screen, owner, popup := startPopupTest(t)
-	var sub, orphan *Window
-	var subErr, orphanErr error
+	var sub, orphan, tip *Window
+	var subErr, orphanErr, tipErr error
 	var windows []*Window
 	var count, listed, listedAfterOrphan int
 	var size geom.Size
-	var popupOwner, popupMenuOwner, ownerMenuOwner, subOwner *Window
+	var popupOwner, popupMenuOwner, ownerMenuOwner, subOwner, tipOwner *Window
 	var popupIsPopup, ownerIsPopup, cpuOnly, surfaceCPUOnly, transient, undecorated, notResizable bool
-	var kind WindowKind
+	var popupIsTooltip, tipIsTooltip, tipIsPopup, tipCPUOnly, tipTransient bool
+	var kind, tipKind WindowKind
 	var titleIcons int
 	c.True(screen.Do(func() {
-		sub, subErr = newPopupWindow(popup, "sub")
+		sub, subErr = newPopupWindow(popup, "sub", WindowKindMenu)
+		tip, tipErr = newPopupWindow(popup, "tip", WindowKindTooltip)
 		listed = len(windowList)
-		orphan, orphanErr = newPopupWindow(nil, "orphan")
+		orphan, orphanErr = newPopupWindow(nil, "orphan", WindowKindMenu)
 		listedAfterOrphan = len(windowList)
 		windows = Windows()
 		count = WindowCount()
@@ -896,6 +1615,15 @@ func TestNewPopupWindow(t *testing.T) {
 		if sub != nil {
 			subOwner = sub.owner
 		}
+		popupIsTooltip = popup.isTooltipWindow()
+		if tip != nil {
+			tipOwner = tip.owner
+			tipKind = tip.kind
+			tipIsTooltip = tip.isTooltipWindow()
+			tipIsPopup = tip.isPopup()
+			tipCPUOnly = tip.cpuOnly
+			tipTransient = tip.transient
+		}
 	}))
 	c.True(popupOwner == owner)
 	c.True(popupIsPopup)
@@ -916,10 +1644,20 @@ func TestNewPopupWindow(t *testing.T) {
 	c.HasError(orphanErr)
 	c.True(orphan == nil)
 	c.Equal(listed, listedAfterOrphan, "a refused popup should not join the window list")
-	c.Equal(3, listed)
+	c.Equal(4, listed)
 	c.Equal([]*Window{owner}, windows, "popups should not be listed")
 	c.Equal(1, count, "popups should not be counted")
 	c.Equal(geom.NewSize(300, 10), size, "a popup's size should not be limited by its content")
+	c.NoError(tipErr)
+	c.True(tipOwner == owner, "a tooltip window belongs to the top-level window too")
+	c.Equal(WindowKindTooltip, tipKind)
+	c.True(tipIsTooltip)
+	c.True(tipIsPopup)
+	c.True(tipCPUOnly)
+	c.True(tipTransient)
+	c.False(popupIsTooltip, "a menu's popup window is not a tooltip window")
+	c.False((&Window{kind: WindowKindTooltip}).isTooltipWindow(),
+		"an application's own window of the tooltip kind is not one of the toolkit's tooltip windows")
 }
 
 // TestFirstTopLevelWindowSkipsPopups verifies that the window a closing window hands the focus to, and the one the
@@ -1057,7 +1795,7 @@ func TestDisposeOwnerDisposesPopupsFirst(t *testing.T) {
 		menuPopup = m.popupPanel.Window()
 		menuPopup.WillCloseCallback = func() { order = append(order, "menu") }
 		popup.WillCloseCallback = func() { order = append(order, "popup") }
-		owner.WillCloseCallback = func() { order = append(order, "owner") }
+		owner.WillCloseCallback = func() { order = append(order, ownerTitle) }
 		owner.Dispose()
 		windows = Windows()
 		listed = len(windowList)
@@ -1068,7 +1806,7 @@ func TestDisposeOwnerDisposesPopupsFirst(t *testing.T) {
 		ownerValid = owner.IsValid()
 	}))
 	c.NotNil(menuPopup)
-	c.Equal([]string{"menu", "popup", "owner"}, order)
+	c.Equal([]string{"menu", "popup", ownerTitle}, order)
 	c.Equal(0, open, "the menu stack is closed")
 	c.False(menuOpen, "and the menu knows it")
 	c.False(menuPopupValid)
@@ -1168,7 +1906,7 @@ func TestWindowMenuListsNoPopup(t *testing.T) {
 		}
 	}))
 	c.Equal(1, separators)
-	c.Equal([]string{"owner"}, titles)
+	c.Equal([]string{ownerTitle}, titles)
 }
 
 // TestMoveOverPopupRestoresOwnersHiddenCursor verifies that the mouse moving over a popup menu window shows the cursor
@@ -1281,7 +2019,7 @@ func TestFirstVisibleTopLevelWindowSkipsHiddenWindows(t *testing.T) {
 	var first, firstVisible, firstMinimized, hiddenWhileMinimized, shownAgain, noneVisible, noWindows *Window
 	c.True(screen.Do(func() {
 		var err error
-		if popup, err = newPopupWindow(visible, "popup"); err != nil {
+		if popup, err = newPopupWindow(visible, "popup", WindowKindMenu); err != nil {
 			t.Errorf("unable to create popup window: %v", err)
 			return
 		}

@@ -251,8 +251,8 @@ func macFrameMouseDown(macWnd cocoa.Window) {
 // menu stack is sent the moves over its popup menu windows, and a key window those over any window above it: another
 // of the application's shown or floating over it, or another application's. Such a move is dropped rather than
 // hit-tested against the panels hidden under the other window, which would get crossings, tooltips and the cursor meant
-// for it, and the panel the pointer left is exited, as the crossing events of the other platforms do. A drag goes to
-// the window holding the press wherever the pointer is, as on the other platforms.
+// for it, and the panel the pointer left is exited and the tooltip taken down, as the crossing events of the other
+// platforms do. A drag goes to the window holding the press wherever the pointer is, as on the other platforms.
 func (w *Window) macMouseMoved(pt geom.Point, mods mod.Modifiers) {
 	if w.macCoveredMove(!w.inMouseDown && w.macCovered(w.nativePointToScreen(pt))) {
 		return
@@ -261,10 +261,10 @@ func (w *Window) macMouseMoved(pt geom.Point, mods mod.Modifiers) {
 }
 
 // macCoveredMove records whether the mouse-moved event being handled is over another window (see macCovered), and
-// returns covered. The first of a run of such moves exits whatever the pointer left, as the crossing event of the
-// other platforms does, unless macMouseExited already has; the rest are dropped without that, since the window's
-// MouseExitCallback may keep the panel it is told about, and would otherwise be told of the same crossing on every
-// move.
+// returns covered. The first of a run of such moves exits whatever the pointer left and takes down the tooltip (see
+// pointerLeft), as the crossing event of the other platforms does, unless macMouseExited already has; the rest are
+// dropped without that, since the window's MouseExitCallback may keep the panel it is told about, and would otherwise
+// be told of the same crossing on every move.
 func (w *Window) macCoveredMove(covered bool) bool {
 	if !covered {
 		w.wnd.covered = false
@@ -272,7 +272,7 @@ func (w *Window) macCoveredMove(covered bool) bool {
 	}
 	if !w.wnd.covered {
 		w.wnd.covered = true
-		w.mouseExit()
+		w.pointerLeft()
 	}
 	return true
 }
@@ -286,13 +286,13 @@ func (w *Window) macMouseEntered(pt geom.Point, mods mod.Modifiers) {
 }
 
 // macMouseExited handles AppKit's report, through the window's tracking area, that the pointer left its content. It
-// exits unless macCoveredMove already has for a move over another window, and keeps the moves after it from exiting
-// again.
+// exits whatever the pointer left and takes down the tooltip (see pointerLeft) unless macCoveredMove already has for a
+// move over another window, and keeps the moves after it from doing so again.
 func (w *Window) macMouseExited() {
 	w.nativeUpdateCursorImage()
 	if !w.wnd.covered {
 		w.wnd.covered = true
-		w.mouseExit()
+		w.pointerLeft()
 	}
 }
 
@@ -303,7 +303,8 @@ var macWindowNumberAt = func(pt geom.Point) int {
 }
 
 // macCovered returns true if pt, in the space window rects use, is over a window other than this one: one of its popup
-// menu windows, another of the application's windows ordered above it, another application's, or no window at all.
+// menu windows, another of the application's windows ordered above it, another application's, or no window at all. Its
+// tooltip window does not cover it: that window ignores mouse events, so the window server's hit test passes over it.
 func (w *Window) macCovered(pt geom.Point) bool {
 	return macWindowNumberAt(pt) != w.macNumber()
 }
@@ -379,14 +380,19 @@ func (w *Window) nativeInit() error {
 	return nil
 }
 
-// macInitPopup creates the native window for a popup menu window: borderless, never key, above every ordinary window,
-// shown without animation and left out of the accessibility hierarchy, its content view answering assistive
-// technologies through the owner's, whose tree describes the menu. It has no title and does not touch the application
-// appearance the owner has already set.
+// macInitPopup creates the native window for a popup window, a menu's or a tooltip's: borderless, never key, above
+// every ordinary window, shown without animation and left out of the accessibility hierarchy, its content view
+// answering assistive technologies through the owner's, whose tree describes the popup's content. A tooltip window
+// also ignores mouse events, so that the pointer passes over it to whatever lies beneath, and so does the hit test
+// macCovered makes, which leaves the owner handling the moves made over it. It has no title and does not touch the
+// application appearance the owner has already set.
 func (w *Window) macInitPopup() error {
 	nw := cocoa.NewPopupWindow(geom.NewRect(0, 0, 1, 1))
 	if nw == 0 {
 		return errs.New("unable to create native popup window")
+	}
+	if w.isTooltipWindow() {
+		nw.SetIgnoresMouseEvents(true)
 	}
 	v := cocoa.NewPopupView(nw)
 	nw.SetContentView(v)

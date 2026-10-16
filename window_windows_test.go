@@ -266,32 +266,41 @@ func TestW32FrameThemeAttribute(t *testing.T) {
 	}
 }
 
-// TestW32PopupWindowStyles verifies the styles a popup menu window is created with: a bare popup with no system menu or
+// TestW32PopupWindowStyles verifies the styles a popup window is created with: a bare popup with no system menu or
 // minimize box, never activated, kept off the taskbar and topmost whether or not it is marked floating, and no
-// WS_EX_APPWINDOW. A window of WindowKindMenu that is not a popup keeps the ordinary styles.
+// WS_EX_APPWINDOW. A tooltip window is layered and transparent as well, so that hit testing passes over it. A window of
+// either kind that is not a popup keeps the ordinary styles.
 func TestW32PopupWindowStyles(t *testing.T) {
 	c := check.New(t)
 	owner := &Window{wnd: &apiWindow{}}
-	for _, floating := range []bool{false, true} {
-		popup := &Window{
-			wnd:          &apiWindow{},
-			owner:        owner,
-			kind:         WindowKindMenu,
-			transient:    true,
-			undecorated:  true,
-			notResizable: true,
-			cpuOnly:      true,
-			floating:     floating,
+	popupExStyle := uint32(w32.WS_EX_NOACTIVATE | w32.WS_EX_TOOLWINDOW | w32.WS_EX_TOPMOST)
+	for _, one := range []struct {
+		kind    WindowKind
+		exStyle uint32
+	}{
+		{kind: WindowKindMenu, exStyle: popupExStyle},
+		{kind: WindowKindTooltip, exStyle: popupExStyle | w32.WS_EX_LAYERED | w32.WS_EX_TRANSPARENT},
+	} {
+		for _, floating := range []bool{false, true} {
+			popup := &Window{
+				wnd:          &apiWindow{},
+				owner:        owner,
+				kind:         one.kind,
+				transient:    true,
+				undecorated:  true,
+				notResizable: true,
+				cpuOnly:      true,
+				floating:     floating,
+			}
+			c.Equal(uint32(w32.WS_POPUP|w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN), popup.w32WindowStyle(),
+				"kind=%v floating=%v", one.kind, floating)
+			c.Equal(one.exStyle, popup.w32WindowExStyle(), "kind=%v floating=%v", one.kind, floating)
 		}
-		c.Equal(uint32(w32.WS_POPUP|w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN), popup.w32WindowStyle(),
-			"floating=%v", floating)
-		c.Equal(uint32(w32.WS_EX_NOACTIVATE|w32.WS_EX_TOOLWINDOW|w32.WS_EX_TOPMOST), popup.w32WindowExStyle(),
-			"floating=%v", floating)
+		plain := &Window{wnd: &apiWindow{}, kind: one.kind, undecorated: true, notResizable: true}
+		c.Equal(uint32(w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN|w32.WS_SYSMENU|w32.WS_MINIMIZEBOX|w32.WS_POPUP),
+			plain.w32WindowStyle(), "kind=%v", one.kind)
+		c.Equal(uint32(w32.WS_EX_APPWINDOW), plain.w32WindowExStyle(), "kind=%v", one.kind)
 	}
-	plain := &Window{wnd: &apiWindow{}, kind: WindowKindMenu, undecorated: true, notResizable: true}
-	c.Equal(uint32(w32.WS_CLIPSIBLINGS|w32.WS_CLIPCHILDREN|w32.WS_SYSMENU|w32.WS_MINIMIZEBOX|w32.WS_POPUP),
-		plain.w32WindowStyle())
-	c.Equal(uint32(w32.WS_EX_APPWINDOW), plain.w32WindowExStyle())
 }
 
 // TestW32MouseActivate verifies that a click on a popup menu window is answered with MA_NOACTIVATE, so that it never
@@ -310,15 +319,42 @@ func TestW32MouseActivate(t *testing.T) {
 	c.Equal(uintptr(0), result)
 }
 
-// TestW32WindowClass verifies the class each window is created from: popup menu windows get one of their own, with a
-// drop shadow and no icon, while every other window, including one of WindowKindMenu, gets the main class.
+// TestW32KeepHidden verifies that a tooltip window with no tooltip showing in it stays hidden when Windows would show
+// it again as its owner is restored from a minimize, while every other show, and every other window, is left to
+// DefWindowProc.
+func TestW32KeepHidden(t *testing.T) {
+	c := check.New(t)
+	owner := &Window{wnd: &apiWindow{}}
+	tw := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindTooltip}
+	tw.root = newRootPanel(tw)
+	tw.root.setContent(nil)
+	owner.tooltipWindow = tw
+	c.True(tw.w32KeepHidden(w32.SW_PARENTOPENING), "no tooltip is showing, so the restore must not show the window")
+	c.False(tw.w32KeepHidden(0), "a show the toolkit asks for itself is not refused")
+	c.False(tw.w32KeepHidden(w32.SW_PARENTCLOSING))
+	tw.root.setContent(NewPanel())
+	c.False(tw.w32KeepHidden(w32.SW_PARENTOPENING), "a tooltip is showing, so the window may be shown")
+	owner.tooltipWindow = nil
+	c.True(tw.w32KeepHidden(w32.SW_PARENTOPENING), "a tooltip window its owner has let go of is never shown again")
+	menu := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu}
+	c.False(menu.w32KeepHidden(w32.SW_PARENTOPENING), "a menu window is left to DefWindowProc")
+	c.False(owner.w32KeepHidden(w32.SW_PARENTOPENING))
+	c.False((&Window{wnd: &apiWindow{}, kind: WindowKindTooltip}).w32KeepHidden(w32.SW_PARENTOPENING),
+		"as is an application's own window of the tooltip kind")
+}
+
+// TestW32WindowClass verifies the class each window is created from: popup windows, a menu's and a tooltip's alike,
+// get one of their own, with a drop shadow and no icon, while every other window, including an application's own of
+// WindowKindMenu or WindowKindTooltip, gets the main class.
 func TestW32WindowClass(t *testing.T) {
 	c := check.New(t)
 	owner := &Window{wnd: &apiWindow{}}
 	popup := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindMenu}
 	c.True(popup.w32Class() == &w32PopupWndClass)
+	c.True((&Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindTooltip}).w32Class() == &w32PopupWndClass)
 	c.True(owner.w32Class() == &w32MainWndClass)
 	c.True((&Window{wnd: &apiWindow{}, kind: WindowKindMenu}).w32Class() == &w32MainWndClass)
+	c.True((&Window{wnd: &apiWindow{}, kind: WindowKindTooltip}).w32Class() == &w32MainWndClass)
 	c.Equal("UnisonPopup", w32PopupWndClass.name)
 	c.Equal(wndProcClassName, w32MainWndClass.name)
 	baseStyle := uint32(w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC)
@@ -346,7 +382,8 @@ func TestW32NonClientMouseDownClosesMenus(t *testing.T) {
 // TestW32PopupUnder verifies where a mouse message delivered to a window although the pointer is over a popup menu
 // window goes: to the popup menu window of ours under the pointer, since a never-activated popup is neither the focus
 // window a wheel is sent to nor the window holding the capture a press is sent to. One delivered to a popup menu window
-// while the pointer is over the popup's owner goes to the owner, and every other one to the window it reached.
+// while the pointer is over the popup's owner goes to the owner, and every other one to the window it reached. A
+// tooltip window, which takes no input, is never handed one.
 func TestW32PopupUnder(t *testing.T) {
 	c := check.New(t)
 	priorWindows := windowList
@@ -357,7 +394,9 @@ func TestW32PopupUnder(t *testing.T) {
 	popup.wnd.wnd = 2
 	other := &Window{valid: true, wnd: &apiWindow{}}
 	other.wnd.wnd = 3
-	windowList = []*Window{owner, popup, other}
+	tooltip := &Window{valid: true, wnd: &apiWindow{}, owner: owner, kind: WindowKindTooltip}
+	tooltip.wnd.wnd = 4
+	windowList = []*Window{owner, popup, other, tooltip}
 	underIs := func(hwnd windows.HWND) func(w32.POINT) windows.HWND {
 		return func(w32.POINT) windows.HWND { return hwnd }
 	}
@@ -366,6 +405,7 @@ func TestW32PopupUnder(t *testing.T) {
 	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(1)) == owner)
 	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(3)) == owner, "another top-level window of ours is not a popup")
 	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(9)) == owner, "nor is another program's window")
+	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(4)) == owner, "nor is a tooltip window, which takes no input")
 	c.True(owner.w32PopupUnder(w32.POINT{}, underIs(0)) == owner)
 	c.True(popup.w32PopupUnder(w32.POINT{}, underIs(1)) == owner, "a popup hands one over its owner to the owner")
 	c.True(popup.w32PopupUnder(w32.POINT{}, underIs(3)) == popup, "but not one over another top-level window of ours")
@@ -506,6 +546,59 @@ func TestW32PopupContentScale(t *testing.T) {
 	c.Equal(own, w32PopupContentScale(geom.NewPoint(100, 100), nil, own))
 }
 
+// TestW32LeaveUnreported verifies that a window giving up or losing the capture has a pointer exit to report only when
+// a WM_MOUSELEAVE was consumed during the capture, which leaves tracking off, and not when the pointer never left, when
+// the capture is held again, or when the window is gone.
+func TestW32LeaveUnreported(t *testing.T) {
+	c := check.New(t)
+	w := &Window{wnd: &apiWindow{}, valid: true}
+	c.True(w.w32LeaveUnreported(), "tracking is off after a leave consumed during the capture")
+	w.wnd.mouseTracked = true
+	c.False(w.w32LeaveUnreported(), "tracking still armed, so the pointer never left")
+	w.wnd.mouseTracked = false
+	w.wnd.mouseCaptured = true
+	c.False(w.w32LeaveUnreported(), "the capture held again")
+	w.wnd.mouseCaptured = false
+	w.valid = false
+	c.False(w.w32LeaveUnreported(), "a window the release disposed of")
+}
+
+// TestW32CaptureLostReportsTheConsumedLeave verifies that a window losing the capture with the cursor outside its
+// client area, and the WM_MOUSELEAVE of the press that took the pointer out consumed during the capture, reports the
+// leave then, forgetting the tooltip the press took down so that coming back to the panel shows it again, while one
+// with the cursor inside, or with tracking still armed, leaves that to the mouse messages that follow.
+func TestW32CaptureLostReportsTheConsumedLeave(t *testing.T) {
+	c := check.New(t)
+	priorWindows := windowList
+	t.Cleanup(func() { windowList = priorWindows })
+	w := newMouseButtonTestWindow()
+	w.valid = true
+	windowList = []*Window{w}
+	content := w.root.contentPanel
+	content.MouseDownCallback = func(geom.Point, int, int, mod.Modifiers) bool { return true }
+	content.Tooltip = NewPanel()
+	pt := geom.NewPoint(10, 10)
+	for _, one := range []struct {
+		name      string
+		tracked   bool
+		inside    bool
+		forgotten bool
+	}{
+		{name: "leave consumed, cursor outside", forgotten: true},
+		{name: "leave consumed, cursor inside", inside: true},
+		{name: "tracking still armed", tracked: true},
+	} {
+		w.lastTooltip = content.Tooltip // As hovering the panel before the press left it.
+		w.mouseDown(pt, ButtonLeft, 0)
+		w.wnd.mouseCaptured = true
+		w.wnd.mouseTracked = one.tracked
+		w.w32CaptureLost(one.inside)
+		c.False(w.wnd.mouseCaptured, one.name)
+		c.False(w.inMouseDown, one.name)
+		c.Equal(one.forgotten, w.lastTooltip == nil, one.name)
+	}
+}
+
 // TestW32DestroyGivesUpTheCapture verifies that destroying a window releases the mouse capture it holds, so that the
 // capture change destroying it would otherwise report is not answered with releases to a window already disposed of.
 func TestW32DestroyGivesUpTheCapture(t *testing.T) {
@@ -537,7 +630,7 @@ func TestW32CaptureLostReleasesHandedOnPresses(t *testing.T) {
 	owner.mouseDown(pt, ButtonLeft, 0)
 	popup.mouseDown(pt, ButtonRight, 0)
 	other.mouseDown(pt, ButtonLeft, 0)
-	owner.w32CaptureLost()
+	owner.w32CaptureLost(true)
 	c.False(owner.wnd.mouseCaptured)
 	c.False(owner.inMouseDown, "the window's own press is ended")
 	c.False(popup.inMouseDown, "and so is the one handed on to the popup")
@@ -572,7 +665,7 @@ func TestW32CaptureLostReleasesOutsideEveryPanel(t *testing.T) {
 	pt := geom.NewPoint(10, 10)
 	owner.mouseDown(pt, ButtonLeft, 0)
 	popup.mouseDown(pt, ButtonRight, 0)
-	owner.w32CaptureLost()
+	owner.w32CaptureLost(true)
 	c.Equal([]geom.Point{
 		owner.root.contentPanel.PointFromRoot(offPanelPoint),
 		popup.root.contentPanel.PointFromRoot(offPanelPoint),

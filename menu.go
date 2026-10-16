@@ -278,7 +278,7 @@ func (m *menu) ensureOnDisplay(where geom.Rect, fit menuFit, anchor *Window, key
 	if !popup.IsValid() {
 		return
 	}
-	popup.SetContentRect(menuWindowRect(where, fit, menuDisplayFor(where, anchor)))
+	popup.SetContentRect(menuWindowRect(where, fit, popupDisplayFor(where, anchor)))
 	popup.ValidateLayout()
 	m.highlightKeyIndex(keyIndex)
 	popup.Show()
@@ -374,18 +374,18 @@ func fitMenuRect(where, usable geom.Rect, fit menuFit) geom.Rect {
 	return where
 }
 
-// menuDisplayFor returns the display a menu placed at where, in the space window rects use, belongs on: the one where
-// overlaps most, or anchor's when where overlaps none.
-func menuDisplayFor(where geom.Rect, anchor *Window) *Display {
-	if best := menuDisplayAmong(AllDisplays(), where); best != nil {
+// popupDisplayFor returns the display a popup window, a menu's or a tooltip's, placed at where, in the space window
+// rects use, belongs on: the one where overlaps most, or anchor's when where overlaps none.
+func popupDisplayFor(where geom.Rect, anchor *Window) *Display {
+	if best := popupDisplayAmong(AllDisplays(), where); best != nil {
 		return best
 	}
 	return anchor.Display()
 }
 
-// menuDisplayAmong returns the one of displays that where, in the space window rects use, overlaps most, or nil when it
-// overlaps none. Each display's overlap is measured in that display's own space.
-func menuDisplayAmong(displays []*Display, where geom.Rect) *Display {
+// popupDisplayAmong returns the one of displays that where, in the space window rects use, overlaps most, or nil when
+// it overlaps none. Each display's overlap is measured in that display's own space.
+func popupDisplayAmong(displays []*Display, where geom.Rect) *Display {
 	var best *Display
 	var bestArea float32
 	for _, d := range displays {
@@ -414,7 +414,7 @@ func (m *menu) createPopup(owner *Window) bool {
 	owner.ClearTooltip()
 	// Built before the window exists, since building runs the menu's updater and its items' validators.
 	panel := m.newPanel(false)
-	popup, err := newPopupWindow(owner, m.Title())
+	popup, err := newPopupWindow(owner, m.Title(), WindowKindMenu)
 	if err != nil {
 		errs.Log(err)
 		return false

@@ -121,7 +121,7 @@ func (w *Window) nativeInit() error {
 	popup := w.isPopup()
 	if popup {
 		// The window manager never frames, places or focuses an override-redirect window. SaveUnder lets a server that
-		// supports it restore what the menu covered without asking the windows beneath to repaint.
+		// supports it restore what the popup covered without asking the windows beneath to repaint.
 		mask |= x11.WindowMaskOverrideRedirect | x11.WindowMaskSaveUnder
 		attrs.OverrideRedirect = true
 		attrs.SaveUnder = true
@@ -134,6 +134,9 @@ func (w *Window) nativeInit() error {
 	}
 	if popup {
 		w.x11SetPopupProperties()
+		if w.isTooltipWindow() {
+			w.x11SetTooltipInputShape()
+		}
 		return nil
 	}
 	if w.undecorated {
@@ -216,15 +219,19 @@ func (w *Window) nativeInit() error {
 	return nil
 }
 
-// x11SetPopupProperties sets the properties of a popup menu window. Those only a window manager reads (WM_PROTOCOLS,
-// WM_HINTS, the size hints, the title and the Motif decoration hints) are left off, since none manages the window, but
-// compositors read its type, and WM_CLASS and the PID tie it to the application.
+// x11SetPopupProperties sets the properties of a popup window, a menu's or a tooltip's. Those only a window manager
+// reads (WM_PROTOCOLS, WM_HINTS, the size hints, the title and the Motif decoration hints) are left off, since none
+// manages the window, but compositors read its type, and WM_CLASS and the PID tie it to the application.
 func (w *Window) x11SetPopupProperties() {
 	buf := x11.NewWriter(4)
 	buf.Uint32(uint32(os.Getpid()))
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.WMPID, x11.AtomCardinal, 32, x11.PropModeReplace, buf.Retrieve())
+	kind := x11Conn.Atoms.NetWMWindowTypePopupMenu
+	if w.kind == WindowKindTooltip {
+		kind = x11Conn.Atoms.NetWMWindowTypeTooltip
+	}
 	buf = x11.NewWriter(4)
-	buf.Atom(x11Conn.Atoms.NetWMWindowTypePopupMenu)
+	buf.Atom(kind)
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMWindowType, x11.AtomAtom, 32, x11.PropModeReplace,
 		buf.Retrieve())
 	// KWin's fading popups effect fades an unmanaged window out over 600 ms as it closes, which this skips. Its 150 ms
@@ -234,6 +241,22 @@ func (w *Window) x11SetPopupProperties() {
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.KDENetWMSkipCloseAnimation, x11.AtomCardinal, 32,
 		x11.PropModeReplace, buf.Retrieve())
 	w.nativeSetWMClass()
+	x11Conn.Flush()
+}
+
+// x11SetTooltipInputShape gives a tooltip window an empty input shape, so that the pointer passes through it to
+// whatever is beneath, as it does through a native tooltip. It must be in place before the window is first mapped:
+// mapping one that takes input under the pointer sends the owner a LeaveNotify, which takes the tooltip down again at
+// once (see Window.pointerLeft), so an immediate tooltip would flicker.
+func (w *Window) x11SetTooltipInputShape() {
+	// x11.NewConn requires XFIXES 4.0, so only the tests' stand-in connection lacks the extension.
+	if x11Conn.ExtXFixes == nil {
+		return
+	}
+	if region := x11Conn.ExtXFixes.CreateRegion(); region != 0 {
+		x11Conn.ExtXFixes.SetWindowShapeRegion(w.wnd.id, x11.ShapeKindInput, region)
+		x11Conn.ExtXFixes.DestroyRegion(region)
+	}
 	x11Conn.Flush()
 }
 
@@ -363,7 +386,7 @@ func (w *Window) nativeSetContentRect(rect geom.Rect) {
 	rect.Y *= scale.Y
 	rect.Width *= scale.X
 	rect.Height *= scale.Y
-	// Size hints are read only by a window manager, which leaves an override-redirect popup menu window alone.
+	// Size hints are read only by a window manager, which leaves an override-redirect popup window alone.
 	if !w.isPopup() {
 		sizeHints := x11.WindowSizeHints{
 			Flags:      x11.WSHMUSPosition | x11.WSHMPPosition | x11.WSHMUSSize | x11.WSHMPSize | x11.WSHMPWinGravity,
@@ -889,8 +912,14 @@ func (w *Window) nativeShow() {
 	if w.nativeVisible() {
 		return
 	}
-	// The window manager does not intercept the map of an override-redirect popup menu window, and the X server itself
-	// sends the VisibilityNotify, so the wait below ends at once for one.
+	// The window manager intercepts neither the restack nor the map of an override-redirect popup window, and the X
+	// server itself sends the VisibilityNotify, so the wait below ends at once for one. A popup window is raised first
+	// because MapWindow leaves a window where it was in the stacking order, and a tooltip window is reused, merely
+	// unmapped between tooltips, so anything mapped since (a dialog, another application's window) would cover it.
+	if w.isPopup() {
+		x11Conn.ConfigureWindow(w.wnd.id, x11.ConfigureWindowMaskStackMode,
+			&x11.ConfigureWindowRequest{StackMode: x11.StackModeAbove})
+	}
 	x11Conn.MapWindow(w.wnd.id)
 	x11Conn.WaitForWindowVisibility(w.wnd.id, x11ShowTimeout)
 	x11FilteredWaitDone()
@@ -1581,13 +1610,14 @@ func x11ProcessEvent(e x11.Event) {
 			}
 		}
 	case *x11.LeaveNotifyEvent:
-		// Every leave is kept, NotifyGrab ones included: one may come from another client's grab, such as a window
-		// manager's move, which really does take the pointer away, and a spurious one only costs a hover state that the
-		// next motion restores. The crossings a grab's release reports (NotifyUngrab) say where the pointer really is.
+		// The pointer has left the window itself, since panels have no X windows of their own. Every leave is kept,
+		// NotifyGrab ones included: one may come from another client's grab, such as a window manager's move, which
+		// really does take the pointer away, and a spurious one only costs a hover state and a tooltip that the next
+		// motion brings back. The crossings a grab's release reports (NotifyUngrab) say where the pointer really is.
 		if w := x11FindWindow(ev.Event); w != nil {
 			w.x11PointerCrossed(false, ev.Mode)
 			w.nativeUpdateCursorImage()
-			w.mouseExit()
+			w.pointerLeft()
 		}
 	case *x11.MotionNotifyEvent:
 		if target, where := x11RoutePointerEvent(x11FindWindow(ev.Event), &ev.InputEvent, -1); target != nil {

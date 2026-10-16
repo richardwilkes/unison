@@ -1792,7 +1792,7 @@ func TestStaticTextFocusExclusions(t *testing.T) {
 	c.True(staticTextFocusable(screen, inScroller), "and so does a scroll panel")
 
 	var inDocument []*Panel
-	var inTable, inHeader, inList, inTooltip, documentFocusable bool
+	var inTable, inHeader, inList, inTooltip, tooltipInstalled, documentFocusable bool
 	screen.Do(func() {
 		documentFocusable = md.AsPanel().Focusable()
 		var walk func(p *Panel)
@@ -1821,15 +1821,19 @@ func TestStaticTextFocusExclusions(t *testing.T) {
 		tip := staticTextColumn()
 		tipText := staticTextLabel("Tip text")
 		tip.AddChild(tipText)
-		wnd.root.setTooltip(tip)
+		wnd.showTooltip(tip, geom.NewRect(0, 0, 100, 20))
+		// showTooltip installs nothing when it cannot create the tooltip window, and a panel in no window is not
+		// focusable either way, so the exclusion is checked only once the tooltip is known to be showing.
+		tooltipInstalled = wnd.tooltipWindow != nil && tip.Window() == wnd.tooltipWindow
 		inTooltip = tipText.AsPanel().Focusable()
-		wnd.root.setTooltip(nil)
+		wnd.hideTooltip()
 	})
 	c.True(documentFocusable, "the document itself takes the focus for a screen reader's sake")
 	c.Equal(0, len(inDocument), "but nothing inside it does: %v", inDocument)
 	c.False(inTable, "a table cell is reached through the table's cell cursor")
 	c.False(inHeader, "a column header is part of the table's description")
 	c.False(inList, "a list row is reached through the list's current row")
+	c.True(tooltipInstalled, "the tooltip is showing in the window's tooltip window")
 	c.False(inTooltip, "a tooltip comes and goes and is never in the tab order")
 
 	c.NotNil(screen.AccessibilityTree(wnd))

@@ -1163,8 +1163,9 @@ func TestX11DestroyLeavesQueuedEventsAlone(t *testing.T) {
 	}
 }
 
-// TestX11PopupWindowProperties covers the properties a popup menu window is given: its PID, its type, KWin's request
-// to skip the close animation and WM_CLASS, and none of those only a window manager reads.
+// TestX11PopupWindowProperties covers the properties a popup window is given: its PID, its type, which is a popup
+// menu's for a menu and a tooltip's for a tooltip, KWin's request to skip the close animation and WM_CLASS, and none of
+// those only a window manager reads.
 func TestX11PopupWindowProperties(t *testing.T) {
 	c := check.New(t)
 	server := startX11TestServer(t)
@@ -1174,53 +1175,64 @@ func TestX11PopupWindowProperties(t *testing.T) {
 		typeAtom      = x11.Atom(402)
 		popupMenuAtom = x11.Atom(403)
 		skipCloseAtom = x11.Atom(404)
+		tooltipAtom   = x11.Atom(405)
 	)
 	x11Conn.Atoms.WMPID = pidAtom
 	x11Conn.Atoms.NetWMWindowType = typeAtom
 	x11Conn.Atoms.NetWMWindowTypePopupMenu = popupMenuAtom
+	x11Conn.Atoms.NetWMWindowTypeTooltip = tooltipAtom
 	x11Conn.Atoms.KDENetWMSkipCloseAnimation = skipCloseAtom
 	cardinal := func(v uint32) string {
 		buf := x11.NewWriter(4)
 		buf.Uint32(v)
 		return string(buf.Retrieve())
 	}
-	popup := &Window{wnd: &apiWindow{}, owner: &Window{}}
-	popup.wnd.id = x11TestWindowID
-	popup.x11SetPopupProperties()
-	c.Equal([]x11PropertyChange{
-		{
-			data:         cardinal(uint32(os.Getpid())),
-			window:       x11TestWindowID,
-			property:     pidAtom,
-			propertyType: x11.AtomCardinal,
-			format:       32,
-			mode:         x11.PropModeReplace,
-		},
-		{
-			data:         cardinal(uint32(popupMenuAtom)),
-			window:       x11TestWindowID,
-			property:     typeAtom,
-			propertyType: x11.AtomAtom,
-			format:       32,
-			mode:         x11.PropModeReplace,
-		},
-		{
-			data:         cardinal(1),
-			window:       x11TestWindowID,
-			property:     skipCloseAtom,
-			propertyType: x11.AtomCardinal,
-			format:       32,
-			mode:         x11.PropModeReplace,
-		},
-		{
-			data:         string(wmClassData()),
-			window:       x11TestWindowID,
-			property:     x11.AtomWMClass,
-			propertyType: x11.AtomString,
-			format:       8,
-			mode:         x11.PropModeReplace,
-		},
-	}, server.propertyChanges())
+	for _, one := range []struct {
+		name       string
+		kind       WindowKind
+		windowType x11.Atom
+	}{
+		{name: "menu", kind: WindowKindMenu, windowType: popupMenuAtom},
+		{name: "tooltip", kind: WindowKindTooltip, windowType: tooltipAtom},
+	} {
+		popup := &Window{wnd: &apiWindow{}, owner: &Window{}, kind: one.kind}
+		popup.wnd.id = x11TestWindowID
+		popup.x11SetPopupProperties()
+		c.Equal([]x11PropertyChange{
+			{
+				data:         cardinal(uint32(os.Getpid())),
+				window:       x11TestWindowID,
+				property:     pidAtom,
+				propertyType: x11.AtomCardinal,
+				format:       32,
+				mode:         x11.PropModeReplace,
+			},
+			{
+				data:         cardinal(uint32(one.windowType)),
+				window:       x11TestWindowID,
+				property:     typeAtom,
+				propertyType: x11.AtomAtom,
+				format:       32,
+				mode:         x11.PropModeReplace,
+			},
+			{
+				data:         cardinal(1),
+				window:       x11TestWindowID,
+				property:     skipCloseAtom,
+				propertyType: x11.AtomCardinal,
+				format:       32,
+				mode:         x11.PropModeReplace,
+			},
+			{
+				data:         string(wmClassData()),
+				window:       x11TestWindowID,
+				property:     x11.AtomWMClass,
+				propertyType: x11.AtomString,
+				format:       8,
+				mode:         x11.PropModeReplace,
+			},
+		}, server.propertyChanges(), "the %s window's properties", one.name)
+	}
 }
 
 // TestX11PointerCrossed covers the record of whether the pointer is in a window: a normal crossing or one a grab's
@@ -1239,6 +1251,46 @@ func TestX11PointerCrossed(t *testing.T) {
 	c.True(w.wnd.pointerInside)
 	w.x11PointerCrossed(false, x11.NotifyGrab)
 	c.False(w.wnd.pointerInside, "another client's grab takes the pointer away")
+}
+
+// TestX11LeaveNotifyTakesDownTheTooltip covers a LeaveNotify, which reports that the pointer has left the window
+// itself: the panel under it is exited, the tooltip showing is taken down, keeping its window for the next one, and the
+// tooltip asked for is forgotten, so that coming back to the same panel arms it again.
+func TestX11LeaveNotifyTakesDownTheTooltip(t *testing.T) {
+	c := check.New(t)
+	priorWindows := windowList
+	t.Cleanup(func() { windowList = priorWindows })
+	// A cursor already hidden is the one state in which a crossing asks the X server nothing about the cursor, and with
+	// no window valid, hiding the tooltip window and marking a window for redraw do nothing, so no stand-in is needed.
+	owner := &Window{wnd: &apiWindow{}, cursorHidden: true}
+	owner.wnd.id = x11TestWindowID
+	owner.wnd.cursorWasHidden = true
+	owner.wnd.pointerInside = true
+	hovered := NewPanel()
+	exited := false
+	hovered.MouseExitCallback = func() bool {
+		exited = true
+		return true
+	}
+	owner.lastMouseOverPanel = hovered
+	tip := NewPanel()
+	owner.lastTooltip = tip
+	tooltipWindow := &Window{wnd: &apiWindow{}, owner: owner, kind: WindowKindTooltip}
+	tooltipWindow.root = newRootPanel(tooltipWindow)
+	tooltipWindow.root.setContent(tip)
+	owner.tooltipWindow = tooltipWindow
+	windowList = []*Window{owner}
+	c.True(owner.tooltipShowing())
+
+	ev := &x11.LeaveNotifyEvent{}
+	ev.Event = owner.wnd.id
+	ev.Mode = x11.NotifyNormal
+	x11ProcessEvent(ev)
+	c.False(owner.wnd.pointerInside)
+	c.True(exited, "the panel under the pointer is exited")
+	c.False(owner.tooltipShowing(), "the tooltip is taken down")
+	c.True(owner.tooltipWindow == tooltipWindow, "its window is kept for the next tooltip")
+	c.True(owner.lastTooltip == nil, "the tooltip asked for is forgotten, so coming back to its panel arms it again")
 }
 
 // TestX11PointerEventPositionUsesTheTargetOrigin covers the position of a pointer event rerouted to another window of
