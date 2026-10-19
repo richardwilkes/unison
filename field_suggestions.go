@@ -356,9 +356,10 @@ func (s *FieldSuggestions[T]) visibleRows() int {
 	return max(n, 1)
 }
 
-// windowRect returns the rect of the popup window in the space window rects use: at most MaxVisibleRows rows tall, at
-// least as wide as the field, below the part of the field visible within the owner, as a tooltip is placed, or above it
-// when there is no room below, and fitted onto the display.
+// windowRect returns the rect of the popup window in the space window rects use: at most MaxVisibleRows rows tall, as
+// wide as the field or as the rows and the vertical scroll bar beside them need, whichever is more, below the part of
+// the field visible within the owner, as a tooltip is placed, or above it when there is no room below, and fitted onto
+// the display.
 func (s *FieldSuggestions[T]) windowRect(owner *Window) geom.Rect {
 	count := s.list.Count()
 	n := min(count, max(s.MaxVisibleRows, 1))
@@ -374,12 +375,14 @@ func (s *FieldSuggestions[T]) windowRect(owner *Window) geom.Rect {
 	if n > 0 {
 		where.Height += s.list.RowRect(n-1).Bottom() - s.list.RowRect(0).Y
 	}
-	where.Width = max(panelPref.Width, avoid.Width)
-	// The vertical scroll bar is drawn over the rows rather than beside them.
+	// The vertical scroll bar is drawn over the rows rather than beside them, so the rows need its width on top of
+	// their own only when they scroll, and a field wider than both needs nothing added.
 	bar := s.scroller.Bar(false).MinimumThickness
+	rowsWidth := panelPref.Width
 	if count > n {
-		where.Width += bar
+		rowsWidth += bar
 	}
+	where.Width = max(rowsWidth, avoid.Width)
 	where.Point = owner.apiPointToScreen(geom.NewPoint(avoid.X, avoid.Bottom()))
 	avoid.Point = owner.apiPointToScreen(avoid.Point)
 	d := tooltipDisplayAmong(AllDisplays(), where, avoid)
@@ -389,7 +392,7 @@ func (s *FieldSuggestions[T]) windowRect(owner *Window) geom.Rect {
 	fitted := suggestionsWindowRectOn(where, avoid, d)
 	if count <= n && fitted.Height < where.Height {
 		// Shortened to the room on the display, so the rows scroll after all.
-		where.Width += bar
+		where.Width = max(rowsWidth+bar, avoid.Width)
 		fitted = suggestionsWindowRectOn(where, avoid, d)
 	}
 	return fitted

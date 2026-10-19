@@ -515,7 +515,7 @@ func TestFieldSuggestionsWindowClosedOnItsOwn(t *testing.T) {
 }
 
 // TestFieldSuggestionsSelectAndMaxVisibleRows verifies Select, Selected and List, and that MaxVisibleRows bounds the
-// height, the vertical scroll bar widening the window.
+// height, the vertical scroll bar not widening a window the field already makes wide enough for it.
 func TestFieldSuggestionsSelectAndMaxVisibleRows(t *testing.T) {
 	c := check.New(t)
 	f := startSuggestions(t, geom.NewRect(20, 20, 240, 200), false)
@@ -539,19 +539,20 @@ func TestFieldSuggestionsSelectAndMaxVisibleRows(t *testing.T) {
 	c.Equal([]int{2, -1, -1}, selected)
 	c.Equal(6, count)
 	c.Equal(suggestAlmond, firstRow)
-	var before, after geom.Rect
-	var rowHeight, barWidth float32
+	var before, after, fieldRect geom.Rect
+	var rowHeight float32
 	c.True(f.screen.Do(func() {
 		before = popup.ContentRect()
 		rowHeight = f.sg.List().RowRect(0).Height
-		barWidth = unison.DefaultScrollBarTheme.MinimumThickness
+		fieldRect = f.field.RectToRoot(f.field.ContentRect(true))
 		f.sg.MaxVisibleRows = 3
 		f.sg.Show()
 		after = popup.ContentRect()
 	}))
 	c.True(f.screen.SuggestionsWindow(f.wnd) == popup, "placed again in the same window")
 	c.Equal(3*rowHeight+2, after.Height)
-	c.Equal(before.Width+barWidth, after.Width)
+	c.Equal(fieldRect.Width, before.Width, "as wide as the field")
+	c.Equal(before.Width, after.Width, "which has room for the rows and the scroll bar")
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
 }
 

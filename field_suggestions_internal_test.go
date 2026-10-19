@@ -140,8 +140,8 @@ func TestSuggestionsWindowRectWithoutADisplay(t *testing.T) {
 }
 
 // TestFieldSuggestionsWindowRect verifies the size of the popup window: MaxVisibleRows rows at most plus the border, at
-// least as wide as the field, and wider by the vertical scroll bar only when there are rows to scroll to, for rows of
-// one height and of their own heights.
+// least as wide as the field, and wider than the rows by the vertical scroll bar only when there are rows to scroll to
+// and the field is not already wide enough for both, for rows of one height and of their own heights.
 func TestFieldSuggestionsWindowRect(t *testing.T) {
 	c := check.New(t)
 	screen, owner, _, s := startSuggestionsTest(t)
@@ -153,7 +153,7 @@ func TestFieldSuggestionsWindowRect(t *testing.T) {
 		return list
 	}
 	bar := DefaultScrollBarTheme.MinimumThickness
-	var few, many, wide, varying, varyingFew geom.Rect
+	var few, many, wide, nearlyWide, varying, varyingFew geom.Rect
 	var prefWidth float32
 	c.True(screen.Do(func() {
 		// Show records the field's rect as the anchor, so a narrower one is set after each SetRows.
@@ -168,6 +168,8 @@ func TestFieldSuggestionsWindowRect(t *testing.T) {
 		many = s.windowRect(owner)
 		s.anchor = geom.NewRect(0, 0, 150, 20)
 		wide = s.windowRect(owner)
+		s.anchor = geom.NewRect(0, 0, prefWidth+bar-1, 20)
+		nearlyWide = s.windowRect(owner)
 		s.List().Factory = varyingCellFactory{}
 		s.MaxVisibleRows = 3
 		s.SetRows(rows(5))
@@ -181,7 +183,8 @@ func TestFieldSuggestionsWindowRect(t *testing.T) {
 	c.Equal(prefWidth, few.Width, "as wide as the rows want")
 	c.Equal(float32(8*20+2), many.Height, "MaxVisibleRows rows")
 	c.Equal(prefWidth+bar, many.Width, "with room for the scroll bar")
-	c.Equal(150+bar, wide.Width, "at least as wide as the field")
+	c.Equal(float32(150), wide.Width, "as wide as the field, which has room for the rows and the scroll bar")
+	c.Equal(prefWidth+bar, nearlyWide.Width, "but no narrower than the rows and the scroll bar")
 	c.Equal(float32(10+11+12+2), varying.Height, "the first rows' own heights")
 	c.Equal(float32(50+2)+bar, varying.Width)
 	c.Equal(float32(10+11+12+2), varyingFew.Height)
