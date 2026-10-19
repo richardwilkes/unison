@@ -1013,6 +1013,119 @@ func TestTooltipClearsOnOwnerChanges(t *testing.T) {
 	})
 }
 
+// TestSuggestionsHiddenBeforeTheWindowGoes verifies that Hide and Minimize hide the window's field suggestions
+// themselves, before the window goes, rather than leaving that to the focus loss that follows, which X11 reports only
+// later.
+func TestSuggestionsHiddenBeforeTheWindowGoes(t *testing.T) {
+	for _, one := range []struct {
+		change func(owner *Window)
+		gone   func(owner *Window) bool
+		name   string
+	}{
+		{
+			name:   "hidden",
+			change: func(owner *Window) { owner.Hide() },
+			gone:   func(owner *Window) bool { return owner.hidden },
+		},
+		{
+			name:   "minimized",
+			change: func(owner *Window) { owner.Minimize() },
+			gone:   func(owner *Window) bool { return owner.minimized },
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen, owner, _, _ := startSuggestionsTest(t)
+			host := &fakeSuggestionsHost{shown: true}
+			var hidden, goneAtHide bool
+			host.onHide = func() { goneAtHide = one.gone(owner) }
+			c.True(screen.Do(func() {
+				owner.suggestions = host
+				one.change(owner)
+				hidden = !host.shown
+			}))
+			c.True(hidden)
+			c.False(goneAtHide, "hidden by the window itself, before it went")
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
+}
+
+// TestSuggestionsHideOnOwnerChanges verifies that moving, resizing, hiding or minimizing a window, or another window
+// coming to the front, hides the field suggestions it is showing, disposing of their popup window, and that disposing
+// of it disposes of that window too.
+func TestSuggestionsHideOnOwnerChanges(t *testing.T) {
+	for _, one := range []struct {
+		change func(t *testing.T, owner *Window)
+		name   string
+	}{
+		{name: "moved", change: func(_ *testing.T, owner *Window) {
+			owner.SetContentRect(geom.NewRect(30, 30, 200, 150))
+		}},
+		{name: "resized", change: func(_ *testing.T, owner *Window) {
+			owner.SetContentRect(geom.NewRect(20, 20, 210, 160))
+		}},
+		{name: "hidden", change: func(_ *testing.T, owner *Window) { owner.Hide() }},
+		{name: "minimized", change: func(_ *testing.T, owner *Window) { owner.Minimize() }},
+		{name: "another in front", change: func(t *testing.T, _ *Window) {
+			if other := newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100)); other != nil {
+				other.ToFront()
+			}
+		}},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen, owner, _, s := startSuggestionsTest(t)
+			var wnd *Window
+			c.True(screen.Do(func() {
+				s.SetRows(suggestionsTestRows)
+				wnd = s.wnd
+			}))
+			c.True(screen.SuggestionsWindow(owner) == wnd)
+			c.True(screen.Do(func() { one.change(t, owner) }))
+			var showing, valid, listed bool
+			var host fieldSuggestionsHost
+			c.True(screen.Do(func() {
+				showing = s.Showing()
+				host = owner.suggestions
+				valid = wnd.IsValid()
+				listed = slices.Contains(windowList, wnd)
+			}))
+			c.False(showing)
+			c.Nil(host)
+			c.False(valid, "the popup window is disposed of")
+			c.False(listed)
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
+	t.Run("dispose", func(t *testing.T) {
+		c := check.New(t)
+		screen, owner, _, s := startSuggestionsTest(t)
+		var wnd, after *Window
+		var host fieldSuggestionsHost
+		var valid, listed, showing bool
+		c.True(screen.Do(func() {
+			// Keeps the session alive once the owner is gone.
+			newHeadlessTestWindow(t, "other", geom.NewRect(250, 20, 100, 100))
+			s.SetRows(suggestionsTestRows)
+			wnd = s.wnd
+			owner.Dispose()
+			valid = wnd.IsValid()
+			listed = slices.Contains(windowList, wnd)
+			after = s.wnd
+			host = owner.suggestions
+			showing = s.Showing()
+		}))
+		c.NotNil(wnd)
+		c.False(valid)
+		c.False(listed)
+		c.Nil(after, "the suggestions let go of their disposed window")
+		c.Nil(host)
+		c.False(showing)
+		c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+	})
+}
+
 // TestTooltipWindowClosedOnItsOwn verifies that a tooltip window closed by something other than the toolkit, as a
 // WM_CLOSE from another program would close it, takes its owner's tooltip with it: the owner's description loses the
 // tooltip, and the pointer moving on within the same panel shows the tooltip again, in a new window.

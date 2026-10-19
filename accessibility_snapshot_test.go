@@ -1144,3 +1144,41 @@ func TestAccessibilityMenuInAListRowIsNotOffered(t *testing.T) {
 	c.Equal(0, menus, "and nothing opens")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestAccessibilityLabeledByANamedControl verifies that a panel pointing at a control with LabeledBy is named as the
+// control itself is, so that one pointing at a field named by the label before it takes that label's text rather than
+// going unnamed and being skipped as scaffolding.
+func TestAccessibilityLabeledByANamedControl(t *testing.T) {
+	c := check.New(t)
+	var field *Field
+	var box *Panel
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			field = NewField()
+			box = NewPanel()
+			box.SetLayout(&FlexLayout{Columns: 1})
+			box.AddChild(axTestLabel("Inside"))
+			box.Accessibility.LabeledBy = field
+			column := NewPanel()
+			column.SetLayout(&FlexLayout{Columns: 1})
+			column.AddChild(axTestLabel("Tree:"))
+			column.AddChild(field)
+			column.AddChild(box)
+			wnd = axNewTestWindow(t, "labeled by", geom.NewRect(10, 10, 300, 200), column)
+		}))
+	c.NotNil(wnd)
+	c.NotNil(screen.AccessibilityTree(wnd))
+	fieldNode := screen.AccessibilityNodeFor(field)
+	boxNode := screen.AccessibilityNodeFor(box)
+	c.NotNil(fieldNode)
+	c.NotNil(boxNode)
+	if fieldNode == nil || boxNode == nil {
+		return
+	}
+	c.Equal("Tree", fieldNode.Name)
+	c.Equal("Tree", boxNode.Name, "named as the field it points at is")
+	c.Equal([]accessibility.NodeID{fieldNode.ID}, boxNode.LabeledBy)
+	c.False(boxNode.Ignored)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

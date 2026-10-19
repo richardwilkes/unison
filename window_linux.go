@@ -219,16 +219,22 @@ func (w *Window) nativeInit() error {
 	return nil
 }
 
-// x11SetPopupProperties sets the properties of a popup window, a menu's or a tooltip's. Those only a window manager
-// reads (WM_PROTOCOLS, WM_HINTS, the size hints, the title and the Motif decoration hints) are left off, since none
-// manages the window, but compositors read its type, and WM_CLASS and the PID tie it to the application.
+// x11SetPopupProperties sets the properties of a popup window, which shows a menu, a tooltip or a field's suggestions.
+// Those only a window manager reads (WM_PROTOCOLS, WM_HINTS, the size hints, the title and the Motif decoration hints)
+// are left off, since none manages the window, but compositors read its type, and WM_CLASS and the PID tie it to the
+// application.
 func (w *Window) x11SetPopupProperties() {
 	buf := x11.NewWriter(4)
 	buf.Uint32(uint32(os.Getpid()))
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.WMPID, x11.AtomCardinal, 32, x11.PropModeReplace, buf.Retrieve())
-	kind := x11Conn.Atoms.NetWMWindowTypePopupMenu
-	if w.kind == WindowKindTooltip {
+	var kind x11.Atom
+	switch w.kind {
+	case WindowKindTooltip:
 		kind = x11Conn.Atoms.NetWMWindowTypeTooltip
+	case WindowKindDropdown:
+		kind = x11Conn.Atoms.NetWMWindowTypeCombo
+	default:
+		kind = x11Conn.Atoms.NetWMWindowTypePopupMenu
 	}
 	buf = x11.NewWriter(4)
 	buf.Atom(kind)
@@ -598,6 +604,12 @@ func (w *Window) nativeMenuStackChanged(open bool) {
 func (w *Window) x11GrabForPress() bool {
 	return x11Conn.GrabPointer(w.wnd.id, false,
 		x11MenuGrabEventMask|x11.EventMaskEnterWindow|x11.EventMaskLeaveWindow, 0)
+}
+
+// nativeSuggestionsChanged is a no-op: the pointer grab an open menu stack takes (see nativeMenuStackChanged) would
+// swallow the presses on other windows and applications that a field's suggestions are meant to let through, so a press
+// outside every window of ours leaves them up until the focus moves.
+func (w *Window) nativeSuggestionsChanged(_ bool) {
 }
 
 // x11AdoptPressGrab moves the grab that stands in for a press not yet read (see nativeMenuStackChanged), held by a

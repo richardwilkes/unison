@@ -374,7 +374,7 @@ func fitMenuRect(where, usable geom.Rect, fit menuFit) geom.Rect {
 	return where
 }
 
-// popupDisplayFor returns the display a popup window, a menu's or a tooltip's, placed at where, in the space window
+// popupDisplayFor returns the display a popup window, whatever it shows, placed at where, in the space window
 // rects use, belongs on: the one where overlaps most, or anchor's when where overlaps none.
 func popupDisplayFor(where geom.Rect, anchor *Window) *Display {
 	if best := popupDisplayAmong(AllDisplays(), where); best != nil {
@@ -412,6 +412,7 @@ func (m *menu) createPopup(owner *Window) bool {
 	}
 	owner.root.closeMenuStackStoppingAt(m.titleItem.menu)
 	owner.ClearTooltip()
+	owner.hideSuggestions()
 	// Built before the window exists, since building runs the menu's updater and its items' validators.
 	panel := m.newPanel(false)
 	popup, err := newPopupWindow(owner, m.Title(), WindowKindMenu)

@@ -69,6 +69,7 @@ type FieldTheme struct {
 type Field struct {
 	ModifiedCallback func(before, after *FieldState)
 	ValidateCallback func() bool
+	suggestions      fieldSuggestionsHost
 	runes            []rune
 	lines            []*Text
 	endsWithLineFeed []lineEndingType
@@ -482,6 +483,9 @@ func (f *Field) DefaultFocusGained() {
 func (f *Field) DefaultFocusLost() {
 	f.focusedForReading = false
 	f.undoID = NextUndoID()
+	if f.suggestions != nil {
+		f.suggestions.hide()
+	}
 	f.MarkForRedraw()
 }
 
@@ -621,6 +625,9 @@ func (f *Field) DefaultUpdateCursor(_ geom.Point) *Cursor {
 func (f *Field) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bool) bool {
 	if wnd := f.Window(); wnd != nil {
 		wnd.HideCursorUntilMouseMoves()
+	}
+	if s := f.suggestions; s != nil && s.showing() && s.keyDown(keyCode, mods) {
+		return true
 	}
 	if mods.OSMenuCommandDown() {
 		switch keyCode {
@@ -1477,6 +1484,9 @@ func (f *Field) ProvideAccessibility(b *AccessibilityBuilder) {
 			node.Role = role.TextField
 		}
 	}
+	if f.suggestions != nil {
+		f.suggestions.describe(node)
+	}
 	node.Placeholder = f.Watermark
 	node.Invalid = f.invalid
 	node.Protected = f.ObscurementRune != 0
@@ -1644,10 +1654,10 @@ func (f *Field) axScrollRectIntoView(rect geom.Rect) geom.Rect {
 
 // PerformAccessibilityAction carries out a request from an assistive technology. The field's value may be replaced
 // outright, a range of it may be replaced in place — which participates in undo exactly as a paste does — the caret or
-// selection may be moved, and a range of the content may be brought into view. Focusing the field and showing its
-// contextual menu are left to the default behavior; a request for the menu that names a range has the selection placed
-// on it first (see axPlaceContextMenuRange). A field that obscures what it shows brings no range into view, since it
-// publishes neither that action nor the text a range would address.
+// selection may be moved, a range of the content may be brought into view, and its suggestions may be collapsed while
+// they are showing. Focusing the field and showing its contextual menu are left to the default behavior; a request for
+// the menu that names a range has the selection placed on it first (see axPlaceContextMenuRange). A field that obscures
+// what it shows brings no range into view, since it publishes neither that action nor the text a range would address.
 func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool {
 	switch req.Action {
 	case accessibility.SetValue:
@@ -1675,6 +1685,12 @@ func (f *Field) PerformAccessibilityAction(req accessibility.ActionRequest) bool
 	case accessibility.ShowContextMenu:
 		// Declined so that the default behavior opens the menu, at the caret.
 		f.axPlaceMenuRange(req)
+		return false
+	case accessibility.Collapse:
+		if s := f.suggestions; s != nil && s.showing() {
+			s.hide()
+			return true
+		}
 		return false
 	default:
 		return false

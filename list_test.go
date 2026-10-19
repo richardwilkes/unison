@@ -68,6 +68,21 @@ func TestListInsertShiftsSelection(t *testing.T) {
 	c.Equal([]int{4}, selectedIndexes(l))
 }
 
+// TestListInsertLeavesTheCallersSliceAlone verifies that inserting part of a slice with spare capacity does not write
+// the rows that follow the insertion point into the caller's slice.
+func TestListInsertLeavesTheCallersSliceAlone(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("x", "y")
+	all := []string{"a", "b", "c", "d"}
+	l.Insert(1, all[:2]...)
+	c.Equal([]string{"a", "b", "c", "d"}, all, "the caller's slice is left alone")
+	c.Equal(4, l.Count())
+	c.Equal("x", l.DataAtIndex(0))
+	c.Equal("a", l.DataAtIndex(1))
+	c.Equal("b", l.DataAtIndex(2))
+	c.Equal("y", l.DataAtIndex(3))
+}
+
 func TestListInsertClampsIndex(t *testing.T) {
 	c := check.New(t)
 	l := newTestList("a", "b")
@@ -606,6 +621,84 @@ func TestListAccessibilityFocusActionSelectsTheRow(t *testing.T) {
 	}
 	c.Equal(1, axFocusedCount(tree))
 	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
+}
+
+// TestListAccessibilityRowsOfAListThatCannotTakeTheFocus verifies that the rows of a list that cannot take the
+// keyboard focus neither offer it nor say they can take it, and that a request for it anyway is refused with nothing
+// changed: the focus stays where it was and the selection is left alone.
+func TestListAccessibilityRowsOfAListThatCannotTakeTheFocus(t *testing.T) {
+	c := check.New(t)
+	var list *unison.List[string]
+	var field *unison.Field
+	var wnd *unison.Window
+	selections := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+		unison.StartupFinishedCallback(func() {
+			list = unison.NewList[string]()
+			list.Factory = &unison.DefaultCellFactory{Height: 20}
+			list.SetFocusable(false)
+			list.NewSelectionCallback = func() { selections++ }
+			for i := range 4 {
+				list.Append("Row " + strconv.Itoa(i))
+			}
+			field = unison.NewField()
+			if wnd = newHeadlessWindow(t, "list no focus", geom.NewRect(10, 10, 400, 400), axColumn(field, list)); wnd != nil {
+				wnd.ToFront()
+				wnd.SetFocus(field)
+			}
+		}))
+	c.NotNil(wnd)
+	tree := screen.AccessibilityTree(wnd)
+	c.NotNil(tree)
+	row := axNodeWithRowIndex(tree, screen.AccessibilityNodeFor(list), 2)
+	row = axMustNode(c, row, "the row is described")
+	c.False(row.Focusable)
+	c.False(row.Actions.Has(accessibility.Focus))
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{Node: row.ID, Action: accessibility.Focus}),
+		"a request for the focus is refused")
+	var focus *unison.Panel
+	var count int
+	c.True(screen.Do(func() {
+		focus = wnd.CurrentFocus()
+		count = selections
+	}))
+	c.True(focus == field.AsPanel(), "the field keeps the focus")
+	c.Equal([]int(nil), selectedIndexesOn(screen, list), "and the selection is left alone")
+	c.Equal(0, count)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestListKeyDownReportsOnlyChangedSelections verifies that the arrow, Home and End keys report a new selection only
+// when the selection changed, as a click does, and that they do nothing on an empty list.
+func TestListKeyDownReportsOnlyChangedSelections(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("a", "b", "c")
+	selections := 0
+	l.NewSelectionCallback = func() { selections++ }
+	c.True(l.DefaultKeyDown(unison.KeyDown, mod.None, false))
+	c.Equal([]int{0}, selectedIndexes(l))
+	c.Equal(1, selections)
+	c.True(l.DefaultKeyDown(unison.KeyEnd, mod.None, false))
+	c.Equal([]int{2}, selectedIndexes(l))
+	c.Equal(2, selections)
+	c.True(l.DefaultKeyDown(unison.KeyDown, mod.None, false))
+	c.Equal([]int{2}, selectedIndexes(l))
+	c.Equal(2, selections, "Down at the last row changes nothing")
+	c.True(l.DefaultKeyDown(unison.KeyEnd, mod.None, false))
+	c.Equal(2, selections, "and neither does End there")
+	c.True(l.DefaultKeyDown(unison.KeyHome, mod.None, false))
+	c.Equal([]int{0}, selectedIndexes(l))
+	c.Equal(3, selections)
+	c.True(l.DefaultKeyDown(unison.KeyUp, mod.None, false))
+	c.Equal(3, selections, "Up at the first row changes nothing")
+	empty := newTestList()
+	empty.NewSelectionCallback = func() { selections++ }
+	c.False(empty.DefaultKeyDown(unison.KeyDown, mod.None, false), "nothing to move through")
+	c.False(empty.DefaultKeyDown(unison.KeyUp, mod.None, false))
+	c.False(empty.DefaultKeyDown(unison.KeyHome, mod.None, false))
+	c.False(empty.DefaultKeyDown(unison.KeyEnd, mod.None, false))
+	c.Equal(3, selections)
+	c.Equal(-1, empty.Lead())
 }
 
 // TestListAccessibilityFocusDisplacedByAnOpenMenu verifies that an open menu takes the focus away from a list's

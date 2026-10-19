@@ -1164,8 +1164,8 @@ func TestX11DestroyLeavesQueuedEventsAlone(t *testing.T) {
 }
 
 // TestX11PopupWindowProperties covers the properties a popup window is given: its PID, its type, which is a popup
-// menu's for a menu and a tooltip's for a tooltip, KWin's request to skip the close animation and WM_CLASS, and none of
-// those only a window manager reads.
+// menu's for a menu, a tooltip's for a tooltip and a combo box's for a field's suggestions, KWin's request to skip the
+// close animation and WM_CLASS, and none of those only a window manager reads.
 func TestX11PopupWindowProperties(t *testing.T) {
 	c := check.New(t)
 	server := startX11TestServer(t)
@@ -1176,11 +1176,13 @@ func TestX11PopupWindowProperties(t *testing.T) {
 		popupMenuAtom = x11.Atom(403)
 		skipCloseAtom = x11.Atom(404)
 		tooltipAtom   = x11.Atom(405)
+		comboAtom     = x11.Atom(406)
 	)
 	x11Conn.Atoms.WMPID = pidAtom
 	x11Conn.Atoms.NetWMWindowType = typeAtom
 	x11Conn.Atoms.NetWMWindowTypePopupMenu = popupMenuAtom
 	x11Conn.Atoms.NetWMWindowTypeTooltip = tooltipAtom
+	x11Conn.Atoms.NetWMWindowTypeCombo = comboAtom
 	x11Conn.Atoms.KDENetWMSkipCloseAnimation = skipCloseAtom
 	cardinal := func(v uint32) string {
 		buf := x11.NewWriter(4)
@@ -1194,6 +1196,7 @@ func TestX11PopupWindowProperties(t *testing.T) {
 	}{
 		{name: "menu", kind: WindowKindMenu, windowType: popupMenuAtom},
 		{name: "tooltip", kind: WindowKindTooltip, windowType: tooltipAtom},
+		{name: "dropdown", kind: WindowKindDropdown, windowType: comboAtom},
 	} {
 		popup := &Window{wnd: &apiWindow{}, owner: &Window{}, kind: one.kind}
 		popup.wnd.id = x11TestWindowID

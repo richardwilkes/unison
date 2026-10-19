@@ -852,3 +852,39 @@ func TestFieldAccessoryBorderFollowsTheButton(t *testing.T) {
 	c.Equal(largerBorder-border, largerInsets-insets, "the border grows with the button")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestFieldDropdownWithSuggestionsAccessibility verifies that a field with both a dropdown and suggestions says it is
+// expanded while the rows show, and that collapsing it then hides them, since the dropdown's callbacks run after the
+// field's own description and before its own action handling.
+func TestFieldDropdownWithSuggestionsAccessibility(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var sg *unison.FieldSuggestions[string]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.Accessibility.Name = "Tree"
+			field.InstallDropdown(func() []string { return []string{comboOptionA, comboOptionB} })
+			sg = unison.NewFieldSuggestions[string](field)
+			wnd = newHeadlessWindow(t, "dropdown suggestions", geom.NewRect(10, 10, 300, 150), axColumn(field))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() {
+		wnd.ToFront()
+		wnd.SetFocus(field)
+	}))
+	c.True(screen.Do(func() { sg.SetRows([]string{"Fir", "Pine"}) }))
+	screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.True(node.Expandable)
+	c.True(node.Expanded, "the field is expanded while its rows show")
+	c.True(node.Actions.Has(accessibility.Collapse))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{Node: node.ID, Action: accessibility.Collapse}))
+	var showing bool
+	c.True(screen.Do(func() { showing = sg.Showing() }))
+	c.False(showing, "collapsing the field hides the rows")
+	screen.AccessibilityTree(wnd)
+	c.False(axMustNode(c, screen.AccessibilityNodeFor(field)).Expanded)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

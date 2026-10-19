@@ -73,9 +73,9 @@ command-line usage keep working.
 
 ## What's included
 
-- Widgets: buttons, check boxes, radio buttons, text fields (plain, numeric and combo), labels, links, popup menus,
-  lists, tables with column headers, sorting, in-place editing and drag & drop, sliders, progress bars, scroll panels,
-  separators, tooltips, and color, gradient and font pickers.
+- Widgets: buttons, check boxes, radio buttons, text fields (plain, numeric and combo, with optional suggestion lists),
+  labels, links, popup menus, lists, tables with column headers, sorting, in-place editing and drag & drop, sliders,
+  progress bars, scroll panels, separators, tooltips, and color, gradient and font pickers.
 - Layouts: `FlexLayout`, `FlowLayout`, and a docking system for tool-window style user interfaces.
 - Menus and menu bars, using the global menu bar on macOS, plus configurable key bindings.
 - Message dialogs and file dialogs, using the platform's own where it has them.

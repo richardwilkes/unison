@@ -167,6 +167,9 @@ type HeadlessScreen struct {
 	input   []func()
 	// menuStackOwner is the window whose menu stack is open, or nil. See headlessWindow.menuStackChanged.
 	menuStackOwner *Window
+	// suggestionsOwner is the window whose field suggestions are showing, or nil. See
+	// headlessWindow.suggestionsChanged.
+	suggestionsOwner *Window
 	// recorded is what Errors() reports. It is named for its role rather than for its content, since this file also
 	// calls into the errs package.
 	recorded []error

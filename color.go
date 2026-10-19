@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -24,8 +25,9 @@ import (
 )
 
 var (
-	nameToColor               = make(map[string]Color)
-	colorToName               = make(map[Color]string)
+	nameToColor = make(map[string]Color)
+	colorToName = make(map[Color]string)
+	colorNames  []string
 	_           ColorProvider = Color(0)
 )
 
@@ -981,5 +983,14 @@ var (
 func registerColor(name string, c Color) Color {
 	nameToColor[strings.ToLower(name)] = c
 	colorToName[c] = name
+	colorNames = append(colorNames, name)
 	return c
+}
+
+// ColorNames returns the names of the predefined colors, sorted. ColorDecode accepts each of them, ignoring case, and
+// the transparent color is named "None".
+func ColorNames() []string {
+	names := slices.Clone(colorNames)
+	slices.Sort(names)
+	return names
 }

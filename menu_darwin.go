@@ -156,6 +156,8 @@ func (m *macMenu) Count() int {
 func (m *macMenu) Popup(where geom.Rect, itemIndex int) {
 	if w := ActiveWindow(); w.IsValid() {
 		if mi := m.ItemAtIndex(itemIndex); mi != nil {
+			// A native menu never reaches menu.createPopup, which hides the field suggestions for an in-window one.
+			w.hideSuggestions()
 			frame := w.wnd.view.Frame()
 			where.X += 8
 			where.Y = frame.Height - where.Bottom()

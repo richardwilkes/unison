@@ -725,6 +725,23 @@ func (s *HeadlessScreen) TooltipWindow(w *Window) *Window {
 	return result
 }
 
+// SuggestionsWindow returns the popup window showing the FieldSuggestions of a field in w, or nil if none is showing.
+// Windows() leaves this window out; its content is the panel holding the suggestions' list. w may be a popup window,
+// such as the suggestions window itself, in which case its owner's suggestions window is returned.
+func (s *HeadlessScreen) SuggestionsWindow(w *Window) *Window {
+	var result *Window
+	s.run(func() {
+		owner := w.menuOwner()
+		if owner == nil || owner.suggestions == nil || !owner.suggestions.showing() {
+			return
+		}
+		if popup, _, _ := owner.suggestions.popup(); popup.IsVisible() {
+			result = popup
+		}
+	})
+	return result
+}
+
 // Cursor returns the cursor most recently resolved by any window, or nil if none has been.
 func (s *HeadlessScreen) Cursor() *Cursor {
 	var result *Cursor

@@ -119,7 +119,7 @@ func (l *List[T]) Insert(index int, values ...T) {
 	if index < 0 || index > len(l.rows) {
 		index = len(l.rows)
 	}
-	l.rows = append(l.rows[:index], append(values, l.rows[index:]...)...)
+	l.rows = slices.Insert(l.rows, index, values...)
 	i := l.Selection.LastSet() + 1
 	if i >= index {
 		delta := len(values)
@@ -507,6 +507,10 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 		}
 		return true
 	}
+	if len(l.rows) == 0 {
+		// Nothing to move through.
+		return false
+	}
 	switch keyCode {
 	case KeyUp:
 		var first int
@@ -515,33 +519,29 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 		} else {
 			first = max(l.Selection.FirstSet()-1, 0)
 		}
-		l.Select(mods.ShiftDown(), first)
-		l.setLead(first)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(first))
+		l.selectForKey(mods.ShiftDown(), first)
 	case KeyDown:
-		last := l.Selection.LastSet() + 1
-		if last >= len(l.rows) {
-			last = len(l.rows) - 1
-		}
-		l.Select(mods.ShiftDown(), last)
-		l.setLead(last)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(last))
+		l.selectForKey(mods.ShiftDown(), min(l.Selection.LastSet()+1, len(l.rows)-1))
 	case KeyHome:
-		l.Select(mods.ShiftDown(), 0)
-		l.setLead(0)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(0))
+		l.selectForKey(mods.ShiftDown(), 0)
 	case KeyEnd:
-		l.Select(mods.ShiftDown(), len(l.rows)-1)
-		l.setLead(len(l.rows) - 1)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(len(l.rows) - 1))
+		l.selectForKey(mods.ShiftDown(), len(l.rows)-1)
 	default:
 		return false
 	}
 	return true
+}
+
+// selectForKey moves the selection, extending it when extend is true, and the lead row to index for a key, scrolling
+// the row into view. A change of the selection is reported as a click reports one: only when it actually changed.
+func (l *List[T]) selectForKey(extend bool, index int) {
+	before := l.Selection.Clone()
+	l.Select(extend, index)
+	l.setLead(index)
+	if !l.Selection.Equal(before) {
+		SafeCall(l.NewSelectionCallback)
+	}
+	l.ScrollRectIntoView(l.RowRect(index))
 }
 
 // CanSelectAll returns true if the list's selection can be expanded.
@@ -862,6 +862,7 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 	}
 	name := axLabelText(cell)
 	selected := l.Selection.State(row)
+	focusable := l.Focusable()
 	rowID := b.AddVirtualChild(row, func(n *accessibility.Node) {
 		n.Role = role.ListItem
 		n.Name = name
@@ -871,9 +872,13 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 		n.Selected = selected
 		// The rows are where the keyboard focus within a list is, as they are in a native one: the list reports the
 		// focus it holds on the row the person is on, and an assistive technology asking for the focus to be put on
-		// another row is asking to move to it, which selects it. See PerformAccessibilityAction.
-		n.Focusable = true
-		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView, accessibility.Focus)
+		// another row is asking to move to it, which selects it. See PerformAccessibilityAction. The rows of a list
+		// that cannot take the focus offer none, since a request for it could only take it away from wherever it is.
+		n.Focusable = focusable
+		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView)
+		if focusable {
+			n.Actions = n.Actions.With(accessibility.Focus)
+		}
 		if l.allowMultiple {
 			// A list that holds one row at a time has nothing to add to or take out of: Select on such a list replaces
 			// whatever was selected, so offering to add to the selection would be offering something that quietly does
@@ -1035,7 +1040,12 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 	case accessibility.Focus:
 		// The list is the one tab stop this widget has, so the focus goes there; the row is what the list then reports
 		// it on, which the selection is what decides. Both happen for the same reason a click on the row does both.
-		// The callback is for a selection that actually changed, exactly as it is for Select above.
+		// The callback is for a selection that actually changed, exactly as it is for Select above. A list that cannot
+		// take the focus refuses before anything changes, as its rows are not described as offering it: the window
+		// would answer the request by taking the focus away from whatever holds it.
+		if !l.Focusable() {
+			return false
+		}
 		changed := !l.Selection.State(row) || l.Selection.Count() != 1
 		l.Select(false, row)
 		if changed {

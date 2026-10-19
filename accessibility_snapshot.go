@@ -275,9 +275,9 @@ func (w *Window) buildAccessibilityTree() *accessibility.Tree {
 
 // buildRoot describes the window itself and then its children. They are taken from the fields that hold them rather
 // than from the root panel's child list, so the order an assistive technology reads them in is fixed by what they are —
-// the menus that are open, then the menu bar, then the tooltip, then the content — rather than by the order in which
-// they happened to be inserted. The open menus and the tooltip are each shown in a popup window of their own; the menus
-// are visited newest first, which is their z-order.
+// the menus that are open, then the menu bar, then the tooltip, then a field's suggestions, then the content — rather
+// than by the order in which they happened to be inserted. The open menus, the tooltip and the suggestions are each
+// shown in a popup window of their own; the menus are visited newest first, which is their z-order.
 func (s *axSnapshot) buildRoot() {
 	w := s.window
 	root := w.root
@@ -306,6 +306,13 @@ func (s *axSnapshot) buildRoot() {
 	}
 	if tip := w.tooltipPanel(); tip != nil && w.tooltipWindow.IsVisible() {
 		s.visitPopupContent(tip, node.ID)
+	}
+	if w.suggestions != nil && w.suggestions.showing() {
+		if popup, content, list := w.suggestions.popup(); popup != nil && popup.IsVisible() && content != nil {
+			s.visitPopupContent(content, node.ID)
+			// The list never takes the focus, so its rows must not offer it.
+			axClearCellFocusability(s.tree, axIDFor(list))
+		}
 	}
 	s.visit(root.contentPanel, node.ID, clip)
 	s.settleCaptionFocus()
@@ -1061,9 +1068,9 @@ func axIsScaffolding(node *accessibility.Node) bool {
 }
 
 // resolveName fills in the node's name and label associations, for a node whose widget did not name it outright. The
-// order is: an explicit Accessibility.LabeledBy panel, then the sibling-label convention, then, for static text, the
-// text of the panel and its descendants. Every panel a label association is made to is recorded as a caption; see
-// axSnapshot.recordCaption.
+// order is: an explicit Accessibility.LabeledBy panel, read as a label or else named as a control is, then the
+// sibling-label convention, then, for static text, the text of the panel and its descendants. Every panel a label
+// association is made to is recorded as a caption; see axSnapshot.recordCaption.
 func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 	if !xreflect.IsNil(p.Accessibility.LabeledBy) {
 		if labeler := p.Accessibility.LabeledBy.AsPanel(); labeler != nil {
@@ -1073,6 +1080,11 @@ func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 				// Trimmed exactly as the sibling-label convention below trims it, so that the same "Name:" label is
 				// spoken the same way whether the association was stated outright or merely inferred.
 				node.Name = axTrimLabelText(axLabelText(labeler))
+			}
+			if node.Name == "" {
+				// A labeler that is a control rather than a label, such as the field whose suggestions a group shows,
+				// names the node as it is named itself.
+				node.Name = axControlName(labeler)
 			}
 		}
 	}

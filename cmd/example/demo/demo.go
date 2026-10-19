@@ -511,8 +511,31 @@ func createTextFieldsPanel() *unison.Panel {
 		}
 		return true
 	}
-	createMultiLineTextField("Field 5", "One\nTwo\nThree", panel)
+	// Its own variable, since Field 4's validator captures field.
+	colorField := createTextField("Field 5", "", panel)
+	colorField.Watermark = "Type a CSS color name"
+	suggestions := unison.NewFieldSuggestions[string](colorField)
+	suggestions.ChosenCallback = func(_ int, name string) { colorField.SetText(name) }
+	colorField.ModifiedCallback = func(_, after *unison.FieldState) {
+		suggestions.SetRows(matchingColorNames(after.Text))
+	}
+	createMultiLineTextField("Field 6", "One\nTwo\nThree", panel)
 	return panel
+}
+
+// matchingColorNames returns the predefined color names containing text, ignoring case, or nil for empty text.
+func matchingColorNames(text string) []string {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "" {
+		return nil
+	}
+	var matches []string
+	for _, name := range unison.ColorNames() {
+		if strings.Contains(strings.ToLower(name), text) {
+			matches = append(matches, name)
+		}
+	}
+	return matches
 }
 
 func createTextField(labelText, fieldText string, panel *unison.Panel) *unison.Field {

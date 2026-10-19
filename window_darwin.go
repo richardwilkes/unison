@@ -239,10 +239,12 @@ func macInitWindowCallbacks() {
 }
 
 // macFrameMouseDown is the WindowFrameMouseDownCallback: a press on macWnd's title bar or frame. It lands outside
-// every menu, so the window's open menus close at once rather than only once the press has moved the window.
+// every menu and the field suggestions, so the window's open menus close and its suggestions hide at once rather than
+// only once the press has moved the window.
 func macFrameMouseDown(macWnd cocoa.Window) {
 	if w := macFindWindow(macWnd); w != nil && w.root != nil {
 		w.root.closeMenuStackStoppingAt(nil)
+		w.hideSuggestions()
 	}
 }
 
@@ -380,12 +382,12 @@ func (w *Window) nativeInit() error {
 	return nil
 }
 
-// macInitPopup creates the native window for a popup window, a menu's or a tooltip's: borderless, never key, above
-// every ordinary window, shown without animation and left out of the accessibility hierarchy, its content view
-// answering assistive technologies through the owner's, whose tree describes the popup's content. A tooltip window
-// also ignores mouse events, so that the pointer passes over it to whatever lies beneath, and so does the hit test
-// macCovered makes, which leaves the owner handling the moves made over it. It has no title and does not touch the
-// application appearance the owner has already set.
+// macInitPopup creates the native window for a popup window, which shows a menu, a tooltip or a field's suggestions:
+// borderless, never key, above every ordinary window, shown without animation and left out of the accessibility
+// hierarchy, its content view answering assistive technologies through the owner's, whose tree describes the popup's
+// content. A tooltip window also ignores mouse events, so that the pointer passes over it to whatever lies beneath, and
+// so does the hit test macCovered makes, which leaves the owner handling the moves made over it. It has no title and
+// does not touch the application appearance the owner has already set.
 func (w *Window) macInitPopup() error {
 	nw := cocoa.NewPopupWindow(geom.NewRect(0, 0, 1, 1))
 	if nw == 0 {
@@ -540,8 +542,8 @@ func (w *Window) nativeAcquireFocusAndBringToFront() {
 func (w *Window) nativeCancelMouseCapture() {
 }
 
-// macMenuStackWindow is the window whose open menu stack the monitor installed by nativeMenuStackChanged serves, or nil
-// while none is installed.
+// macMenuStackWindow is the window whose open menu stack or showing field suggestions the monitor installed by
+// macUpdatePopupMonitor serves, or nil while none is installed.
 var macMenuStackWindow *Window
 
 // macInstallMenuStackMonitor and macRemoveMenuStackMonitor are cocoa.InstallMenuStackMonitor and
@@ -552,17 +554,32 @@ var (
 )
 
 // nativeMenuStackChanged watches, while the window's menu stack is open, for the presses that close native menus but
-// leave the window key, and so would otherwise leave its menus open: one on the Dock, on a menu bar extra or in
-// Notification Center, and one on the application's own menu bar, which no event monitor sees and which is reported as
-// the bar's menu begins tracking instead (see cocoa.InstallMenuStackMonitor). One on another application's window is
-// seen too, and closes the menus as it is made rather than once that application's activation takes the key status
-// from the window. A press in the window itself or in one of its popup menu windows is left to their root panels,
-// which close whatever menus it makes obsolete. A change of the active Space closes the menus too, since the popup
-// windows join every Space and would otherwise follow the user to the new one without their owner. A stack opened for
-// another window takes the monitor over, and only the window it serves takes it down.
+// leave the window key, and so would otherwise leave its menus open; see macUpdatePopupMonitor.
 func (w *Window) nativeMenuStackChanged(open bool) {
-	if !open {
-		if macMenuStackWindow == w {
+	w.macUpdatePopupMonitor(open)
+}
+
+// nativeSuggestionsChanged watches, while the window's field suggestions are showing, for the same presses
+// nativeMenuStackChanged watches for, which would otherwise leave the suggestions up; see macUpdatePopupMonitor.
+func (w *Window) nativeSuggestionsChanged(showing bool) {
+	w.macUpdatePopupMonitor(showing)
+}
+
+// macUpdatePopupMonitor installs the monitor for the window's open menu stack or showing field suggestions when needed
+// is true, and takes it down when needed is false and neither is left to serve. The monitor watches for the presses
+// that close native menus but leave the window key, and so would otherwise leave its menus open and its suggestions
+// up: one on the Dock, on a menu bar extra or in Notification Center, and one on the application's own menu bar, which
+// no event monitor sees and which is reported as the bar's menu begins tracking instead (see
+// cocoa.InstallMenuStackMonitor). One on another application's window is seen too, and closes the menus and hides the
+// suggestions as it is made rather than once that application's activation takes the key status from the window. A
+// press in the window itself or in one of its popup windows is left to their root panels, which close whatever menus
+// it makes obsolete and hide the suggestions when it is outside their field. A change of the active Space closes the
+// menus and hides the suggestions too, since the popup windows join every Space and would otherwise follow the user to
+// the new one without their owner. A stack opened, or suggestions shown, for another window take the monitor over, and
+// only the window it serves takes it down.
+func (w *Window) macUpdatePopupMonitor(needed bool) {
+	if !needed {
+		if macMenuStackWindow == w && !w.macPopupMonitorWanted() {
 			macMenuStackWindow = nil
 			macRemoveMenuStackMonitor()
 		}
@@ -572,13 +589,19 @@ func (w *Window) nativeMenuStackChanged(open bool) {
 	macInstallMenuStackMonitor(func(macWnd cocoa.Window) {
 		if !w.macPressWithinMenuStack(macWnd) && w.root != nil {
 			w.root.closeMenuStackStoppingAt(nil)
+			w.hideSuggestions()
 		}
 	})
 }
 
-// macPressWithinMenuStack returns true if a press in macWnd, as the menu stack monitor reports it, is one the root
-// panels of w's menu stack handle: one in w itself or in one of its popup menu windows. A press in any other window, or
-// in none of the application's (0), is not.
+// macPopupMonitorWanted returns true if the window has menus open or field suggestions showing.
+func (w *Window) macPopupMonitorWanted() bool {
+	return (w.root != nil && len(w.root.openMenuPanels) != 0) || w.suggestions != nil
+}
+
+// macPressWithinMenuStack returns true if a press in macWnd, as the monitor reports it, is one the root panels of w and
+// its popup windows handle: one in w itself or in one of its popup windows. A press in any other window, or in none of
+// the application's (0), is not.
 func (w *Window) macPressWithinMenuStack(macWnd cocoa.Window) bool {
 	if macWnd == 0 {
 		return false

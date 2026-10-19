@@ -365,7 +365,7 @@ func TestW32WindowClass(t *testing.T) {
 }
 
 // TestW32NonClientMouseDownClosesMenus verifies that a press on a window's title bar or frame closes the window's open
-// menus, and that a window without a root panel tolerates one.
+// menus and hides its field suggestions, and that a window without a root panel tolerates one.
 func TestW32NonClientMouseDownClosesMenus(t *testing.T) {
 	c := check.New(t)
 	owner := &Window{wnd: &apiWindow{}}
@@ -373,9 +373,12 @@ func TestW32NonClientMouseDownClosesMenus(t *testing.T) {
 	mp := newTestMenuPanel(0, 0, 100, 100)
 	newTestPopupWindow(owner, mp)
 	owner.root.insertMenu(mp)
+	host := &fakeSuggestionsHost{shown: true}
+	owner.suggestions = host
 	owner.w32NonClientMouseDown()
 	c.Equal(0, len(owner.root.openMenuPanels))
 	c.Nil(mp.menu.popupPanel)
+	c.False(host.shown, "the suggestions are hidden")
 	(&Window{wnd: &apiWindow{}}).w32NonClientMouseDown()
 }
 

@@ -94,11 +94,19 @@ func (p *Panel) ShowContextMenu(where geom.Point) bool {
 		menu.Dispose()
 		return false
 	}
-	// A tooltip showing, or about to show, would be drawn over the menu.
-	wnd.ClearTooltip()
-	// Worked out before anything is drawn, since drawing may detach the panel: a Table row that builds a cell afresh on
-	// every call has the newest one adopted as the focused cell as it is drawn.
+	// The menu opens for the top-level window. Worked out before anything is drawn, since drawing may detach the panel:
+	// a Table row that builds a cell afresh on every call has the newest one adopted as the focused cell as it is drawn.
+	// The panel may be in a popup window of that window's, such as the one showing a field's suggestions, whose root
+	// space is not the one the menu is placed in, and which hiding the suggestions below disposes of.
+	owner := wnd.menuOwner()
 	at := geom.Rect{Point: p.PointToRoot(where), Size: geom.Size{Width: 1, Height: 1}}
+	if wnd != owner {
+		at.Point = owner.apiPointFromScreen(wnd.apiPointToScreen(at.Point))
+	}
+	// A tooltip showing, or about to show, would be drawn over the menu, and so would the field suggestions, which a
+	// native menu takes down here since it never reaches menu.createPopup. Both belong to the top-level window.
+	owner.ClearTooltip()
+	owner.hideSuggestions()
 	// A native menu blocks drawing until it is dismissed, so what the gesture changed (a right-click selecting a row)
 	// must reach the screen first.
 	wnd.FlushDrawing()

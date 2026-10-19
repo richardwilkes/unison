@@ -47,8 +47,8 @@ var (
 		style: w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC,
 		icon:  true,
 	}
-	// w32PopupWndClass is the class of the popup windows, a menu's or a tooltip's: no icon, and the drop shadow the
-	// system's menus and tooltips have.
+	// w32PopupWndClass is the class of the popup windows, which show menus, tooltips and field suggestions: no icon,
+	// and the drop shadow the system's menus and tooltips have.
 	w32PopupWndClass = w32WndClass{
 		name:  "UnisonPopup",
 		style: w32.CS_HREDRAW | w32.CS_VREDRAW | w32.CS_OWNDC | w32.CS_DROPSHADOW,
@@ -624,7 +624,7 @@ func w32WndProc(hWnd windows.HWND, uMsg uint32, wParam w32.WPARAM, lParam w32.LP
 // window's first snapshot and creates its adapter, all of it before this returns, since the request has nothing else to
 // be answered from.
 //
-// A popup window answers with its owner's fragment root. The nodes of its menu or tooltip live in the owner's tree, in
+// A popup window answers with its owner's fragment root. The nodes of what it shows live in the owner's tree, in
 // the owner's coordinates and marked as overlays, so UI Automation's ElementFromPoint over a popup menu window
 // hit-tests the owner's tree with the owner's geometry and finds the item under the point. Nothing detects UI
 // Automation rejecting a root hosted by another window; should that turn out to happen, a popup's request would have to
@@ -675,11 +675,13 @@ func (w *Window) w32CaptureLost(cursorInContentArea bool) {
 	}
 }
 
-// w32NonClientMouseDown handles a press on the window's title bar or frame. It lands outside every menu, so the
-// window's open menus close at once rather than only once the press has moved the window.
+// w32NonClientMouseDown handles a press on the window's title bar or frame. It lands outside every menu and the field
+// suggestions, so the window's open menus close and its suggestions hide at once rather than only once the press has
+// moved the window.
 func (w *Window) w32NonClientMouseDown() {
 	if w.root != nil {
 		w.root.closeMenuStackStoppingAt(nil)
+		w.hideSuggestions()
 	}
 }
 
@@ -750,10 +752,10 @@ func (w *Window) w32LeaveUnreported() bool {
 	return w.IsValid() && !w.wnd.mouseCaptured && !w.wnd.mouseTracked
 }
 
-// w32MouseActivate answers WM_MOUSEACTIVATE, reporting whether it answered at all. A click on a popup window, a menu's
-// or a tooltip's, must not activate it, since that would take the activation, and with it the keys that drive the
-// menus, from its owner; a tooltip window, being transparent to hit testing, never receives one in any case. Every
-// other window leaves the message to DefWindowProc.
+// w32MouseActivate answers WM_MOUSEACTIVATE, reporting whether it answered at all. A click on a popup window, whatever
+// it shows, must not activate it, since that would take the activation, and with it the keys that drive the menus or
+// the field suggestions, from its owner; a tooltip window, being transparent to hit testing, never receives one in any
+// case. Every other window leaves the message to DefWindowProc.
 func (w *Window) w32MouseActivate() (result uintptr, handled bool) {
 	if w.isPopup() {
 		return w32.MA_NOACTIVATE, true
@@ -1220,6 +1222,10 @@ func (w *Window) nativeCancelMouseCapture() {
 
 // nativeMenuStackChanged is a no-op: a platform may grab the pointer while a menu stack is open, but this one need not.
 func (w *Window) nativeMenuStackChanged(_ bool) {
+}
+
+// nativeSuggestionsChanged is a no-op, as nativeMenuStackChanged is.
+func (w *Window) nativeSuggestionsChanged(_ bool) {
 }
 
 // nativeUpdateFrameTheme asks DWM to draw the system frame (the title bar and its buttons) to match the current dark
