@@ -127,6 +127,7 @@ type Atoms struct {
 	NetWMStateMaximizedHorz    Atom
 	NetWMStateMaximizedVert    Atom
 	NetWMWindowType            Atom
+	NetWMWindowTypeCombo       Atom
 	NetWMWindowTypeDialog      Atom
 	NetWMWindowTypeMenu        Atom
 	NetWMWindowTypeNormal      Atom
@@ -189,6 +190,7 @@ func (a *Atoms) init(c *Conn) error {
 		{&a.NetWMStateMaximizedHorz, "_NET_WM_STATE_MAXIMIZED_HORZ"},
 		{&a.NetWMStateMaximizedVert, "_NET_WM_STATE_MAXIMIZED_VERT"},
 		{&a.NetWMWindowType, "_NET_WM_WINDOW_TYPE"},
+		{&a.NetWMWindowTypeCombo, "_NET_WM_WINDOW_TYPE_COMBO"},
 		{&a.NetWMWindowTypeDialog, "_NET_WM_WINDOW_TYPE_DIALOG"},
 		{&a.NetWMWindowTypeMenu, "_NET_WM_WINDOW_TYPE_MENU"},
 		{&a.NetWMWindowTypeNormal, "_NET_WM_WINDOW_TYPE_NORMAL"},

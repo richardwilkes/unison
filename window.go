@@ -54,6 +54,7 @@ const (
 	WindowKindDialog
 	WindowKindMenu
 	WindowKindTooltip
+	WindowKindDropdown
 )
 
 // Window holds window information.
@@ -82,6 +83,8 @@ type Window struct {
 	root                 *rootPanel
 	owner                *Window // the top-level window a popup window belongs to; see menuOwner
 	tooltipWindow        *Window // the popup window this top-level window shows its tooltips in; see showTooltip
+	suggestions          fieldSuggestionsHost
+	focusLeaving         *Panel // the panel whose LostFocusCallback is running, which still holds the focus; see loseFocus
 	ax                   *windowAccessibility
 	focus                *Panel
 	cursor               *Cursor
@@ -210,7 +213,8 @@ func TitleIconsWindowOption(images []*Image) WindowOption {
 }
 
 // newPopupWindow creates a hidden, borderless window owned by owner's top-level window: one level of its menu stack for
-// WindowKindMenu, or its tooltip for WindowKindTooltip. It never takes the focus or renders through OpenGL.
+// WindowKindMenu, its tooltip for WindowKindTooltip, or the suggestions of one of its fields for WindowKindDropdown. It
+// never takes the focus or renders through OpenGL.
 func newPopupWindow(owner *Window, title string, kind WindowKind) (*Window, error) {
 	return NewWindow(title, WindowKindWindowOption(kind), TransientWindowOption(), UndecoratedWindowOption(),
 		NotResizableWindowOption(), TitleIconsWindowOption(nil), popupWindowOption(owner))
@@ -245,7 +249,7 @@ func (w *Window) menuOwner() *Window {
 	return w
 }
 
-// isPopup returns true if this is one of the toolkit's popup windows: a menu's or a tooltip's.
+// isPopup returns true if this is one of the toolkit's popup windows: a menu's, a tooltip's or a field's suggestions'.
 func (w *Window) isPopup() bool {
 	return w != nil && w.owner != nil
 }
@@ -279,8 +283,8 @@ func firstVisibleTopLevelWindow() *Window {
 	return nil
 }
 
-// WindowCount returns the number of windows that are open. The toolkit's own popup windows, for menus and tooltips, are
-// not counted.
+// WindowCount returns the number of windows that are open. The toolkit's own popup windows, which show menus, tooltips
+// and field suggestions, are not counted.
 func WindowCount() int {
 	count := 0
 	for _, w := range windowList {
@@ -291,8 +295,8 @@ func WindowCount() int {
 	return count
 }
 
-// Windows returns a slice containing the current set of open windows. The toolkit's own popup windows, for menus and
-// tooltips, are not listed.
+// Windows returns a slice containing the current set of open windows. The toolkit's own popup windows, which show
+// menus, tooltips and field suggestions, are not listed.
 func Windows() []*Window {
 	list := make([]*Window, 0, len(windowList))
 	for _, w := range windowList {
@@ -393,6 +397,7 @@ func (w *Window) UndoManager() *UndoManager {
 
 func (w *Window) moved() {
 	w.forgetTooltip()
+	w.hideSuggestions()
 	w.lastContentRect = w.ContentRect()
 	w.root.preMoved(w)
 	SafeCall(w.MovedCallback)
@@ -400,6 +405,7 @@ func (w *Window) moved() {
 
 func (w *Window) resized() {
 	w.forgetTooltip()
+	w.hideSuggestions()
 	SafeCall(w.ResizedCallback)
 	w.ValidateLayout()
 }
@@ -447,6 +453,7 @@ func (w *Window) lostFocus() {
 	// Forgotten rather than only taken down, so that the focus coming back with the pointer still over the same panel,
 	// as after a switch to another application and back, shows its tooltip again.
 	w.forgetTooltip()
+	w.hideSuggestions()
 	if w.focus != nil {
 		w.focus.MarkForRedraw()
 	}
@@ -558,6 +565,7 @@ func (w *Window) AttemptClose() bool {
 func (w *Window) Dispose() {
 	if w.root != nil {
 		w.ClearTooltip()
+		w.hideSuggestions()
 	}
 	if w.isTooltipWindow() && w.owner.tooltipWindow == w {
 		// Disposed of on its own, as by a close request from outside the toolkit, the window takes its owner's tooltip
@@ -911,7 +919,8 @@ func (w *Window) Focus() *Panel {
 
 // SetFocus sets the keyboard focus to the specified target. A target that cannot take the focus hands it to the first
 // panel within it that can, and the focus is removed if there is none. A disabled target that can take the focus (see
-// SetFocusForReading) hands it to the first tab stop within it, if there is one.
+// SetFocusForReading) hands it to the first tab stop within it, if there is one. The panel losing the focus holds it
+// while its LostFocusCallback runs; a callback that moves the focus elsewhere has that move stand instead of this one.
 func (w *Window) SetFocus(target Paneler) {
 	w.setFocus(target, false)
 }
@@ -942,8 +951,8 @@ func (w *Window) setFocus(target Paneler, exact bool) {
 			}
 		}
 		if !newFocus.Is(w.focus) {
-			if w.focus != nil {
-				SafeCall(oldFocus.LostFocusCallback)
+			if w.focus != nil && !w.loseFocus() {
+				return
 			}
 			w.focus = newFocus
 			if newFocus != nil {
@@ -958,10 +967,26 @@ func (w *Window) setFocus(target Paneler, exact bool) {
 	}
 }
 
+// loseFocus runs the LostFocusCallback of the panel holding the focus, which keeps it while the callback runs, and
+// reports whether the focus is still there afterwards. A callback that moves the focus itself re-enters setFocus or
+// removeFocus, which run no callback for the panel already losing the focus and carry the move out, and the caller then
+// leaves that move standing rather than running the callback again or moving the focus on from where it was put.
+func (w *Window) loseFocus() bool {
+	oldFocus := w.focus
+	if w.focusLeaving != oldFocus {
+		w.focusLeaving = oldFocus
+		SafeCall(oldFocus.LostFocusCallback)
+		w.focusLeaving = nil
+	}
+	return w.focus == oldFocus
+}
+
 func (w *Window) removeFocus() {
 	oldFocus := w.focus
 	if oldFocus != nil {
-		SafeCall(oldFocus.LostFocusCallback)
+		if !w.loseFocus() {
+			return
+		}
 		w.focus = nil
 		w.notifyOfFocusChangeInHierarchy(oldFocus, nil)
 		// The focus going nowhere has to be described as surely as it moving does. See Window.axMarkForPublish.
@@ -1155,6 +1180,7 @@ func (w *Window) Hide() {
 		// Forgotten here rather than left to the platform, which need not report the pointer leaving a window that goes
 		// off the screen, so that the tooltip shows again once the window is back with the pointer over the same panel.
 		w.forgetTooltip()
+		w.hideSuggestions()
 		if w.root != nil {
 			w.root.closeMenuStackStoppingAt(nil)
 		}
@@ -1221,6 +1247,7 @@ func (w *Window) Minimize() {
 	if w.IsValid() {
 		// As in Hide.
 		w.forgetTooltip()
+		w.hideSuggestions()
 		if w.root != nil {
 			w.root.closeMenuStackStoppingAt(nil)
 		}
@@ -1285,6 +1312,9 @@ func (w *Window) Draw(c *Canvas) {
 	if w.root != nil {
 		SafeCall(func() {
 			w.root.ValidateLayout()
+			if w.suggestions != nil && w.suggestions.anchorLost() {
+				w.hideSuggestions()
+			}
 			r := w.LocalContentRect()
 			if !w.transparent {
 				paint := ThemeSurface.Paint(c, r, paintstyle.Fill)
@@ -1344,8 +1374,8 @@ func (w *Window) draw() {
 				// itself for redraw while being described is simply drawn again on the next pass, exactly as one that
 				// does it from its DrawCallback is.
 				//
-				// A popup window, a menu's or a tooltip's, is described as part of its owner, which does not repaint
-				// when the popup does, so the owner is published instead.
+				// A popup window, which shows a menu, a tooltip or a field's suggestions, is described as part of its
+				// owner, which does not repaint when the popup does, so the owner is published instead.
 				if w.isPopup() {
 					if w.owner.IsVisible() {
 						w.owner.publishAccessibility()
@@ -1492,11 +1522,11 @@ func (w *Window) updateTooltip(target *Panel, where geom.Point) {
 		}
 		target = target.parent
 	}
-	// No tooltip is shown while menus are open, wherever the pointer is, since the tooltip window would sit above the
-	// menu windows, nor in a window without the focus, and neither records the one asked for: were it remembered, the
-	// mouseEnter a focus gain makes, or the next move once the menus have closed, would find it unchanged and never
-	// show it.
-	if !w.Focused() || menusOpen() {
+	// No tooltip is shown while menus are open, wherever the pointer is, or while a field's suggestions are showing,
+	// since the tooltip window would sit above their windows, nor in a window without the focus, and none of these
+	// records the one asked for: were it remembered, the mouseEnter a focus gain makes, or the next move once the menus
+	// or suggestions have closed, would find it unchanged and never show it.
+	if !w.Focused() || menusOpen() || w.suggestions != nil {
 		tip = nil
 	}
 	if w.lastTooltip == nil && tip == nil {
@@ -1595,6 +1625,13 @@ func (w *Window) hideTooltip() {
 	delete(redrawSet, w.tooltipWindow)
 	// The tooltip is described as part of this window, which does not repaint for its going.
 	w.axMarkForPublish()
+}
+
+// hideSuggestions takes down the field suggestions showing for this window, if any.
+func (w *Window) hideSuggestions() {
+	if w.suggestions != nil {
+		w.suggestions.hide()
+	}
 }
 
 // UpdateCursorNow causes the cursor to be updated as if the mouse had moved.

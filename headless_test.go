@@ -1690,6 +1690,49 @@ func TestHeadlessTooltipWindow(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestHeadlessSuggestionsWindow verifies that SuggestionsWindow finds the popup window showing a field's suggestions,
+// which Windows() leaves out, from the field's window or from the popup itself, and nothing once they are hidden.
+func TestHeadlessSuggestionsWindow(t *testing.T) {
+	c := check.New(t)
+	var wnd *unison.Window
+	var field *unison.Field
+	var sg *unison.FieldSuggestions[string]
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			sg = unison.NewFieldSuggestions[string](field)
+			wnd = newHeadlessWindow(t, "suggestions", geom.NewRect(10, 10, 300, 200), axColumn(field))
+			if wnd != nil {
+				wnd.ToFront()
+				wnd.SetFocus(field)
+			}
+		}))
+	c.NotNil(wnd)
+	c.Nil(screen.SuggestionsWindow(wnd), "nothing is showing yet")
+	c.Nil(screen.SuggestionsWindow(nil))
+
+	c.True(screen.Do(func() { sg.SetRows([]string{"Fir", "Pine"}) }))
+	popup := screen.SuggestionsWindow(wnd)
+	c.NotNil(popup, "setting rows should have shown them")
+	var holdsList, listed bool
+	screen.Do(func() {
+		content := popup.Content()
+		for p := sg.List().AsPanel(); p != nil; p = p.Parent() {
+			if p == content {
+				holdsList = true
+			}
+		}
+		listed = slices.Contains(unison.Windows(), popup)
+	})
+	c.True(holdsList, "the popup window's content holds the list")
+	c.False(listed, "Windows() leaves the suggestions window out")
+	c.True(screen.SuggestionsWindow(popup) == popup, "the popup finds itself through its owner")
+
+	screen.Do(func() { sg.Hide() })
+	c.Nil(screen.SuggestionsWindow(wnd), "hiding the rows takes the window down")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestHeadlessToFrontCoalescesWithinCallback verifies that the activations asked for during one callback collapse into
 // the last one, performed once the callback is over: the window fronted first never receives the focus, and the
 // active window reported during the callback is already the one about to be activated.

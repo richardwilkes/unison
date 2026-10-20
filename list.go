@@ -53,10 +53,13 @@ type ListTheme struct {
 type List[T any] struct {
 	DoubleClickCallback  func()
 	NewSelectionCallback func()
-	Factory              CellFactory
-	Selection            *bitset.BitSet
-	savedSelection       *bitset.BitSet
-	rows                 []T
+	// rowsChangedCallback, if set, is called after rows are added, replaced or removed, so that what holds the list, as
+	// FieldSuggestions does, learns of changes made through the list itself.
+	rowsChangedCallback func()
+	Factory             CellFactory
+	Selection           *bitset.BitSet
+	savedSelection      *bitset.BitSet
+	rows                []T
 	ListTheme
 	Panel
 	anchor            int
@@ -111,7 +114,7 @@ func (l *List[T]) DataAtIndex(index int) T {
 // Append values to the list of items.
 func (l *List[T]) Append(values ...T) {
 	l.rows = append(l.rows, values...)
-	l.MarkForLayoutAndRedraw()
+	l.rowsChanged()
 }
 
 // Insert values at the specified index.
@@ -119,98 +122,118 @@ func (l *List[T]) Insert(index int, values ...T) {
 	if index < 0 || index > len(l.rows) {
 		index = len(l.rows)
 	}
-	l.rows = append(l.rows[:index], append(values, l.rows[index:]...)...)
-	i := l.Selection.LastSet() + 1
-	if i >= index {
-		delta := len(values)
-		for {
-			if i = l.Selection.PreviousSet(i); i == -1 || i < index {
-				break
-			}
-			l.Selection.Set(i + delta)
-			l.Selection.Clear(i)
-		}
+	l.rows = slices.Insert(l.rows, index, values...)
+	count := len(values)
+	for _, sel := range l.selections() {
+		shiftSelectionUp(sel, index, count)
 	}
 	if l.anchor >= index {
-		l.anchor += len(values)
+		l.anchor += count
 	}
 	if l.lead >= index {
-		l.lead += len(values)
+		l.lead += count
 	}
+	if l.lastSel >= index {
+		l.lastSel += count
+	}
+	l.rowsChanged()
+}
+
+// rowsChanged marks the list for layout and redraw and tells the rowsChangedCallback, if set.
+func (l *List[T]) rowsChanged() {
 	l.MarkForLayoutAndRedraw()
+	if l.rowsChangedCallback != nil {
+		l.rowsChangedCallback()
+	}
+}
+
+// selections returns the selection and, while a press is in progress, the one saved at the press, both of which have to
+// follow the rows.
+func (l *List[T]) selections() []*bitset.BitSet {
+	if l.savedSelection == nil {
+		return []*bitset.BitSet{l.Selection}
+	}
+	return []*bitset.BitSet{l.Selection, l.savedSelection}
+}
+
+// shiftSelectionUp moves the set bits of sel at or past index up by count, for rows inserted there.
+func shiftSelectionUp(sel *bitset.BitSet, index, count int) {
+	i := sel.LastSet() + 1
+	if count <= 0 || i < index {
+		return
+	}
+	for {
+		if i = sel.PreviousSet(i); i == -1 || i < index {
+			return
+		}
+		sel.Set(i + count)
+		sel.Clear(i)
+	}
+}
+
+// shiftSelectionDown clears the bits of sel from from to to, inclusive, and moves those past to down by as many, for
+// rows removed there.
+func shiftSelectionDown(sel *bitset.BitSet, from, to int) {
+	sel.ClearRange(from, to)
+	delta := to - from + 1
+	for {
+		if from = sel.NextSet(from); from == -1 {
+			return
+		}
+		sel.Set(from - delta)
+		sel.Clear(from)
+	}
+}
+
+// rowIndexAfterRemoval returns index once the rows from from to to, inclusive, are gone: -1 for one of them, moved down
+// for one past them, and unchanged otherwise, -1 included.
+func rowIndexAfterRemoval(index, from, to int) int {
+	switch {
+	case index >= from && index <= to:
+		return -1
+	case index > to:
+		return index - (to - from + 1)
+	default:
+		return index
+	}
 }
 
 // Replace the value at the specified index.
 func (l *List[T]) Replace(index int, value T) {
 	if index >= 0 && index < len(l.rows) {
 		l.rows[index] = value
-		l.MarkForLayoutAndRedraw()
+		l.rowsChanged()
 	}
 }
 
 // Clear the list of items.
 func (l *List[T]) Clear() {
 	l.rows = nil
-	l.Selection.Reset()
+	for _, sel := range l.selections() {
+		sel.Reset()
+	}
 	l.anchor = -1
 	l.lead = -1
-	l.MarkForLayoutAndRedraw()
+	l.lastSel = -1
+	l.rowsChanged()
 }
 
 // Remove the item at the specified index.
 func (l *List[T]) Remove(index int) {
-	if index >= 0 && index < len(l.rows) {
-		l.rows = slices.Delete(l.rows, index, index+1)
-		l.Selection.Clear(index)
-		switch {
-		case l.anchor == index:
-			l.anchor = -1
-		case l.anchor > index:
-			l.anchor--
-		}
-		switch {
-		case l.lead == index:
-			l.lead = -1
-		case l.lead > index:
-			l.lead--
-		}
-		for {
-			if index = l.Selection.NextSet(index); index == -1 {
-				break
-			}
-			l.Selection.Set(index - 1)
-			l.Selection.Clear(index)
-		}
-		l.MarkForLayoutAndRedraw()
-	}
+	l.RemoveRange(index, index)
 }
 
 // RemoveRange removes the items at the specified index range, inclusive.
 func (l *List[T]) RemoveRange(from, to int) {
 	if from >= 0 && from < len(l.rows) && to >= from && to < len(l.rows) {
 		l.rows = slices.Delete(l.rows, from, to+1)
-		l.Selection.ClearRange(from, to)
-		delta := to - from + 1
-		switch {
-		case l.anchor >= from && l.anchor <= to:
-			l.anchor = -1
-		case l.anchor > to:
-			l.anchor -= delta
+		for _, sel := range l.selections() {
+			shiftSelectionDown(sel, from, to)
 		}
-		switch {
-		case l.lead >= from && l.lead <= to:
-			l.lead = -1
-		case l.lead > to:
-			l.lead -= delta
-		}
-		for {
-			if from = l.Selection.NextSet(from); from == -1 {
-				break
-			}
-			l.Selection.Set(from - delta)
-			l.Selection.Clear(from)
-		}
-		l.MarkForLayoutAndRedraw()
+		l.anchor = rowIndexAfterRemoval(l.anchor, from, to)
+		l.lead = rowIndexAfterRemoval(l.lead, from, to)
+		l.lastSel = rowIndexAfterRemoval(l.lastSel, from, to)
+		l.rowsChanged()
 	}
 }
 
@@ -507,6 +530,10 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 		}
 		return true
 	}
+	if len(l.rows) == 0 {
+		// Nothing to move through.
+		return false
+	}
 	switch keyCode {
 	case KeyUp:
 		var first int
@@ -515,33 +542,29 @@ func (l *List[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, _repeat bo
 		} else {
 			first = max(l.Selection.FirstSet()-1, 0)
 		}
-		l.Select(mods.ShiftDown(), first)
-		l.setLead(first)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(first))
+		l.selectForKey(mods.ShiftDown(), first)
 	case KeyDown:
-		last := l.Selection.LastSet() + 1
-		if last >= len(l.rows) {
-			last = len(l.rows) - 1
-		}
-		l.Select(mods.ShiftDown(), last)
-		l.setLead(last)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(last))
+		l.selectForKey(mods.ShiftDown(), min(l.Selection.LastSet()+1, len(l.rows)-1))
 	case KeyHome:
-		l.Select(mods.ShiftDown(), 0)
-		l.setLead(0)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(0))
+		l.selectForKey(mods.ShiftDown(), 0)
 	case KeyEnd:
-		l.Select(mods.ShiftDown(), len(l.rows)-1)
-		l.setLead(len(l.rows) - 1)
-		SafeCall(l.NewSelectionCallback)
-		l.ScrollRectIntoView(l.RowRect(len(l.rows) - 1))
+		l.selectForKey(mods.ShiftDown(), len(l.rows)-1)
 	default:
 		return false
 	}
 	return true
+}
+
+// selectForKey moves the selection, extending it when extend is true, and the lead row to index for a key, scrolling
+// the row into view. A change of the selection is reported as a click reports one: only when it actually changed.
+func (l *List[T]) selectForKey(extend bool, index int) {
+	before := l.Selection.Clone()
+	l.Select(extend, index)
+	l.setLead(index)
+	if !l.Selection.Equal(before) {
+		SafeCall(l.NewSelectionCallback)
+	}
+	l.ScrollRectIntoView(l.RowRect(index))
 }
 
 // CanSelectAll returns true if the list's selection can be expanded.
@@ -862,6 +885,7 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 	}
 	name := axLabelText(cell)
 	selected := l.Selection.State(row)
+	focusable := l.Focusable()
 	rowID := b.AddVirtualChild(row, func(n *accessibility.Node) {
 		n.Role = role.ListItem
 		n.Name = name
@@ -871,9 +895,13 @@ func (l *List[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, cel
 		n.Selected = selected
 		// The rows are where the keyboard focus within a list is, as they are in a native one: the list reports the
 		// focus it holds on the row the person is on, and an assistive technology asking for the focus to be put on
-		// another row is asking to move to it, which selects it. See PerformAccessibilityAction.
-		n.Focusable = true
-		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView, accessibility.Focus)
+		// another row is asking to move to it, which selects it. See PerformAccessibilityAction. The rows of a list
+		// that cannot take the focus offer none, since a request for it could only take it away from wherever it is.
+		n.Focusable = focusable
+		n.Actions = n.Actions.With(accessibility.Select, accessibility.ScrollIntoView)
+		if focusable {
+			n.Actions = n.Actions.With(accessibility.Focus)
+		}
 		if l.allowMultiple {
 			// A list that holds one row at a time has nothing to add to or take out of: Select on such a list replaces
 			// whatever was selected, so offering to add to the selection would be offering something that quietly does
@@ -1035,7 +1063,12 @@ func (l *List[T]) PerformAccessibilityAction(req accessibility.ActionRequest) bo
 	case accessibility.Focus:
 		// The list is the one tab stop this widget has, so the focus goes there; the row is what the list then reports
 		// it on, which the selection is what decides. Both happen for the same reason a click on the row does both.
-		// The callback is for a selection that actually changed, exactly as it is for Select above.
+		// The callback is for a selection that actually changed, exactly as it is for Select above. A list that cannot
+		// take the focus refuses before anything changes, as its rows are not described as offering it: the window
+		// would answer the request by taking the focus away from whatever holds it.
+		if !l.Focusable() {
+			return false
+		}
 		changed := !l.Selection.State(row) || l.Selection.Count() != 1
 		l.Select(false, row)
 		if changed {

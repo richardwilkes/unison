@@ -194,7 +194,8 @@ func (p *rootPanel) preKeyUp(_ *Window, _ KeyCode, _ mod.Modifiers) bool {
 // the one it shows, except that one on an item whose sub-menu is open leaves that sub-menu up, since the item would
 // only open it again. A press that reached any other window landed outside every menu, so it closes them all, except
 // that one on a title of the menu bar is left to the title, which closes its own menu or opens another; closing here
-// would have the menu torn down and built again. The press is never consumed, so it still reaches the panel under it.
+// would have the menu torn down and built again. A press that reached any window but a popup also hides that window's
+// field suggestions, unless it is on their field. The press is never consumed, so it still reaches the panel under it.
 func (p *rootPanel) preMouseDown(wnd *Window, where geom.Point) bool {
 	if wnd.isPopup() {
 		if p.contentPanel == nil || wnd.owner.root == nil {
@@ -208,6 +209,9 @@ func (p *rootPanel) preMouseDown(wnd *Window, where geom.Point) bool {
 			SafeCall(func() { wnd.owner.root.closeMenuStackStoppingAt(stopAt) })
 		}
 		return false
+	}
+	if wnd != nil && wnd.suggestions != nil && !wnd.suggestions.anchorContains(where) {
+		SafeCall(wnd.suggestions.hide)
 	}
 	if mi := p.menuItemAt(where); mi != nil && mi.subMenu != nil && mi.menu == p.menuBar {
 		return false

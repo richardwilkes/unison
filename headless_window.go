@@ -192,12 +192,28 @@ func (hw *headlessWindow) menuStackChanged(open bool) {
 	}
 }
 
+// suggestionsChanged records whether the window's field suggestions are showing, so that a press outside the window
+// hides them (see closeMenuStackOutside), as the platforms' event monitors and pointer grabs do for an open menu stack.
+func (hw *headlessWindow) suggestionsChanged(showing bool) {
+	hs := hw.hs
+	switch {
+	case showing:
+		hs.suggestionsOwner = hw.w
+	case hs.suggestionsOwner == hw.w:
+		hs.suggestionsOwner = nil
+	}
+}
+
 // closeMenuStackOutside closes the open menu stack for a press on target, or on no window when target is nil, unless
-// target is the stack's owner or one of its popup menu windows, whose root panels handle the press themselves. The
-// press is delivered afterwards, as it is on macOS.
+// target is the stack's owner or one of its popup menu windows, whose root panels handle the press themselves, and
+// hides the field suggestions showing for any window but target's top-level window the same way. The press is
+// delivered afterwards, as it is on macOS.
 func (s *headlessState) closeMenuStackOutside(target *Window) {
 	if owner := s.menuStackOwner; owner != nil && target.menuOwner() != owner && owner.root != nil {
 		owner.root.closeMenuStackStoppingAt(nil)
+	}
+	if owner := s.suggestionsOwner; owner != nil && target.menuOwner() != owner {
+		owner.hideSuggestions()
 	}
 }
 
@@ -451,8 +467,9 @@ func (s *headlessState) raise(w *Window) {
 	s.stack = slices.Insert(s.stack, i, w)
 }
 
-// windowStackLevel returns the z-order tier of w: 2 for a popup window, a menu's or a tooltip's, 1 for a floating
-// window and 0 for any other, including an application's own window of the menu or tooltip kind.
+// windowStackLevel returns the z-order tier of w: 2 for a popup window, a menu's, a tooltip's or a field's
+// suggestions', 1 for a floating window and 0 for any other, including an application's own window of one of those
+// kinds.
 func windowStackLevel(w *Window) int {
 	switch {
 	case w.isPopup():
@@ -465,7 +482,8 @@ func windowStackLevel(w *Window) int {
 }
 
 // windowAt returns the topmost window containing pt, or nil if there is none. pt is in the screen's logical
-// coordinate space. A tooltip window is passed over, as the platforms pass mouse input through it to what is beneath.
+// coordinate space. A tooltip window is passed over, as the platforms pass mouse input through it to what is beneath; a
+// field's suggestions window is not, since it takes clicks as a menu's does.
 func (s *headlessState) windowAt(pt geom.Point) *Window {
 	for i := len(s.stack) - 1; i >= 0; i-- {
 		w := s.stack[i]

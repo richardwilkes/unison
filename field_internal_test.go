@@ -458,3 +458,24 @@ func TestInstallAccessoryPanelBorderIsErrorAware(t *testing.T) {
 		}
 	}
 }
+
+// TestFieldKeyDownSkipsHiddenSuggestions verifies that a field hands its keys to its suggestions only while they are
+// showing.
+func TestFieldKeyDownSkipsHiddenSuggestions(t *testing.T) {
+	c := check.New(t)
+	f := NewField()
+	f.SetText("abc")
+	f.SetSelectionTo(0)
+	host := &fakeSuggestionsHost{}
+	f.suggestions = host
+	c.True(f.DefaultKeyDown(KeyEnd, 0, false))
+	c.Equal(0, len(host.keys), "not handed to suggestions that are not showing")
+	start, _ := f.Selection()
+	c.Equal(3, start, "the field handled it")
+	f.SetSelectionTo(0)
+	host.shown = true
+	c.True(f.DefaultKeyDown(KeyEnd, 0, false))
+	c.Equal([]KeyCode{KeyEnd}, host.keys)
+	start, _ = f.Selection()
+	c.Equal(0, start, "the suggestions consumed it")
+}

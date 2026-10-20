@@ -84,7 +84,7 @@ func TestMacDragSourceFinishedForDisposedSource(t *testing.T) {
 }
 
 // TestMacFrameMouseDownClosesMenus verifies that a press on a window's title bar or frame closes the window's open
-// menus, and that one on a window that is not in the list is ignored.
+// menus and hides its field suggestions, and that one on a window that is not in the list is ignored.
 func TestMacFrameMouseDownClosesMenus(t *testing.T) {
 	c := check.New(t)
 	prevList := windowList
@@ -95,11 +95,15 @@ func TestMacFrameMouseDownClosesMenus(t *testing.T) {
 	mp := newTestMenuPanel(0, 0, 100, 100)
 	newTestPopupWindow(owner, mp)
 	owner.root.insertMenu(mp)
+	host := &fakeSuggestionsHost{shown: true}
+	owner.suggestions = host
 	macFrameMouseDown(cocoa.Window(8))
 	c.Equal(1, len(owner.root.openMenuPanels), "a press on an unknown window leaves the menus alone")
+	c.True(host.shown, "and the suggestions")
 	macFrameMouseDown(cocoa.Window(7))
 	c.Equal(0, len(owner.root.openMenuPanels))
 	c.Nil(mp.menu.popupPanel)
+	c.False(host.shown, "the suggestions are hidden")
 }
 
 // TestMacCovered verifies which mouse-moved events a key window drops: those made while the window server finds
@@ -188,6 +192,63 @@ func TestMacMenuStackMonitorClosesOutsidePresses(t *testing.T) {
 	other.root.insertMenu(otherMenu)
 	other.root.closeMenuStackStoppingAt(nil)
 	c.Equal(1, removals)
+}
+
+// TestMacMonitorHidesSuggestionsOnOutsidePresses verifies that field suggestions showing install the monitor an open
+// menu stack installs, so that a press the owner is never told about, in another of the application's windows, in none
+// of them or on another application's, hides them, while one in the owner or its popup windows is left to their root
+// panels, and that hiding them takes the monitor down.
+func TestMacMonitorHidesSuggestionsOnOutsidePresses(t *testing.T) {
+	c := check.New(t)
+	prevList, prevInstall, prevRemove := windowList, macInstallMenuStackMonitor, macRemoveMenuStackMonitor
+	defer func() {
+		windowList, macInstallMenuStackMonitor, macRemoveMenuStackMonitor = prevList, prevInstall, prevRemove
+		macMenuStackWindow = nil
+	}()
+	var monitor func(cocoa.Window)
+	var installs, removals int
+	macInstallMenuStackMonitor = func(f func(cocoa.Window)) {
+		installs++
+		monitor = f
+	}
+	macRemoveMenuStackMonitor = func() {
+		removals++
+		monitor = nil
+	}
+	owner := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(7)}}
+	owner.root = newRootPanel(owner)
+	popup := &Window{valid: true, owner: owner, kind: WindowKindDropdown, wnd: &apiWindow{wnd: cocoa.Window(8)}}
+	other := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(9)}}
+	other.root = newRootPanel(other)
+	windowList = []*Window{owner, popup, other}
+	host := &fakeSuggestionsHost{shown: true}
+	owner.suggestions = host
+	owner.nativeSuggestionsChanged(true)
+	c.Equal(1, installs, "showing the suggestions installs the monitor")
+	c.True(macMenuStackWindow == owner)
+	c.NotNil(monitor)
+	if monitor == nil {
+		return
+	}
+	for _, macWnd := range []cocoa.Window{7, 8} {
+		monitor(macWnd)
+		c.True(host.shown, "a press in window %d is left to its root panel", macWnd)
+	}
+	monitor(9)
+	c.False(host.shown, "a press in another window of the application's hides the suggestions")
+	owner.suggestions = nil
+	owner.nativeSuggestionsChanged(false)
+	c.Equal(1, removals, "and hiding them takes the monitor down")
+	c.Nil(macMenuStackWindow)
+
+	host.shown = true
+	owner.suggestions = host
+	owner.nativeSuggestionsChanged(true)
+	monitor(0)
+	c.False(host.shown, "a press in no window of the application's hides them too")
+	owner.suggestions = nil
+	owner.nativeSuggestionsChanged(false)
+	c.Equal(2, removals)
 }
 
 // TestMacCoveredMoveExitsOnce verifies that a key window, which AppKit sends the mouse-moved events made over the

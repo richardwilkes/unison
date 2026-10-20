@@ -267,13 +267,14 @@ func (f *Field) installDropdown(titles func() []string, current func() string, c
 	//
 	// A field that is not expandable says nothing about expanding and refuses to, since an assistive technology told
 	// otherwise would be left waiting for choices that are never going to appear. A previous callback runs after this
-	// one, so that it keeps the last word.
+	// one, so that it keeps the last word. What the field has already said of itself is kept: one with suggestions
+	// showing is expanded whether or not the menu is open.
 	b.Accessibility.Role = role.None
 	f.Accessibility.Role = role.ComboBox
 	prevDescribe := f.Accessibility.Callback
 	f.Accessibility.Callback = func(node *accessibility.Node) {
-		node.Expandable = expandable
-		node.Expanded = axMenuIsOpen(openMenu)
+		node.Expandable = expandable || node.Expandable
+		node.Expanded = axMenuIsOpen(openMenu) || node.Expanded
 		if expandable {
 			node.Actions = node.Actions.With(accessibility.Expand, accessibility.Collapse)
 		}
@@ -322,8 +323,15 @@ func (f *Field) installDropdown(titles func() []string, current func() string, c
 				})
 				return true
 			case accessibility.Collapse:
-				axCollapseMenu(f.AsPanel(), openMenu)
-				return true
+				if axMenuIsOpen(openMenu) {
+					axCollapseMenu(f.AsPanel(), openMenu)
+					return true
+				}
+				if s := f.suggestions; s == nil || !s.showing() {
+					// Already collapsed, which is accepted as done, exactly as expanding an open field is.
+					return true
+				}
+				// Left to the field, which collapses its suggestions.
 			}
 		}
 		return prevAction != nil && prevAction(req)

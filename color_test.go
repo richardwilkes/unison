@@ -11,6 +11,8 @@ package unison_test
 
 import (
 	"image/color"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -441,4 +443,20 @@ func TestOKLCH(t *testing.T) {
 	chk.Equal(float32(0.45201373), l)
 	chk.Equal(float32(0.31321436), c)
 	chk.Equal(float32(264.0520206), h)
+}
+
+func TestColorNames(t *testing.T) {
+	c := check.New(t)
+	names := unison.ColorNames()
+	c.True(slices.IsSorted(names))
+	c.True(slices.Contains(names, "AliceBlue"))
+	c.True(slices.Contains(names, "YellowGreen"))
+	c.True(slices.Contains(names, "None"), "the transparent color")
+	for _, name := range names {
+		if _, err := unison.ColorDecode(strings.ToLower(name)); err != nil {
+			c.Errorf("%s: %v", name, err)
+		}
+	}
+	names[0] = "changed"
+	c.NotEqual("changed", unison.ColorNames()[0], "a copy is returned")
 }

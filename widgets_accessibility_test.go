@@ -931,6 +931,91 @@ func TestComboFieldAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestFieldSuggestionsAccessibility verifies that a field with suggestions is a combo box that says whether they are
+// showing, without offering to expand, since the rows come from the application; that the rows showing are a list in an
+// overlay of the window, which the field names as what it controls; that the rows offer no focus, which stays in the
+// field; and that collapsing the field hides them. There is no active-descendant concept, so the highlighted row is
+// reported as the list's selected row rather than as the focus.
+func TestFieldSuggestionsAccessibility(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var sg *unison.FieldSuggestions[string]
+	var rowList *unison.List[string]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.Accessibility.Name = "Tree"
+			sg = unison.NewFieldSuggestions[string](field)
+			rowList = sg.List()
+			wnd = newHeadlessWindow(t, "suggestions", geom.NewRect(10, 10, 300, 150), axColumn(field))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() {
+		wnd.ToFront()
+		wnd.SetFocus(field)
+	}))
+
+	tree := screen.AccessibilityTree(wnd)
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.Equal(role.ComboBox, node.Role)
+	c.True(node.Expandable)
+	c.False(node.Expanded)
+	c.False(node.Actions.Has(accessibility.Expand), "the rows come from the application")
+	c.False(node.Actions.Has(accessibility.Collapse))
+	before := axRootChildCount(tree)
+
+	c.True(screen.Do(func() {
+		sg.SetRows([]string{"Fir", "Pine", "Yew"})
+		sg.Select(1)
+	}))
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(before+1, axRootChildCount(tree), "the rows are described as part of the window")
+	node = axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.True(node.Expanded)
+	c.True(node.Actions.Has(accessibility.Collapse))
+	c.False(node.Actions.Has(accessibility.Expand))
+	c.True(node.Focused, "the focus stays in the field")
+	c.Equal(node.ID, tree.Focus)
+	list := axMustNode(c, screen.AccessibilityNodeFor(rowList))
+	c.Equal([]accessibility.NodeID{list.ID}, node.Controls)
+	c.Equal(role.List, list.Role)
+	c.Equal(3, list.RowCount)
+	c.False(list.Focusable)
+	overlay := list
+	for overlay != nil && !overlay.Overlay {
+		overlay = tree.Node(overlay.Parent)
+	}
+	overlay = axMustNode(c, overlay, "the list is in an overlay")
+	c.Equal(role.Group, overlay.Role)
+	c.Equal(tree.Root, overlay.Parent)
+	var rows []*accessibility.Node
+	for _, child := range axChildNodes(tree, list) {
+		if child.Role == role.ListItem {
+			rows = append(rows, child)
+		}
+	}
+	c.Equal(3, len(rows))
+	for _, row := range rows {
+		c.Equal(row.RowIndex == 1, row.Selected, "only the highlighted row is selected")
+		c.False(row.Focusable)
+		c.False(row.Actions.Has(accessibility.Focus))
+	}
+
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   node.ID,
+		Action: accessibility.Collapse,
+	}))
+	var showing bool
+	c.True(screen.Do(func() { showing = sg.Showing() }))
+	c.False(showing, "collapsing the field hides the rows")
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(before, axRootChildCount(tree))
+	node = axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.False(node.Expanded)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestFieldAccessibilityWrappedSingleLineReportsMultiline verifies that a single-line field that wraps says its content
 // is laid out over more than one line. TextInfo.Multiline is what an adapter reads to decide whether to offer line
 // navigation, and such a field really does lay its content out over several — buildLines breaks the one line it holds

@@ -445,6 +445,17 @@ func (w *Window) apiMenuStackChanged(open bool) {
 	w.nativeMenuStackChanged(open)
 }
 
+// apiSuggestionsChanged is called on a top-level window whose field suggestions have just been shown (showing is true)
+// or hidden, so that a platform can watch for the presses outside the application's windows that hide them, as it does
+// for an open menu stack.
+func (w *Window) apiSuggestionsChanged(showing bool) {
+	if hw := w.wnd.hw; hw != nil {
+		hw.suggestionsChanged(showing)
+		return
+	}
+	w.nativeSuggestionsChanged(showing)
+}
+
 // apiCurrentKeyModifiers is reached through Window.CurrentKeyModifiers, which is not guarded by IsValid(), from windows
 // that were never initialized — the hand-built &Window{} some tests use — so it must not assume w.wnd exists. None of
 // the native implementations look at w.wnd; only the headless dispatch needs it, and headlessWindowFor tolerates its
