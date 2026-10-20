@@ -888,3 +888,28 @@ func TestFieldDropdownWithSuggestionsAccessibility(t *testing.T) {
 	c.False(axMustNode(c, screen.AccessibilityNodeFor(field)).Expanded)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestFieldDropdownCollapseWhileCollapsedIsAccepted verifies that collapsing a dropdown field whose menu is closed and
+// whose suggestions are not showing is accepted as already done, as expanding one that is open is, rather than refused.
+func TestFieldDropdownCollapseWhileCollapsedIsAccepted(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.InstallDropdown(func() []string { return []string{comboOptionA, comboOptionB} })
+			wnd = newHeadlessWindow(t, "dropdown collapsed", geom.NewRect(10, 10, 300, 150), axColumn(field))
+		}))
+	c.NotNil(wnd)
+	c.True(screen.Do(func() { wnd.ToFront() }))
+	before := axRootChildCount(screen.AccessibilityTree(wnd))
+	node := axMustNode(c, screen.AccessibilityNodeFor(field))
+	c.False(node.Expanded)
+	c.True(node.Actions.Has(accessibility.Collapse))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{Node: node.ID, Action: accessibility.Collapse}),
+		"collapsing what is already collapsed is accepted")
+	c.Equal(before, axRootChildCount(screen.AccessibilityTree(wnd)), "and changes nothing")
+	c.False(axMustNode(c, screen.AccessibilityNodeFor(field)).Expanded)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

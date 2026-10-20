@@ -53,10 +53,11 @@ type fieldSuggestionsHost interface {
 	hide()
 	// keyDown handles a key pressed in the field while the suggestions are showing, returning true if it consumed it.
 	keyDown(keyCode KeyCode, mods mod.Modifiers) bool
-	// anchorContains returns true if where, in the root coordinates of the field's window, lies within the field.
+	// anchorContains returns true if where, in the root coordinates of the field's window, is on the field: the panel
+	// drawn there is the field or one within it.
 	anchorContains(where geom.Point) bool
-	// anchorLost returns true if the field has left its window or moved within it since the suggestions were placed, or
-	// can no longer show them, being hidden or disabled.
+	// anchorLost returns true if the field has left its window or moved within it since the suggestions were placed,
+	// can no longer show them, being hidden or disabled, or has no rows left to show.
 	anchorLost() bool
 	// popup returns the popup window, its content and the list, or nils until a window exists.
 	popup() (window *Window, content, list *Panel)
@@ -89,8 +90,9 @@ type FieldSuggestions[T any] struct {
 	hoverHeld      bool
 }
 
-// NewFieldSuggestions creates suggestions for field, replacing any it already has. A field with role.Auto is given
-// role.ComboBox. With Field.InstallDropdown also installed, the dropdown sees a bare Down key first.
+// NewFieldSuggestions creates suggestions for field, replacing any it already has, which are hidden and never show
+// again. A field with role.Auto is given role.ComboBox. With Field.InstallDropdown also installed, the dropdown sees a
+// bare Down key first.
 func NewFieldSuggestions[T any](field *Field) *FieldSuggestions[T] {
 	if field.suggestions != nil {
 		field.suggestions.hide()
@@ -131,6 +133,16 @@ func NewFieldSuggestions[T any](field *Field) *FieldSuggestions[T] {
 	s.list.MouseMoveCallback = hover
 	// Never reached by a click, which chooses on the release; set so that rows offer Press to assistive technologies.
 	s.list.DoubleClickCallback = func() { s.choose(s.Selected()) }
+	// Rows emptied through the list are hidden at the owner's next draw (see anchorLost), which the list, drawn in the
+	// popup window, would not otherwise bring about.
+	s.list.rowsChangedCallback = func() {
+		if s.visible && s.list.Count() == 0 {
+			s.wnd.owner.MarkForRedraw()
+		}
+	}
+	// A contextual menu for the rows is not supported: the popup window is never the active one, so a right-click in
+	// it is an ordinary press (see Window.contextMenuOwnerAt), and only an assistive technology's request or a call to
+	// ShowContextMenu reaches a ContextMenuCallback set on the list.
 	s.scroller = NewScrollPanel()
 	s.scroller.Accessibility.Role = role.None
 	s.scroller.SetContent(s.list, behavior.Follow, behavior.Fill)
@@ -162,7 +174,8 @@ func (s *FieldSuggestions[T]) List() *List[T] {
 }
 
 // SetRows replaces the rows, with none highlighted, and shows them. No rows hides them. Rows set from within
-// ChosenCallback replace the rows without showing them.
+// ChosenCallback replace the rows without showing them, since the callback usually puts the chosen row in the field,
+// whose ModifiedCallback then sets the rows matching it; a callback that wants the rows it set shown calls Show.
 func (s *FieldSuggestions[T]) SetRows(rows []T) {
 	s.list.Clear()
 	s.list.Append(rows...)
@@ -175,11 +188,16 @@ func (s *FieldSuggestions[T]) SetRows(rows []T) {
 	}
 }
 
-// Show shows the rows, if there are any, the field holds the keyboard focus, is enabled and can be seen, and no menu is
-// open. Rows already showing are placed again.
+// Show shows the rows, if the field still has these suggestions (see NewFieldSuggestions), holds the keyboard focus, is
+// enabled and can be seen, and no menu is open. Rows already showing are placed again. No rows hides them, as SetRows
+// does.
 func (s *FieldSuggestions[T]) Show() {
+	if s.list.Count() == 0 {
+		s.hide()
+		return
+	}
 	// Not while a menu is open, as for a tooltip: the window would sit above the menu's and take the keys from it.
-	if s.inChosen || s.list.Count() == 0 || !s.field.Focused() || !s.fieldShowable() || menusOpen() {
+	if s.field.suggestions != fieldSuggestionsHost(s) || !s.field.Focused() || !s.fieldShowable() || menusOpen() {
 		return
 	}
 	owner := s.field.Window()
@@ -389,26 +407,29 @@ func (s *FieldSuggestions[T]) windowRect(owner *Window) geom.Rect {
 	if d == nil {
 		d = owner.Display()
 	}
-	fitted := suggestionsWindowRectOn(where, avoid, d)
-	if count <= n && fitted.Height < where.Height {
+	fitted, shortened := suggestionsWindowRectOn(where, avoid, d)
+	if count <= n && shortened {
 		// Shortened to the room on the display, so the rows scroll after all.
 		where.Width = max(rowsWidth+bar, avoid.Width)
-		fitted = suggestionsWindowRectOn(where, avoid, d)
+		fitted, _ = suggestionsWindowRectOn(where, avoid, d)
 	}
 	return fitted
 }
 
 // suggestionsWindowRectOn returns where, the rect of the window showing the rows below avoid, fitted onto d as
 // fitSuggestionsRect does, or where as it is, but at least one unit each way, when d is nil, which it is on macOS while
-// every display is asleep. The rects are in the space window rects use; the fitting is done in the display's own space.
-func suggestionsWindowRectOn(where, avoid geom.Rect, d *Display) geom.Rect {
+// every display is asleep, and whether the fitting shortened it. The rects are in the space window rects use; the
+// fitting is done in the display's own space, where whether the height changed is decided as well, since the trip
+// through the display's space and back can move a height by a float32 ulp at the scales Windows displays run at.
+func suggestionsWindowRectOn(where, avoid geom.Rect, d *Display) (fitted geom.Rect, shortened bool) {
 	if d == nil {
 		where.Width = max(where.Width, 1)
 		where.Height = max(where.Height, 1)
-		return where
+		return where, false
 	}
-	return d.apiRectToWindowUnits(fitSuggestionsRect(d.apiRectFromWindowUnits(where), d.apiRectFromWindowUnits(avoid),
-		d.Usable))
+	asked := d.apiRectFromWindowUnits(where)
+	fitted = fitSuggestionsRect(asked, d.apiRectFromWindowUnits(avoid), d.Usable)
+	return d.apiRectToWindowUnits(fitted), fitted.Height < asked.Height
 }
 
 // fitSuggestionsRect returns where, rows placed below avoid, moved so that it lies within usable: at least one unit
@@ -513,14 +534,25 @@ func (s *FieldSuggestions[T]) keyDown(keyCode KeyCode, mods mod.Modifiers) bool 
 	return true
 }
 
-// anchorContains implements fieldSuggestionsHost.
+// anchorContains implements fieldSuggestionsHost. The field's rect alone would not do: a ScrollPanel may clip part of
+// the field away and another panel be drawn where it was, so the rect is cut down to what each ancestor shows of it,
+// as DefaultContextMenuAnchor does. The panel drawn at where is not asked for, since a Table draws a cell being edited
+// without holding it as a child, and the search would stop at the table.
 func (s *FieldSuggestions[T]) anchorContains(where geom.Point) bool {
-	return where.In(s.field.RectToRoot(s.field.ContentRect(true)))
+	if s.wnd == nil || s.field.Window() != s.wnd.owner {
+		return false
+	}
+	visible := s.field.RectToRoot(s.field.ContentRect(true))
+	for p := s.field.Parent(); p != nil; p = p.Parent() {
+		visible = visible.Intersect(p.RectToRoot(p.ContentRect(true)))
+	}
+	return where.In(visible)
 }
 
-// anchorLost implements fieldSuggestionsHost.
+// anchorLost implements fieldSuggestionsHost. Rows emptied through the list, which knows nothing of the field, are
+// found out here, at the owner's next draw, which the list's rowsChangedCallback asks for.
 func (s *FieldSuggestions[T]) anchorLost() bool {
-	if s.wnd == nil || s.field.Window() != s.wnd.owner || !s.fieldShowable() {
+	if s.wnd == nil || s.field.Window() != s.wnd.owner || !s.fieldShowable() || s.list.Count() == 0 {
 		return true
 	}
 	return s.field.RectToRoot(s.field.ContentRect(true)) != s.anchor

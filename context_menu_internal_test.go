@@ -3042,3 +3042,56 @@ func TestContextMenuFocusedCellRequestFollowsTheCellRule(t *testing.T) {
 	c.False(inMouseDown, "though the press was ended for it")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// wrappedMenu is Menu under a name that can be embedded, since the interface has a method of its own name.
+type wrappedMenu = Menu
+
+// popupRecordingMenu is a menu whose Popup runs onPopup instead of showing anything.
+type popupRecordingMenu struct {
+	wrappedMenu
+	onPopup func()
+}
+
+func (m *popupRecordingMenu) Popup(_ geom.Rect, _ int) {
+	m.onPopup()
+}
+
+// TestShowContextMenuPublishesTheOwnerBeforeTheMenuOpens verifies that a contextual menu asked for from a panel in the
+// popup window showing a field's suggestions, as an assistive technology asks for one, has the top-level window drawn,
+// and so described again, before the menu opens: hiding the suggestions disposes of the popup and changes the owner's
+// description, and a native menu blocks drawing until it is dismissed.
+func TestShowContextMenuPublishesTheOwnerBeforeTheMenuOpens(t *testing.T) {
+	c := check.New(t)
+	screen, owner, field, s := startSuggestionsTest(t)
+	screen.EnableAccessibility()
+	popups := 0
+	var pending, expanded, shown bool
+	c.True(screen.Do(func() {
+		factory := NewInWindowMenuFactory()
+		s.List().ContextMenuCallback = func(_ geom.Point) Menu {
+			m := factory.NewMenu(PopupMenuTemporaryBaseID, "", nil)
+			m.InsertItem(-1, factory.NewItem(PopupMenuTemporaryBaseID+1, "Item", KeyBinding{}, nil, nil))
+			return &popupRecordingMenu{wrappedMenu: m, onPopup: func() {
+				popups++
+				_, pending = redrawSet[owner]
+				if node := owner.ax.last.Node(axIDFor(field.AsPanel())); node != nil {
+					expanded = node.Expanded
+				}
+			}}
+		}
+		s.SetRows(suggestionsTestRows)
+	}))
+	c.NotNil(screen.AccessibilityTree(owner))
+	before := screen.AccessibilityNodeFor(field)
+	c.NotNil(before)
+	if before == nil {
+		return
+	}
+	c.True(before.Expanded)
+	c.True(screen.Do(func() { shown = s.list.ShowContextMenu(s.list.RowRect(0).Center()) }))
+	c.True(shown)
+	c.Equal(1, popups, "the menu was asked to open")
+	c.False(pending, "the owner was drawn before the menu opened")
+	c.False(expanded, "so its description no longer shows the field expanded")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

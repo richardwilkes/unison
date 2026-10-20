@@ -128,15 +128,27 @@ func TestFitSuggestionsRect(t *testing.T) {
 		"even with no room on either side")
 }
 
-// TestSuggestionsWindowRectWithoutADisplay verifies that the rows are left where they were asked to go when there is
-// no display, as on macOS while every display is asleep, but are never empty.
-func TestSuggestionsWindowRectWithoutADisplay(t *testing.T) {
+// TestSuggestionsWindowRectOn verifies that the rows are left where they were asked to go when there is no display, as
+// on macOS while every display is asleep, but are never empty, that they are fitted onto a display, and that only a
+// fitting that shortened them says so, which is decided in the display's own space, so that the trip through it and
+// back cannot report a height it moved by a float32 ulp as shortened.
+func TestSuggestionsWindowRectOn(t *testing.T) {
 	c := check.New(t)
 	avoid := geom.NewRect(500, 250, 40, 20)
-	c.Equal(geom.NewRect(500, 270, 100, 50), suggestionsWindowRectOn(geom.NewRect(500, 270, 100, 50), avoid, nil))
-	c.Equal(geom.NewRect(500, 270, 1, 1), suggestionsWindowRectOn(geom.NewRect(500, 270, 0, 0), avoid, nil))
+	rect, shortened := suggestionsWindowRectOn(geom.NewRect(500, 270, 100, 50), avoid, nil)
+	c.Equal(geom.NewRect(500, 270, 100, 50), rect)
+	c.False(shortened)
+	rect, shortened = suggestionsWindowRectOn(geom.NewRect(500, 270, 0, 0), avoid, nil)
+	c.Equal(geom.NewRect(500, 270, 1, 1), rect)
+	c.False(shortened)
 	d := &Display{Usable: geom.NewRect(0, 0, 400, 300), headless: true}
-	c.Equal(geom.NewRect(300, 200, 100, 50), suggestionsWindowRectOn(geom.NewRect(500, 270, 100, 50), avoid, d))
+	rect, shortened = suggestionsWindowRectOn(geom.NewRect(500, 270, 100, 50), avoid, d)
+	c.Equal(geom.NewRect(300, 200, 100, 50), rect)
+	c.False(shortened, "moved above, not shortened")
+	avoid = geom.NewRect(100, 100, 40, 20)
+	rect, shortened = suggestionsWindowRectOn(geom.NewRect(100, 120, 100, 250), avoid, d)
+	c.Equal(geom.NewRect(100, 120, 100, 180), rect)
+	c.True(shortened, "shortened to the room below")
 }
 
 // TestFieldSuggestionsWindowRect verifies the size of the popup window: MaxVisibleRows rows at most plus the border, at
@@ -223,20 +235,29 @@ func TestFieldSuggestionsPopupWindow(t *testing.T) {
 	c := check.New(t)
 	screen, owner, _, s := startSuggestionsTest(t)
 	var wnd *Window
-	var showing bool
+	var kind WindowKind
+	var showing, transient, cpuOnly, owned, popup, tooltip bool
 	c.True(screen.Do(func() {
 		s.SetRows(suggestionsTestRows)
 		wnd = s.wnd
 		showing = owner.suggestions == fieldSuggestionsHost(s)
+		if wnd != nil {
+			kind = wnd.kind
+			transient = wnd.transient
+			cpuOnly = wnd.cpuOnly
+			owned = wnd.owner == owner
+			popup = wnd.isPopup()
+			tooltip = wnd.isTooltipWindow()
+		}
 	}))
 	c.NotNil(wnd)
 	c.True(showing)
-	c.Equal(WindowKindDropdown, wnd.kind)
-	c.True(wnd.transient)
-	c.True(wnd.cpuOnly)
-	c.True(wnd.owner == owner)
-	c.True(wnd.isPopup())
-	c.False(wnd.isTooltipWindow())
+	c.Equal(WindowKindDropdown, kind)
+	c.True(transient)
+	c.True(cpuOnly)
+	c.True(owned)
+	c.True(popup)
+	c.False(tooltip)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -249,34 +270,13 @@ func TestFieldSuggestionsThemeInks(t *testing.T) {
 	c.True(rows.OnInactiveSelectionInk == rows.OnSelectionInk)
 }
 
-// TestFieldKeyDownSkipsHiddenSuggestions verifies that a field hands its keys to its suggestions only while they are
-// showing.
-func TestFieldKeyDownSkipsHiddenSuggestions(t *testing.T) {
-	c := check.New(t)
-	f := NewField()
-	f.SetText("abc")
-	f.SetSelectionTo(0)
-	host := &fakeSuggestionsHost{}
-	f.suggestions = host
-	c.True(f.DefaultKeyDown(KeyEnd, 0, false))
-	c.Equal(0, len(host.keys), "not handed to suggestions that are not showing")
-	start, _ := f.Selection()
-	c.Equal(3, start, "the field handled it")
-	f.SetSelectionTo(0)
-	host.shown = true
-	c.True(f.DefaultKeyDown(KeyEnd, 0, false))
-	c.Equal([]KeyCode{KeyEnd}, host.keys)
-	start, _ = f.Selection()
-	c.Equal(0, start, "the suggestions consumed it")
-}
-
 // TestFieldSuggestionsHideDisposesOfTheWindow verifies that hiding the rows disposes of their popup window, as closing
 // a menu does, so that a FieldSuggestions that is replaced or discarded leaves no hidden window behind, and that the
 // next rows are shown in a new one.
 func TestFieldSuggestionsHideDisposesOfTheWindow(t *testing.T) {
 	c := check.New(t)
 	screen, owner, field, s := startSuggestionsTest(t)
-	var first, second, third *Window
+	var first, second, third, afterHide *Window
 	var firstValid, firstListed, secondValid, secondListed, thirdShowing bool
 	c.True(screen.Do(func() {
 		s.SetRows(suggestionsTestRows)
@@ -284,6 +284,7 @@ func TestFieldSuggestionsHideDisposesOfTheWindow(t *testing.T) {
 		s.Hide()
 		firstValid = first.IsValid()
 		firstListed = slices.Contains(windowList, first)
+		afterHide = s.wnd
 		s.SetRows(suggestionsTestRows)
 		second = s.wnd
 		replacement := NewFieldSuggestions[string](field)
@@ -296,7 +297,7 @@ func TestFieldSuggestionsHideDisposesOfTheWindow(t *testing.T) {
 	c.NotNil(first)
 	c.False(firstValid, "hiding disposes of the window")
 	c.False(firstListed)
-	c.Nil(s.wnd)
+	c.Nil(afterHide)
 	c.NotNil(second)
 	c.True(second != first, "the next rows get a new window")
 	c.False(secondValid, "replacing the suggestions disposes of their window")
@@ -395,5 +396,89 @@ func TestFieldSuggestionsWindowRectShortened(t *testing.T) {
 	}))
 	c.Equal(float32(80), rect.Height, "shortened to the room above")
 	c.Equal(prefWidth+bar, rect.Width, "with room for the scroll bar")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldSuggestionsReplacedShowNothing verifies that suggestions a field has since been given others in place of
+// never show again, so that a callback still holding them cannot put a popup the field no longer drives under it.
+func TestFieldSuggestionsReplacedShowNothing(t *testing.T) {
+	c := check.New(t)
+	screen, owner, field, s := startSuggestionsTest(t)
+	var showing bool
+	var host fieldSuggestionsHost
+	var wnd *Window
+	c.True(screen.Do(func() {
+		s.SetRows(suggestionsTestRows)
+		NewFieldSuggestions[string](field)
+		s.SetRows(suggestionsTestRows)
+		s.Show()
+		showing = s.Showing()
+		host = owner.suggestions
+		wnd = s.wnd
+	}))
+	c.False(showing, "replaced suggestions never show")
+	c.Nil(host)
+	c.Nil(wnd)
+	c.Nil(screen.SuggestionsWindow(owner))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldSuggestionsEmptiedThroughTheListHide verifies that rows emptied through the list hide: at once when they are
+// asked to show, and at the owner's next draw, which the emptying itself asks for, when the last row is removed or the
+// list is cleared. The field's text is selected, so that no caret blink draws the owner on its own.
+func TestFieldSuggestionsEmptiedThroughTheListHide(t *testing.T) {
+	c := check.New(t)
+	screen, owner, field, s := startSuggestionsTest(t)
+	var showing bool
+	c.True(screen.Do(func() {
+		field.SetText("abc")
+		field.SelectAll()
+		s.SetRows(suggestionsTestRows)
+		s.List().Clear()
+		s.Show()
+		showing = s.Showing()
+	}))
+	c.False(showing, "showing no rows hides them")
+	c.Nil(screen.SuggestionsWindow(owner))
+	c.True(screen.Do(func() {
+		s.SetRows(suggestionsTestRows)
+		for s.List().Count() > 0 {
+			s.List().Remove(0)
+		}
+	}))
+	c.True(screen.Do(func() { showing = s.Showing() }))
+	c.False(showing, "removing the last row hides them at the owner's next draw")
+	c.Nil(screen.SuggestionsWindow(owner))
+	c.True(screen.Do(func() {
+		s.SetRows(suggestionsTestRows)
+		s.List().Clear()
+	}))
+	c.True(screen.Do(func() { showing = s.Showing() }))
+	c.False(showing, "clearing the list hides them at the owner's next draw")
+	c.Nil(screen.SuggestionsWindow(owner))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldSuggestionsShowFromChosenCallback verifies that a ChosenCallback that sets rows and asks for them to be
+// shown, as one opening the next level of a path would, shows them, while rows it merely sets stay hidden.
+func TestFieldSuggestionsShowFromChosenCallback(t *testing.T) {
+	c := check.New(t)
+	screen, owner, _, s := startSuggestionsTest(t)
+	var showing bool
+	var count int
+	c.True(screen.Do(func() {
+		s.ChosenCallback = func(_ int, row string) {
+			s.SetRows([]string{row + "/Leaf", row + "/Bark"})
+			s.Show()
+		}
+		s.SetRows(suggestionsTestRows)
+		s.Select(0)
+		s.keyDown(KeyReturn, 0)
+		showing = s.Showing()
+		count = s.List().Count()
+	}))
+	c.True(showing, "shown as the callback asked")
+	c.Equal(2, count)
+	c.NotNil(screen.SuggestionsWindow(owner))
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

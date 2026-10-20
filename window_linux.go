@@ -158,19 +158,8 @@ func (w *Window) nativeInit() error {
 	buf.Uint32(uint32(os.Getpid()))
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.WMPID, x11.AtomCardinal, 32, x11.PropModeReplace, buf.Retrieve())
 
-	var kind x11.Atom
-	switch w.kind {
-	case WindowKindDialog:
-		kind = x11Conn.Atoms.NetWMWindowTypeDialog
-	case WindowKindMenu:
-		kind = x11Conn.Atoms.NetWMWindowTypeMenu
-	case WindowKindTooltip:
-		kind = x11Conn.Atoms.NetWMWindowTypeTooltip
-	default:
-		kind = x11Conn.Atoms.NetWMWindowTypeNormal
-	}
 	buf = x11.NewWriter(4)
-	buf.Atom(kind)
+	buf.Atom(x11TopLevelWindowType(w.kind))
 	x11Conn.ChangeProperty(w.wnd.id, x11Conn.Atoms.NetWMWindowType, x11.AtomAtom, 32, x11.PropModeReplace,
 		buf.Retrieve())
 
@@ -217,6 +206,22 @@ func (w *Window) nativeInit() error {
 	w.nativeUpdateFrameTheme()
 	x11Conn.Flush()
 	return nil
+}
+
+// x11TopLevelWindowType returns the _NET_WM_WINDOW_TYPE a top-level window of the given kind is announced with.
+func x11TopLevelWindowType(kind WindowKind) x11.Atom {
+	switch kind {
+	case WindowKindDialog:
+		return x11Conn.Atoms.NetWMWindowTypeDialog
+	case WindowKindMenu:
+		return x11Conn.Atoms.NetWMWindowTypeMenu
+	case WindowKindTooltip:
+		return x11Conn.Atoms.NetWMWindowTypeTooltip
+	case WindowKindDropdown:
+		return x11Conn.Atoms.NetWMWindowTypeCombo
+	default:
+		return x11Conn.Atoms.NetWMWindowTypeNormal
+	}
 }
 
 // x11SetPopupProperties sets the properties of a popup window, which shows a menu, a tooltip or a field's suggestions.

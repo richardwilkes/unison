@@ -83,6 +83,17 @@ func TestListInsertLeavesTheCallersSliceAlone(t *testing.T) {
 	c.Equal("y", l.DataAtIndex(3))
 }
 
+// TestListInsertNothingKeepsTheSelection verifies that inserting no rows leaves the selection alone, where moving the
+// selected rows up by nothing used to clear them.
+func TestListInsertNothingKeepsTheSelection(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("a", "b", "c")
+	l.Select(false, 1, 2)
+	l.Insert(1)
+	c.Equal(3, l.Count())
+	c.Equal([]int{1, 2}, selectedIndexes(l))
+}
+
 func TestListInsertClampsIndex(t *testing.T) {
 	c := check.New(t)
 	l := newTestList("a", "b")
@@ -840,4 +851,58 @@ func TestListLeadMovesWithTheRows(t *testing.T) {
 	c.Equal(-1, l.Lead(), "a selection that names nothing leaves nowhere to be")
 	l.SelectAll()
 	c.Equal(0, l.Lead(), "with nowhere to be, selecting everything reads from the first row")
+}
+
+// TestListRowsChangedDuringAPress verifies that rows inserted or removed while a press is in progress move the row the
+// release narrows the selection to, and the selection saved at the press, which a drag extends from and the release
+// compares against, along with the selection itself, and that clearing the rows forgets both.
+func TestListRowsChangedDuringAPress(t *testing.T) {
+	c := check.New(t)
+	l := newTestList("A", "B", "C", "D", "E")
+	l.Factory = &unison.DefaultCellFactory{Height: 20}
+	l.SetFrameRect(geom.NewRect(0, 0, 200, 200))
+	selections := 0
+	l.NewSelectionCallback = func() { selections++ }
+	rowPoint := func(row int) geom.Point { return geom.NewPoint(5, l.RowRect(row).CenterY()) }
+
+	l.Select(false, 1)
+	l.DefaultMouseDown(rowPoint(1), unison.ButtonLeft, 1, mod.None)
+	l.Insert(0, "X")
+	l.DefaultMouseUp(rowPoint(2), unison.ButtonLeft, mod.None)
+	c.Equal([]int{2}, selectedIndexes(l), "B, now at 2, is what the release narrows the selection to")
+	c.Equal(2, l.Lead())
+	c.Equal(0, selections, "and nothing changed")
+
+	l.DefaultMouseDown(rowPoint(2), unison.ButtonLeft, 1, mod.None)
+	l.Remove(0)
+	l.DefaultMouseUp(rowPoint(1), unison.ButtonLeft, mod.None)
+	c.Equal([]int{1}, selectedIndexes(l), "B, back at 1, after a removal before it")
+	c.Equal(1, l.Lead())
+	c.Equal(0, selections)
+
+	l.Select(false, 3)
+	l.DefaultMouseDown(rowPoint(3), unison.ButtonLeft, 1, mod.None)
+	l.RemoveRange(0, 1)
+	l.DefaultMouseUp(rowPoint(1), unison.ButtonLeft, mod.None)
+	c.Equal([]int{1}, selectedIndexes(l), "D, now at 1, after a removal of a range before it")
+	c.Equal(1, l.Lead())
+	c.Equal(0, selections)
+
+	l.Select(false, 0)
+	l.DefaultMouseDown(rowPoint(0), unison.ButtonLeft, 1, mod.None)
+	l.Insert(0, "X")
+	l.DefaultMouseDrag(rowPoint(2), unison.ButtonLeft, mod.Shift)
+	c.Equal([]int{1, 2}, selectedIndexes(l), "a shift-drag extends from the saved selection as moved")
+	l.DefaultMouseUp(rowPoint(2), unison.ButtonLeft, mod.Shift)
+	c.Equal([]int{1, 2}, selectedIndexes(l))
+	c.Equal(1, selections)
+
+	l.Select(false, 1)
+	l.DefaultMouseDown(rowPoint(1), unison.ButtonLeft, 1, mod.None)
+	l.Clear()
+	l.Append("Z")
+	l.DefaultMouseUp(rowPoint(0), unison.ButtonLeft, mod.None)
+	c.Equal([]int(nil), selectedIndexes(l), "nothing is selected among the new rows")
+	c.Equal(-1, l.Lead())
+	c.Equal(1, selections)
 }

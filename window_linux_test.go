@@ -1238,6 +1238,32 @@ func TestX11PopupWindowProperties(t *testing.T) {
 	}
 }
 
+// TestX11TopLevelWindowType covers the type a top-level window is announced with: each kind that has a type of its own
+// gets it, a field's suggestions included, and every other kind is a normal window.
+func TestX11TopLevelWindowType(t *testing.T) {
+	c := check.New(t)
+	startX11TestServer(t)
+	// The stand-in connection interns no atoms, so the ones the types name are given values they can be checked by.
+	const (
+		normalAtom  = x11.Atom(401)
+		dialogAtom  = x11.Atom(402)
+		menuAtom    = x11.Atom(403)
+		tooltipAtom = x11.Atom(404)
+		comboAtom   = x11.Atom(405)
+	)
+	x11Conn.Atoms.NetWMWindowTypeNormal = normalAtom
+	x11Conn.Atoms.NetWMWindowTypeDialog = dialogAtom
+	x11Conn.Atoms.NetWMWindowTypeMenu = menuAtom
+	x11Conn.Atoms.NetWMWindowTypeTooltip = tooltipAtom
+	x11Conn.Atoms.NetWMWindowTypeCombo = comboAtom
+	c.Equal(normalAtom, x11TopLevelWindowType(WindowKindNormal))
+	c.Equal(dialogAtom, x11TopLevelWindowType(WindowKindDialog))
+	c.Equal(menuAtom, x11TopLevelWindowType(WindowKindMenu))
+	c.Equal(tooltipAtom, x11TopLevelWindowType(WindowKindTooltip))
+	c.Equal(comboAtom, x11TopLevelWindowType(WindowKindDropdown), "a dropdown is a combo box's popup")
+	c.Equal(normalAtom, x11TopLevelWindowType(WindowKind(99)))
+}
+
 // TestX11PointerCrossed covers the record of whether the pointer is in a window: a normal crossing or one a grab's
 // release reports sets it, an enter a grab reports as it takes effect leaves it alone, since the grab window is entered
 // wherever the pointer is, and every leave clears it.

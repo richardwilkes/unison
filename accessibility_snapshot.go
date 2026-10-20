@@ -112,6 +112,9 @@ type axSnapshot struct {
 	// captions holds the panels whose text this description found naming another node, for
 	// axSnapshot.settleCaptionFocus. It stays nil in every window where no label names a control.
 	captions []*Panel
+	// unnamed holds the nodes left nameless whose panels point at a labeler with Accessibility.LabeledBy, for
+	// axSnapshot.settleLabeledByNames. It stays nil in every window where every such panel is named.
+	unnamed []axUnnamedLabeled
 	// rescaled holds the nodes described in a space that rescales, for visitInSpace to map the text of.
 	rescaled []*accessibility.Node
 	focus    accessibility.NodeID
@@ -127,6 +130,14 @@ type axSnapshot struct {
 	space axSpace
 	// menusLandHere is axMayPopupMenu's answer for every panel of the window, worked out once.
 	menusLandHere bool
+}
+
+// axUnnamedLabeled is a node left nameless by its widget, resolveName and the Accessibility.Callback, whose panel names
+// labeler as its Accessibility.LabeledBy. scaffolding is set when the node is ignored only for being nameless.
+type axUnnamedLabeled struct {
+	node        *accessibility.Node
+	labeler     *Panel
+	scaffolding bool
 }
 
 // axCellContext is in force while the panel a table row handed back for one of its cells, and everything inside it,
@@ -315,6 +326,7 @@ func (s *axSnapshot) buildRoot() {
 		}
 	}
 	s.visit(root.contentPanel, node.ID, clip)
+	s.settleLabeledByNames()
 	s.settleCaptionFocus()
 	s.markOpenMenuItems()
 	s.resolveFocus()
@@ -952,8 +964,13 @@ func (s *axSnapshot) visit(p *Panel, parent accessibility.NodeID, clip geom.Rect
 	// Decided after the three above, so that what the node is judged on is what it finally offers and says rather than
 	// what it offered before being disabled stripped it back, but before the menus are narrowed, since those come back
 	// with the window's activation and must not decide whether the node is shown at all.
+	scaffolding := false
 	if node.Ignored == widgetIgnored {
-		node.Ignored = widgetIgnored || axIsScaffolding(node)
+		scaffolding = !widgetIgnored && axIsScaffolding(node)
+		node.Ignored = widgetIgnored || scaffolding
+	}
+	if node.Name == "" {
+		s.deferName(p, node, scaffolding)
 	}
 	s.narrowMenuActions(p, node)
 	switch {
@@ -1068,8 +1085,9 @@ func axIsScaffolding(node *accessibility.Node) bool {
 }
 
 // resolveName fills in the node's name and label associations, for a node whose widget did not name it outright. The
-// order is: an explicit Accessibility.LabeledBy panel, read as a label or else named as a control is, then the
-// sibling-label convention, then, for static text, the text of the panel and its descendants. Every panel a label
+// order is: an explicit Accessibility.LabeledBy panel, read as a label, then the sibling-label convention, then, for
+// static text, the text of the panel and its descendants. A node still nameless once everything has been described is
+// named as the panel it points at with LabeledBy is; see axSnapshot.settleLabeledByNames. Every panel a label
 // association is made to is recorded as a caption; see axSnapshot.recordCaption.
 func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 	if !xreflect.IsNil(p.Accessibility.LabeledBy) {
@@ -1080,11 +1098,6 @@ func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 				// Trimmed exactly as the sibling-label convention below trims it, so that the same "Name:" label is
 				// spoken the same way whether the association was stated outright or merely inferred.
 				node.Name = axTrimLabelText(axLabelText(labeler))
-			}
-			if node.Name == "" {
-				// A labeler that is a control rather than a label, such as the field whose suggestions a group shows,
-				// names the node as it is named itself.
-				node.Name = axControlName(labeler)
 			}
 		}
 	}
@@ -1097,6 +1110,40 @@ func (s *axSnapshot) resolveName(p *Panel, node *accessibility.Node) {
 	}
 	if node.Name == "" && (node.Role == role.Heading || node.Role == role.Label) {
 		node.Name = axLabelText(p)
+	}
+}
+
+// deferName records a node left nameless by its widget, resolveName and the Accessibility.Callback, when its panel
+// points at a labeler with Accessibility.LabeledBy, for settleLabeledByNames. scaffolding says whether the node is
+// ignored only for being nameless.
+func (s *axSnapshot) deferName(p *Panel, node *accessibility.Node, scaffolding bool) {
+	if xreflect.IsNil(p.Accessibility.LabeledBy) {
+		return
+	}
+	if labeler := p.Accessibility.LabeledBy.AsPanel(); labeler != nil {
+		s.unnamed = append(s.unnamed, axUnnamedLabeled{node: node, labeler: labeler, scaffolding: scaffolding})
+	}
+}
+
+// settleLabeledByNames names each node deferName recorded as the labeler its panel points at is named, once every panel
+// has been described. That is how a group showing a field's suggestions, which points at the field, takes the name of
+// a field named by the label before it, whether the field is described before or after the group. The labeler's text
+// has already been read by resolveName, so this adds only what its own description resolved, which is nothing for a
+// labeler left out of the description, as a hidden panel is. A node ignored only for being nameless is ignored no
+// longer.
+func (s *axSnapshot) settleLabeledByNames() {
+	for _, one := range s.unnamed {
+		if one.node.Name != "" {
+			continue
+		}
+		labeler := s.tree.Nodes[axIDFor(one.labeler)]
+		if labeler == nil || labeler.Name == "" {
+			continue
+		}
+		one.node.Name = labeler.Name
+		if one.scaffolding {
+			one.node.Ignored = false
+		}
 	}
 }
 

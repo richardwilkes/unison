@@ -1182,3 +1182,49 @@ func TestAccessibilityLabeledByANamedControl(t *testing.T) {
 	c.False(boxNode.Ignored)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestAccessibilityLabeledByAnUnnamedPanelStaysUnnamed verifies that a panel pointing at a labeler with LabeledBy takes
+// only what the labeler is itself named: nothing from an empty label, however it is placed, since the label before an
+// empty label names nothing, and nothing from a hidden labeler, which contributes nothing to any description.
+func TestAccessibilityLabeledByAnUnnamedPanelStaysUnnamed(t *testing.T) {
+	c := check.New(t)
+	var byEmpty, byHidden *Field
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			empty := axTestLabel("")
+			labels := NewPanel()
+			labels.SetLayout(&FlexLayout{Columns: 1})
+			labels.AddChild(axTestLabel("Speed:"))
+			labels.AddChild(empty)
+			hidden := axTestLabel("")
+			hidden.Accessibility.Name = "Hidden"
+			hidden.Hidden = true
+			byEmpty = NewField()
+			byEmpty.Accessibility.LabeledBy = empty
+			byHidden = NewField()
+			byHidden.Accessibility.LabeledBy = hidden
+			fields := NewPanel()
+			fields.SetLayout(&FlexLayout{Columns: 1})
+			fields.AddChild(byEmpty)
+			fields.AddChild(byHidden)
+			column := NewPanel()
+			column.SetLayout(&FlexLayout{Columns: 1})
+			column.AddChild(labels)
+			column.AddChild(hidden)
+			column.AddChild(fields)
+			wnd = axNewTestWindow(t, "labeled by nothing", geom.NewRect(10, 10, 300, 200), column)
+		}))
+	c.NotNil(wnd)
+	c.NotNil(screen.AccessibilityTree(wnd))
+	emptyNode := screen.AccessibilityNodeFor(byEmpty)
+	hiddenNode := screen.AccessibilityNodeFor(byHidden)
+	c.NotNil(emptyNode)
+	c.NotNil(hiddenNode)
+	if emptyNode == nil || hiddenNode == nil {
+		return
+	}
+	c.Equal("", emptyNode.Name, "the label before an empty label names nothing")
+	c.Equal("", hiddenNode.Name, "a hidden labeler names nothing")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

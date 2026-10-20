@@ -3306,3 +3306,44 @@ func TestTableAccessibilityFocusInCellSelectsTheRow(t *testing.T) {
 	c.Equal(1, col, "and the cursor stands on the cell being worked in")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestTableCellFieldCommitRemovingItsRowLetsTheFocusLeave verifies that a cell whose field commits on losing the focus,
+// and whose commit removes its row, is released without the table taking the focus back: the focus is on its way to
+// where the person put it, and that move stands.
+func TestTableCellFieldCommitRemovingItsRowLetsTheFocusLeave(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	var wnd *unison.Window
+	var button *unison.Button
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(3, 2, "abc", false)
+			wnd, button = newEditWindow(t, e, true)
+		}))
+	c.NotNil(wnd)
+	c.NotNil(button)
+	screen.Click(cellCenter(screen, e.table, 0, 0))
+	s := e.snapshot(c, screen, 0, 0)
+	c.True(s.fieldFocused, "the test needs the field focused")
+	var onButton, gone bool
+	c.True(screen.Do(func() {
+		lost := e.fields[0][0].LostFocusCallback
+		e.fields[0][0].LostFocusCallback = func() {
+			lost()
+			e.model.SetRootRows(e.rows[1:])
+			e.table.SyncToModel()
+		}
+		wnd.SetFocus(button)
+		onButton = button.Focused()
+		gone = e.table.RowToIndex(e.rows[0]) == -1
+	}))
+	c.True(gone, "the test needs the commit to have removed the row")
+	c.True(onButton, "the focus lands where it was sent")
+	s = e.snapshot(c, screen, 0, 0)
+	c.False(s.tableFocused, "the table does not take back a focus that is already leaving")
+	c.Equal(1, s.lost)
+	c.Equal(-1, s.focusRow)
+	c.Equal(-1, s.focusCol)
+	c.True(s.detached)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

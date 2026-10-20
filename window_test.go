@@ -2173,3 +2173,53 @@ func TestModalCenterFrame(t *testing.T) {
 	d := &Display{Usable: geom.NewRect(0, 0, 1920, 1080), headless: true}
 	c.Equal(geom.NewRect(300, 200, 400, 300), modalCenterFrame(d, within, frame))
 }
+
+// TestSetFocusFromLostFocusCallback verifies that a LostFocusCallback that moves the focus itself runs once and has its
+// move stand, whether the focus was being moved to another panel or removed: the nested call runs no callback for a
+// panel already losing the focus, and the outer one leaves the focus where the callback put it. The callback is
+// guarded, so that a regression cannot run it without bound and overflow the stack.
+func TestSetFocusFromLostFocusCallback(t *testing.T) {
+	c := check.New(t)
+	var a, b, d *Field
+	var wnd *Window
+	lost, gained := 0, 0
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 300},
+		StartupFinishedCallback(func() {
+			a, b, d = NewField(), NewField(), NewField()
+			a.LostFocusCallback = func() {
+				lost++
+				if lost < 5 {
+					wnd.SetFocus(d)
+				}
+			}
+			d.GainedFocusCallback = func() { gained++ }
+			if wnd = newHeadlessTestWindow(t, "focus", geom.NewRect(20, 20, 200, 150)); wnd != nil {
+				content := wnd.Content()
+				content.SetLayout(&FlexLayout{Columns: 1})
+				content.AddChild(a)
+				content.AddChild(b)
+				content.AddChild(d)
+				wnd.ToFront()
+				wnd.SetFocus(a)
+			}
+		}))
+	c.NotNil(wnd)
+	var focus *Panel
+	c.True(screen.Do(func() {
+		wnd.SetFocus(b)
+		focus = wnd.CurrentFocus()
+	}))
+	c.Equal(1, lost, "the callback runs once")
+	c.Equal(1, gained)
+	c.True(focus == d.AsPanel(), "the callback's move stands")
+	c.True(screen.Do(func() {
+		lost, gained = 0, 0
+		wnd.SetFocus(a)
+		wnd.SetFocus(nil)
+		focus = wnd.CurrentFocus()
+	}))
+	c.Equal(1, lost, "the callback runs once when the focus is being removed")
+	c.Equal(1, gained)
+	c.True(focus == d.AsPanel(), "and its move stands then too")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}

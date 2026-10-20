@@ -84,7 +84,7 @@ type Window struct {
 	owner                *Window // the top-level window a popup window belongs to; see menuOwner
 	tooltipWindow        *Window // the popup window this top-level window shows its tooltips in; see showTooltip
 	suggestions          fieldSuggestionsHost
-	focusLeaving         *Panel // the panel whose LostFocusCallback is running, which still holds the focus; see setFocus
+	focusLeaving         *Panel // the panel whose LostFocusCallback is running, which still holds the focus; see loseFocus
 	ax                   *windowAccessibility
 	focus                *Panel
 	cursor               *Cursor
@@ -919,7 +919,8 @@ func (w *Window) Focus() *Panel {
 
 // SetFocus sets the keyboard focus to the specified target. A target that cannot take the focus hands it to the first
 // panel within it that can, and the focus is removed if there is none. A disabled target that can take the focus (see
-// SetFocusForReading) hands it to the first tab stop within it, if there is one.
+// SetFocusForReading) hands it to the first tab stop within it, if there is one. The panel losing the focus holds it
+// while its LostFocusCallback runs; a callback that moves the focus elsewhere has that move stand instead of this one.
 func (w *Window) SetFocus(target Paneler) {
 	w.setFocus(target, false)
 }
@@ -950,10 +951,8 @@ func (w *Window) setFocus(target Paneler, exact bool) {
 			}
 		}
 		if !newFocus.Is(w.focus) {
-			if w.focus != nil {
-				w.focusLeaving = oldFocus
-				SafeCall(oldFocus.LostFocusCallback)
-				w.focusLeaving = nil
+			if w.focus != nil && !w.loseFocus() {
+				return
 			}
 			w.focus = newFocus
 			if newFocus != nil {
@@ -968,12 +967,26 @@ func (w *Window) setFocus(target Paneler, exact bool) {
 	}
 }
 
-func (w *Window) removeFocus() {
+// loseFocus runs the LostFocusCallback of the panel holding the focus, which keeps it while the callback runs, and
+// reports whether the focus is still there afterwards. A callback that moves the focus itself re-enters setFocus or
+// removeFocus, which run no callback for the panel already losing the focus and carry the move out, and the caller then
+// leaves that move standing rather than running the callback again or moving the focus on from where it was put.
+func (w *Window) loseFocus() bool {
 	oldFocus := w.focus
-	if oldFocus != nil {
+	if w.focusLeaving != oldFocus {
 		w.focusLeaving = oldFocus
 		SafeCall(oldFocus.LostFocusCallback)
 		w.focusLeaving = nil
+	}
+	return w.focus == oldFocus
+}
+
+func (w *Window) removeFocus() {
+	oldFocus := w.focus
+	if oldFocus != nil {
+		if !w.loseFocus() {
+			return
+		}
 		w.focus = nil
 		w.notifyOfFocusChangeInHierarchy(oldFocus, nil)
 		// The focus going nowhere has to be described as surely as it moving does. See Window.axMarkForPublish.

@@ -327,7 +327,11 @@ func (f *Field) installDropdown(titles func() []string, current func() string, c
 					axCollapseMenu(f.AsPanel(), openMenu)
 					return true
 				}
-				// Left to the field, which collapses its suggestions when they are showing.
+				if s := f.suggestions; s == nil || !s.showing() {
+					// Already collapsed, which is accepted as done, exactly as expanding an open field is.
+					return true
+				}
+				// Left to the field, which collapses its suggestions.
 			}
 		}
 		return prevAction != nil && prevAction(req)

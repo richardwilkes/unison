@@ -628,7 +628,10 @@ func (t *Table[T]) validateFocusedCell() {
 	if wnd == nil {
 		return
 	}
-	inside := panelContains(t.focusedCell, wnd.CurrentFocus())
+	// A cell whose LostFocusCallback is running still holds the focus, but the focus is on its way to wherever the move
+	// that runs the callback is taking it, so it is not the table's to take back: see Window.loseFocus.
+	focus := wnd.CurrentFocus()
+	inside := panelContains(t.focusedCell, focus) && focus != wnd.focusLeaving
 	row := t.focusedCellRowIndex
 	if row < 0 || row >= len(t.rowCache) || t.rowCache[row].row.ID() != t.focusedCellRow.ID() {
 		// The row cache was rebuilt underneath us, so fall back to locating the row by its ID.

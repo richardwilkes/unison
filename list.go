@@ -53,10 +53,13 @@ type ListTheme struct {
 type List[T any] struct {
 	DoubleClickCallback  func()
 	NewSelectionCallback func()
-	Factory              CellFactory
-	Selection            *bitset.BitSet
-	savedSelection       *bitset.BitSet
-	rows                 []T
+	// rowsChangedCallback, if set, is called after rows are added, replaced or removed, so that what holds the list, as
+	// FieldSuggestions does, learns of changes made through the list itself.
+	rowsChangedCallback func()
+	Factory             CellFactory
+	Selection           *bitset.BitSet
+	savedSelection      *bitset.BitSet
+	rows                []T
 	ListTheme
 	Panel
 	anchor            int
@@ -111,7 +114,7 @@ func (l *List[T]) DataAtIndex(index int) T {
 // Append values to the list of items.
 func (l *List[T]) Append(values ...T) {
 	l.rows = append(l.rows, values...)
-	l.MarkForLayoutAndRedraw()
+	l.rowsChanged()
 }
 
 // Insert values at the specified index.
@@ -120,97 +123,117 @@ func (l *List[T]) Insert(index int, values ...T) {
 		index = len(l.rows)
 	}
 	l.rows = slices.Insert(l.rows, index, values...)
-	i := l.Selection.LastSet() + 1
-	if i >= index {
-		delta := len(values)
-		for {
-			if i = l.Selection.PreviousSet(i); i == -1 || i < index {
-				break
-			}
-			l.Selection.Set(i + delta)
-			l.Selection.Clear(i)
-		}
+	count := len(values)
+	for _, sel := range l.selections() {
+		shiftSelectionUp(sel, index, count)
 	}
 	if l.anchor >= index {
-		l.anchor += len(values)
+		l.anchor += count
 	}
 	if l.lead >= index {
-		l.lead += len(values)
+		l.lead += count
 	}
+	if l.lastSel >= index {
+		l.lastSel += count
+	}
+	l.rowsChanged()
+}
+
+// rowsChanged marks the list for layout and redraw and tells the rowsChangedCallback, if set.
+func (l *List[T]) rowsChanged() {
 	l.MarkForLayoutAndRedraw()
+	if l.rowsChangedCallback != nil {
+		l.rowsChangedCallback()
+	}
+}
+
+// selections returns the selection and, while a press is in progress, the one saved at the press, both of which have to
+// follow the rows.
+func (l *List[T]) selections() []*bitset.BitSet {
+	if l.savedSelection == nil {
+		return []*bitset.BitSet{l.Selection}
+	}
+	return []*bitset.BitSet{l.Selection, l.savedSelection}
+}
+
+// shiftSelectionUp moves the set bits of sel at or past index up by count, for rows inserted there.
+func shiftSelectionUp(sel *bitset.BitSet, index, count int) {
+	i := sel.LastSet() + 1
+	if count <= 0 || i < index {
+		return
+	}
+	for {
+		if i = sel.PreviousSet(i); i == -1 || i < index {
+			return
+		}
+		sel.Set(i + count)
+		sel.Clear(i)
+	}
+}
+
+// shiftSelectionDown clears the bits of sel from from to to, inclusive, and moves those past to down by as many, for
+// rows removed there.
+func shiftSelectionDown(sel *bitset.BitSet, from, to int) {
+	sel.ClearRange(from, to)
+	delta := to - from + 1
+	for {
+		if from = sel.NextSet(from); from == -1 {
+			return
+		}
+		sel.Set(from - delta)
+		sel.Clear(from)
+	}
+}
+
+// rowIndexAfterRemoval returns index once the rows from from to to, inclusive, are gone: -1 for one of them, moved down
+// for one past them, and unchanged otherwise, -1 included.
+func rowIndexAfterRemoval(index, from, to int) int {
+	switch {
+	case index >= from && index <= to:
+		return -1
+	case index > to:
+		return index - (to - from + 1)
+	default:
+		return index
+	}
 }
 
 // Replace the value at the specified index.
 func (l *List[T]) Replace(index int, value T) {
 	if index >= 0 && index < len(l.rows) {
 		l.rows[index] = value
-		l.MarkForLayoutAndRedraw()
+		l.rowsChanged()
 	}
 }
 
 // Clear the list of items.
 func (l *List[T]) Clear() {
 	l.rows = nil
-	l.Selection.Reset()
+	for _, sel := range l.selections() {
+		sel.Reset()
+	}
 	l.anchor = -1
 	l.lead = -1
-	l.MarkForLayoutAndRedraw()
+	l.lastSel = -1
+	l.rowsChanged()
 }
 
 // Remove the item at the specified index.
 func (l *List[T]) Remove(index int) {
-	if index >= 0 && index < len(l.rows) {
-		l.rows = slices.Delete(l.rows, index, index+1)
-		l.Selection.Clear(index)
-		switch {
-		case l.anchor == index:
-			l.anchor = -1
-		case l.anchor > index:
-			l.anchor--
-		}
-		switch {
-		case l.lead == index:
-			l.lead = -1
-		case l.lead > index:
-			l.lead--
-		}
-		for {
-			if index = l.Selection.NextSet(index); index == -1 {
-				break
-			}
-			l.Selection.Set(index - 1)
-			l.Selection.Clear(index)
-		}
-		l.MarkForLayoutAndRedraw()
-	}
+	l.RemoveRange(index, index)
 }
 
 // RemoveRange removes the items at the specified index range, inclusive.
 func (l *List[T]) RemoveRange(from, to int) {
 	if from >= 0 && from < len(l.rows) && to >= from && to < len(l.rows) {
 		l.rows = slices.Delete(l.rows, from, to+1)
-		l.Selection.ClearRange(from, to)
-		delta := to - from + 1
-		switch {
-		case l.anchor >= from && l.anchor <= to:
-			l.anchor = -1
-		case l.anchor > to:
-			l.anchor -= delta
+		for _, sel := range l.selections() {
+			shiftSelectionDown(sel, from, to)
 		}
-		switch {
-		case l.lead >= from && l.lead <= to:
-			l.lead = -1
-		case l.lead > to:
-			l.lead -= delta
-		}
-		for {
-			if from = l.Selection.NextSet(from); from == -1 {
-				break
-			}
-			l.Selection.Set(from - delta)
-			l.Selection.Clear(from)
-		}
-		l.MarkForLayoutAndRedraw()
+		l.anchor = rowIndexAfterRemoval(l.anchor, from, to)
+		l.lead = rowIndexAfterRemoval(l.lead, from, to)
+		l.lastSel = rowIndexAfterRemoval(l.lastSel, from, to)
+		l.rowsChanged()
 	}
 }
 

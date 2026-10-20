@@ -49,22 +49,23 @@ func matchingWords(text string) []string {
 	return words
 }
 
-// suggestionsFixture is a window holding a field with suggestions, a button after it and a plain panel to press
-// outside the field. Its fields other than screen belong to the UI thread.
+// suggestionsFixture is a window holding a field with suggestions, a button after it and a plain panel filling the rest
+// of the column, which is what makes the column scroll in the scrolled fixture. Its fields other than screen belong to
+// the UI thread.
 type suggestionsFixture struct {
-	screen  *unison.HeadlessScreen
-	wnd     *unison.Window
-	column  *unison.Panel
-	field   *unison.Field
-	button  *unison.Button
-	outside *unison.Panel
-	sg      *unison.FieldSuggestions[string]
-	chosen  []string
+	screen *unison.HeadlessScreen
+	wnd    *unison.Window
+	column *unison.Panel
+	field  *unison.Field
+	button *unison.Button
+	filler *unison.Panel
+	sg     *unison.FieldSuggestions[string]
+	chosen []string
 }
 
 // startSuggestions starts a 400x300 session holding the fixture's window at rect, focused, with the focus in the field,
 // which suggests the matchingWords of its text. Choosing a row records it and puts it in the field. With scrolled, the
-// column sits in a ScrollPanel and the outside panel is tall enough to scroll.
+// column sits in a ScrollPanel and the filler is tall enough to scroll it.
 func startSuggestions(t *testing.T, rect geom.Rect, scrolled bool) *suggestionsFixture {
 	t.Helper()
 	f := &suggestionsFixture{}
@@ -80,17 +81,17 @@ func startSuggestions(t *testing.T, rect geom.Rect, scrolled bool) *suggestionsF
 			}
 			f.button = unison.NewButton()
 			f.button.SetTitle("Go")
-			f.outside = unison.NewPanel()
+			f.filler = unison.NewPanel()
 			height := float32(40)
 			if scrolled {
 				height = 600
 			}
-			f.outside.SetLayoutData(&unison.FlexLayoutData{
+			f.filler.SetLayoutData(&unison.FlexLayoutData{
 				SizeHint: geom.NewSize(50, height),
 				HAlign:   align.Fill,
 				HGrab:    true,
 			})
-			f.column = axColumn(f.field, f.button, f.outside)
+			f.column = axColumn(f.field, f.button, f.filler)
 			var content unison.Paneler = f.column
 			if scrolled {
 				scroller := unison.NewScrollPanel()
@@ -756,4 +757,88 @@ func TestFieldSuggestionsHideOnPressOutsideWindows(t *testing.T) {
 	c.Nil(f.screen.SuggestionsWindow(f.wnd), "a press outside every window hides the rows")
 	c.True(f.screen.FocusedWindow() == f.wnd, "and moves the focus nowhere")
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
+}
+
+// TestFieldSuggestionsHideOnAPressOverTheClippedField verifies that a press on a panel drawn where a ScrollPanel clips
+// the field away hides the rows: the press is not on the field, however much of the field's rect it lies within.
+func TestFieldSuggestionsHideOnAPressOverTheClippedField(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	var top *unison.Button
+	var scroller *unison.ScrollPanel
+	var sg *unison.FieldSuggestions[string]
+	var wnd *unison.Window
+	clicks := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			field.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+				size := geom.NewSize(200, 200)
+				return size, size, size
+			})
+			sg = unison.NewFieldSuggestions[string](field)
+			scroller = unison.NewScrollPanel()
+			scroller.SetContent(field, behavior.Fill, behavior.Unmodified)
+			scroller.SetLayoutData(&unison.FlexLayoutData{
+				SizeHint: geom.NewSize(200, 60),
+				HAlign:   align.Fill,
+				HGrab:    true,
+			})
+			top = unison.NewButton()
+			top.SetTitle("Top")
+			top.ClickCallback = func() { clicks++ }
+			if wnd = newHeadlessWindow(t, "clipped", geom.NewRect(20, 20, 240, 200), axColumn(top, scroller)); wnd != nil {
+				wnd.ToFront()
+				wnd.SetFocus(field)
+			}
+		}))
+	c.NotNil(wnd)
+	var fieldRect, topRect geom.Rect
+	c.True(screen.Do(func() {
+		scroller.SetPosition(0, 50)
+		sg.SetRows([]string{suggestAlmond, suggestAloe})
+		fieldRect = field.RectToRoot(field.ContentRect(true))
+		topRect = top.RectToRoot(top.ContentRect(true))
+	}))
+	c.NotNil(screen.SuggestionsWindow(wnd))
+	c.True(topRect.Center().In(fieldRect), "the button lies over the part of the field the scroll panel clips away")
+	screen.Click(screen.PanelCenter(top))
+	c.Nil(screen.SuggestionsWindow(wnd), "a press on the button hides the rows")
+	var count int
+	c.True(screen.Do(func() { count = clicks }))
+	c.Equal(1, count, "and the button was clicked")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestFieldSuggestionsStayOnAPressInATableCellField verifies that a press on a Field editing a table cell, which the
+// table holds without making it a child, keeps the field's rows showing, as a press on any other field does.
+func TestFieldSuggestionsStayOnAPressInATableCellField(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	var sg *unison.FieldSuggestions[string]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(2, 1, "abc", false)
+			sg = unison.NewFieldSuggestions[string](e.fields[0][0])
+			wnd, _ = newEditWindow(t, e, false)
+		}))
+	c.NotNil(wnd)
+	cell := cellCenter(screen, e.table, 0, 0)
+	screen.Click(cell)
+	s := e.snapshot(c, screen, 0, 0)
+	c.True(s.fieldFocused, "the test needs the field focused")
+	c.True(screen.Do(func() { sg.SetRows([]string{suggestAlmond, suggestAloe}) }))
+	c.NotNil(screen.SuggestionsWindow(wnd), "the test needs the rows showing")
+	// Away from the click, so that the press is not a double-click.
+	press := cell.Add(geom.NewPoint(20, 0))
+	screen.MouseDown(press, unison.ButtonLeft, mod.None)
+	var showing bool
+	c.True(screen.Do(func() { showing = sg.Showing() }))
+	c.True(showing, "a press on the field editing the cell keeps its rows")
+	c.NotNil(screen.SuggestionsWindow(wnd))
+	screen.MouseUp(press, unison.ButtonLeft, mod.None)
+	s = e.snapshot(c, screen, 0, 0)
+	c.True(s.fieldFocused, "and leaves the focus in the field")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

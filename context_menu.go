@@ -103,13 +103,18 @@ func (p *Panel) ShowContextMenu(where geom.Point) bool {
 	if wnd != owner {
 		at.Point = owner.apiPointFromScreen(wnd.apiPointToScreen(at.Point))
 	}
-	// A tooltip showing, or about to show, would be drawn over the menu, and so would the field suggestions, which a
-	// native menu takes down here since it never reaches menu.createPopup. Both belong to the top-level window.
+	// A tooltip showing, or about to show, would be drawn over the menu, and so would the field suggestions. Both
+	// belong to the top-level window. The suggestions are hidden here, although menu.createPopup and macMenu.Popup hide
+	// them too, so that the owner's description is published without them by the flush below, which they come after.
 	owner.ClearTooltip()
 	owner.hideSuggestions()
 	// A native menu blocks drawing until it is dismissed, so what the gesture changed (a right-click selecting a row)
-	// must reach the screen first.
-	wnd.FlushDrawing()
+	// and the owner's description must reach the screen first. The panel's own window is flushed as well when it is
+	// another, though the suggestions window has just been disposed of, which leaves it nothing to draw.
+	if wnd != owner {
+		wnd.FlushDrawing()
+	}
+	owner.FlushDrawing()
 	menu.Popup(at, 0)
 	menu.Dispose()
 	return true
