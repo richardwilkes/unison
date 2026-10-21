@@ -133,10 +133,10 @@ type pending struct {
 //   - A well-known name ("org.a11y.Bus") is answered by whichever connection owns it, and that reply carries the
 //     owner's unique name, which is not something the caller can know without asking. Requiring the sender to equal the
 //     destination would reject every legitimate reply, so these are accepted from anyone, which is no check at all.
-//     Every caller here that can asks the bus who owns the name with GetNameOwner and addresses its call to the unique
-//     name it gets back, which makes it the first case above; what is left addressed to a well-known name is the call
-//     made when the bus says nothing owns it yet, since that call is what starts the service, and it is only as safe
-//     as every call was before.
+//     Some callers ask the bus who owns the name with GetNameOwner and address the call to the unique name it gets
+//     back, which makes it the first case above. The rest, such as a call that starts a service nothing owns yet and
+//     every call of the Secret Service client in package secrets, rely on the bus instead: dbus-daemon and dbus-broker
+//     pass on a reply only from a connection they delivered the call to.
 //
 // A reply with no sender at all is accepted: a connection with no bus on the other end has nobody to fill the field in.
 // That is what [Connect] makes, which in this repository is only ever the tests, every production connection being
@@ -313,6 +313,13 @@ func (c *Conn) Call(msg *Message) (*Message, error) {
 // two goroutines at once has the two serials written over each other, so build a message per call rather than sharing
 // one.
 func (c *Conn) CallWithFlags(msg *Message, flags Flags) (*Message, error) {
+	return c.CallWithTimeout(msg, flags, c.timeout)
+}
+
+// CallWithTimeout is [Conn.CallWithFlags] waiting up to timeout for the reply rather than five seconds, for a method
+// that may legitimately take longer to answer, such as one whose implementation waits on the user. Writing the message
+// is bounded as it is for every other call.
+func (c *Conn) CallWithTimeout(msg *Message, flags Flags, timeout time.Duration) (*Message, error) {
 	msg.Flags |= flags
 	if msg.Flags&FlagNoReplyExpected != 0 {
 		return nil, c.Send(msg)
@@ -341,9 +348,16 @@ func (c *Conn) CallWithFlags(msg *Message, flags Flags) (*Message, error) {
 		c.mu.Unlock()
 	}()
 	if err = c.writeAndWait(data); err != nil {
+		// The connection may have gone after the message reached the peer and the reply reached us, before the writer
+		// reported the write finished, in which case the reply is still the answer.
+		select {
+		case reply := <-ch:
+			return replyOrError(reply)
+		default:
+		}
 		return nil, err
 	}
-	timer := time.NewTimer(c.timeout)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
 	case reply := <-ch:
@@ -357,8 +371,15 @@ func (c *Conn) CallWithFlags(msg *Message, flags Flags) (*Message, error) {
 		}
 		return nil, c.failure()
 	case <-timer.C:
-		return nil, fmt.Errorf("dbus: timed out after %v waiting for a reply to %s", c.timeout, msg)
+		return nil, fmt.Errorf("dbus: timed out after %v waiting for a reply to %s", timeout, msg)
 	}
+}
+
+// SetTimeoutForTest replaces the five seconds that bound writing a message and waiting for the reply to [Conn.Call]. It
+// exists so that the packages built on top of this one can test what happens at that bound, and should only ever be
+// called from a test, before the connection is used.
+func (c *Conn) SetTimeoutForTest(timeout time.Duration) {
+	c.timeout = timeout
 }
 
 // replyOrError turns an ERROR reply into an [Error] and passes any other reply through.

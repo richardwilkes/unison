@@ -10,11 +10,13 @@
 package unison_test
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"os"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +29,7 @@ import (
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
 	"github.com/richardwilkes/unison/enums/thememode"
+	"github.com/richardwilkes/unison/secrets"
 )
 
 // These tests drive real widgets the way a person would: they run the application's own event loop against an in-memory
@@ -809,6 +812,112 @@ func TestHeadlessClipboard(t *testing.T) {
 	c.Equal("", text)
 }
 
+// headlessSentinelStore is a secret store that counts the calls it receives and refuses each of them.
+type headlessSentinelStore struct {
+	calls atomic.Int32
+}
+
+func (s *headlessSentinelStore) Set(_, _ string, _ []byte) error {
+	s.calls.Add(1)
+	return secrets.ErrUnavailable
+}
+
+func (s *headlessSentinelStore) Get(_, _ string) ([]byte, error) {
+	s.calls.Add(1)
+	return nil, secrets.ErrUnavailable
+}
+
+func (s *headlessSentinelStore) Delete(_, _ string) error {
+	s.calls.Add(1)
+	return secrets.ErrUnavailable
+}
+
+func (s *headlessSentinelStore) Accounts(_ string) ([]string, error) {
+	s.calls.Add(1)
+	return nil, secrets.ErrUnavailable
+}
+
+// TestHeadlessInstallsMemorySecretStore verifies that a session gives the application a fresh in-memory secret store
+// from its first line and leaves it in use after it ends, so that neither the session nor a goroutine outliving it
+// reaches a store installed before the session, even when that store's restore runs out of order.
+func TestHeadlessInstallsMemorySecretStore(t *testing.T) {
+	c := check.New(t)
+	// platform stands in for the platform store, so that a failure reaches a counter rather than the user's real store.
+	platform := &headlessSentinelStore{}
+	t.Cleanup(secrets.UseStore(platform))
+	sentinel := &headlessSentinelStore{}
+	unreached := func() {
+		t.Helper()
+		c.Equal(int32(0), platform.calls.Load(), "a session should never reach the platform store")
+		c.Equal(int32(0), sentinel.calls.Load(), "a session should never reach the store installed before it")
+	}
+	payload := []byte("headless payload")
+	// Registered before the sessions start, so it runs once both have ended.
+	t.Cleanup(func() {
+		read, err := secrets.Get("svc", "two")
+		c.NoError(err, "the last session's store should still be in use after it ends")
+		c.Equal(payload, read)
+		unreached()
+	})
+	restoreSentinel := secrets.UseStore(sentinel)
+	// Deferred, so it runs before the cleanup that stops the second session, out of order with that session's store.
+	defer restoreSentinel()
+
+	release := make(chan struct{})
+	late := make(chan error, 1)
+	var setErr, getErr error
+	var got []byte
+	one := startHeadless(t, unison.HeadlessConfig{Width: 100, Height: 100},
+		unison.StartupFinishedCallback(func() {
+			setErr = secrets.Set("svc", "acct", payload)
+			got, getErr = secrets.Get("svc", "acct")
+			go func() {
+				<-release
+				late <- secrets.Set("svc", "late", payload)
+			}()
+		}))
+	var errSet, errGet, errAccounts error
+	var read []byte
+	var accounts []string
+	c.True(one.Do(func() {
+		errSet, errGet, read = setErr, getErr, got
+		accounts, errAccounts = secrets.Accounts("svc")
+	}))
+	c.NoError(errSet)
+	c.NoError(errGet)
+	c.Equal(payload, read)
+	c.NoError(errAccounts)
+	c.Equal([]string{"acct"}, accounts, "the store should last for the whole session")
+	unreached()
+	one.Stop()
+
+	// A goroutine the session started that outlives it still reaches the session's store.
+	close(release)
+	c.NoError(<-late)
+	read, err := secrets.Get("svc", "late")
+	c.NoError(err)
+	c.Equal(payload, read)
+	unreached()
+
+	two := startHeadless(t, unison.HeadlessConfig{Width: 100, Height: 100})
+	var errTwo error
+	c.True(two.Do(func() {
+		_, err = secrets.Get("svc", "late")
+		errTwo = secrets.Set("svc", "two", payload)
+	}))
+	c.True(errors.Is(err, secrets.ErrNotFound), "a new session should start with an empty store: %v", err)
+	c.NoError(errTwo)
+	// Registered after the session started, so it runs after the deferred restore but while the session still runs.
+	t.Cleanup(func() {
+		var cleanupErr error
+		var cleanupRead []byte
+		c.True(two.Do(func() { cleanupRead, cleanupErr = secrets.Get("svc", "two") }))
+		c.NoError(cleanupErr, "an out-of-order restore should leave the session's store in use")
+		c.Equal(payload, cleanupRead)
+		unreached()
+	})
+}
+
 // TestHeadlessBeep verifies that the beep an application asks for is counted rather than played.
 func TestHeadlessBeep(t *testing.T) {
 	c := check.New(t)
@@ -1044,8 +1153,8 @@ func TestHeadlessSyncTimeout(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the driver call never returned for an application that never goes quiet")
 	}
-	errors := screen.Errors()
-	c.Equal(2, len(errors), "abandoning a wait should have been recorded once for each of them: %v", errors)
+	recorded := screen.Errors()
+	c.Equal(2, len(recorded), "abandoning a wait should have been recorded once for each of them: %v", recorded)
 
 	// Nothing about the spin may stand in the way of ending the session, which is what a test's cleanup relies on.
 	screen.Stop()

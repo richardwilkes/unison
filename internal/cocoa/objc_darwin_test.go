@@ -268,6 +268,27 @@ func TestGoBytesFromNSData(t *testing.T) {
 	})
 }
 
+func TestNSDataFromGo(t *testing.T) {
+	WithPool(func() {
+		payload := []byte{0, 1, 2, 253, 254, 255}
+		data := NSDataFromGo(payload)
+		payload[0] = 99 // the NSData must hold its own copy
+		if got := GoBytesFromNSData(data); !bytes.Equal(got, []byte{0, 1, 2, 253, 254, 255}) {
+			t.Errorf("NSDataFromGo round trip = %v, want [0 1 2 253 254 255]", got)
+		}
+		for _, in := range [][]byte{nil, {}} {
+			empty := NSDataFromGo(in)
+			if empty == 0 {
+				t.Errorf("NSDataFromGo(%#v) returned nil", in)
+				continue
+			}
+			if n := objc.Send[uint64](empty, Sel("length")); n != 0 {
+				t.Errorf("NSDataFromGo(%#v) has length %d, want 0", in, n)
+			}
+		}
+	})
+}
+
 // TestAttributedStringHelpersStayInBounds proves the two attributed-string helpers refuse or clamp a range AppKit would
 // raise NSRangeException for. Both are package-exported with no precondition on their range, and an Objective-C
 // exception raised inside a Go callback — which is where the accessibility adapter calls them from — cannot be caught

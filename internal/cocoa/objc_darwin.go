@@ -347,6 +347,16 @@ func GoBytesFromNSData(data objc.ID) []byte {
 	return out
 }
 
+// NSDataFromGo returns an autoreleased NSData holding a copy of data. Empty input yields an empty NSData.
+func NSDataFromGo(data []byte) objc.ID {
+	var ptr unsafe.Pointer
+	if len(data) != 0 {
+		ptr = unsafe.Pointer(&data[0])
+	}
+	// dataWithBytes:length: copies the buffer during the call, so passing Go memory is safe here.
+	return objc.ID(Cls("NSData")).Send(Sel("dataWithBytes:length:"), ptr, uint64(len(data)))
+}
+
 // NSArrayFromIDs returns an autoreleased NSArray containing the given objects.
 func NSArrayFromIDs(ids ...objc.ID) objc.ID {
 	if len(ids) == 0 {

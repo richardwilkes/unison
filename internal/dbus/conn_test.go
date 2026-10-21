@@ -422,6 +422,40 @@ func TestConnCallTimesOut(t *testing.T) {
 	c.Contains(err.Error(), "waiting for a reply to")
 }
 
+func TestConnCallWithTimeout(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
+	t.Parallel()
+	c := check.New(t)
+
+	// A longer bound outlasts the usual one.
+	b := newFakeBus(t)
+	b.client.timeout = 100 * time.Millisecond
+	done := make(chan callResult, 1)
+	go func() {
+		reply, err := b.client.CallWithTimeout(greet(c, "hello"), 0, testTimeout)
+		done <- callResult{reply: reply, err: err}
+	}()
+	call := b.nextCall()
+	time.Sleep(300 * time.Millisecond)
+	b.replyTo(call, "s", "eventually")
+	result, ok := awaitOne(done)
+	if !ok {
+		t.Fatal("timed out waiting for a call to finish")
+	}
+	c.NoError(result.err)
+	args, err := result.reply.Args()
+	c.NoError(err)
+	c.Equal([]any{"eventually"}, args)
+
+	// A shorter bound cuts the usual one short.
+	b = newFakeBus(t)
+	b.client.timeout = time.Hour
+	reply, err := b.client.CallWithTimeout(greet(c, "hello"), 0, 50*time.Millisecond)
+	c.Nil(reply)
+	c.HasError(err)
+	c.Contains(err.Error(), "timed out after 50ms waiting for a reply to")
+}
+
 func TestConnCallWithNoReplyExpected(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -1078,6 +1112,52 @@ func TestCallRemovesTheSerialItRegistered(t *testing.T) {
 	b.client.mu.Unlock()
 	c.True(stillPending, "the cleanup removed another call's entry from the pending map")
 	c.Equal(0, leftOver, "the cleanup left its own entry in the pending map")
+}
+
+// gatedTransport hands what is written to the peer at once but reports the write finished only once the gate opens, as
+// when the writer goroutine is descheduled between handing a message to the socket and saying so.
+type gatedTransport struct {
+	net.Conn
+	gate chan struct{}
+}
+
+func (g *gatedTransport) Write(p []byte) (int, error) {
+	n, err := g.Conn.Write(p)
+	<-g.gate
+	return n, err
+}
+
+func TestCallReturnsAReplyThatArrivedBeforeTheConnectionWasLost(t *testing.T) {
+	t.Parallel()
+	c := check.New(t)
+	clientSide, peerSide := net.Pipe()
+	gate := make(chan struct{})
+	client, err := Connect(&gatedTransport{Conn: clientSide, gate: gate})
+	c.NoError(err)
+	t.Cleanup(func() {
+		close(gate)
+		client.Close()
+		xio.CloseIgnoringErrors(peerSide)
+	})
+	wait := callAsync(t, client, greet(c, "hello"))
+	call, err := Decode(bufio.NewReader(peerSide))
+	c.NoError(err)
+	// The peer answers and hangs up while the writer has yet to report the call written.
+	answer := NewReply(call)
+	answer.Serial = 1
+	c.NoError(answer.SetBody("hello yourself"))
+	data, err := answer.Encode()
+	c.NoError(err)
+	_, err = peerSide.Write(data)
+	c.NoError(err)
+	xio.CloseIgnoringErrors(peerSide)
+	reply, err := wait()
+	c.NoError(err)
+	if reply != nil {
+		args, argsErr := reply.Args()
+		c.NoError(argsErr)
+		c.Equal([]any{"hello yourself"}, args)
+	}
 }
 
 func TestQueueIsBoundedByItemsAndBytes(t *testing.T) {

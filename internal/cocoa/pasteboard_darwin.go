@@ -11,7 +11,6 @@ package cocoa
 
 import (
 	"sync"
-	"unsafe"
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/uti"
@@ -114,12 +113,6 @@ func (i PasteboardItem) SetString(s string) {
 // SetData sets the item's data for the given type.
 func (i PasteboardItem) SetData(dataType *uti.DataType, data []byte) {
 	WithPool(func() {
-		var ptr unsafe.Pointer
-		if len(data) != 0 {
-			ptr = unsafe.Pointer(&data[0])
-		}
-		// dataWithBytes:length: copies the buffer during the call, so passing Go memory is safe here.
-		nsData := objc.ID(Cls("NSData")).Send(Sel("dataWithBytes:length:"), ptr, uint64(len(data)))
-		objc.ID(i).Send(Sel("setData:forType:"), nsData, NSStringFromGo(dataType.UTI))
+		objc.ID(i).Send(Sel("setData:forType:"), NSDataFromGo(data), NSStringFromGo(dataType.UTI))
 	})
 }
