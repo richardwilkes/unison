@@ -32,7 +32,6 @@ func TestMapKeychainError(t *testing.T) {
 	c.Contains(err.Error(), `"acct"`)
 
 	for _, status := range []cocoa.OSStatus{
-		cocoa.ErrSecUserCanceled,
 		cocoa.ErrSecAuthFailed,
 		cocoa.ErrSecInteractionNotAllowed,
 	} {
@@ -42,7 +41,13 @@ func TestMapKeychainError(t *testing.T) {
 		c.True(errors.Is(err, status))
 		c.False(errors.Is(err, ErrNotFound))
 		c.False(errors.Is(err, ErrUnavailable))
+		c.False(errors.Is(err, ErrPromptDismissed))
 	}
+
+	err = mapKeychainError(errs.NewWithCause("SecItemCopyMatching failed", cocoa.ErrSecUserCanceled), "svc", "acct")
+	c.True(errors.Is(err, ErrPromptDismissed), "status %d: %v", cocoa.ErrSecUserCanceled, err)
+	c.False(errors.Is(err, ErrNotFound))
+	c.False(errors.Is(err, ErrUnavailable))
 
 	for _, status := range []cocoa.OSStatus{
 		cocoa.ErrSecNotAvailable,
@@ -64,13 +69,17 @@ func TestMapKeychainUnavailable(t *testing.T) {
 	for _, status := range []cocoa.OSStatus{
 		cocoa.ErrSecItemNotFound,
 		cocoa.ErrSecDuplicateItem,
-		cocoa.ErrSecUserCanceled,
 		cocoa.ErrSecAuthFailed,
 		cocoa.ErrSecInteractionNotAllowed,
 	} {
 		original := errs.NewWithCause("SecItemAdd failed", status)
 		c.Equal(error(original), mapKeychainUnavailable(original))
 	}
+
+	canceled := errs.NewWithCause("SecItemAdd failed", cocoa.ErrSecUserCanceled)
+	canceledErr := mapKeychainUnavailable(canceled)
+	c.True(errors.Is(canceledErr, ErrPromptDismissed), "status %d: %v", cocoa.ErrSecUserCanceled, canceledErr)
+	c.False(errors.Is(canceledErr, ErrUnavailable))
 
 	for _, status := range []cocoa.OSStatus{
 		cocoa.ErrSecNotAvailable,

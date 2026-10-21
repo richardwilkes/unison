@@ -1030,7 +1030,7 @@ func TestSecretServiceSetCreatesTheDefaultCollection(t *testing.T) {
 		f.dismiss = true
 	})
 	err := ssDoSet(t, f.store(), ssTestAccount, []byte("never"))
-	c.True(errors.Is(err, errPromptDismissed))
+	c.True(errors.Is(err, ErrPromptDismissed))
 	c.Equal(1, ssCount(f.history(), ssCreateItem), "CreateItem must not be retried once creating the collection fails")
 	c.Equal(0, len(f.itemPaths()))
 }
@@ -1340,7 +1340,7 @@ func TestSecretServiceDismissedPrompt(t *testing.T) {
 	store := f.store()
 
 	_, err := ssDoGet(t, store, ssTestAccount)
-	c.True(errors.Is(err, errPromptDismissed))
+	c.True(errors.Is(err, ErrPromptDismissed))
 	c.False(errors.Is(err, ErrNotFound))
 	c.False(errors.Is(err, ErrUnavailable))
 	prompt := dbus.ObjectPath(fakePromptPrefix + "1")
@@ -1445,7 +1445,7 @@ func TestSecretServicePromptWatchesTheServiceName(t *testing.T) {
 		})
 		_, err := ssDoGet(t, f.store(), ssTestAccount)
 		c.True(errors.Is(err, ErrUnavailable), newOwner)
-		c.False(errors.Is(err, errPromptDismissed), newOwner)
+		c.False(errors.Is(err, ErrPromptDismissed), newOwner)
 		prompt := dbus.ObjectPath(fakePromptPrefix + "1")
 		c.Equal(slices.Concat([]string{ssOpenSession, ssSearchItems, ssUnlock}, ssPromptHistory(prompt)), f.history(),
 			newOwner)

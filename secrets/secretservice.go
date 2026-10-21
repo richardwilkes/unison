@@ -80,9 +80,6 @@ const (
 // It only stops a service that never answers from holding the caller forever.
 const ssCallTimeout = 2 * time.Minute
 
-// errPromptDismissed is the cause of the error returned when the user dismisses a Secret Service prompt.
-var errPromptDismissed = errors.New("secrets: the prompt was dismissed")
-
 var _ Store = &secretServiceStore{}
 
 // secretServiceStore is a Store backed by the freedesktop Secret Service, as provided by GNOME Keyring, KWallet and
@@ -350,7 +347,7 @@ func (s *secretServiceStore) callPatiently(msg *dbus.Message) (*dbus.Message, er
 // unlock asks the service to unlock paths, which are collections or items, and returns the ones that are now unlocked.
 // The user may have to be prompted for that, in which case this waits for as long as they take to answer. When the user
 // dismisses the prompt, the ones the service unlocked without it are returned with an error matching
-// errPromptDismissed.
+// ErrPromptDismissed.
 func (s *secretServiceStore) unlock(paths []dbus.ObjectPath) ([]dbus.ObjectPath, error) {
 	msg := dbus.NewMethodCall(ssDestination, ssServicePath, ssServiceIface, ssUnlock)
 	if err := msg.SetBodyWithSignature("ao", paths); err != nil {
@@ -377,7 +374,7 @@ func (s *secretServiceStore) unlock(paths []dbus.ObjectPath) ([]dbus.ObjectPath,
 	}
 	result, err := s.runPrompt(prompt, reply.Sender)
 	if err != nil {
-		if errors.Is(err, errPromptDismissed) {
+		if errors.Is(err, ErrPromptDismissed) {
 			return unlocked, err
 		}
 		return nil, err
@@ -492,7 +489,7 @@ func serviceLeft(msg *dbus.Message, owner string) bool {
 	return nameOK && newOwnerOK && name == ssDestination && (newOwner == "" || (owner != "" && newOwner != owner))
 }
 
-// promptResult returns the result a prompt's Completed signal carries, or an error matching errPromptDismissed when the
+// promptResult returns the result a prompt's Completed signal carries, or an error matching ErrPromptDismissed when the
 // user dismissed it.
 func promptResult(signal *dbus.Message) (dbus.Variant, error) {
 	args, err := replyArgs(signal, "bv")
@@ -504,7 +501,7 @@ func promptResult(signal *dbus.Message) (dbus.Variant, error) {
 		return dbus.Variant{}, err
 	}
 	if dismissed {
-		return dbus.Variant{}, errs.NewWithCause("the Secret Service prompt was dismissed", errPromptDismissed)
+		return dbus.Variant{}, errs.NewWithCause("the Secret Service prompt was dismissed", ErrPromptDismissed)
 	}
 	return replyArg[dbus.Variant](args, 1)
 }
@@ -567,12 +564,12 @@ func (s *secretServiceStore) itemAttributes(item dbus.ObjectPath) (map[string]st
 
 // unlockItems asks the service to unlock items and returns the ones that are now unlocked, in the order given, and
 // whether any were left locked. When the user dismisses the prompt, the ones unlocked without it are returned with an
-// error matching errPromptDismissed.
+// error matching ErrPromptDismissed.
 func (s *secretServiceStore) unlockItems(items []dbus.ObjectPath) (opened []dbus.ObjectPath, leftLocked bool,
 	err error,
 ) {
 	var unlocked []dbus.ObjectPath
-	if unlocked, err = s.unlock(items); err != nil && !errors.Is(err, errPromptDismissed) {
+	if unlocked, err = s.unlock(items); err != nil && !errors.Is(err, ErrPromptDismissed) {
 		return nil, false, err
 	}
 	for _, item := range items {
@@ -729,7 +726,7 @@ func (s *secretServiceStore) pickItem(unlocked, locked []dbus.ObjectPath,
 		if group.locked && len(items) != 0 {
 			var stillLocked bool
 			items, stillLocked, unlockErr = s.unlockItems(items)
-			if unlockErr != nil && !errors.Is(unlockErr, errPromptDismissed) {
+			if unlockErr != nil && !errors.Is(unlockErr, ErrPromptDismissed) {
 				return "", unlockErr
 			}
 			leftLocked = leftLocked || stillLocked
@@ -856,7 +853,7 @@ func (s *secretServiceStore) accounts(service string) ([]string, error) {
 	}
 	if len(locked) != 0 {
 		var opened []dbus.ObjectPath
-		if opened, err = s.unlock(locked); err != nil && !errors.Is(err, errPromptDismissed) {
+		if opened, err = s.unlock(locked); err != nil && !errors.Is(err, ErrPromptDismissed) {
 			return nil, err
 		}
 		for _, item := range locked {

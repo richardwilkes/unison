@@ -59,13 +59,15 @@ func mapKeychainError(err error, service, account string) error {
 	return mapKeychainUnavailable(err)
 }
 
-// mapKeychainUnavailable turns an error for a keychain that cannot be reached into one that matches ErrUnavailable and
-// returns any other error, such as a canceled or refused access prompt, unchanged.
+// mapKeychainUnavailable turns an error for a keychain that cannot be reached into one that matches ErrUnavailable,
+// one for a dismissed access prompt into one that matches ErrPromptDismissed, and returns any other error unchanged.
 func mapKeychainUnavailable(err error) error {
 	if status, ok := errors.AsType[cocoa.OSStatus](err); ok {
 		switch status {
 		case cocoa.ErrSecNotAvailable, cocoa.ErrSecNoSuchKeychain, cocoa.ErrSecNoDefaultKeychain:
 			return errs.NewWithCausef(ErrUnavailable, "unable to reach a keychain (OSStatus %d): %s", status, err)
+		case cocoa.ErrSecUserCanceled:
+			return errs.NewWithCausef(ErrPromptDismissed, "the keychain access prompt was dismissed: %s", err)
 		}
 	}
 	return err

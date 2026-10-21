@@ -25,6 +25,9 @@ var (
 	// ErrUnavailable reports that no secret store can be reached: on Linux there is no session bus or nothing provides
 	// the Secret Service, on macOS no keychain is available, or on Windows the logon session has no credential set.
 	ErrUnavailable = errors.New("secrets: no secret store is available")
+	// ErrPromptDismissed reports that the user dismissed or canceled the store's access prompt, such as the Secret
+	// Service unlock dialog on Linux or the Keychain access prompt on macOS.
+	ErrPromptDismissed = errors.New("secrets: the prompt was dismissed")
 )
 
 var (
