@@ -14,12 +14,17 @@ import (
 
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/thememode"
+	"github.com/richardwilkes/unison/secrets"
 )
 
 // This file is the headless stand-in for the operating system's application object and event queue. The queue is a
 // slice of closures rather than a channel of event structs: the quiescence probe behind Sync() has to be able to ask
 // how many are still pending, and draining has to happen one at a time (see drainInput), neither of which a channel
 // offers.
+
+// removeSessionSecrets removes the memory store the most recent session installed, which stays in use after that
+// session ends. The next session's beginStartup calls it.
+var removeSessionSecrets func()
 
 // post adds f to the event queue and wakes the event loop. It may be called from any goroutine.
 func (s *headlessState) post(f func()) {
@@ -127,6 +132,14 @@ func (s *headlessState) beginStartup() error {
 	// The in-window file dialogs, which are the only ones a headless session has, remember the directory they were last
 	// used in. The first session in a process must not inherit that from whatever ran before it.
 	lastWorkingDir = ""
+	// A session must never touch the user's real secret store, and neither may a goroutine it started that outlives it,
+	// so it gets a fresh in-memory store, which finish() leaves in use until the next session replaces it here. The new
+	// store goes in before the old one comes out, so that a late goroutine never sees what lies beneath them.
+	removeSecrets := secrets.UseStore(secrets.NewMemoryStore())
+	if removeSessionSecrets != nil {
+		removeSessionSecrets()
+	}
+	removeSessionSecrets = removeSecrets
 	// The theme mode is the session's to set, starting from Auto as a fresh process would, so whatever was set before
 	// the session is taken out of the way here and put back by finish(), exactly as the cursors are. Without this the
 	// first session in a process would inherit a mode set before it while every later one started at Auto.

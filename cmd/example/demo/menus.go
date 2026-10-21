@@ -27,5 +27,6 @@ func installDefaultMenus(wnd *unison.Window) {
 		fileMenu.InsertMenu(0, newMenu)
 		fileMenu.InsertItem(1, OpenAction.NewMenuItem(f))
 		fileMenu.InsertItem(2, ShowColorsWindowAction.NewMenuItem(f))
+		fileMenu.InsertItem(3, ShowSecretsWindowAction.NewMenuItem(f))
 	})
 }

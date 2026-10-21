@@ -28,6 +28,7 @@ const (
 	NewSVGWindowActionID
 	ShowColorsWindowActionID
 	OpenActionID
+	ShowSecretsWindowActionID
 )
 
 var (
@@ -45,6 +46,8 @@ var (
 	ShowColorsWindowAction *unison.Action
 	// OpenAction presents a file open dialog and then prints any selected files onto the console.
 	OpenAction *unison.Action
+	// ShowSecretsWindowAction opens a demo secrets window when triggered.
+	ShowSecretsWindowAction *unison.Action
 )
 
 func init() {
@@ -109,6 +112,16 @@ func init() {
 		KeyBinding: unison.KeyBinding{KeyCode: unison.KeyK, Modifiers: mod.OSMenuCommand()},
 		ExecuteCallback: func(_ *unison.Action, _ any) {
 			if _, err := NewDemoColorsWindow(); err != nil {
+				errs.Log(err)
+			}
+		},
+	}
+
+	ShowSecretsWindowAction = &unison.Action{
+		ID:    ShowSecretsWindowActionID,
+		Title: "Show Secrets",
+		ExecuteCallback: func(_ *unison.Action, _ any) {
+			if _, err := NewDemoSecretsWindow(); err != nil {
 				errs.Log(err)
 			}
 		},

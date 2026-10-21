@@ -32,6 +32,7 @@ import (
 // Windows/Linux one, menus and file dialogs are the in-window ones, the application menu has no macOS-only entries,
 // the quit item is "Exit", title icons are recorded even on macOS, and accessibility follows Linux's answers
 // (headlessAXPolicy). A request to open a URL in the browser is recorded for OpenedURLs() rather than carried out.
+// The secrets package is given a fresh in-memory store, so a session never touches the user's real one.
 //
 // A session is not tied to the life of the process: Start() returns when the session ends, so one test binary can run
 // several sessions one after another. Everything a session touches that outlives it — the window list, the task queue,
@@ -39,11 +40,15 @@ import (
 // the accessibility answers — is reset when it ends, so the next session starts from the same clean slate the first one
 // did.
 //
-// One thing deliberately survives: a timer armed with InvokeTaskAfter counts down on a goroutine of its own, which no
-// teardown can reach, so it may fire after its session has ended and enqueue a task into a later one — or into none at
-// all, in which case the task simply sits in a queue that the next session's beginStartup discards. That is harmless,
-// because every closure this package arms a timer with acts solely on the one object it belongs to and either checks
-// that the object is still usable or does something that has no effect once it is not:
+// The secret store deliberately survives: the session's in-memory one stays in use after it ends, until the next
+// session replaces it with a fresh one, so that a goroutine the application started, which may outlive the session,
+// never reaches the user's real store either.
+//
+// A timer survives as well: one armed with InvokeTaskAfter counts down on a goroutine of its own, which no teardown can
+// reach, so it may fire after its session has ended and enqueue a task into a later one — or into none at all, in which
+// case the task simply sits in a queue that the next session's beginStartup discards. That is harmless, because every
+// closure this package arms a timer with acts solely on the one object it belongs to and either checks that the object
+// is still usable or does something that has no effect once it is not:
 //
 //   - Field.blink (field.go) redraws the caret only while the field's window is still valid, and scheduleBlink asks the
 //     same question before arming the next one.
@@ -400,9 +405,10 @@ func (s *headlessState) recordError(err error) {
 	s.errLock.Unlock()
 }
 
-// finish returns every piece of package-level state the session touched to the value it had before the session
-// started, then releases the goroutines waiting on the session. It runs on the UI goroutine after the event loop has
-// exited, which is the last moment at which that state is still exclusively ours.
+// finish returns every piece of package-level state the session touched, other than the secret store (see
+// beginStartup), to the value it had before the session started, then releases the goroutines waiting on the session.
+// It runs on the UI goroutine after the event loop has exited, which is the last moment at which that state is still
+// exclusively ours.
 func (s *headlessState) finish() {
 	// First, while the window list this walks is still intact. A session that turned accessibility support on must not
 	// leave it on for whatever runs next, and the snapshot count is what the zero-cost tests assert on, so the next

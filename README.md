@@ -84,6 +84,8 @@ command-line usage keep working.
 - Undo/redo management.
 - Light and dark themes that follow the system, with customizable colors and fonts.
 - Printing to network printers via IPP, in the `printing` package.
+- Secrets kept in the operating system's credential store (the macOS Keychain, the Windows Credential Manager and the
+  freedesktop Secret Service on Linux), in the `secrets` package; a headless session swaps in an in-memory store.
 - Screen-reader support and display-free testing, described below.
 
 ## Threading
