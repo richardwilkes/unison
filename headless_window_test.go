@@ -117,17 +117,19 @@ func TestHeadlessHiddenWindowForgetsTooltip(t *testing.T) {
 	}
 }
 
-// TestHeadlessPressOutsideMenuStackClosesIt verifies that a press outside an open menu stack, on no window or on
-// another of the application's windows, here a transient one that takes no focus, closes the stack and is then
-// delivered, as it is on macOS.
+// TestHeadlessPressOutsideMenuStackClosesIt verifies that a press outside an open menu stack, in its owner, on no
+// window or on another of the application's windows, here a transient one that takes no focus, closes the stack and
+// disposes of its popup windows without choosing anything, and that the press on the other window is then delivered,
+// as it is on macOS.
 func TestHeadlessPressOutsideMenuStackClosesIt(t *testing.T) {
 	c := check.New(t)
 	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+	var chosen []string
+	var m *menu
 	openMenu := func() *Window {
 		var popup *Window
 		c.True(screen.Do(func() {
-			var chosen []string
-			m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two")
+			m = newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two")
 			m.Popup(geom.NewRect(20, 20, 0, 0), -1)
 			if m.popupPanel != nil {
 				popup = m.popupPanel.Window()
@@ -138,19 +140,27 @@ func TestHeadlessPressOutsideMenuStackClosesIt(t *testing.T) {
 	}
 	checkClosed := func(popup *Window) {
 		t.Helper()
-		var open int
-		var popupValid bool
+		var open, picked int
+		var popupValid, menuOpen bool
 		c.True(screen.Do(func() {
 			open = len(owner.root.openMenuPanels)
 			popupValid = popup.IsValid()
+			menuOpen = m.popupPanel != nil
+			picked = len(chosen)
 		}))
 		c.Equal(0, open)
-		c.False(popupValid)
+		c.False(popupValid, "the popup window is disposed of")
+		c.False(menuOpen)
+		c.Equal(0, picked)
 		c.True(screen.FocusedWindow() == owner)
 	}
 
 	popup := openMenu()
-	screen.Click(geom.NewPoint(450, 350))
+	screen.Click(geom.NewPoint(340, 240)) // in the owner, outside the menu
+	checkClosed(popup)
+
+	popup = openMenu()
+	screen.Click(geom.NewPoint(450, 350)) // on no window
 	checkClosed(popup)
 
 	var openAtPress []int

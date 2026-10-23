@@ -183,57 +183,51 @@ func TestNewOpenGLPixelFormat(t *testing.T) {
 }
 
 // TestNewOpenGLContext proves context creation against a real window/view pair the way unison's nativeCreate does:
-// the context must exist, be attached to the view, leave the view flagged for best-resolution surfaces, default to
-// an opaque surface, and support the share-context creation path.
+// the context must exist, be attached to the view, leave the view flagged for best-resolution surfaces, and support
+// the share-context creation path. The surface opacity, set in Go since the Objective-C bridge went away, must read
+// back 1 for an opaque context and 0 for a transparent one, exactly what the old bridge's setValues:forParameter: did.
 func TestNewOpenGLContext(t *testing.T) {
 	requireGL(t)
-	runOnMain(func() {
-		_, v, cleanup := newTestWindowAndView(t)
-		defer cleanup()
-		f := newTestPixelFormat(t)
-		defer f.Release()
-		ctx := NewOpenGLContext(v, f, 0, false)
-		if ctx == 0 {
-			t.Fatal("NewOpenGLContext returned 0")
-		}
-		defer ctx.Release()
-		if got := View(objc.ID(ctx).Send(Sel("view"))); got != v {
-			t.Errorf("context view = %#x, want %#x", got, v)
-		}
-		if !objc.Send[bool](objc.ID(v), Sel("wantsBestResolutionOpenGLSurface")) {
-			t.Error("view wantsBestResolutionOpenGLSurface = false, want true")
-		}
-		if got := contextSurfaceOpacity(ctx); got != 1 {
-			t.Errorf("opaque context surface opacity = %d, want 1", got)
-		}
-		// The share-context path (unison passes 0 today, but the parameter is part of the exported API).
-		shared := NewOpenGLContext(v, f, ctx, false)
-		if shared == 0 {
-			t.Fatal("NewOpenGLContext with a share context returned 0")
-		}
-		shared.Release()
-	})
-}
-
-// TestNewOpenGLContextTransparent proves the surface-opacity handling that moved from Objective-C to Go: a context
-// created with transparent=true must read back opacity 0, exactly what the old bridge's setValues:forParameter: did.
-func TestNewOpenGLContextTransparent(t *testing.T) {
-	requireGL(t)
-	runOnMain(func() {
-		w, v, cleanup := newTestWindowAndView(t)
-		defer cleanup()
-		w.SetTransparent() // matches production: unison marks the window transparent before creating the context
-		f := newTestPixelFormat(t)
-		defer f.Release()
-		ctx := NewOpenGLContext(v, f, 0, true)
-		if ctx == 0 {
-			t.Fatal("NewOpenGLContext returned 0")
-		}
-		defer ctx.Release()
-		if got := contextSurfaceOpacity(ctx); got != 0 {
-			t.Errorf("transparent context surface opacity = %d, want 0", got)
-		}
-	})
+	for _, c := range []struct {
+		name        string
+		transparent bool
+		opacity     int32
+	}{
+		{name: "opaque", opacity: 1},
+		{name: "transparent", transparent: true, opacity: 0},
+	} {
+		runOnMain(func() {
+			w, v, cleanup := newTestWindowAndView(t)
+			defer cleanup()
+			if c.transparent {
+				w.SetTransparent() // as unison does before creating the context
+			}
+			f := newTestPixelFormat(t)
+			defer f.Release()
+			ctx := NewOpenGLContext(v, f, 0, c.transparent)
+			if ctx == 0 {
+				t.Errorf("%s: NewOpenGLContext returned 0", c.name)
+				return
+			}
+			defer ctx.Release()
+			if got := View(objc.ID(ctx).Send(Sel("view"))); got != v {
+				t.Errorf("%s: context view = %#x, want %#x", c.name, got, v)
+			}
+			if !objc.Send[bool](objc.ID(v), Sel("wantsBestResolutionOpenGLSurface")) {
+				t.Errorf("%s: view wantsBestResolutionOpenGLSurface = false, want true", c.name)
+			}
+			if got := contextSurfaceOpacity(ctx); got != c.opacity {
+				t.Errorf("%s context surface opacity = %d, want %d", c.name, got, c.opacity)
+			}
+			// The share-context path (unison passes 0 today, but the parameter is part of the exported API).
+			shared := NewOpenGLContext(v, f, ctx, c.transparent)
+			if shared == 0 {
+				t.Errorf("%s: NewOpenGLContext with a share context returned 0", c.name)
+				return
+			}
+			shared.Release()
+		})
+	}
 }
 
 // TestOpenGLContextCurrent proves the make-current contract unison's render loop depends on: MakeCurrent binds the

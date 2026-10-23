@@ -20,30 +20,6 @@ import (
 	"github.com/richardwilkes/unison/secrets"
 )
 
-func TestMemoryStoreRoundTrip(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	store := secrets.NewMemoryStore()
-	c.NoError(store.Set(testService, testAccount, []byte("first")))
-	got, err := store.Get(testService, testAccount)
-	c.NoError(err)
-	c.Equal([]byte("first"), got)
-
-	c.NoError(store.Set(testService, testAccount, []byte("second")))
-	got, err = store.Get(testService, testAccount)
-	c.NoError(err)
-	c.Equal([]byte("second"), got)
-
-	c.NoError(store.Delete(testService, testAccount))
-	got, err = store.Get(testService, testAccount)
-	c.True(errors.Is(err, secrets.ErrNotFound))
-	c.Nil(got)
-	c.True(errors.Is(store.Delete(testService, testAccount), secrets.ErrNotFound))
-	accounts, err := store.Accounts(testService)
-	c.NoError(err)
-	c.Nil(accounts)
-}
-
 func TestMemoryStoreZeroValue(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)

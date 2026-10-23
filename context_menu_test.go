@@ -699,24 +699,35 @@ func cmRowWidgets(c check.Checker, screen *unison.HeadlessScreen, table, quietTa
 }
 
 // TestContextMenuRows verifies, for a table and a list alike, that the rows offer the widget's menu only when it has
-// one; that a request or a right-click on an unselected row selects just that row, makes it the lead row and focuses
-// the widget, while one on a row of a larger selection keeps it all; and that the menu opens beneath the row.
+// one; that a request or a right-click on an unselected row selects just that row, makes it the lead row, focuses the
+// widget and reports the selection change once, before the menu is asked for, while one on a row of a larger selection
+// keeps it all and reports nothing; and that the menu opens beneath the row.
 func TestContextMenuRows(t *testing.T) {
 	c := check.New(t)
 	var table, quietTable *unison.Table[*tableTestRow]
 	var list, quietList *unison.List[string]
 	var tableCalls, listCalls cmRequests
+	var events []string
 	var wnd *unison.Window
+	logMenu := func(build func(geom.Point) unison.Menu) func(geom.Point) unison.Menu {
+		return func(where geom.Point) unison.Menu {
+			events = append(events, "menu")
+			return build(where)
+		}
+	}
+	logSelection := func() { events = append(events, "selection") }
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 800},
 		unison.StartupFinishedCallback(func() {
 			quietTable = axNewTable(newTableTestRow("q0"), newTableTestRow("q1"))
 			table = axNewTable(flatRows(5)...)
-			table.ContextMenuCallback = cmMenu(&tableCalls, cmTableTitle)
+			table.SelectionChangedCallback = logSelection
+			table.ContextMenuCallback = logMenu(cmMenu(&tableCalls, cmTableTitle))
 			quietList = unison.NewList[string]()
 			quietList.Append("Quiet")
 			list = unison.NewList[string]()
 			list.Append("Zero", "One", "Two", "Three", "Four")
-			list.ContextMenuCallback = cmMenu(&listCalls, "List")
+			list.NewSelectionCallback = logSelection
+			list.ContextMenuCallback = logMenu(cmMenu(&listCalls, "List"))
 			wnd = newHeadlessWindow(t, "rows", geom.NewRect(10, 10, 600, 700),
 				axColumn(quietTable, table, quietList, list))
 			if wnd != nil {
@@ -724,6 +735,13 @@ func TestContextMenuRows(t *testing.T) {
 			}
 		}))
 	c.NotNil(wnd)
+	reported := func() []string {
+		var got []string
+		screen.Do(func() { got = slices.Clone(events) })
+		return got
+	}
+	selectionThenMenu := []string{"selection", "menu"}
+	menuOnly := []string{"menu"}
 
 	for _, one := range cmRowWidgets(c, screen, table, quietTable, &tableCalls, list, quietList, &listCalls) {
 		tree := screen.AccessibilityTree(wnd)
@@ -740,6 +758,7 @@ func TestContextMenuRows(t *testing.T) {
 		c.True(screen.Do(func() {
 			one.quiet.AsPanel().RequestFocus()
 			one.selectAt(0, 1)
+			events = nil
 		}))
 		node := axMustNode(c, one.rowNode(screen.AccessibilityTree(wnd), 2), "the %s row is described", one.name)
 		c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -750,6 +769,7 @@ func TestContextMenuRows(t *testing.T) {
 		c.Equal(1, menus, "asking a %s row for the menu opens it", one.name)
 		c.Equal(1, len(items), "the %s menu is the one shown: %v", one.name, items)
 		c.Equal([]int{2}, one.selected(), "a %s row that was not selected becomes the selection", one.name)
+		c.Equal(selectionThenMenu, reported(), "the %s reports the change once, before the menu is asked for", one.name)
 		var focused bool
 		var lead int
 		var expected geom.Point
@@ -765,7 +785,10 @@ func TestContextMenuRows(t *testing.T) {
 		cmCloseMenu(c, screen, wnd)
 
 		// A request on one row of a larger selection keeps all of it.
-		screen.Do(func() { one.selectAt(0, 1, 2) })
+		screen.Do(func() {
+			one.selectAt(0, 1, 2)
+			events = nil
+		})
 		node = axMustNode(c, one.rowNode(screen.AccessibilityTree(wnd), 1), "the %s row is described", one.name)
 		c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 			Node:   node.ID,
@@ -774,6 +797,7 @@ func TestContextMenuRows(t *testing.T) {
 		menus, _ = cmOpenMenu(c, screen, wnd)
 		c.Equal(1, menus)
 		c.Equal([]int{0, 1, 2}, one.selected(), "the %s menu acts on the whole selection", one.name)
+		c.Equal(menuOnly, reported(), "so the %s reports no selection change", one.name)
 		screen.Do(func() { lead = one.lead() })
 		c.Equal(1, lead, "with the person on the %s row asked", one.name)
 		cmCloseMenu(c, screen, wnd)
@@ -783,11 +807,13 @@ func TestContextMenuRows(t *testing.T) {
 		screen.Do(func() {
 			one.selectAt(0, 1, 2)
 			rowPoint = one.rowPoint(1)
+			events = nil
 		})
 		screen.ClickWith(cmScreenPoint(c, screen, one.panel, rowPoint), unison.ButtonRight, mod.None)
 		menus, _ = cmOpenMenu(c, screen, wnd)
 		c.Equal(1, menus, "a right-click on a %s row opens the menu", one.name)
 		c.Equal([]int{0, 1, 2}, one.selected(), "and leaves the whole %s selection in place", one.name)
+		c.Equal(menuOnly, reported(), "so the %s reports no selection change", one.name)
 		cmCloseMenu(c, screen, wnd)
 
 		// A right-click on a row outside the selection selects just that row and focuses the widget, though the widget
@@ -795,11 +821,14 @@ func TestContextMenuRows(t *testing.T) {
 		screen.Do(func() {
 			one.quiet.AsPanel().RequestFocus()
 			rowPoint = one.rowPoint(4)
+			events = nil
 		})
 		screen.ClickWith(cmScreenPoint(c, screen, one.panel, rowPoint), unison.ButtonRight, mod.None)
 		menus, _ = cmOpenMenu(c, screen, wnd)
 		c.Equal(1, menus)
 		c.Equal([]int{4}, one.selected(), "only the %s row right-clicked on is selected", one.name)
+		c.Equal(selectionThenMenu, reported(), "and the %s reports the change once, before the menu is asked for",
+			one.name)
 		screen.Do(func() {
 			focused = one.panel.AsPanel().Focused()
 			lead = one.lead()
@@ -2794,120 +2823,6 @@ func TestContextMenuTableAndListAnchors(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestContextMenuReportsSelectionChanges verifies that a right-click or an assistive technology's request on an
-// unselected row of a table or list reports the selection change once, before the menu is asked for, and that one on a
-// row of a larger selection reports nothing.
-func TestContextMenuReportsSelectionChanges(t *testing.T) {
-	c := check.New(t)
-	var table *unison.Table[*tableTestRow]
-	var list *unison.List[string]
-	var events []string
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 800},
-		unison.StartupFinishedCallback(func() {
-			table = axNewTable(flatRows(5)...)
-			table.SelectionChangedCallback = func() { events = append(events, "selection") }
-			table.ContextMenuCallback = func(geom.Point) unison.Menu {
-				events = append(events, "menu")
-				return cmNewMenu(cmTableTitle)
-			}
-			list = unison.NewList[string]()
-			list.Append("Zero", "One", "Two", "Three", "Four")
-			list.NewSelectionCallback = func() { events = append(events, "selection") }
-			list.ContextMenuCallback = func(geom.Point) unison.Menu {
-				events = append(events, "menu")
-				return cmNewMenu("List")
-			}
-			wnd = newHeadlessWindow(t, "selection changes", geom.NewRect(10, 10, 600, 600), axColumn(table, list))
-			if wnd != nil {
-				wnd.ToFront()
-			}
-		}))
-	c.NotNil(wnd)
-
-	type widget struct {
-		panel    unison.Paneler
-		selectAt func(indexes ...int)
-		rowPoint func(row int) geom.Point
-		rowNode  func(tree *accessibility.Tree, row int) *accessibility.Node
-		name     string
-	}
-	for _, one := range []widget{
-		{
-			name:  cmTableName,
-			panel: table,
-			selectAt: func(indexes ...int) {
-				table.ClearSelection()
-				table.SelectByIndex(indexes...)
-			},
-			rowPoint: func(row int) geom.Point {
-				frame := table.RowFrame(row)
-				return geom.NewPoint(frame.X+10, frame.CenterY())
-			},
-			rowNode: func(tree *accessibility.Tree, row int) *accessibility.Node {
-				return axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(table)))["r"+strconv.Itoa(row)]
-			},
-		},
-		{
-			name:     cmListName,
-			panel:    list,
-			selectAt: func(indexes ...int) { list.Select(false, indexes...) },
-			rowPoint: func(row int) geom.Point {
-				rect := list.RowRect(row)
-				return geom.NewPoint(rect.X+10, rect.CenterY())
-			},
-			rowNode: func(tree *accessibility.Tree, row int) *accessibility.Node {
-				return axNodeWithRowIndex(tree, axMustNode(c, screen.AccessibilityNodeFor(list)), row)
-			},
-		},
-	} {
-		// prepare selects the given rows and forgets what that reported.
-		prepare := func(indexes ...int) {
-			screen.Do(func() {
-				one.selectAt(indexes...)
-				events = nil
-			})
-		}
-		reported := func() []string {
-			var got []string
-			screen.Do(func() { got = slices.Clone(events) })
-			return got
-		}
-		byClick := func(row int) {
-			var point geom.Point
-			screen.Do(func() { point = one.rowPoint(row) })
-			screen.ClickWith(cmScreenPoint(c, screen, one.panel, point), unison.ButtonRight, mod.None)
-		}
-		byRequest := func(row int) {
-			node := axMustNode(c, one.rowNode(screen.AccessibilityTree(wnd), row), "the row is described:", one.name)
-			c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-				Node:   node.ID,
-				Action: accessibility.ShowContextMenu,
-			}))
-		}
-		for _, ask := range []struct {
-			how  func(row int)
-			name string
-		}{
-			{how: byClick, name: "a right-click"},
-			{how: byRequest, name: "an assistive technology's request"},
-		} {
-			prepare(0)
-			ask.how(2)
-			c.Equal([]string{"selection", "menu"}, reported(),
-				"%s on a %s row outside the selection reports the change once, before the menu is asked for",
-				ask.name, one.name)
-			cmCloseMenu(c, screen, wnd)
-			prepare(0, 1, 2)
-			ask.how(1)
-			c.Equal([]string{"menu"}, reported(),
-				"%s on a %s row of a larger selection, which keeps it, reports nothing", ask.name, one.name)
-			cmCloseMenu(c, screen, wnd)
-		}
-	}
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
 // cmWrappedMenu lets cmRecordingMenu embed a unison.Menu without the embedded field's name colliding with Menu.Menu.
 type cmWrappedMenu = unison.Menu
 
@@ -3362,70 +3277,98 @@ func TestContextMenuCellFieldRangeRequest(t *testing.T) {
 }
 
 // TestContextMenuRowRequestAfterAFieldCommitReordersTheRows verifies that an assistive technology's request for the
-// menu of a table row is carried out on that row even when the table taking the focus for it, away from a Field being
-// edited in a cell, has the field commit and rebuild the rows in a different order: the row is looked up once the focus
-// has moved, so the row named is the one selected and the menu opens beneath it.
+// menu of a table row is carried out on that row even when the rows are put in a different order on the way: by the
+// table taking the focus for it, away from a Field being edited in a cell, which has the field commit and rebuild the
+// rows, or by a SelectionChangedCallback once the row is selected for it. The row is looked up afterwards, so the row
+// named is the one selected and the menu opens beneath it.
 func TestContextMenuRowRequestAfterAFieldCommitReordersTheRows(t *testing.T) {
-	c := check.New(t)
-	var e *editTable
-	var calls cmRequests
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
-		unison.StartupFinishedCallback(func() {
-			e = newEditTable(3, 1, "abc", false)
-			e.table.ContextMenuCallback = cmMenu(&calls, cmTableTitle)
-			e.table.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Start})
-			wnd = newHeadlessWindow(t, "reordered rows", geom.NewRect(10, 10, 500, 500), axColumn(e.table))
-			if wnd != nil {
-				wnd.ToFront()
-			}
-		}))
-	c.NotNil(e)
-	c.NotNil(wnd)
+	for _, tc := range []struct {
+		// reorder arranges for the request to move the last row to the front.
+		reorder func(c check.Checker, screen *unison.HeadlessScreen, e *editTable)
+		name    string
+	}{
+		{
+			name: "field commit",
+			reorder: func(c check.Checker, screen *unison.HeadlessScreen, e *editTable) {
+				// The field in the first row is being edited; its commit on losing the focus reverses the rows.
+				var inCell geom.Point
+				c.True(screen.Do(func() { inCell = e.table.CellFrame(0, 0).Center() }))
+				screen.Click(cmScreenPoint(c, screen, e.table, inCell))
+				c.True(e.snapshot(c, screen, 0, 0).fieldFocused, "the test needs the field focused")
+				c.True(screen.Do(func() {
+					lost := e.fields[0][0].LostFocusCallback
+					e.fields[0][0].LostFocusCallback = func() {
+						if lost != nil {
+							lost()
+						}
+						rows := slices.Clone(e.model.RootRows())
+						slices.Reverse(rows)
+						e.model.SetRootRows(rows)
+						e.table.SyncToModel()
+					}
+				}))
+			},
+		},
+		{
+			name: "selection change",
+			reorder: func(c check.Checker, screen *unison.HeadlessScreen, e *editTable) {
+				c.True(screen.Do(func() {
+					rotated := false
+					e.table.SelectionChangedCallback = func() {
+						if !rotated {
+							rotated = true
+							cmRotateRows(e)
+						}
+					}
+				}))
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			var e *editTable
+			var calls cmRequests
+			var wnd *unison.Window
+			screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+				unison.StartupFinishedCallback(func() {
+					e = newEditTable(3, 1, "abc", false)
+					e.table.ContextMenuCallback = cmMenu(&calls, cmTableTitle)
+					e.table.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Start})
+					wnd = newHeadlessWindow(t, "reordered rows", geom.NewRect(10, 10, 500, 500), axColumn(e.table))
+					if wnd != nil {
+						wnd.ToFront()
+					}
+				}))
+			c.NotNil(e)
+			c.NotNil(wnd)
 
-	// The field in the first row is being edited; losing the focus, it commits and the rows come back reversed.
-	var inCell geom.Point
-	c.True(screen.Do(func() { inCell = e.table.CellFrame(0, 0).Center() }))
-	screen.Click(cmScreenPoint(c, screen, e.table, inCell))
-	s := e.snapshot(c, screen, 0, 0)
-	c.True(s.fieldFocused, "the test needs the field focused")
-	c.True(screen.Do(func() {
-		lost := e.fields[0][0].LostFocusCallback
-		e.fields[0][0].LostFocusCallback = func() {
-			if lost != nil {
-				lost()
-			}
-			rows := slices.Clone(e.model.RootRows())
-			slices.Reverse(rows)
-			e.model.SetRootRows(rows)
-			e.table.SyncToModel()
-		}
-	}))
-	tree := screen.AccessibilityTree(wnd)
-	rows := axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(e.table)))
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   axMustNode(c, rows["r2"]).ID,
-		Action: accessibility.ShowContextMenu,
-	}), "asking the last row for its menu opens it")
-	menus, _ := cmOpenMenu(c, screen, wnd)
-	c.Equal(1, menus)
-	var index int
-	var selected bool
-	var want geom.Point
-	c.True(screen.Do(func() {
-		index = e.table.RowToIndex(e.rows[2])
-		selected = e.table.IsRowSelected(index)
-		frame := e.table.RowFrame(index)
-		want = geom.NewPoint(frame.X, frame.Bottom())
-	}))
-	c.Equal(0, index, "the test needs the rows reversed by the commit")
-	c.True(selected, "the row asked for is the one selected, at the index the commit left it at")
-	c.Equal([]int{0}, axTableSelectedIndexes(screen, e.table))
-	c.Equal(want, cmLast(screen, &calls), "and the menu opens beneath it")
-	s = e.snapshot(c, screen, 0, 0)
-	c.True(s.tableFocused, "the table holds the focus")
-	cmCloseMenu(c, screen, wnd)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+			tc.reorder(c, screen, e)
+			tree := screen.AccessibilityTree(wnd)
+			rows := axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(e.table)))
+			c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+				Node:   axMustNode(c, rows["r2"]).ID,
+				Action: accessibility.ShowContextMenu,
+			}), "asking the last row for its menu opens it")
+			menus, _ := cmOpenMenu(c, screen, wnd)
+			c.Equal(1, menus)
+			var index int
+			var selected bool
+			var want geom.Point
+			c.True(screen.Do(func() {
+				index = e.table.RowToIndex(e.rows[2])
+				selected = e.table.IsRowSelected(index)
+				frame := e.table.RowFrame(index)
+				want = geom.NewPoint(frame.X, frame.Bottom())
+			}))
+			c.Equal(0, index, "the test needs the rows reordered by the %s", tc.name)
+			c.True(selected, "the row asked for is the one selected, at the index the %s left it at", tc.name)
+			c.Equal([]int{0}, axTableSelectedIndexes(screen, e.table))
+			c.Equal(want, cmLast(screen, &calls), "and the menu opens beneath it")
+			c.True(e.snapshot(c, screen, 0, 0).tableFocused, "the table holds the focus")
+			cmCloseMenu(c, screen, wnd)
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
 }
 
 // cmRotateRows moves the last of the table's rows to the front, so that each row is at another index afterwards, and
@@ -3539,183 +3482,131 @@ func TestContextMenuCellWidgetRightClickAfterAFieldCommitReordersTheRows(t *test
 // TestContextMenuCellWidgetRequestAfterAFieldCommitReordersTheRows verifies that an assistive technology's request for
 // the menu of a field in a cell, made while a field in another cell is being edited, adopts the field's cell at the
 // index its row has once the edited field has committed and reordered the rows, and that a request for a field whose
-// row the commit removed is refused, with the focus handed back to the table.
+// row the commit removed is refused, with the focus handed back to the table. A request may also name a range, as UI
+// Automation's text-range ShowContextMenu does: placing the range gives the field the focus before the table does, so
+// the edited field commits then, and the row must still be the one looked up afterwards.
 func TestContextMenuCellWidgetRequestAfterAFieldCommitReordersTheRows(t *testing.T) {
-	testCellWidgetRequestAfterAFieldCommitReordersTheRows(t, 0, 0)
-}
+	for _, tc := range []struct {
+		name       string
+		start, end int // The range the requests name, none when both are zero.
+	}{
+		{name: "request without a range"},
+		{name: "request with a range", start: 1, end: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			var e *editTable
+			var wnd *unison.Window
+			screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+				unison.StartupFinishedCallback(func() {
+					e = newEditTable(3, 1, "abc", false)
+					e.table.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Start})
+					wnd = newHeadlessWindow(t, "reordered rows", geom.NewRect(10, 10, 500, 500), axColumn(e.table))
+					if wnd != nil {
+						wnd.ToFront()
+					}
+				}))
+			c.NotNil(e)
+			c.NotNil(wnd)
 
-// TestContextMenuCellWidgetRequestWithARangeAfterAFieldCommitReordersTheRows verifies the same for a request that names
-// a range, as UI Automation's text-range ShowContextMenu does: placing the range gives the field the focus before the
-// table does, so the edited field commits then, and the row must still be the one looked up afterwards.
-func TestContextMenuCellWidgetRequestWithARangeAfterAFieldCommitReordersTheRows(t *testing.T) {
-	testCellWidgetRequestAfterAFieldCommitReordersTheRows(t, 1, 2)
-}
-
-// testCellWidgetRequestAfterAFieldCommitReordersTheRows makes the requests with the given range, which names none when
-// start and end are both zero.
-func testCellWidgetRequestAfterAFieldCommitReordersTheRows(t *testing.T, start, end int) {
-	t.Helper()
-	c := check.New(t)
-	var e *editTable
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
-		unison.StartupFinishedCallback(func() {
-			e = newEditTable(3, 1, "abc", false)
-			e.table.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Start})
-			wnd = newHeadlessWindow(t, "reordered rows", geom.NewRect(10, 10, 500, 500), axColumn(e.table))
-			if wnd != nil {
-				wnd.ToFront()
+			screen.Click(cellCenter(screen, e.table, 0, 0))
+			s := e.snapshot(c, screen, 0, 0)
+			c.True(s.fieldFocused, "the test needs the field focused")
+			var commit func()
+			screen.Do(func() {
+				commit = e.fields[0][0].LostFocusCallback
+				cmCommitRotatesRows(e, 0, 0)
+			})
+			tree := screen.AccessibilityTree(wnd)
+			rows := axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(e.table)))
+			field := cmCellContent(tree, axMustNode(c, rows["r2"]), 0)
+			c.Equal(1, len(field))
+			if len(field) != 1 {
+				return
 			}
-		}))
-	c.NotNil(e)
-	c.NotNil(wnd)
-
-	screen.Click(cellCenter(screen, e.table, 0, 0))
-	s := e.snapshot(c, screen, 0, 0)
-	c.True(s.fieldFocused, "the test needs the field focused")
-	var commit func()
-	screen.Do(func() {
-		commit = e.fields[0][0].LostFocusCallback
-		cmCommitRotatesRows(e, 0, 0)
-	})
-	tree := screen.AccessibilityTree(wnd)
-	rows := axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(e.table)))
-	field := cmCellContent(tree, axMustNode(c, rows["r2"]), 0)
-	c.Equal(1, len(field))
-	if len(field) != 1 {
-		return
-	}
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   field[0].ID,
-		Action: accessibility.ShowContextMenu,
-		Start:  start,
-		End:    end,
-	}), "asking the last row's field for its menu opens it")
-	var order []int
-	screen.Do(func() {
-		for _, row := range e.rows {
-			order = append(order, e.table.RowToIndex(row))
-		}
-	})
-	c.Equal([]int{1, 2, 0}, order, "the test needs the commit to have rotated the rows")
-	menus, items := cmOpenMenu(c, screen, wnd)
-	c.Equal(1, menus)
-	c.True(slices.Contains(items, "Copy"), "the field's menu, not %v", items)
-	s = e.snapshot(c, screen, 2, 0)
-	c.True(s.fieldFocused, "the field asked for takes the focus")
-	c.True(s.installed, "and its cell stays attached to the table")
-	c.Equal(0, s.focusRow, "at the index its row has once the rows are reordered")
-	c.Equal(0, s.focusCol)
-	c.Equal([]int{0}, axTableSelectedIndexes(screen, e.table), "with its row selected")
-	if start != end {
-		c.Equal(start, s.selStart, "and the range asked for selected")
-		c.Equal(end, s.selEnd)
-	}
-	var fieldFrame, cellFrame geom.Rect
-	screen.Do(func() {
-		fieldFrame = e.fields[2][0].RectToRoot(e.fields[2][0].ContentRect(false))
-		cellFrame = e.table.RectToRoot(e.table.CellFrame(0, 0))
-	})
-	c.True(fieldFrame.Intersects(cellFrame), "the field is drawn where its cell now is, at %v, not %v", cellFrame,
-		fieldFrame)
-	menuNodes := axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)
-	c.Equal(1, len(menuNodes))
-	if len(menuNodes) == 1 {
-		c.True(menuNodes[0].Bounds.Y >= cellFrame.Y && menuNodes[0].Bounds.Y <= cellFrame.Bottom()+1,
-			"and the menu opens beneath the field there, at %v rather than within %v", menuNodes[0].Bounds,
-			cellFrame)
-	}
-	cmCloseMenu(c, screen, wnd)
-
-	// A commit that removes the row instead: the request is refused, and the focus goes back to the table.
-	screen.Do(func() {
-		e.model.SetRootRows(slices.Clone(e.rows))
-		e.table.SyncToModel()
-		e.table.FocusCell(0, 0)
-		e.fields[0][0].LostFocusCallback = func() {
-			if commit != nil {
-				commit()
-			}
-			e.model.SetRootRows(e.rows[:2])
-			e.table.SyncToModel()
-		}
-	})
-	s = e.snapshot(c, screen, 0, 0)
-	c.True(s.fieldFocused, "the test needs the first row's field focused again")
-	tree = screen.AccessibilityTree(wnd)
-	rows = axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(e.table)))
-	field = cmCellContent(tree, axMustNode(c, rows["r2"]), 0)
-	c.Equal(1, len(field))
-	if len(field) != 1 {
-		return
-	}
-	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   field[0].ID,
-		Action: accessibility.ShowContextMenu,
-		Start:  start,
-		End:    end,
-	}), "a field whose row the commit removed is refused")
-	var count int
-	screen.Do(func() { count = e.table.LastRowIndex() + 1 })
-	c.Equal(2, count, "the test needs the commit to have removed the row")
-	menus, _ = cmOpenMenu(c, screen, wnd)
-	c.Equal(0, menus)
-	s = e.snapshot(c, screen, 2, 0)
-	c.False(s.fieldFocused, "the field no row shows any more does not keep the focus")
-	c.True(s.detached, "and is detached")
-	c.True(s.tableFocused, "the table holds the focus instead")
-	c.Equal(-1, s.focusRow)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestContextMenuRowRequestAfterASelectionChangeReordersTheRows verifies that an assistive technology's request for a
-// row's menu opens it beneath the row at the index it has once the row was selected for it, since a
-// SelectionChangedCallback may reorder the rows.
-func TestContextMenuRowRequestAfterASelectionChangeReordersTheRows(t *testing.T) {
-	c := check.New(t)
-	var e *editTable
-	var calls cmRequests
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
-		unison.StartupFinishedCallback(func() {
-			e = newEditTable(3, 1, "abc", false)
-			e.table.ContextMenuCallback = cmMenu(&calls, cmTableTitle)
-			e.table.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Start})
-			rotated := false
-			e.table.SelectionChangedCallback = func() {
-				if !rotated {
-					rotated = true
-					cmRotateRows(e)
+			c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+				Node:   field[0].ID,
+				Action: accessibility.ShowContextMenu,
+				Start:  tc.start,
+				End:    tc.end,
+			}), "asking the last row's field for its menu opens it")
+			var order []int
+			screen.Do(func() {
+				for _, row := range e.rows {
+					order = append(order, e.table.RowToIndex(row))
 				}
+			})
+			c.Equal([]int{1, 2, 0}, order, "the test needs the commit to have rotated the rows")
+			menus, items := cmOpenMenu(c, screen, wnd)
+			c.Equal(1, menus)
+			c.True(slices.Contains(items, "Copy"), "the field's menu, not %v", items)
+			s = e.snapshot(c, screen, 2, 0)
+			c.True(s.fieldFocused, "the field asked for takes the focus")
+			c.True(s.installed, "and its cell stays attached to the table")
+			c.Equal(0, s.focusRow, "at the index its row has once the rows are reordered")
+			c.Equal(0, s.focusCol)
+			c.Equal([]int{0}, axTableSelectedIndexes(screen, e.table), "with its row selected")
+			if tc.start != tc.end {
+				c.Equal(tc.start, s.selStart, "and the range asked for selected")
+				c.Equal(tc.end, s.selEnd)
 			}
-			wnd = newHeadlessWindow(t, "reordered rows", geom.NewRect(10, 10, 500, 500), axColumn(e.table))
-			if wnd != nil {
-				wnd.ToFront()
+			var fieldFrame, cellFrame geom.Rect
+			screen.Do(func() {
+				fieldFrame = e.fields[2][0].RectToRoot(e.fields[2][0].ContentRect(false))
+				cellFrame = e.table.RectToRoot(e.table.CellFrame(0, 0))
+			})
+			c.True(fieldFrame.Intersects(cellFrame), "the field is drawn where its cell now is, at %v, not %v",
+				cellFrame, fieldFrame)
+			menuNodes := axNodesWithRole(screen.AccessibilityTree(wnd), role.Menu)
+			c.Equal(1, len(menuNodes))
+			if len(menuNodes) == 1 {
+				c.True(menuNodes[0].Bounds.Y >= cellFrame.Y && menuNodes[0].Bounds.Y <= cellFrame.Bottom()+1,
+					"and the menu opens beneath the field there, at %v rather than within %v", menuNodes[0].Bounds,
+					cellFrame)
 			}
-		}))
-	c.NotNil(e)
-	c.NotNil(wnd)
+			cmCloseMenu(c, screen, wnd)
 
-	tree := screen.AccessibilityTree(wnd)
-	rows := axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(e.table)))
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   axMustNode(c, rows["r2"]).ID,
-		Action: accessibility.ShowContextMenu,
-	}), "asking the last row for its menu opens it")
-	menus, _ := cmOpenMenu(c, screen, wnd)
-	c.Equal(1, menus)
-	var index int
-	var want geom.Point
-	c.True(screen.Do(func() {
-		index = e.table.RowToIndex(e.rows[2])
-		frame := e.table.RowFrame(index)
-		want = geom.NewPoint(frame.X, frame.Bottom())
-	}))
-	c.Equal(0, index, "the test needs the rows rotated by the selection change")
-	c.Equal([]int{0}, axTableSelectedIndexes(screen, e.table), "the row asked for is selected, at its new index")
-	c.Equal(want, cmLast(screen, &calls), "and the menu opens beneath it there")
-	cmCloseMenu(c, screen, wnd)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+			// A commit that removes the row instead: the request is refused, and the focus goes back to the table.
+			screen.Do(func() {
+				e.model.SetRootRows(slices.Clone(e.rows))
+				e.table.SyncToModel()
+				e.table.FocusCell(0, 0)
+				e.fields[0][0].LostFocusCallback = func() {
+					if commit != nil {
+						commit()
+					}
+					e.model.SetRootRows(e.rows[:2])
+					e.table.SyncToModel()
+				}
+			})
+			s = e.snapshot(c, screen, 0, 0)
+			c.True(s.fieldFocused, "the test needs the first row's field focused again")
+			tree = screen.AccessibilityTree(wnd)
+			rows = axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(e.table)))
+			field = cmCellContent(tree, axMustNode(c, rows["r2"]), 0)
+			c.Equal(1, len(field))
+			if len(field) != 1 {
+				return
+			}
+			c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+				Node:   field[0].ID,
+				Action: accessibility.ShowContextMenu,
+				Start:  tc.start,
+				End:    tc.end,
+			}), "a field whose row the commit removed is refused")
+			var count int
+			screen.Do(func() { count = e.table.LastRowIndex() + 1 })
+			c.Equal(2, count, "the test needs the commit to have removed the row")
+			menus, _ = cmOpenMenu(c, screen, wnd)
+			c.Equal(0, menus)
+			s = e.snapshot(c, screen, 2, 0)
+			c.False(s.fieldFocused, "the field no row shows any more does not keep the focus")
+			c.True(s.detached, "and is detached")
+			c.True(s.tableFocused, "the table holds the focus instead")
+			c.Equal(-1, s.focusRow)
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
 }
 
 // TestContextMenuCellWidgetRequestAfterAFieldCommitWithWrappedFields verifies that a row which builds a fresh wrapper

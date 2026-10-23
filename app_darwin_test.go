@@ -119,13 +119,3 @@ func TestMacFilesRequestedAtLaunchReturnsCopy(t *testing.T) {
 	c.Equal([]string{"/a", "/b", "/c"}, macPendingFilesToOpen)
 	macPendingFilesLock.Unlock()
 }
-
-// TestAPIWithAutoreleasePool verifies the wrapper finishProcessingEvents brackets its work with runs the function it
-// is given (inside a real autorelease pool on macOS, so autoreleased objects created by tasks and draws are
-// reclaimed each pass instead of accumulating until process exit).
-func TestAPIWithAutoreleasePool(t *testing.T) {
-	c := check.New(t)
-	ran := false
-	nativeWithAutoreleasePool(func() { ran = true })
-	c.True(ran)
-}

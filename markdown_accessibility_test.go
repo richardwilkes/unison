@@ -304,7 +304,9 @@ func TestMarkdownBlockLinesTile(t *testing.T) {
 }
 
 // TestMarkdownRunsAndSpans verifies the styles a block reports: the runs tile its text, the bold words and the code
-// span are runs of their own, and the link within it occupies the words it was written as and says where it leads.
+// span are runs of their own, and the link within it occupies the words it was written as and says where it leads, as a
+// property of its own and in its description, which is what an assistive technology offers among the document's links
+// and reads out as the person moves onto it.
 func TestMarkdownRunsAndSpans(t *testing.T) {
 	c := check.New(t)
 	f := newAXMarkdownFixture(t, markdownAXContent, 300, geom.NewSize(500, 400))
@@ -366,18 +368,8 @@ func TestMarkdownRunsAndSpans(t *testing.T) {
 	c.Equal(link.ID, streamSpan.Node, "the link should occupy part of the document's stream as well")
 	stream := []rune(document.Document.Text.Text)
 	c.Equal("Docs", string(stream[streamSpan.Start:streamSpan.End]), "and the same words of the stream")
-	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
-}
-
-// TestMarkdownLinkURL verifies that a link within a document says where it leads as a property of its own, which is
-// what an assistive technology offers among the document's links and reads out as the person moves onto it.
-func TestMarkdownLinkURL(t *testing.T) {
-	c := check.New(t)
-	f := newAXMarkdownFixture(t, markdownAXContent, 300, geom.NewSize(500, 400))
-	tree, _ := f.document(c)
-	link := axMustNode(c, axNamed(tree, "Docs"))
 	c.Equal(role.Link, link.Role)
-	c.Equal("https://example.com/docs", link.URL)
+	c.Equal("https://example.com/docs", link.URL, "the link says where it leads as a property of its own")
 	c.Equal("https://example.com/docs", link.Description, "where it leads is worth hearing as well")
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
 }

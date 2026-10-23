@@ -47,6 +47,16 @@ func TestUnmarshalGolden(t *testing.T) {
 	}
 }
 
+// arrayStructPairs returns a byte nested in depth pairs of an array holding a structure, the value of a signature such
+// as "a(a(y))".
+func arrayStructPairs(depth int) any {
+	value := any(byte(1))
+	for range depth {
+		value = []any{Struct{value}}
+	}
+	return value
+}
+
 func TestRoundTrip(t *testing.T) {
 	t.Parallel()
 	for i, one := range []struct {
@@ -86,6 +96,11 @@ func TestRoundTrip(t *testing.T) {
 		{sig: "(y(yy))", values: []any{Struct{byte(1), Struct{byte(2), byte(3)}}}},
 		{sig: "((so)v)", values: []any{Struct{ObjectRef{Name: "n", Path: "/p"}, Variant{Sig: "s", Value: "x"}}}},
 		{sig: "a(sa{sv})", values: []any{[]any{Struct{"n", Dict{{Key: "k", Value: Variant{Sig: "i", Value: int32(7)}}}}}}},
+		// The array and structure depth limits do not share a budget, so MaxDepth pairs of them round trip.
+		{
+			sig:    Signature(strings.Repeat("a(", MaxDepth) + "y" + strings.Repeat(")", MaxDepth)),
+			values: []any{arrayStructPairs(MaxDepth)},
+		},
 		{sig: "sv", values: []any{"", Variant{Sig: stringDictSig, Value: Dict{}}}},
 		{sig: "", values: nil},
 	} {
@@ -106,24 +121,6 @@ func TestRoundTrip(t *testing.T) {
 			c.Equal(data, again, i)
 		})
 	}
-}
-
-func TestMarshalAcceptsMapsSortedByKey(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	fromDict, err := Marshal(stringDictSig, Dict{{Key: "a", Value: "b"}, {Key: "c", Value: "d"}})
-	c.NoError(err)
-	fromMap, err := Marshal(stringDictSig, map[string]string{"c": "d", "a": "b"})
-	c.NoError(err)
-	c.Equal(fromDict, fromMap)
-	fromIntDict, err := Marshal("a{yv}", Dict{
-		{Key: byte(1), Value: Variant{Sig: "s", Value: "one"}},
-		{Key: byte(2), Value: Variant{Sig: "s", Value: "two"}},
-	})
-	c.NoError(err)
-	fromIntMap, err := Marshal("a{yv}", map[byte]any{2: "two", 1: "one"})
-	c.NoError(err)
-	c.Equal(fromIntDict, fromIntMap)
 }
 
 func TestMarshalSortsMapKeysHeldInAnInterface(t *testing.T) {
@@ -149,26 +146,27 @@ func TestMarshalSortsMapKeysHeldInAnInterface(t *testing.T) {
 func TestMarshalAcceptsLooseTypes(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	strict, err := Marshal("iud", int32(-3), uint32(4), 5.0)
-	c.NoError(err)
-	loose, err := Marshal("iud", -3, 4, 5)
-	c.NoError(err)
-	c.Equal(strict, loose)
-	fromStruct, err := Marshal("(ss)", Struct{"a", "b"})
-	c.NoError(err)
-	fromSlice, err := Marshal("(ss)", []any{"a", "b"})
-	c.NoError(err)
-	c.Equal(fromStruct, fromSlice)
-	fromArray, err := Marshal("as", Array{Elem: "s", Values: []any{"a"}})
-	c.NoError(err)
-	fromStrings, err := Marshal("as", []string{"a"})
-	c.NoError(err)
-	c.Equal(fromStrings, fromArray)
-	derived, err := Marshal("v", "derived")
-	c.NoError(err)
-	explicit, err := Marshal("v", Variant{Sig: "s", Value: "derived"})
-	c.NoError(err)
-	c.Equal(explicit, derived)
+	for _, one := range []struct {
+		sig    Signature
+		strict []any
+		loose  []any
+	}{
+		{sig: "iud", strict: []any{int32(-3), uint32(4), 5.0}, loose: []any{-3, 4, 5}},
+		{sig: "(si)", strict: []any{Struct{"a", int32(2)}}, loose: []any{[]any{"a", int32(2)}}},
+		{sig: "as", strict: []any{[]string{"a"}}, loose: []any{Array{Elem: "s", Values: []any{"a"}}}},
+		{sig: "v", strict: []any{Variant{Sig: "s", Value: "derived"}}, loose: []any{"derived"}},
+		{
+			sig:    objectRefSig,
+			strict: []any{ObjectRef{Name: "n", Path: "/p"}},
+			loose:  []any{DictEntry{Key: "n", Value: ObjectPath("/p")}},
+		},
+	} {
+		strict, err := Marshal(one.sig, one.strict...)
+		c.NoError(err, one.sig)
+		loose, err := Marshal(one.sig, one.loose...)
+		c.NoError(err, one.sig)
+		c.Equal(strict, loose, one.sig)
+	}
 }
 
 func TestMarshalErrors(t *testing.T) {
@@ -352,16 +350,6 @@ func TestMarshalNamedTypes(t *testing.T) {
 	c.HasError(err)
 }
 
-func TestMarshalDictEntryAsAStructure(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	want, err := Marshal(objectRefSig, ObjectRef{Name: "n", Path: "/p"})
-	c.NoError(err)
-	data, err := Marshal(objectRefSig, DictEntry{Key: "n", Value: ObjectPath("/p")})
-	c.NoError(err)
-	c.Equal(want, data)
-}
-
 func TestMarshalDictEntryForms(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -404,28 +392,53 @@ func TestMarshalDictEntryForms(t *testing.T) {
 func TestMarshalMapKeyOrdering(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	fromMap, err := Marshal("a{ns}", map[int16]string{2: "c", -1: "a", 1: "b"})
-	c.NoError(err)
-	fromDict, err := Marshal("a{ns}", Dict{
-		{Key: int16(-1), Value: "a"},
-		{Key: int16(1), Value: "b"},
-		{Key: int16(2), Value: "c"},
-	})
-	c.NoError(err)
-	c.Equal(fromDict, fromMap)
-	fromMap, err = Marshal("a{bs}", map[bool]string{true: "t", false: "f"})
-	c.NoError(err)
-	fromDict, err = Marshal("a{bs}", Dict{{Key: false, Value: "f"}, {Key: true, Value: "t"}})
-	c.NoError(err)
-	c.Equal(fromDict, fromMap)
-	fromMap, err = Marshal("a{ds}", map[float64]string{2.5: "b", 1.5: "a"})
-	c.NoError(err)
-	fromDict, err = Marshal("a{ds}", Dict{{Key: 1.5, Value: "a"}, {Key: 2.5, Value: "b"}})
-	c.NoError(err)
-	c.Equal(fromDict, fromMap)
-	fromMap, err = Marshal("a{ts}", map[uint64]string{2: "b", 1: "a"})
-	c.NoError(err)
-	fromDict, err = Marshal("a{ts}", Dict{{Key: uint64(1), Value: "a"}, {Key: uint64(2), Value: "b"}})
-	c.NoError(err)
-	c.Equal(fromDict, fromMap)
+	for _, one := range []struct {
+		goMap  any
+		sig    Signature
+		sorted Dict
+	}{
+		{
+			sig:   "a{ns}",
+			goMap: map[int16]string{2: "c", -1: "a", 1: "b"},
+			sorted: Dict{
+				{Key: int16(-1), Value: "a"},
+				{Key: int16(1), Value: "b"},
+				{Key: int16(2), Value: "c"},
+			},
+		},
+		{
+			sig:    "a{bs}",
+			goMap:  map[bool]string{true: "t", false: "f"},
+			sorted: Dict{{Key: false, Value: "f"}, {Key: true, Value: "t"}},
+		},
+		{
+			sig:    "a{ds}",
+			goMap:  map[float64]string{2.5: "b", 1.5: "a"},
+			sorted: Dict{{Key: 1.5, Value: "a"}, {Key: 2.5, Value: "b"}},
+		},
+		{
+			sig:    "a{ts}",
+			goMap:  map[uint64]string{2: "b", 1: "a"},
+			sorted: Dict{{Key: uint64(1), Value: "a"}, {Key: uint64(2), Value: "b"}},
+		},
+		{
+			sig:    stringDictSig,
+			goMap:  map[string]string{"c": "d", "a": "b"},
+			sorted: Dict{{Key: "a", Value: "b"}, {Key: "c", Value: "d"}},
+		},
+		{
+			sig:   "a{yv}",
+			goMap: map[byte]any{2: "two", 1: "one"},
+			sorted: Dict{
+				{Key: byte(1), Value: Variant{Sig: "s", Value: "one"}},
+				{Key: byte(2), Value: Variant{Sig: "s", Value: "two"}},
+			},
+		},
+	} {
+		fromMap, err := Marshal(one.sig, one.goMap)
+		c.NoError(err, one.sig)
+		fromDict, err := Marshal(one.sig, one.sorted)
+		c.NoError(err, one.sig)
+		c.Equal(fromDict, fromMap, one.sig)
+	}
 }

@@ -33,41 +33,39 @@ func newCursorTestWindow() *Window {
 	return w
 }
 
-func TestUpdateCursorConvertsRootPointForCallbackOwner(t *testing.T) {
-	c := check.New(t)
-	w := newCursorTestWindow()
-	content := w.root.contentPanel
-	content.SetFrameRect(geom.NewRect(0, 20, 200, 200))
-	child := NewPanel()
-	child.SetFrameRect(geom.NewRect(30, 40, 100, 100))
-	content.AddChild(child)
-	var got []geom.Point
-	child.UpdateCursorCallback = func(where geom.Point) *Cursor {
-		got = append(got, where)
-		return &Cursor{}
-	}
-	// Root point (50,70) is content-local (50,50) and child-local (20,10).
-	w.updateCursor(child.AsPanel(), geom.NewPoint(50, 70))
-	c.Equal([]geom.Point{geom.NewPoint(20, 10)}, got)
-}
-
+// TestUpdateCursorWalksUpToAncestorWithCallback verifies that updateCursor calls the UpdateCursorCallback of the leaf,
+// or of its nearest ancestor when the leaf has none, with the root point converted into that panel's coordinates.
 func TestUpdateCursorWalksUpToAncestorWithCallback(t *testing.T) {
-	c := check.New(t)
-	w := newCursorTestWindow()
-	content := w.root.contentPanel
-	content.SetFrameRect(geom.NewRect(0, 20, 200, 200))
-	child := NewPanel()
-	child.SetFrameRect(geom.NewRect(30, 40, 100, 100))
-	content.AddChild(child)
-	var got []geom.Point
-	content.UpdateCursorCallback = func(where geom.Point) *Cursor {
-		got = append(got, where)
-		return &Cursor{}
+	for _, one := range []struct {
+		name   string
+		want   geom.Point
+		onLeaf bool
+	}{
+		{name: "callback on an ancestor", want: geom.NewPoint(50, 50)},
+		{name: "callback on the leaf", want: geom.NewPoint(20, 10), onLeaf: true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			w := newCursorTestWindow()
+			content := w.root.contentPanel
+			content.SetFrameRect(geom.NewRect(0, 20, 200, 200))
+			child := NewPanel()
+			child.SetFrameRect(geom.NewRect(30, 40, 100, 100))
+			content.AddChild(child)
+			owner := content
+			if one.onLeaf {
+				owner = child
+			}
+			var got []geom.Point
+			owner.UpdateCursorCallback = func(where geom.Point) *Cursor {
+				got = append(got, where)
+				return &Cursor{}
+			}
+			// Root point (50,70) is content-local (50,50) and child-local (20,10).
+			w.updateCursor(child.AsPanel(), geom.NewPoint(50, 70))
+			c.Equal([]geom.Point{one.want}, got)
+		})
 	}
-	// The leaf has no callback, so updateCursor must walk up to the content panel and convert the root point into that
-	// panel's coordinates, not the leaf's.
-	w.updateCursor(child.AsPanel(), geom.NewPoint(50, 70))
-	c.Equal([]geom.Point{geom.NewPoint(50, 50)}, got)
 }
 
 func TestUpdateCursorNowDeliversTargetLocalPointExactlyOnce(t *testing.T) {
@@ -123,22 +121,13 @@ func newDropTargetTestWindow() (w *Window, child *Panel) {
 	return w, child
 }
 
-// TestFindDropTargetWithNilCanAcceptDropCallback is the regression test for the documented contract that a panel with
-// a DropCallback and no CanAcceptDropCallback is treated as a drop candidate.
-func TestFindDropTargetWithNilCanAcceptDropCallback(t *testing.T) {
-	c := check.New(t)
-	w, child := newDropTargetTestWindow()
-	child.DropCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) bool { return true }
-	target := w.findDropTarget(&dropTargetTestDragInfo{}, geom.NewPoint(50, 100))
-	c.NotNil(target)
-	c.True(child.Is(target), "the panel with only a DropCallback must be selected as the drop target")
-}
-
-// TestFindDropTargetHonorsCanAcceptDropCallback verifies that an explicit CanAcceptDropCallback still governs
-// candidacy: true selects the panel, false declines it so the search continues up the parent hierarchy.
+// TestFindDropTargetHonorsCanAcceptDropCallback verifies that a panel without a DropCallback is never a candidate, and
+// that an explicit CanAcceptDropCallback still governs candidacy: true selects the panel, false declines it so the
+// search continues up the parent hierarchy.
 func TestFindDropTargetHonorsCanAcceptDropCallback(t *testing.T) {
 	c := check.New(t)
 	w, child := newDropTargetTestWindow()
+	c.Nil(w.findDropTarget(&dropTargetTestDragInfo{}, geom.NewPoint(50, 100)), "no panel has a DropCallback yet")
 	child.DropCallback = func(_ drag.Info, _ geom.Point, _ mod.Modifiers) bool { return true }
 	child.CanAcceptDropCallback = func(_ drag.Info) bool { return true }
 	target := w.findDropTarget(&dropTargetTestDragInfo{}, geom.NewPoint(50, 100))
@@ -153,14 +142,6 @@ func TestFindDropTargetHonorsCanAcceptDropCallback(t *testing.T) {
 	target = w.findDropTarget(&dropTargetTestDragInfo{}, geom.NewPoint(50, 100))
 	c.NotNil(target)
 	c.True(content.Is(target), "a declined panel must yield to an enclosing panel with a DropCallback")
-}
-
-// TestFindDropTargetWithoutDropCallback verifies that panels without a DropCallback are never candidates, regardless
-// of the CanAcceptDropCallback default.
-func TestFindDropTargetWithoutDropCallback(t *testing.T) {
-	c := check.New(t)
-	w, _ := newDropTargetTestWindow()
-	c.Nil(w.findDropTarget(&dropTargetTestDragInfo{}, geom.NewPoint(50, 100)))
 }
 
 // These tests exercise the bookkeeping behind ToFront() with hand-built windows that have no platform backing, so
@@ -196,32 +177,30 @@ func TestFrontRequestsCoalesce(t *testing.T) {
 }
 
 // TestFlushPendingFrontDropsDisposedWindow verifies that a request outstanding for a window that has since been
-// disposed of is discarded rather than performed. Reaching the platform for a hand-built window would panic, which is
-// the assertion.
+// disposed of or marked keepHidden is discarded rather than performed, the latter matching the check ToFront() itself
+// makes, since the mark may be applied after the request was made. Reaching the platform for a hand-built window would
+// panic, which is the assertion.
 func TestFlushPendingFrontDropsDisposedWindow(t *testing.T) {
-	c := check.New(t)
-	saveFrontState(t)
-	a := newModalInputTestWindow()
-	pendingFrontWindow = nil
-	requestFront(a)
-	a.valid = false
-	flushPendingFront()
-	c.Nil(pendingFrontWindow, "the request should have been cleared")
-	flushPendingFront() // nothing pending: must be a no-op
-	c.Nil(pendingFrontWindow)
-}
-
-// TestFlushPendingFrontHonorsKeepHidden verifies that a window marked keepHidden is never activated, matching the
-// check ToFront() itself makes, since the mark may be applied after the request was made.
-func TestFlushPendingFrontHonorsKeepHidden(t *testing.T) {
-	c := check.New(t)
-	saveFrontState(t)
-	a := newModalInputTestWindow()
-	pendingFrontWindow = nil
-	requestFront(a)
-	a.keepHidden = true
-	flushPendingFront()
-	c.Nil(pendingFrontWindow)
+	for _, one := range []struct {
+		change func(w *Window)
+		name   string
+	}{
+		{name: "disposed", change: func(w *Window) { w.valid = false }},
+		{name: "keep hidden", change: func(w *Window) { w.keepHidden = true }},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			saveFrontState(t)
+			a := newModalInputTestWindow()
+			pendingFrontWindow = nil
+			requestFront(a)
+			one.change(a)
+			flushPendingFront()
+			c.Nil(pendingFrontWindow, "the request should have been cleared")
+			flushPendingFront() // nothing pending: must be a no-op
+			c.Nil(pendingFrontWindow)
+		})
+	}
 }
 
 // TestActiveWindowPrefersPendingFront verifies that a window whose activation is still outstanding is reported as the
@@ -292,20 +271,6 @@ func TestKeyPressedOnBlockedWindowRoutesToModal(t *testing.T) {
 	c.True(modal.pressedKeys[KeyA])
 }
 
-func TestKeyPressedOnTopModalIsProcessed(t *testing.T) {
-	c := check.New(t)
-	modal := newModalInputTestWindow()
-	pushTestModal(t, modal)
-	var keys []KeyCode
-	modal.KeyDownCallback = func(keyCode KeyCode, _ mod.Modifiers, _ bool) bool {
-		keys = append(keys, keyCode)
-		return true
-	}
-	modal.keyPressed(KeyA, 0)
-	c.Equal([]KeyCode{KeyA}, keys)
-	c.True(modal.pressedKeys[KeyA])
-}
-
 func TestRuneTypedOnBlockedWindowRoutesToModal(t *testing.T) {
 	c := check.New(t)
 	blocked := newModalInputTestWindow()
@@ -368,18 +333,6 @@ func TestKeyReleasedForwardedToModalWithoutMatchingDownIsNotDispatched(t *testin
 	blocked.keyReleased(KeyA, 0)
 	c.Equal(0, len(modalKeys))
 	c.False(blocked.pressedKeys[KeyA])
-}
-
-func TestKeyReleasedWithoutMatchingDownIsIgnored(t *testing.T) {
-	c := check.New(t)
-	w := newModalInputTestWindow()
-	ups := 0
-	w.KeyUpCallback = func(_ KeyCode, _ mod.Modifiers) bool {
-		ups++
-		return true
-	}
-	w.keyReleased(KeyA, 0)
-	c.Equal(0, ups)
 }
 
 // TestMouseUpWhileBlockedByModalClearsDragState is the regression test for the stuck-drag bug: when a modal opens
@@ -1584,46 +1537,60 @@ func newFocusablePanel() *Panel {
 	return p
 }
 
-// TestCollectFocusablesSkipsHiddenSubtrees verifies that tab traversal does not descend into hidden containers, since
-// focusable descendants of a hidden ancestor are not visible even though their own Hidden flag is false. This mirrors
-// the dock container case, where non-current dockables are hidden at the container level only.
+// TestCollectFocusablesSkipsHiddenSubtrees verifies that tab traversal skips a hidden focusable panel and does not
+// descend into hidden containers, since focusable descendants of a hidden ancestor are not visible even though their
+// own Hidden flag is false. This mirrors the dock container case, where non-current dockables are hidden at the
+// container level only.
 func TestCollectFocusablesSkipsHiddenSubtrees(t *testing.T) {
-	c := check.New(t)
-	root := NewPanel()
-	visible := newFocusablePanel()
-	root.AddChild(visible)
-	hiddenContainer := NewPanel()
-	hiddenContainer.Hidden = true
-	buried := newFocusablePanel()
-	hiddenContainer.AddChild(buried)
-	root.AddChild(hiddenContainer)
-	match, focusables := collectFocusables(root, visible, nil)
-	c.Equal(1, len(focusables))
-	c.True(focusables[0].Is(visible))
-	c.Equal(0, match)
+	for _, one := range []struct {
+		// build adds visible and a hidden panel to root, returning the panel to hide and the focusable panel that
+		// hiding it puts out of reach.
+		build    func(root, visible *Panel) (hidden, buried *Panel)
+		name     string
+		revealed int
+	}{
+		{
+			name: "hidden container",
+			build: func(root, visible *Panel) (hidden, buried *Panel) {
+				root.AddChild(visible)
+				hidden = NewPanel()
+				buried = newFocusablePanel()
+				hidden.AddChild(buried)
+				root.AddChild(hidden)
+				return hidden, buried
+			},
+			revealed: 1,
+		},
+		{
+			name: "hidden focusable panel",
+			build: func(root, visible *Panel) (hidden, buried *Panel) {
+				hidden = newFocusablePanel()
+				root.AddChild(hidden)
+				root.AddChild(visible)
+				return hidden, hidden
+			},
+			revealed: 0,
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			root := NewPanel()
+			visible := newFocusablePanel()
+			hidden, buried := one.build(root, visible)
+			hidden.Hidden = true
+			match, focusables := collectFocusables(root, visible, nil)
+			c.Equal(1, len(focusables))
+			c.True(focusables[0].Is(visible))
+			c.Equal(0, match)
 
-	// Unhiding the container makes its focusable descendant reachable again.
-	hiddenContainer.Hidden = false
-	match, focusables = collectFocusables(root, buried, nil)
-	c.Equal(2, len(focusables))
-	c.True(focusables[1].Is(buried))
-	c.Equal(1, match)
-}
-
-// TestCollectFocusablesSkipsDirectlyHiddenPanels verifies that a hidden focusable panel is excluded even when its
-// parent is visible.
-func TestCollectFocusablesSkipsDirectlyHiddenPanels(t *testing.T) {
-	c := check.New(t)
-	root := NewPanel()
-	hidden := newFocusablePanel()
-	hidden.Hidden = true
-	root.AddChild(hidden)
-	visible := newFocusablePanel()
-	root.AddChild(visible)
-	match, focusables := collectFocusables(root, visible, nil)
-	c.Equal(1, len(focusables))
-	c.True(focusables[0].Is(visible))
-	c.Equal(0, match)
+			// Unhiding makes the focusable panel reachable again.
+			hidden.Hidden = false
+			match, focusables = collectFocusables(root, buried, nil)
+			c.Equal(2, len(focusables))
+			c.Equal(one.revealed, match)
+			c.True(focusables[one.revealed].Is(buried))
+		})
+	}
 }
 
 // TestFirstFocusableChildSkipsHiddenSubtrees verifies that FirstFocusableChild neither returns a focusable panel

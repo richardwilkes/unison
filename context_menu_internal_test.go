@@ -226,7 +226,8 @@ func TestContextMenuPressFocusesTheOwner(t *testing.T) {
 }
 
 // TestContextMenuPressHandlerGetsThePressBackOnADrag verifies that the handler is told of each right press, and that
-// answering true has a press that becomes a drag delivered as made, followed by its drags and release, with no menu.
+// answering true has a press that becomes a drag delivered as made, followed by its drags and release, with no menu,
+// while answering false has the drag deliver nothing and open no menu.
 func TestContextMenuPressHandlerGetsThePressBackOnADrag(t *testing.T) {
 	c := check.New(t)
 	var asked int
@@ -266,22 +267,17 @@ func TestContextMenuPressHandlerGetsThePressBackOnADrag(t *testing.T) {
 	c.Equal([]string{cmDown, cmDrag, cmDrag, cmUp}, log.kinds(), "the drags and the release follow as for any press")
 	c.Equal(1, asked, "and no menu opens")
 	c.Nil(w.lastMouseDownPanel)
-}
 
-// TestContextMenuPressHandlerDeclinesADrag verifies that a right-drag delivers nothing and opens no menu when the
-// handler answers false.
-func TestContextMenuPressHandlerDeclinesADrag(t *testing.T) {
-	c := check.New(t)
-	var asked int
-	w, owner, log := newPressHandlerTestWindow(t, false, &asked)
-	_, drift := DragGestureParameters()
-	w.mouseDown(geom.NewPoint(40, 50), ButtonRight, 0)
-	c.Equal(1, owner.presses, "the handler is still told of the press")
-	w.mouseDrag(geom.NewPoint(40+drift*2, 50), ButtonRight, 0)
-	w.mouseDrag(geom.NewPoint(40+drift*3, 50), ButtonRight, 0)
-	w.mouseUp(geom.NewPoint(40+drift*3, 50), ButtonRight, 0)
-	c.Equal(0, len(log.events), "nothing is delivered")
-	c.Equal(0, asked, "and no menu opens")
+	// A handler that answers false.
+	asked = 0
+	w, owner, log = newPressHandlerTestWindow(t, false, &asked)
+	w.mouseDown(press, ButtonRight, 0)
+	c.Equal(1, owner.presses, "a handler that declines is still told of the press")
+	w.mouseDrag(geom.NewPoint(press.X+drift*2, press.Y), ButtonRight, 0)
+	w.mouseDrag(geom.NewPoint(press.X+drift*3, press.Y), ButtonRight, 0)
+	w.mouseUp(geom.NewPoint(press.X+drift*3, press.Y), ButtonRight, 0)
+	c.Equal(0, len(log.events), "but its drag delivers nothing")
+	c.Equal(0, asked, "and opens no menu")
 }
 
 // TestContextMenuNotOpenedByARightDrag verifies that a right press moved beyond the drag threshold opens no menu, while
@@ -1210,9 +1206,10 @@ func TestContextMenuRowRequestAfterTheReleaseChangesTheRows(t *testing.T) {
 	c.Equal(1, table.LeadColumnIndex())
 }
 
-// TestContextMenuKeyWhileAButtonIsHeld verifies that the chord or an assistive technology's request made while a button
-// is held ends the press with a release before the menu opens, so no later move drags or hands a press back, and that
-// the release is delivered outside every panel, so that a button held down is let go of without being clicked.
+// TestContextMenuKeyWhileAButtonIsHeld verifies that the chord, an assistive technology's request or a call to
+// Panel.ShowContextMenu made while a button is held ends the press with a release before the menu opens, so no later
+// move drags or hands a press back, and that the release is delivered outside every panel, so that a button held down
+// is let go of without being clicked.
 func TestContextMenuKeyWhileAButtonIsHeld(t *testing.T) {
 	c := check.New(t)
 	var popups, keysDown, keysUp int
@@ -1277,6 +1274,12 @@ func TestContextMenuKeyWhileAButtonIsHeld(t *testing.T) {
 	button.UpdateCursorCallback = nil
 	var clicks int
 	button.ClickCallback = func() { clicks++ }
+	var releases []geom.Point
+	up := button.MouseUpCallback
+	button.MouseUpCallback = func(where geom.Point, b int, mods mod.Modifiers) bool {
+		releases = append(releases, where)
+		return up(where, b, mods)
+	}
 	w.root.contentPanel.AddChild(button)
 	w.mouseDown(geom.NewPoint(140, 120), ButtonLeft, 0)
 	c.True(w.lastMouseDownPanel == button.AsPanel(), "the test needs the button to hold the press")
@@ -1286,6 +1289,21 @@ func TestContextMenuKeyWhileAButtonIsHeld(t *testing.T) {
 	c.False(w.inMouseDown, "the button's press was ended")
 	c.False(button.Pressed, "and the button is no longer drawn pressed")
 	c.Equal(0, clicks, "but it was not clicked")
+	w.keyReleased(KeyMenu, 0)
+
+	// The same for Panel.ShowContextMenu called from application code.
+	releases = nil
+	w.mouseDown(geom.NewPoint(140, 120), ButtonLeft, 0)
+	c.True(button.Pressed, "the test needs the button to hold the press again")
+	c.True(owner.ShowContextMenu(geom.NewPoint(5, 5)), "the menu is shown")
+	c.Equal(5, popups)
+	c.Equal([]geom.Point{button.PointFromRoot(offPanelPoint)}, releases,
+		"the button was sent its release first, outside every panel")
+	c.False(button.Pressed, "so it is no longer drawn pressed")
+	c.Equal(0, clicks, "but was not clicked")
+	c.False(w.inMouseDown, "and no button is left down")
+	c.Equal(0, len(w.pressedButtons))
+	c.Nil(w.lastMouseDownPanel)
 }
 
 // TestContextMenuRowRequestEndsAHeldPress verifies that an assistive technology's request for the menu of a table row
@@ -1523,46 +1541,6 @@ func TestContextMenuWithholdingRows(t *testing.T) {
 	c.Equal(2, tbl, "but the table is asked for its menu")
 	c.Equal(2, lst, "and so is the list")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestShowContextMenuEndsAHeldPress verifies that Panel.ShowContextMenu, called from application code while a mouse
-// button is held, ends the press before the menu opens: the panel holding it is sent its release outside every panel,
-// so a button drawing itself pressed lets go without being clicked, and no button is left down.
-func TestShowContextMenuEndsAHeldPress(t *testing.T) {
-	c := check.New(t)
-	w := newMouseButtonTestWindow()
-	activateForContextMenu(t, w)
-	var popups int
-	owner := NewPanel()
-	owner.SetFrameRect(geom.NewRect(10, 10, 50, 50))
-	owner.ContextMenuCallback = func(geom.Point) Menu { return newCMCountingMenu(&popups, true) }
-	w.root.contentPanel.AddChild(owner)
-	button := NewButton()
-	button.SetTitle("Press")
-	button.SetFrameRect(geom.NewRect(100, 100, 80, 40))
-	button.UpdateCursorCallback = nil
-	var clicks int
-	button.ClickCallback = func() { clicks++ }
-	var releases []geom.Point
-	up := button.MouseUpCallback
-	button.MouseUpCallback = func(where geom.Point, b int, mods mod.Modifiers) bool {
-		releases = append(releases, where)
-		return up(where, b, mods)
-	}
-	w.root.contentPanel.AddChild(button)
-
-	w.mouseDown(geom.NewPoint(140, 120), ButtonLeft, 0)
-	c.True(w.lastMouseDownPanel == button.AsPanel(), "the test needs the button to hold the press")
-	c.True(button.Pressed)
-	c.True(owner.ShowContextMenu(geom.NewPoint(5, 5)), "the menu is shown")
-	c.Equal(1, popups)
-	c.Equal([]geom.Point{button.PointFromRoot(offPanelPoint)}, releases,
-		"the button was sent its release first, outside every panel")
-	c.False(button.Pressed, "so it is no longer drawn pressed")
-	c.Equal(0, clicks, "but was not clicked")
-	c.False(w.inMouseDown, "and no button is left down")
-	c.Equal(0, len(w.pressedButtons))
-	c.Nil(w.lastMouseDownPanel)
 }
 
 // TestShowContextMenuFromAMouseDownCallback verifies that a panel whose MouseDownCallback opens its menu through

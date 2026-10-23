@@ -59,15 +59,6 @@ func TestDisabledByEnvironment(t *testing.T) {
 	}
 }
 
-func TestEnabled(t *testing.T) {
-	clearAccessibilityEnvironment(t)
-	c := check.New(t)
-	p := newTestPeer(t, statusAnswers)
-	c.False(Enabled(p.client), "a launcher that says no means no")
-	p.enabled.Store(true)
-	c.True(Enabled(p.client))
-}
-
 func TestEnabledWhenThereIsNothingToAsk(t *testing.T) {
 	clearAccessibilityEnvironment(t)
 	c := check.New(t)
@@ -80,6 +71,7 @@ func TestEnabledObeysTheEnvironment(t *testing.T) {
 	clearAccessibilityEnvironment(t)
 	c := check.New(t)
 	p := newTestPeer(t, statusAnswers)
+	c.False(Enabled(p.client), "a launcher that says no means no")
 	p.enabled.Store(true)
 	c.True(Enabled(p.client))
 	t.Setenv(noBridgeEnvKey, "1")

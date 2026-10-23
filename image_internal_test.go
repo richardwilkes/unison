@@ -135,7 +135,8 @@ func drainTasks() {
 // imageCtxMap and releases them, while leaving other images' entries alone. Before this, only whole-context teardown
 // (releaseImagesForContext) ever removed per-image texture entries, so long-lived windows accumulated textures without
 // bound. The eviction must happen via a task on the UI thread, not on Dispose's caller's goroutine, since imageCtxMap
-// is UI-thread-only state.
+// is UI-thread-only state. Dispose is called here from another goroutine, standing in for an app's background image
+// loader, while the test goroutine drains the task queue as the UI thread would.
 func TestImageDisposeReleasesTextures(t *testing.T) {
 	c := check.New(t)
 
@@ -155,7 +156,12 @@ func TestImageDisposeReleasesTextures(t *testing.T) {
 	imageCtxMap[ctx1] = map[uint64]genericImage{img.hash: tex1, img.hash + 1: bystander}
 	imageCtxMap[ctx2] = map[uint64]genericImage{img.hash: tex2}
 
-	img.Dispose()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		img.Dispose()
+	}()
+	<-done
 
 	// Dispose only queues the release; nothing may touch imageCtxMap until the task runs on the UI thread.
 	_, present := imageCtxMap[ctx1][img.hash]
@@ -176,49 +182,11 @@ func TestImageDisposeReleasesTextures(t *testing.T) {
 	c.False(bystander.released, "Dispose should not release other images' textures")
 }
 
-// TestImageDisposeOffUIThreadDefersTextureRelease covers the scenario from issue 13: an app disposing images from a
-// background loader goroutine. Dispose must not touch imageCtxMap (UI-thread-only, unlocked) or perform GL work on the
-// caller's goroutine; it must instead queue the release through InvokeTask, exactly like the GC cleanup path. The
-// caller's goroutine here stands in for the background loader, and the test goroutine drains the task queue as the UI
-// thread would.
-func TestImageDisposeOffUIThreadDefersTextureRelease(t *testing.T) {
-	c := check.New(t)
-
-	const w, h = 2, 2
-	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 59), geom.NewPoint(1, 1))
-	c.NoError(err)
-
-	hash := img.hash
-	ctx := new(gl.DirectContext)
-	defer delete(imageCtxMap, ctx)
-	tex := &stubTexture{}
-	imageCtxMap[ctx] = map[uint64]genericImage{hash: tex}
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		img.Dispose()
-	}()
-	<-done
-
-	// The background goroutine's Dispose has fully returned, yet the map and texture must be untouched: the release
-	// runs only when the UI thread services the task queue.
-	_, present := imageCtxMap[ctx][hash]
-	c.True(present, "Dispose from a background goroutine must not mutate imageCtxMap directly")
-	c.False(tex.released, "Dispose from a background goroutine must not release the texture directly")
-	c.Nil(img.image, "Dispose should still drop the underlying image reference synchronously")
-
-	drainTasks()
-
-	_, present = imageCtxMap[ctx][hash]
-	c.False(present, "the queued task should evict the texture on the UI thread")
-	c.True(tex.released, "the queued task should release the texture on the UI thread")
-}
-
 // TestImageGCReleasesTextures verifies the garbage-collection path: once a texture has been uploaded for an image (and
 // registerTextureCleanup has run), dropping the last reference to the Image must eventually evict and release its
 // cached textures via a task on the UI thread. This restores the eviction role of the per-image runtime.Cleanup
-// registrations that existed before the canvas port.
+// registrations that existed before the canvas port. The collection must also remove the Image's imgCache entry,
+// whose weak pointer would otherwise go permanently stale, its key retained forever.
 func TestImageGCReleasesTextures(t *testing.T) {
 	c := check.New(t)
 
@@ -227,6 +195,10 @@ func TestImageGCReleasesTextures(t *testing.T) {
 	c.NoError(err)
 
 	hash := img.hash
+	imgCacheLock.Lock()
+	_, cached := imgCache[hash]
+	imgCacheLock.Unlock()
+	c.True(cached, "a freshly created image should be present in the cache")
 	ctx := new(gl.DirectContext)
 	defer delete(imageCtxMap, ctx)
 	tex := &stubTexture{}
@@ -235,45 +207,20 @@ func TestImageGCReleasesTextures(t *testing.T) {
 	img.registerTextureCleanup()
 	img.registerTextureCleanup() // must be idempotent, as imageForCanvas calls it on every texture upload
 
-	img = nil //nolint:wastedassign // drops the last strong reference so the cleanup can run
+	img = nil //nolint:wastedassign // drops the last strong reference so the cleanups can run
 	deadline := time.Now().Add(30 * time.Second)
-	for !tex.released && time.Now().Before(deadline) {
+	for (cached || !tex.released) && time.Now().Before(deadline) {
 		runtime.GC()
 		drainTasks()
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	c.True(tex.released, "collecting an Image should release its cached textures")
-	_, present := imageCtxMap[ctx][hash]
-	c.False(present, "collecting an Image should evict its texture from imageCtxMap")
-}
-
-// TestImageGCRemovesCacheEntry verifies that an Image garbage collected without Dispose() ever being called has its
-// imgCache entry removed. Before this, the entry's weak pointer went permanently stale and the key was retained
-// forever, slowly growing the map without bound.
-func TestImageGCRemovesCacheEntry(t *testing.T) {
-	c := check.New(t)
-
-	const w, h = 2, 2
-	img, err := NewImageFromPixels(w, h, distinctPixels(w, h, 53), geom.NewPoint(1, 1))
-	c.NoError(err)
-
-	hash := img.hash
-	imgCacheLock.Lock()
-	_, cached := imgCache[hash]
-	imgCacheLock.Unlock()
-	c.True(cached, "a freshly created image should be present in the cache")
-
-	img = nil //nolint:wastedassign // drops the last strong reference so the cleanup can run
-	deadline := time.Now().Add(30 * time.Second)
-	for cached && time.Now().Before(deadline) {
-		runtime.GC()
 		time.Sleep(10 * time.Millisecond)
 		imgCacheLock.Lock()
 		_, cached = imgCache[hash]
 		imgCacheLock.Unlock()
 	}
 
+	c.True(tex.released, "collecting an Image should release its cached textures")
+	_, present := imageCtxMap[ctx][hash]
+	c.False(present, "collecting an Image should evict its texture from imageCtxMap")
 	c.False(cached, "collecting an Image without Dispose should remove its cache entry")
 }
 
@@ -646,7 +593,8 @@ func allocatedBytes(fn func()) uint64 {
 // so it must neither trust nor retain the caller's slice and therefore copies it; imagecore.NewRasterData then copies
 // again into the raster image's own storage. A caller that already owns a private buffer paid for both, so
 // newImageFromOwnedPixels exists to pay for only the second one. The two are measured here against each other: the
-// owned variant must allocate exactly one full-image buffer less, and must stay under two buffers in total.
+// owned variant must allocate exactly one full-image buffer less, must stay under two buffers in total, and must make
+// exactly one allocation fewer, the defensive copy, with everything else about the two paths identical.
 func TestNewImageFromOwnedPixelsSkipsDefensiveCopy(t *testing.T) {
 	c := check.New(t)
 
@@ -680,20 +628,11 @@ func TestNewImageFromOwnedPixelsSkipsDefensiveCopy(t *testing.T) {
 	fromCopy.Dispose()
 	fromOwned.Dispose()
 	drainTasks()
-}
 
-// TestNewImageFromOwnedPixelsAllocationCount is the count-based half of the lock above: the defensive copy is one
-// allocation, and removing it must remove exactly one, with everything else about the two paths identical. The images
-// are retained for the duration so no cleanup fires mid-measurement, and each run gets its own pixel data so every run
-// takes the same cache-miss path.
-func TestNewImageFromOwnedPixelsAllocationCount(t *testing.T) {
-	c := check.New(t)
-
-	const w, h = 64, 64
+	// Counted rather than weighed. AllocsPerRun calls its function once to warm up and then runs times, so runs+1
+	// buffers are needed per variant, each distinct so every run takes the same cache-miss path. The images are
+	// retained for the duration so no cleanup fires mid-measurement.
 	const runs = 5
-	scale := geom.NewPoint(1, 1)
-
-	// AllocsPerRun calls its function once to warm up and then runs times, so runs+1 buffers are needed per variant.
 	copyPixels := make([][]byte, runs+1)
 	ownedPixels := make([][]byte, runs+1)
 	for i := range copyPixels {

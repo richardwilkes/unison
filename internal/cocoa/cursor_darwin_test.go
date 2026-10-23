@@ -17,62 +17,61 @@ import (
 	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
-func TestNewCursor(t *testing.T) {
-	cursor := NewCursor([]*image.NRGBA{filledNRGBA(16, 16)}, geom.NewPoint(2, 3), geom.NewSize(8, 8))
-	if cursor == 0 {
-		t.Fatal("NewCursor returned 0")
-	}
-	defer cursor.Release()
-	WithPool(func() {
-		if pt := objc.Send[NSPoint](objc.ID(cursor), Sel("hotSpot")); pt.X != 2 || pt.Y != 3 {
-			t.Errorf("hot spot = %v, want {2 3}", pt)
-		}
-		cursorImg := objc.ID(cursor).Send(Sel("image"))
-		if cursorImg == 0 {
-			t.Fatal("cursor has no image")
-		}
-		if size := objc.Send[NSSize](cursorImg, Sel("size")); size.Width != 8 || size.Height != 8 {
-			t.Errorf("cursor image size = %v, want {8 8}", size)
-		}
-	})
-}
-
-// TestNewCursorMultipleReps covers the vector-backed path: every rasterization handed to NewCursor must become a
+// TestNewCursorMultipleReps checks that every rasterization handed to NewCursor, one or several, becomes a
 // representation of a single image whose point size is the logical size, since that is what lets AppKit pick the one
-// matching the display's backing scale. A fractional hot spot must survive as-is, too, rather than being truncated.
+// matching the display's backing scale. The hot spot must survive as-is, a fractional one included, rather than being
+// truncated.
 func TestNewCursorMultipleReps(t *testing.T) {
-	cursor := NewCursor([]*image.NRGBA{filledNRGBA(24, 24), filledNRGBA(48, 48)}, geom.NewPoint(11.5, 12.5),
-		geom.NewSize(24, 24))
-	if cursor == 0 {
-		t.Fatal("NewCursor returned 0")
+	for _, c := range []struct {
+		name    string
+		pixels  []int
+		hotSpot geom.Point
+		size    float32
+	}{
+		{name: "1x and 2x reps", pixels: []int{24, 48}, hotSpot: geom.NewPoint(11.5, 12.5), size: 24},
+		{name: "single 2x rep", pixels: []int{16}, hotSpot: geom.NewPoint(2, 3), size: 8},
+	} {
+		reps := make([]*image.NRGBA, len(c.pixels))
+		for i, p := range c.pixels {
+			reps[i] = filledNRGBA(p, p)
+		}
+		cursor := NewCursor(reps, c.hotSpot, geom.NewSize(c.size, c.size))
+		if cursor == 0 {
+			t.Errorf("%s: NewCursor returned 0", c.name)
+			continue
+		}
+		WithPool(func() {
+			if pt := objc.Send[NSPoint](objc.ID(cursor), Sel("hotSpot")); pt.X != float64(c.hotSpot.X) ||
+				pt.Y != float64(c.hotSpot.Y) {
+				t.Errorf("%s: hot spot = %v, want %v", c.name, pt, c.hotSpot)
+			}
+			cursorImg := objc.ID(cursor).Send(Sel("image"))
+			if cursorImg == 0 {
+				t.Errorf("%s: cursor has no image", c.name)
+				return
+			}
+			if size := objc.Send[NSSize](cursorImg, Sel("size")); size.Width != float64(c.size) ||
+				size.Height != float64(c.size) {
+				t.Errorf("%s: cursor image size = %v, want {%v %v}", c.name, size, c.size, c.size)
+			}
+			imgReps := cursorImg.Send(Sel("representations"))
+			if count := NSArrayCount(imgReps); count != uint64(len(c.pixels)) {
+				t.Errorf("%s: cursor image has %d representations, want %d", c.name, count, len(c.pixels))
+				return
+			}
+			for i, want := range c.pixels {
+				rep := NSArrayObjectAt(imgReps, uint64(i))
+				if pixels := objc.Send[int64](rep, Sel("pixelsWide")); pixels != int64(want) {
+					t.Errorf("%s: representation %d pixelsWide = %d, want %d", c.name, i, pixels, want)
+				}
+				if size := objc.Send[NSSize](rep, Sel("size")); size.Width != float64(c.size) ||
+					size.Height != float64(c.size) {
+					t.Errorf("%s: representation %d size = %v, want {%v %v}", c.name, i, size, c.size, c.size)
+				}
+			}
+		})
+		cursor.Release()
 	}
-	defer cursor.Release()
-	WithPool(func() {
-		if pt := objc.Send[NSPoint](objc.ID(cursor), Sel("hotSpot")); pt.X != 11.5 || pt.Y != 12.5 {
-			t.Errorf("hot spot = %v, want {11.5 12.5}", pt)
-		}
-		cursorImg := objc.ID(cursor).Send(Sel("image"))
-		if cursorImg == 0 {
-			t.Fatal("cursor has no image")
-		}
-		if size := objc.Send[NSSize](cursorImg, Sel("size")); size.Width != 24 || size.Height != 24 {
-			t.Errorf("cursor image size = %v, want {24 24}", size)
-		}
-		reps := cursorImg.Send(Sel("representations"))
-		count := NSArrayCount(reps)
-		if count != 2 {
-			t.Fatalf("cursor image has %d representations, want 2", count)
-		}
-		for i, want := range []int64{24, 48} {
-			rep := NSArrayObjectAt(reps, uint64(i))
-			if pixels := objc.Send[int64](rep, Sel("pixelsWide")); pixels != want {
-				t.Errorf("representation %d pixelsWide = %d, want %d", i, pixels, want)
-			}
-			if size := objc.Send[NSSize](rep, Sel("size")); size.Width != 24 || size.Height != 24 {
-				t.Errorf("representation %d size = %v, want {24 24}", i, size)
-			}
-		}
-	})
 }
 
 // TestNewCursorNoReps verifies that a cursor cannot be built without any pixels to draw.

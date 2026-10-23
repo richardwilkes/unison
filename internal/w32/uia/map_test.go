@@ -490,7 +490,8 @@ func TestProvidedPatternsTextOwner(t *testing.T) {
 // the widget gave them none, and the list items and cells that describe what they hold as elements of their own,
 // whose name is built from those elements. Narrator's item navigation walks the control view and speaks each
 // element's name, and NVDA and JAWS speak the name and the control type and nothing else, so a paragraph with no name
-// is announced as a bare "text" and a list row with none as a bare "list item".
+// is announced as a bare "text" and a list row with none as a bare "list item". A table row is not one of them: the
+// table names it as a whole, and it is never named by its cells.
 //
 // The first group needs no tree, so it is asked with none, which is also what proves that a missing snapshot falls
 // back to the node's own name rather than panicking.
@@ -563,6 +564,7 @@ func TestNameString(t *testing.T) {
 		{comment: "a nested list item", id: 21, expected: "Inner"},
 		{comment: "a cell holding a label", id: 27, expected: "Delta"},
 		{comment: "a cell carrying text of its own", id: 29, expected: "42"},
+		{comment: "a row, which is never named by the cells within it", id: 26, expected: ""},
 	} {
 		c.Equal(one.expected, NameString(tree, tree.Node(one.id)), "node %d (%s)", one.id, one.comment)
 	}
@@ -596,7 +598,7 @@ func TestNameString(t *testing.T) {
 //	│        └─ 23 list-item                           "Inner"
 //	│           └─ 24 label "Inner"
 //	└─ 25 table
-//	   └─ 26 row
+//	   └─ 26 row                                       ""
 //	      ├─ 27 cell                                   "Delta"
 //	      │  └─ 28 label "Delta"
 //	      └─ 29 cell [text "42"]                       "42"
@@ -1192,30 +1194,12 @@ func TestNavigate(t *testing.T) {
 
 // TestHitTest verifies that a point resolves to the deepest node covering it, that overlapping siblings resolve to
 // the first of them, that an offscreen node is passed over, and that a hit on a node with no provider resolves to the
-// nearest ancestor that has one.
+// nearest ancestor that has one. An open menu extending beyond its window, which the snapshot describes as an overlay
+// hanging off the root, is found wherever it is drawn and above the content it covers.
 func TestHitTest(t *testing.T) {
 	c := check.New(t)
 	tree := sampleTree()
-	c.Equal(accessibility.NodeID(4), HitTest(tree, geom.NewPoint(10, 10)))
-	c.Equal(accessibility.NodeID(5), HitTest(tree, geom.NewPoint(60, 10)))
-	c.Equal(accessibility.NodeID(6), HitTest(tree, geom.NewPoint(10, 60)))
-	c.Equal(accessibility.NodeID(8), HitTest(tree, geom.NewPoint(10, 110)), "the first of two stacked siblings wins")
-	c.Equal(accessibility.NodeID(7), HitTest(tree, geom.NewPoint(150, 150)))
-	c.Equal(accessibility.NodeID(1), HitTest(tree, geom.NewPoint(150, 10)),
-		"a hit on an ignored group reports the nearest unignored ancestor")
-	c.Equal(accessibility.NodeID(0), HitTest(tree, geom.NewPoint(500, 500)))
-	c.Equal(accessibility.NodeID(0), HitTest(nil, geom.NewPoint(10, 10)))
-
-	tree.Node(8).Offscreen = true
-	c.Equal(accessibility.NodeID(9), HitTest(tree, geom.NewPoint(10, 110)), "an offscreen node is passed over")
-}
-
-// TestHitTestOverlay verifies that an open menu extending beyond its window, which the snapshot describes as an
-// overlay hanging off the root, is found by ElementProviderFromPoint wherever it is drawn, and that a hit on an
-// ignored node inside it resolves to the menu.
-func TestHitTestOverlay(t *testing.T) {
-	c := check.New(t)
-	tree := newTestTree(1, 0,
+	overlay := newTestTree(1, 0,
 		&accessibility.Node{
 			ID: 1, Role: role.Window, Bounds: geom.NewRect(0, 0, 100, 100), Children: []accessibility.NodeID{2, 5},
 		},
@@ -1227,12 +1211,37 @@ func TestHitTestOverlay(t *testing.T) {
 		&accessibility.Node{ID: 4, Role: role.Group, Ignored: true, Bounds: geom.NewRect(80, 120, 60, 20)},
 		&accessibility.Node{ID: 5, Role: role.Button, Name: "OK", Bounds: geom.NewRect(0, 0, 100, 100)},
 	)
-	c.Equal(accessibility.NodeID(3), HitTest(tree, geom.NewPoint(130, 30)), "an item beyond the window is found")
-	c.Equal(accessibility.NodeID(3), HitTest(tree, geom.NewPoint(90, 30)), "the menu is above the content")
-	c.Equal(accessibility.NodeID(2), HitTest(tree, geom.NewPoint(100, 130)),
-		"a hit on an ignored node inside the menu reports the menu")
-	c.Equal(accessibility.NodeID(5), HitTest(tree, geom.NewPoint(50, 50)))
-	c.Equal(accessibility.NodeID(0), HitTest(tree, geom.NewPoint(200, 200)))
+	for i, one := range []struct {
+		tree     *accessibility.Tree
+		why      string
+		point    geom.Point
+		expected accessibility.NodeID
+	}{
+		{tree: tree, point: geom.NewPoint(10, 10), expected: 4},
+		{tree: tree, point: geom.NewPoint(60, 10), expected: 5},
+		{tree: tree, point: geom.NewPoint(10, 60), expected: 6},
+		{tree: tree, point: geom.NewPoint(10, 110), expected: 8, why: "the first of two stacked siblings wins"},
+		{tree: tree, point: geom.NewPoint(150, 150), expected: 7},
+		{
+			tree: tree, point: geom.NewPoint(150, 10), expected: 1,
+			why: "a hit on an ignored group reports the nearest unignored ancestor",
+		},
+		{tree: tree, point: geom.NewPoint(500, 500)},
+		{point: geom.NewPoint(10, 10), why: "no tree"},
+		{tree: overlay, point: geom.NewPoint(130, 30), expected: 3, why: "an item beyond the window is found"},
+		{tree: overlay, point: geom.NewPoint(90, 30), expected: 3, why: "the menu is above the content"},
+		{
+			tree: overlay, point: geom.NewPoint(100, 130), expected: 2,
+			why: "a hit on an ignored node inside the menu reports the menu",
+		},
+		{tree: overlay, point: geom.NewPoint(50, 50), expected: 5},
+		{tree: overlay, point: geom.NewPoint(200, 200)},
+	} {
+		c.Equal(one.expected, HitTest(one.tree, one.point), "case %d (%s)", i, one.why)
+	}
+
+	tree.Node(8).Offscreen = true
+	c.Equal(accessibility.NodeID(9), HitTest(tree, geom.NewPoint(10, 110)), "an offscreen node is passed over")
 }
 
 // TestPositionInSet verifies that rows are numbered from what the snapshot recorded rather than from what is in the
@@ -1385,48 +1394,66 @@ func TestDecideRaisesNothing(t *testing.T) {
 	c.Nil(DecideRaises(eventTree(), eventTree(), nil))
 }
 
-// TestDecideRaisesFocus verifies that a focus change is reported only while the window itself is active. A screen
-// reader follows a focus event by moving its cursor, so raising one for a window the user is not looking at pulls them
-// away from the one they are.
-func TestDecideRaisesFocus(t *testing.T) {
-	c := check.New(t)
-	events := []accessibility.Event{{Kind: accessibility.FocusChanged, Node: 2}}
-
-	cur := eventTree()
-	c.Equal([]Raise{raiseEvent(2, AutomationFocusChangedEventId)}, DecideRaises(eventTree(), cur, events))
-
-	cur = eventTree()
-	cur.Node(1).Focused = false
-	c.Nil(DecideRaises(eventTree(), cur, events))
-}
-
-// TestDecideRaisesFocusCleared verifies that the focus moving to nothing is reported on the fragment root. A client
-// answers a focus event by moving its cursor to the element the event names, so saying nothing at all would leave it on
-// an element that has just stopped being focused; the root is the only element left to name, and a client that follows
-// the event up is told by GetFocus that the fragment holds no focus.
+// TestDecideRaisesFocusCleared verifies that a focus change is reported only while the window itself is active, and
+// that the focus moving to nothing is reported on the fragment root. A screen reader follows a focus event by moving
+// its cursor, so raising one for a window the user is not looking at pulls them away from the one they are, while
+// saying nothing when the focus clears would leave it on an element that has just stopped being focused; the root is
+// the only element left to name, and a client that follows the event up is told by GetFocus that the fragment holds no
+// focus.
 func TestDecideRaisesFocusCleared(t *testing.T) {
 	c := check.New(t)
+	inactive := eventTree()
+	inactive.Node(1).Focused = false
 	cleared := eventTree()
 	cleared.Focus = 0
 	cleared.Node(2).Focused = false
-	c.Equal([]Raise{raiseEvent(1, AutomationFocusChangedEventId)},
-		DecideRaises(eventTree(), cleared, accessibility.Diff(eventTree(), cleared)))
-
-	// A window becoming active with nothing inside it focused points the client at the window itself for the same
-	// reason.
-	c.Equal([]Raise{raiseEvent(1, AutomationFocusChangedEventId)},
-		DecideRaises(eventTree(), cleared, []accessibility.Event{
-			{Kind: accessibility.WindowActivated, Node: 1},
-		}))
-
-	// An inactive window still says nothing, however its focus moved.
 	background := eventTree()
 	background.Focus = 0
 	background.Node(1).Focused = false
 	background.Node(2).Focused = false
-	c.Nil(DecideRaises(eventTree(), background, []accessibility.Event{
-		{Kind: accessibility.FocusChanged, Node: 0},
-	}))
+	for i, one := range []struct {
+		cur      *accessibility.Tree
+		name     string
+		events   []accessibility.Event
+		expected []Raise
+	}{
+		{
+			name:     "a focus change in the active window",
+			cur:      eventTree(),
+			events:   []accessibility.Event{{Kind: accessibility.FocusChanged, Node: 2}},
+			expected: []Raise{raiseEvent(2, AutomationFocusChangedEventId)},
+		},
+		{
+			name:   "a focus change in an inactive window",
+			cur:    inactive,
+			events: []accessibility.Event{{Kind: accessibility.FocusChanged, Node: 2}},
+		},
+		{
+			name:     "the focus moving to nothing",
+			cur:      cleared,
+			events:   accessibility.Diff(eventTree(), cleared),
+			expected: []Raise{raiseEvent(1, AutomationFocusChangedEventId)},
+		},
+		{
+			// The window itself is named for the same reason.
+			name:     "a window becoming active with nothing inside it focused",
+			cur:      cleared,
+			events:   []accessibility.Event{{Kind: accessibility.WindowActivated, Node: 1}},
+			expected: []Raise{raiseEvent(1, AutomationFocusChangedEventId)},
+		},
+		{
+			name:   "the focus moving to nothing in an inactive window",
+			cur:    background,
+			events: []accessibility.Event{{Kind: accessibility.FocusChanged, Node: 0}},
+		},
+	} {
+		raises := DecideRaises(eventTree(), one.cur, one.events)
+		if one.expected == nil {
+			c.Nil(raises, "case %d (%s)", i, one.name)
+			continue
+		}
+		c.Equal(one.expected, raises, "case %d (%s)", i, one.name)
+	}
 }
 
 // rowFocusTree builds the shape a list and a table publish while one of them holds the keyboard focus: the container
@@ -1481,135 +1508,75 @@ func focusRow(tree *accessibility.Tree, container, row accessibility.NodeID) {
 	tree.Focus = row
 }
 
-// TestHasKeyboardFocusOnRow verifies that a list's or a table's current row is what claims the keyboard, and that the
-// container around it claims nothing. Both are focusable — the container is what the tab order lands on and the row is
-// what a client may ask to focus — but only the one the tree's Focus names holds the keyboard, which is the pairing
-// every native list box reports and the one NVDA's shouldAllowUIAFocusEvent insists on.
-func TestHasKeyboardFocusOnRow(t *testing.T) {
-	c := check.New(t)
-	tree := rowFocusTree()
-	c.True(HasKeyboardFocus(tree, tree.Node(2)), "the list itself, while it reports the focus")
-	c.False(HasKeyboardFocus(tree, tree.Node(3)))
-
-	focusRow(tree, 2, 3)
-	c.True(HasKeyboardFocus(tree, tree.Node(3)), "the row the tree's Focus names")
-	c.False(HasKeyboardFocus(tree, tree.Node(2)), "the list that handed the focus to the row")
-	c.False(HasKeyboardFocus(tree, tree.Node(4)), "another row of the same list")
-	c.True(tree.Node(2).Focusable, "the container stays in the tab order")
-	c.True(ReportsProperty(tree, tree.Node(3), HasKeyboardFocusPropertyId))
-	c.True(ReportsProperty(tree, tree.Node(3), IsKeyboardFocusablePropertyId))
-
-	table := rowFocusTree()
-	focusRow(table, 5, 7)
-	c.True(HasKeyboardFocus(table, table.Node(7)), "the table row the tree's Focus names")
-	c.False(HasKeyboardFocus(table, table.Node(5)))
-	c.False(HasKeyboardFocus(table, table.Node(6)))
-
-	// An inactive window holds the keyboard nowhere, row or not.
-	inactive := rowFocusTree()
-	focusRow(inactive, 2, 3)
-	inactive.Node(1).Focused = false
-	c.False(HasKeyboardFocus(inactive, inactive.Node(3)))
-}
-
-// TestRowPositionInSet verifies that a focused row still reports where it sits, which is the "3 of 12" a screen reader
-// speaks alongside the row it has just been moved onto. The numbers come from what the widget recorded rather than
-// from counting siblings, since a table publishes only the rows in its viewport.
-func TestRowPositionInSet(t *testing.T) {
-	c := check.New(t)
-	tree := rowFocusTree()
-	focusRow(tree, 2, 4)
-	position, size := PositionInSet(tree, tree.Node(4))
-	c.Equal(2, position)
-	c.Equal(2, size)
-	focusRow(tree, 5, 6)
-	position, size = PositionInSet(tree, tree.Node(6))
-	c.Equal(1, position)
-	c.Equal(2, size)
-}
-
-// TestDecideRaisesRowFocus verifies that a list handing the focus it holds to its current row is reported as a focus
-// change on the row and on nothing else. A screen reader moves its cursor to the element a focus event names, so the
-// row has to be named: raising it on the list would leave the user hearing the list again for every arrow key, which
-// is the behavior this whole change replaces. The selection events go out alongside it, unchanged.
+// TestDecideRaisesRowFocus verifies that a list or a table handing the focus it holds to its current row, or an arrow
+// key moving it from one row to the next, is reported as a focus change on the new row and on nothing else. A screen
+// reader moves its cursor to the element a focus event names, so the row has to be named: raising it on the list would
+// leave the user hearing the list again for every arrow key. The selection events go out alongside it, unchanged, but
+// they are only what the rows' states did, which no screen reader treats as "the user is here now". In a window that
+// is not the active one the focus event is dropped while the selection events still go out, since pointing a screen
+// reader at a row of a background window drags the user away from the window they are actually in.
 func TestDecideRaisesRowFocus(t *testing.T) {
 	c := check.New(t)
-	old := rowFocusTree()
-	cur := rowFocusTree()
-	focusRow(cur, 2, 3)
-	raises := DecideRaises(old, cur, accessibility.Diff(old, cur))
-	c.Equal([]Raise{
-		raiseProperty(3, SelectionItemIsSelectedPropertyId),
-		raiseEvent(3, SelectionItem_ElementSelectedEventId),
-		raiseEvent(3, AutomationFocusChangedEventId),
-	}, raises)
-	c.False(slices.Contains(raises, raiseEvent(2, AutomationFocusChangedEventId)),
-		"the list reports no focus change of its own")
-}
-
-// TestDecideRaisesRowFocusMoved verifies that an arrow key moving from one row to the next reports the focus on the
-// new row. Nothing else tells a client the user moved: the deselection and the selection are what the rows' states
-// did, and no screen reader treats either as "the user is here now".
-func TestDecideRaisesRowFocusMoved(t *testing.T) {
-	c := check.New(t)
-	old := rowFocusTree()
-	focusRow(old, 2, 3)
-	cur := rowFocusTree()
-	focusRow(cur, 2, 4)
-	raises := DecideRaises(old, cur, accessibility.Diff(old, cur))
-	c.Equal([]Raise{
-		raiseProperty(3, SelectionItemIsSelectedPropertyId),
-		raiseProperty(4, SelectionItemIsSelectedPropertyId),
-		raiseEvent(4, SelectionItem_ElementSelectedEventId),
-		raiseEvent(4, AutomationFocusChangedEventId),
-	}, raises)
-	c.False(slices.Contains(raises, raiseEvent(3, AutomationFocusChangedEventId)),
-		"the row that lost the focus reports no focus change")
-}
-
-// TestDecideRaisesTableRowFocus verifies that a table's row is reported exactly as a list's item is. A DataGridRow is
-// what Windows puts the focus on, and NVDA and Narrator both read the row they are moved onto.
-func TestDecideRaisesTableRowFocus(t *testing.T) {
-	c := check.New(t)
-	old := rowFocusTree()
-	focusRow(old, 5, 6)
-	cur := rowFocusTree()
-	focusRow(cur, 5, 7)
-	c.Equal([]Raise{
-		raiseProperty(6, SelectionItemIsSelectedPropertyId),
-		raiseProperty(7, SelectionItemIsSelectedPropertyId),
-		raiseEvent(7, SelectionItem_ElementSelectedEventId),
-		raiseEvent(7, AutomationFocusChangedEventId),
-	}, DecideRaises(old, cur, accessibility.Diff(old, cur)))
-}
-
-// TestDecideRaisesRowFocusInactiveWindow verifies that a row taking the focus inside a window that is not the active
-// one is not raised at all, while everything else about the row still is. Pointing a screen reader at a row of a
-// background window drags the user away from the window they are actually in.
-func TestDecideRaisesRowFocusInactiveWindow(t *testing.T) {
-	c := check.New(t)
-	old := rowFocusTree()
-	old.Node(1).Focused = false
-	cur := rowFocusTree()
-	cur.Node(1).Focused = false
-	focusRow(cur, 2, 3)
-	raises := DecideRaises(old, cur, accessibility.Diff(old, cur))
-	c.Equal([]Raise{
-		raiseProperty(3, SelectionItemIsSelectedPropertyId),
-		raiseEvent(3, SelectionItem_ElementSelectedEventId),
-	}, raises)
-}
-
-// TestDecideRaisesRowFocusable verifies that a row becoming focusable is reported through IsKeyboardFocusable, which
-// is the property a client reads to decide whether it may ask the row for the focus. Rows gained the flag with this
-// change: a list that publishes its rows as focusable is what lets a client move the user onto one.
-func TestDecideRaisesRowFocusable(t *testing.T) {
-	c := check.New(t)
-	old := rowFocusTree()
-	old.Node(3).Focusable = false
-	cur := rowFocusTree()
-	c.Equal([]Raise{raiseProperty(3, IsKeyboardFocusablePropertyId)},
-		DecideRaises(old, cur, accessibility.Diff(old, cur)))
+	focused := func(container, row accessibility.NodeID) *accessibility.Tree {
+		tree := rowFocusTree()
+		focusRow(tree, container, row)
+		return tree
+	}
+	inactive := func(tree *accessibility.Tree) *accessibility.Tree {
+		tree.Node(1).Focused = false
+		return tree
+	}
+	for i, one := range []struct {
+		old      *accessibility.Tree
+		cur      *accessibility.Tree
+		name     string
+		expected []Raise
+	}{
+		{
+			name: "the list handing the focus to a row, with no focus change of its own",
+			old:  rowFocusTree(),
+			cur:  focused(2, 3),
+			expected: []Raise{
+				raiseProperty(3, SelectionItemIsSelectedPropertyId),
+				raiseEvent(3, SelectionItem_ElementSelectedEventId),
+				raiseEvent(3, AutomationFocusChangedEventId),
+			},
+		},
+		{
+			name: "the focus moving to the next row, with none for the row it left",
+			old:  focused(2, 3),
+			cur:  focused(2, 4),
+			expected: []Raise{
+				raiseProperty(3, SelectionItemIsSelectedPropertyId),
+				raiseProperty(4, SelectionItemIsSelectedPropertyId),
+				raiseEvent(4, SelectionItem_ElementSelectedEventId),
+				raiseEvent(4, AutomationFocusChangedEventId),
+			},
+		},
+		{
+			name: "a table's row, reported exactly as a list's item is",
+			old:  focused(5, 6),
+			cur:  focused(5, 7),
+			expected: []Raise{
+				raiseProperty(6, SelectionItemIsSelectedPropertyId),
+				raiseProperty(7, SelectionItemIsSelectedPropertyId),
+				raiseEvent(7, SelectionItem_ElementSelectedEventId),
+				raiseEvent(7, AutomationFocusChangedEventId),
+			},
+		},
+		{
+			name: "a row taking the focus in an inactive window",
+			old:  inactive(rowFocusTree()),
+			cur:  inactive(focused(2, 3)),
+			expected: []Raise{
+				raiseProperty(3, SelectionItemIsSelectedPropertyId),
+				raiseEvent(3, SelectionItem_ElementSelectedEventId),
+			},
+		},
+	} {
+		c.Equal(one.expected, DecideRaises(one.old, one.cur, accessibility.Diff(one.old, one.cur)),
+			"case %d (%s)", i, one.name)
+	}
 }
 
 // TestDecideRaisesWindowOpened verifies that the first publish of a window announces that it opened, which is how a
@@ -1753,32 +1720,6 @@ func TestDecideRaisesAttributes(t *testing.T) {
 	}))
 }
 
-// TestDecideRaisesHeadingLevel verifies that a heading whose depth changed reports HeadingLevel. Node.Level answers
-// two properties — Level and, through HeadingLevel, HeadingLevel — and a client reads a heading's depth from the
-// second of them, so a change that reported only the first would leave it announcing the wrong depth.
-func TestDecideRaisesHeadingLevel(t *testing.T) {
-	c := check.New(t)
-	headings := func(level int) *accessibility.Tree {
-		return newTestTree(1, 0,
-			&accessibility.Node{ID: 1, Role: role.Window, Name: "Window", Children: []accessibility.NodeID{2}},
-			&accessibility.Node{ID: 2, Role: role.Heading, Name: "Section", Level: level},
-		)
-	}
-	old, cur := headings(2), headings(3)
-	c.NotEqual(HeadingLevel(old.Node(2)), HeadingLevel(cur.Node(2)), "the two snapshots must differ")
-	c.Equal([]Raise{
-		raiseProperty(2, HelpTextPropertyId),
-		raiseProperty(2, LevelPropertyId),
-		raiseProperty(2, HeadingLevelPropertyId),
-		raiseProperty(2, PositionInSetPropertyId),
-		raiseProperty(2, SizeOfSetPropertyId),
-		raiseProperty(2, OrientationPropertyId),
-		raiseProperty(2, LabeledByPropertyId),
-		raiseProperty(2, DescribedByPropertyId),
-		raiseProperty(2, ControllerForPropertyId),
-	}, DecideRaises(old, cur, []accessibility.Event{{Kind: accessibility.AttributesChanged, Node: 2}}))
-}
-
 // TestDecideRaisesLabelContent verifies that a change to one node's LabeledBy relation reports the content-view
 // change it makes to the label at the other end of it. A label that names another element is left out of the content
 // view, so the label's own IsContentElement moves when something starts or stops naming it — and the event names the
@@ -1861,7 +1802,8 @@ func TestDecideRaisesLabelContent(t *testing.T) {
 // pattern whose property would carry the news. Raising it anyway is what constants.go says must never happen;
 // saying nothing at all would leave a client announcing rows as expanded forever after they had become leaves. The
 // availability property is the one thing that may be raised on an element without the pattern, so that is what goes
-// out, ahead of anything else about the element. Both directions are checked.
+// out, ahead of anything else about the element. Both directions are checked, as is a row that keeps the pattern,
+// where either half of the expandable state reports only the ExpandCollapseState that carries both.
 func TestDecideRaisesPatternAvailability(t *testing.T) {
 	c := check.New(t)
 	rows := func(expandable bool) *accessibility.Tree {
@@ -1925,6 +1867,20 @@ func TestDecideRaisesPatternAvailability(t *testing.T) {
 				raiseProperty(3, IsExpandCollapsePatternAvailablePropertyId),
 				raiseProperty(3, ExpandCollapseExpandCollapseStatePropertyId),
 			},
+		},
+		{
+			name:     "an expandable row whose expanded state changed",
+			old:      rows(true),
+			cur:      rows(true),
+			event:    stateChanged(3, accessibility.StateExpanded),
+			expected: []Raise{raiseProperty(3, ExpandCollapseExpandCollapseStatePropertyId)},
+		},
+		{
+			name:     "an expandable row whose expandable state is reported again",
+			old:      rows(true),
+			cur:      rows(true),
+			event:    stateChanged(3, accessibility.StateExpandable),
+			expected: []Raise{raiseProperty(3, ExpandCollapseExpandCollapseStatePropertyId)},
 		},
 		{
 			// Every pattern the node gained or lost is reported, in the order the patterns are defined in, and all of
@@ -2624,23 +2580,6 @@ func TestDecideRaisesStates(t *testing.T) {
 	}
 }
 
-// TestDecideRaisesExpandCollapse verifies that a change to either half of the expandable state reports the combined
-// ExpandCollapseState property, since that one property carries both.
-func TestDecideRaisesExpandCollapse(t *testing.T) {
-	c := check.New(t)
-	tree := newTestTree(1, 0,
-		&accessibility.Node{ID: 1, Role: role.Window, Focused: true, Children: []accessibility.NodeID{2}},
-		&accessibility.Node{ID: 2, Role: role.Tree, RowCount: 1, Children: []accessibility.NodeID{3}},
-		&accessibility.Node{ID: 3, Role: role.Row, RowIndex: 0, Expandable: true, Expanded: true},
-	)
-	for _, state := range []accessibility.State{accessibility.StateExpanded, accessibility.StateExpandable} {
-		c.Equal([]Raise{raiseProperty(3, ExpandCollapseExpandCollapseStatePropertyId)},
-			DecideRaises(tree, tree, []accessibility.Event{
-				{Kind: accessibility.StateChanged, Node: 3, State: state},
-			}), "%s", state)
-	}
-}
-
 // TestDecideRaisesSelection verifies the three shapes a selection change takes: a container that allows several
 // selections reports each element joining and leaving, while one that does not reports only the element that became the
 // selection, since that implicitly deselects whatever was selected before.
@@ -2777,9 +2716,9 @@ func TestDecideRaisesIgnored(t *testing.T) {
 	}))
 }
 
-// TestDecideRaisesAdded verifies that a new node reports itself as added, and that it says nothing once its parent
-// has already reported all of its children invalidated — which is what the diff produces for a real addition, since the
-// parent's list of children changed too.
+// TestDecideRaisesAdded verifies that a new node reports itself as added, and that it says nothing once its parent, or
+// any ancestor above it, has already reported all of its children invalidated — which is what the diff produces for a
+// real addition, since the parent's list of children changed too.
 func TestDecideRaisesAdded(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
@@ -2792,38 +2731,21 @@ func TestDecideRaisesAdded(t *testing.T) {
 
 	c.Equal([]Raise{raiseStructure(4, 0, StructureChangeType_ChildrenInvalidated)},
 		DecideRaises(old, cur, accessibility.Diff(old, cur)))
-}
 
-// TestDecideRaisesAddedSubtree verifies that a whole subtree arriving at once is reported as one invalidation of the
-// parent it hangs off and nothing else.
-//
-// The diff invalidates that parent and then reports every node of the subtree as added, so looking only at a new node's
-// immediate parent drops the subtree's top node — whose parent is the invalidated one — and then reports every node
-// beneath it, whose parents are the new nodes themselves. A client answers the invalidation by reading the children
-// again, so those are events it would only make it do the same work over.
-func TestDecideRaisesAddedSubtree(t *testing.T) {
-	c := check.New(t)
-	old := eventTree()
-	cur := eventTree()
-	cur.Node(1).Children = append(cur.Node(1).Children, 11)
-	cur.Nodes[11] = &accessibility.Node{ID: 11, Parent: 1, Role: role.Group, Children: []accessibility.NodeID{12, 13}}
-	cur.Nodes[12] = &accessibility.Node{ID: 12, Parent: 11, Role: role.Button, Name: "One"}
-	cur.Nodes[13] = &accessibility.Node{ID: 13, Parent: 11, Role: role.Button, Name: "Two"}
-
+	// A whole subtree arriving at once is one invalidation of the parent it hangs off and nothing else. Only the walk
+	// up the chain finds it for the nodes beneath the subtree's top one, whose parents are new nodes themselves.
+	grown := eventTree()
+	grown.Node(1).Children = append(grown.Node(1).Children, 11)
+	grown.Nodes[11] = &accessibility.Node{ID: 11, Parent: 1, Role: role.Group, Children: []accessibility.NodeID{12, 13}}
+	grown.Nodes[12] = &accessibility.Node{ID: 12, Parent: 11, Role: role.Button, Name: "One"}
+	grown.Nodes[13] = &accessibility.Node{ID: 13, Parent: 11, Role: role.Button, Name: "Two"}
 	c.Equal([]Raise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
-		DecideRaises(old, cur, accessibility.Diff(old, cur)))
-
-	// A node added under an invalidated ancestor several levels up is dropped just the same, which is what the walk up
-	// the chain is for.
-	c.Equal([]Raise{raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated)},
-		DecideRaises(old, cur, []accessibility.Event{
-			{Kind: accessibility.ChildrenChanged, Node: 1},
-			{Kind: accessibility.NodeAdded, Node: 12},
-		}))
+		DecideRaises(old, grown, accessibility.Diff(old, grown)))
 }
 
 // TestDecideRaisesRemoved verifies that a departed node reports its removal on the parent it left, since it no
-// longer exists to raise anything itself, and that the disconnect releasing its provider happens either way.
+// longer exists to raise anything itself, and that the disconnect releasing its provider happens either way. No removal
+// is raised on a parent that left too, or under an ancestor the same batch invalidated.
 func TestDecideRaisesRemoved(t *testing.T) {
 	c := check.New(t)
 	old := eventTree()
@@ -2840,37 +2762,28 @@ func TestDecideRaisesRemoved(t *testing.T) {
 		raiseDisconnect(6),
 		raiseStructure(4, 0, StructureChangeType_ChildrenInvalidated),
 	}, DecideRaises(old, cur, accessibility.Diff(old, cur)))
-}
 
-// TestDecideRaisesRemovedSubtree verifies that removing a whole subtree reports the invalidation once on the
-// surviving parent and disconnects every node that left, rather than trying to raise a removal on a parent that is
-// gone too.
-func TestDecideRaisesRemovedSubtree(t *testing.T) {
-	c := check.New(t)
-	old := eventTree()
-	cur := eventTree()
-	cur.Node(1).Children = []accessibility.NodeID{2, 3, 7, 8, 9}
-	delete(cur.Nodes, 4)
-	delete(cur.Nodes, 5)
-	delete(cur.Nodes, 6)
-
+	// Removing a whole subtree reports the invalidation once on the surviving parent and disconnects every node that
+	// left, rather than trying to raise a removal on a parent that is gone too.
+	pruned := eventTree()
+	pruned.Node(1).Children = []accessibility.NodeID{2, 3, 7, 8, 9}
+	delete(pruned.Nodes, 4)
+	delete(pruned.Nodes, 5)
+	delete(pruned.Nodes, 6)
 	c.Equal([]Raise{
 		raiseDisconnect(4),
 		raiseDisconnect(5),
 		raiseDisconnect(6),
 		raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated),
-	}, DecideRaises(old, cur, accessibility.Diff(old, cur)))
+	}, DecideRaises(old, pruned, accessibility.Diff(old, pruned)))
 
 	// A removal under an ancestor the same batch invalidated higher up is dropped too. A diff never produces that on
 	// its own — a real removal changes the immediate parent's list of children as well — so the events are written out
 	// here to reach the walk up the chain that removals share with additions.
-	gone := eventTree()
-	gone.Node(4).Children = []accessibility.NodeID{5}
-	delete(gone.Nodes, 6)
 	c.Equal([]Raise{
 		raiseStructure(1, 0, StructureChangeType_ChildrenInvalidated),
 		raiseDisconnect(6),
-	}, DecideRaises(old, gone, []accessibility.Event{
+	}, DecideRaises(old, cur, []accessibility.Event{
 		{Kind: accessibility.ChildrenChanged, Node: 1},
 		{Kind: accessibility.NodeRemoved, Node: 6},
 	}))
@@ -3124,11 +3037,15 @@ func focusCell(tree *accessibility.Tree, container, row, cell accessibility.Node
 }
 
 // TestHasKeyboardFocusOnCell verifies that the cell the cursor is on is the one element of the table claiming the
-// keyboard, and that it claims being focusable alongside it. NVDA's shouldAllowUIAFocusEvent drops a focus event whose
-// element does not report HasKeyboardFocus, so a cell that did not claim it would be moved onto in silence.
+// keyboard, and that it claims being focusable alongside it, while the table claims it only when the tree's Focus
+// names the table itself. NVDA's shouldAllowUIAFocusEvent drops a focus event whose element does not report
+// HasKeyboardFocus, so a cell that did not claim it would be moved onto in silence.
 func TestHasKeyboardFocusOnCell(t *testing.T) {
 	c := check.New(t)
 	tree := cellCursorTree()
+	c.True(HasKeyboardFocus(tree, tree.Node(6)), "the table itself, while it reports the focus")
+	c.False(HasKeyboardFocus(tree, tree.Node(7)))
+
 	focusCell(tree, 6, 7, 9)
 	c.True(HasKeyboardFocus(tree, tree.Node(9)), "the cell the tree's Focus names")
 	c.False(HasKeyboardFocus(tree, tree.Node(7)), "the row that handed the focus on to the cell")
@@ -3165,78 +3082,45 @@ func focusedCount(tree *accessibility.Tree) int {
 	return count
 }
 
-// TestFocusedCellReportsItsPlaceInTheGrid verifies that the cell the cursor is on tells a client everything it needs to
-// speak it: the control type a screen reader reads a grid item as, the Grid and Table item patterns, the grid it
-// belongs to, its row and column, and the header of its own column. NVDA reads exactly these for a focused element —
-// name, then the column header and "column N" from ITableItemProvider::GetColumnHeaderItems and
-// IGridItemProvider::get_Column, then "row N" from get_Row — so a cell missing any of them is spoken as a bare name.
-func TestFocusedCellReportsItsPlaceInTheGrid(t *testing.T) {
-	c := check.New(t)
-	tree := cellCursorTree()
-	focusCell(tree, 6, 7, 9)
-	cell := tree.Node(9)
-	c.Equal(DataItemControlTypeId, ControlType(tree, cell))
-	c.True(Patterns(cell).Has(PatternGridItem))
-	c.True(Patterns(cell).Has(PatternTableItem))
-	c.True(Patterns(cell).Has(PatternScrollItem), "the cursor can be asked to bring the cell into view")
-	c.Equal(accessibility.NodeID(6), ContainingGrid(tree, 9))
-	c.Equal(1, cell.RowIndex)
-	c.Equal(1, cell.ColumnIndex)
-	c.Equal(accessibility.NodeID(5), ColumnHeaderItem(tree, 9), "the header of the cell's own column")
-	c.Equal(accessibility.NodeID(4), ColumnHeaderItem(tree, 8))
-	c.Equal(accessibility.NodeID(9), GridItem(tree, 6, 1, 1), "the grid hands the same cell back")
-
-	// A cell whose content describes itself is named by that content, which is the only name a client is given for it.
-	c.Equal("1 KB", NameString(tree, tree.Node(12)))
-	c.Equal("4 KB", NameString(tree, cell), "a cell with a name of its own keeps it")
-
-	// The position properties a row reports are not a cell's: a cell is not one of a numbered set of rows, and
-	// reporting one would have a screen reader say "2 of 5" over the row's own position.
-	position, size := PositionInSet(tree, cell)
-	c.Equal(0, position)
-	c.Equal(0, size)
-}
-
-// TestCellCursorLeavesTheRowNameAlone verifies that the whole-row name the table composes is what a client is told,
-// unchanged by anything the adapter would otherwise add: a row is not named by the cells beneath it, so the name is
-// spoken once as the person arrows down the rows rather than once for the row and again for its content.
-func TestCellCursorLeavesTheRowNameAlone(t *testing.T) {
-	c := check.New(t)
-	tree := cellCursorTree()
-	c.Equal("unison, Size 4 KB", NameString(tree, tree.Node(7)))
-	c.Equal("doc.go, Size 1 KB", NameString(tree, tree.Node(10)),
-		"the row holding a cell named by its content is still named by the whole row")
-	c.False(namedByItsContent(tree, tree.Node(7)), "a row is never named by the cells within it")
-	focusCell(tree, 6, 10, 12)
-	c.Equal("doc.go, Size 1 KB", NameString(tree, tree.Node(10)), "and the cursor does not change it")
-	c.Equal("1 KB", NameString(tree, tree.Node(12)))
-}
-
-// TestDecideRaisesCellCursorEntered verifies that moving from the row onto the first cell of it is reported as a focus
-// change on the cell. A screen reader moves its cursor to the element a focus event names, so the cell has to be
-// named: the row is where the user was, not where they are.
+// TestDecideRaisesCellCursorEntered verifies that moving from the row onto the first cell of it, or with Left and Right
+// from one cell of the row to another, is reported as a focus change on the cell moved onto and on nothing else. A
+// screen reader moves its cursor to the element a focus event names, so the cell has to be named: the row is where the
+// user was, not where they are.
 func TestDecideRaisesCellCursorEntered(t *testing.T) {
 	c := check.New(t)
-	old := cellCursorTree()
-	focusRow(old, 6, 7)
-	cur := cellCursorTree()
-	focusCell(cur, 6, 7, 8)
-	c.Equal([]Raise{
-		raiseEvent(8, AutomationFocusChangedEventId),
-	}, DecideRaises(old, cur, accessibility.Diff(old, cur)))
-}
-
-// TestDecideRaisesCellCursorAcrossColumns verifies that Left and Right within one row are reported as a focus change on
-// the cell moved onto, and on nothing else: the row did not change, so its selection did not either.
-func TestDecideRaisesCellCursorAcrossColumns(t *testing.T) {
-	c := check.New(t)
-	old := cellCursorTree()
-	focusCell(old, 6, 7, 8)
-	cur := cellCursorTree()
-	focusCell(cur, 6, 7, 9)
-	c.Equal([]Raise{
-		raiseEvent(9, AutomationFocusChangedEventId),
-	}, DecideRaises(old, cur, accessibility.Diff(old, cur)))
+	onRow := func() *accessibility.Tree {
+		tree := cellCursorTree()
+		focusRow(tree, 6, 7)
+		return tree
+	}
+	onCell := func(cell accessibility.NodeID) *accessibility.Tree {
+		tree := cellCursorTree()
+		focusCell(tree, 6, 7, cell)
+		return tree
+	}
+	for i, one := range []struct {
+		old      *accessibility.Tree
+		cur      *accessibility.Tree
+		name     string
+		expected []Raise
+	}{
+		{
+			name:     "from the row onto its first cell",
+			old:      onRow(),
+			cur:      onCell(8),
+			expected: []Raise{raiseEvent(8, AutomationFocusChangedEventId)},
+		},
+		{
+			// The row did not change, so its selection did not either.
+			name:     "across the columns of one row",
+			old:      onCell(8),
+			cur:      onCell(9),
+			expected: []Raise{raiseEvent(9, AutomationFocusChangedEventId)},
+		},
+	} {
+		c.Equal(one.expected, DecideRaises(one.old, one.cur, accessibility.Diff(one.old, one.cur)),
+			"case %d (%s)", i, one.name)
+	}
 }
 
 // TestDecideRaisesCellCursorAcrossRows verifies that Up and Down at cell level report the focus on the cell of the row

@@ -449,29 +449,12 @@ func TestWatchColorScheme(t *testing.T) {
 	}
 }
 
-// TestWatchColorSchemeIgnoresASignalFromAnotherConnection covers what the match rule cannot do for itself. Naming the
-// sender in a match rule narrows what the bus broadcasts to us and nothing else: a signal that carries a DESTINATION is
-// routed straight to that connection, no rule consulted, and the default session policy lets any peer send one to any
-// other. Without the check in the handler, any process on the user's session bus could flip the application between
-// light and dark by unicasting a SettingChanged of its own.
-func TestWatchColorSchemeIgnoresASignalFromAnotherConnection(t *testing.T) {
-	c := check.New(t)
-	peer := newPortalPeer(t, func(_ *dbus.Message) *dbus.Message { return nil })
-	changes := peer.startWatch()
-	// The first of these is perfectly well formed and says something the watch would otherwise report; it is only the
-	// sender that is wrong. Signals are delivered in order, so the second one arriving proves the first was dropped.
-	peer.emitFrom(otherConnectionName, colorSchemeNamespace, colorSchemeKey, dbus.Variant{Sig: "u", Value: uint32(1)})
-	peer.emitFrom(portalOwnerName, colorSchemeNamespace, colorSchemeKey, dbus.Variant{Sig: "u", Value: uint32(2)})
-	c.Equal(uint32(2), awaitChange(t, changes))
-	select {
-	case value := <-changes:
-		t.Errorf("an unexpected color scheme change of %d was reported", value)
-	default:
-	}
-}
-
-// TestWatchColorSchemeFollowsThePortalToItsNewName covers the other half of checking the sender: the unique name the
-// portal answers to is not fixed. A portal that is restarted comes back under a new one, and a watch that went on
+// TestWatchColorSchemeFollowsThePortalToItsNewName covers checking the sender of a SettingChanged, which the match rule
+// cannot do for itself. Naming the sender in a match rule narrows what the bus broadcasts to us and nothing else: a
+// signal that carries a DESTINATION is routed straight to that connection, no rule consulted, and the default session
+// policy lets any peer send one to any other. Without the check in the handler, any process on the user's session bus
+// could flip the application between light and dark by unicasting a SettingChanged of its own. Nor is the unique name
+// the portal answers to fixed: a portal that is restarted comes back under a new one, and a watch that went on
 // insisting on the old one would ignore every setting change for the life of the process, which is why the bus's own
 // NameOwnerChanged is watched for the portal's name.
 func TestWatchColorSchemeFollowsThePortalToItsNewName(t *testing.T) {
@@ -479,6 +462,10 @@ func TestWatchColorSchemeFollowsThePortalToItsNewName(t *testing.T) {
 	c := check.New(t)
 	peer := newPortalPeer(t, func(_ *dbus.Message) *dbus.Message { return nil })
 	changes := peer.startWatch()
+	// This is perfectly well formed and says something the watch would otherwise report; it is only the sender, a
+	// connection that never owned the portal's name, that is wrong. Signals are delivered in order, so the first change
+	// reported being 2 proves this one was dropped.
+	peer.emitFrom(otherConnectionName, colorSchemeNamespace, colorSchemeKey, dbus.Variant{Sig: "u", Value: uint32(1)})
 	peer.emitNameOwnerChanged(portalDestination, portalOwnerName, restartedPortalName)
 	// The name the portal had before it was restarted is somebody else's now, or nobody's, and is no more to be
 	// believed than any other connection on the bus.

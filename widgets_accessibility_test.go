@@ -238,10 +238,11 @@ func TestCheckBoxAccessibility(t *testing.T) {
 }
 
 // TestRadioButtonAccessibility verifies that a radio button is checked exactly when it is the one selected within its
-// group, and that pressing another one moves the selection.
+// group, that pressing another one moves the selection, and that Select, which moves it back, is offered by a button in
+// a group but neither offered nor accepted by one in no group, which has no selection to be.
 func TestRadioButtonAccessibility(t *testing.T) {
 	c := check.New(t)
-	var first, second *unison.RadioButton
+	var first, second, loner *unison.RadioButton
 	var wnd *unison.Window
 	var clicks, selections int
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
@@ -255,7 +256,10 @@ func TestRadioButtonAccessibility(t *testing.T) {
 			second.SetTitle("Second")
 			second.ClickCallback = func() { clicks++ }
 			unison.NewGroup(first, second).Select(first)
-			wnd = newHeadlessWindow(t, "radio", geom.NewRect(10, 10, 240, 120), axColumn(first, second))
+			loner = unison.NewRadioButton()
+			loner.ClickAnimationTime = 0
+			loner.SetTitle("Alone")
+			wnd = newHeadlessWindow(t, "radio", geom.NewRect(10, 10, 240, 120), axColumn(first, second, loner))
 		}))
 	c.NotNil(wnd)
 
@@ -284,6 +288,7 @@ func TestRadioButtonAccessibility(t *testing.T) {
 	// Selecting is the other way an assistive technology moves the dot, and it has to tell the application as much as
 	// pressing does: a person has made the same change either way, and an application that is never told goes on acting
 	// on a value that no longer matches what is on the screen.
+	c.True(firstNode.Actions.Has(accessibility.Select), "a radio button in a group can be made its selection")
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   firstNode.ID,
 		Action: accessibility.Select,
@@ -295,6 +300,13 @@ func TestRadioButtonAccessibility(t *testing.T) {
 	c.Equal(checkenum.Off, secondNode.Checked)
 	screen.Do(func() { count = selections })
 	c.Equal(1, count, "selecting the button should have run its callback")
+
+	lonerNode := axMustNode(c, screen.AccessibilityNodeFor(loner))
+	c.False(lonerNode.Actions.Has(accessibility.Select), "a button that belongs to no group has no selection to be")
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   lonerNode.ID,
+		Action: accessibility.Select,
+	}))
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -456,26 +468,6 @@ func TestLabelAccessibilityTextIsWhatWasDrawn(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestLinkAccessibilityCarriesNoText verifies that a link is announced by its name and acted on rather than being read
-// as a body of text of its own, which on some platforms would have everything about it said twice.
-func TestLinkAccessibilityCarriesNoText(t *testing.T) {
-	c := check.New(t)
-	var link *unison.Label
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			link = unison.NewLink("Documentation", "", "https://example.com/docs", nil, nil)
-			wnd = newHeadlessWindow(t, "link text", geom.NewRect(10, 10, 300, 120), axColumn(link))
-		}))
-	c.NotNil(wnd)
-
-	screen.AccessibilityTree(wnd)
-	node := axMustNode(c, screen.AccessibilityNodeFor(link))
-	c.Equal(role.Link, node.Role)
-	c.True(node.Text == nil, "a link's words are its name, not a body of text to navigate")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
 // TestLabelHeadingAccessibility verifies that an application marks a heading by saying so and giving it a depth, that
 // the heading is still read as the text it draws, and that a callback may still have the last word on the depth.
 func TestLabelHeadingAccessibility(t *testing.T) {
@@ -515,7 +507,9 @@ func TestLabelHeadingAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestLinkAccessibility verifies that a link says it is one, says where it leads, and follows itself when pressed.
+// TestLinkAccessibility verifies that a link says it is one, says where it leads, and follows itself when pressed. It
+// carries no text, since being read as a body of text of its own would have everything about it said twice on some
+// platforms.
 func TestLinkAccessibility(t *testing.T) {
 	c := check.New(t)
 	const target = "https://example.com/docs"
@@ -537,6 +531,7 @@ func TestLinkAccessibility(t *testing.T) {
 	c.Equal("Documentation", node.Name)
 	c.Equal(target, node.Description, "where the link leads is worth hearing")
 	c.True(node.Actions.Has(accessibility.Press))
+	c.True(node.Text == nil, "a link's words are its name, not a body of text to navigate")
 	// A tooltip is words someone chose for this link, so it must win over the URL rather than be hidden by it.
 	tippedNode := axMustNode(c, screen.AccessibilityNodeFor(tipped))
 	c.Equal("Opens the guide", tippedNode.Description, "a tooltip should not be displaced by the target")
@@ -645,7 +640,8 @@ func TestDrawablePanelAndSeparatorAccessibility(t *testing.T) {
 }
 
 // TestProgressBarAccessibility verifies that a progress bar reports how far along it is, takes its name from the label
-// beside it, and says it is busy rather than lying about a position it does not have.
+// beside it, and, with no maximum, says it is busy and reports no number rather than lying about a position it does not
+// have.
 func TestProgressBarAccessibility(t *testing.T) {
 	c := check.New(t)
 	var determinate, indeterminate *unison.ProgressBar
@@ -672,7 +668,7 @@ func TestProgressBarAccessibility(t *testing.T) {
 	node := axMustNode(c, screen.AccessibilityNodeFor(determinate))
 	c.Equal(role.ProgressBar, node.Role)
 	c.Equal("Copying", node.Name, "the label before it names it, minus the colon")
-	c.True(node.HasNumber)
+	c.True(node.HasNumber, "a bar with a maximum reports how far along it is")
 	c.Equal(float64(50), node.Number)
 	c.Equal(float64(0), node.Min)
 	c.Equal(float64(200), node.Max)
@@ -681,6 +677,9 @@ func TestProgressBarAccessibility(t *testing.T) {
 
 	busyNode := axMustNode(c, screen.AccessibilityNodeFor(indeterminate))
 	c.True(busyNode.Busy, "a bar with no maximum knows only that something is happening")
+	c.False(busyNode.HasNumber, "there is no telling how far along it is, so it must not claim a position")
+	c.Equal(float64(0), busyNode.Max)
+	c.True(busyNode.ReadOnly)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -893,41 +892,6 @@ func TestPopupMenuAccessibility(t *testing.T) {
 	}))
 	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(wnd)),
 		"expanding the popup menu should have opened its menu within the window")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestComboFieldAccessibility verifies that a combo field is described as one control rather than two, and that asking
-// it to expand opens its list of choices.
-func TestComboFieldAccessibility(t *testing.T) {
-	c := check.New(t)
-	first := "One"
-	second := "Two"
-	var combo *unison.Field
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			combo = unison.NewComboField([]*string{&first, &second}, &first, nil)
-			wnd = newHeadlessWindow(t, "combo", geom.NewRect(10, 10, 300, 150), axColumn(combo))
-		}))
-	c.NotNil(wnd)
-	c.True(screen.Do(func() { wnd.ToFront() }))
-
-	tree := screen.AccessibilityTree(wnd)
-	node := axMustNode(c, screen.AccessibilityNodeFor(combo))
-	c.Equal(role.ComboBox, node.Role)
-	c.True(node.Expandable)
-	c.True(node.Actions.Has(accessibility.Expand))
-	c.True(node.Actions.Has(accessibility.ShowContextMenu))
-	c.Equal(0, len(tree.UnignoredChildren(node.ID)),
-		"the dropdown button is part of the field rather than an element of its own")
-
-	before := axRootChildCount(tree)
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   node.ID,
-		Action: accessibility.Expand,
-	}))
-	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(wnd)),
-		"expanding the combo field should have opened its menu within the window")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

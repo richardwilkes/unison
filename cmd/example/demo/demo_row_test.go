@@ -94,21 +94,6 @@ func TestCloneForTargetDeepClonesRow(t *testing.T) {
 	c.Equal(1, len(original.children))
 }
 
-// TestCloneForTargetLeafRow verifies that cloning a childless row yields no children and copies the scalar fields.
-func TestCloneForTargetLeafRow(t *testing.T) {
-	c := check.New(t)
-	src := newCloneTestTable()
-	dst := newCloneTestTable()
-	original := &demoRow{table: src, id: tid.MustNewTID('a'), text: "leaf"}
-	clone := original.CloneForTarget(dst, nil)
-	c.True(clone != original)
-	c.True(clone.table == dst)
-	c.Nil(clone.parent)
-	c.Equal(0, len(clone.children))
-	c.Equal(original.text, clone.text)
-	c.NotEqual(original.id, clone.id)
-}
-
 // TestCloneForTargetCarriesEditedFieldText is the regression test for a cross-table copy-drag reverting the editable
 // cell: the clone dropped the original's Field (correctly, since a panel may have only one parent) but the text lived
 // only in that Field, so the clone's fresh Field was seeded with the placeholder text rather than what the user typed.

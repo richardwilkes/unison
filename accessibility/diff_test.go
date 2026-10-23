@@ -76,13 +76,6 @@ func documentTree(text string, selStart, selEnd int) *accessibility.Tree {
 	)
 }
 
-func TestDiffIdenticalTreesProduceNothing(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Nil(accessibility.Diff(diffTree(), diffTree()))
-	c.Nil(accessibility.Diff(fieldTree("hello", 2, 4), fieldTree("hello", 2, 4)))
-}
-
 func TestDiffFirstTree(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -96,19 +89,6 @@ func TestDiffFirstTree(t *testing.T) {
 	c.Nil(accessibility.Diff(nil, unfocused))
 	c.Nil(accessibility.Diff(diffTree(), nil))
 	c.Nil(accessibility.Diff(nil, nil))
-}
-
-func TestDiffAddLeaf(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	old := diffTree()
-	cur := diffTree()
-	cur.Node(3).Children = []axID{4}
-	cur.Nodes[4] = &axNode{ID: 4, Parent: 3, Role: role.Label, Name: "Badge"}
-	c.Equal([]axEvent{
-		{Kind: accessibility.ChildrenChanged, Node: 3},
-		{Kind: accessibility.NodeAdded, Node: 4},
-	}, accessibility.Diff(old, cur))
 }
 
 func TestDiffAddSubtreeReportsParentsFirst(t *testing.T) {
@@ -163,45 +143,56 @@ func TestDiffRemovalsAreSorted(t *testing.T) {
 	}, accessibility.Diff(old, cur))
 }
 
-func TestDiffReorderOnlyChangesChildren(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	old := newTree(0,
-		&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2, 3}},
-		&axNode{ID: 2, Parent: 1, Role: role.Button, Name: "A"},
-		&axNode{ID: 3, Parent: 1, Role: role.Button, Name: "B"},
-	)
-	cur := newTree(0,
-		&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{3, 2}},
-		&axNode{ID: 2, Parent: 1, Role: role.Button, Name: "A"},
-		&axNode{ID: 3, Parent: 1, Role: role.Button, Name: "B"},
-	)
-	c.Equal([]axEvent{{Kind: accessibility.ChildrenChanged, Node: 1}}, accessibility.Diff(old, cur))
-}
-
-// TestDiffReparentedNodeReportsBothParents pins the one structural change no event names directly: a node that survives
-// but moves to a different parent. Node.Parent changing produces nothing of its own, so what an adapter has to rebuild
-// its own hierarchy from is the pair of ChildrenChanged events, one for the parent the node left and one for the parent
-// it joined.
+// TestDiffReparentedNodeReportsBothParents pins the structural changes to surviving nodes that no event names directly.
+// A node that moves to a different parent changes Node.Parent, which produces nothing of its own, so what an adapter
+// has to rebuild its own hierarchy from is the pair of ChildrenChanged events, one for the parent the node left and one
+// for the parent it joined. Siblings that only swap places produce the one ChildrenChanged for their parent and no node
+// added or removed.
 func TestDiffReparentedNodeReportsBothParents(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	old := newTree(0,
-		&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2, 4}},
-		&axNode{ID: 2, Parent: 1, Role: role.Group, Name: groupName, Children: []axID{3}},
-		&axNode{ID: 3, Parent: 2, Role: role.Button, Name: "OK"},
-		&axNode{ID: 4, Parent: 1, Role: role.Group, Name: "Other"},
-	)
-	cur := newTree(0,
-		&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2, 4}},
-		&axNode{ID: 2, Parent: 1, Role: role.Group, Name: groupName},
-		&axNode{ID: 3, Parent: 4, Role: role.Button, Name: "OK"},
-		&axNode{ID: 4, Parent: 1, Role: role.Group, Name: "Other", Children: []axID{3}},
-	)
-	c.Equal([]axEvent{
-		{Kind: accessibility.ChildrenChanged, Node: 2},
-		{Kind: accessibility.ChildrenChanged, Node: 4},
-	}, accessibility.Diff(old, cur))
+	for _, one := range []struct {
+		old  *accessibility.Tree
+		cur  *accessibility.Tree
+		name string
+		want []axEvent
+	}{
+		{
+			name: "a node moved to another parent is reported by both parents",
+			old: newTree(0,
+				&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2, 4}},
+				&axNode{ID: 2, Parent: 1, Role: role.Group, Name: groupName, Children: []axID{3}},
+				&axNode{ID: 3, Parent: 2, Role: role.Button, Name: "OK"},
+				&axNode{ID: 4, Parent: 1, Role: role.Group, Name: "Other"},
+			),
+			cur: newTree(0,
+				&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2, 4}},
+				&axNode{ID: 2, Parent: 1, Role: role.Group, Name: groupName},
+				&axNode{ID: 3, Parent: 4, Role: role.Button, Name: "OK"},
+				&axNode{ID: 4, Parent: 1, Role: role.Group, Name: "Other", Children: []axID{3}},
+			),
+			want: []axEvent{
+				{Kind: accessibility.ChildrenChanged, Node: 2},
+				{Kind: accessibility.ChildrenChanged, Node: 4},
+			},
+		},
+		{
+			name: "reordered siblings are reported only by their parent",
+			old: newTree(0,
+				&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{2, 3}},
+				&axNode{ID: 2, Parent: 1, Role: role.Button, Name: "A"},
+				&axNode{ID: 3, Parent: 1, Role: role.Button, Name: "B"},
+			),
+			cur: newTree(0,
+				&axNode{ID: 1, Role: role.Window, Name: windowName, Children: []axID{3, 2}},
+				&axNode{ID: 2, Parent: 1, Role: role.Button, Name: "A"},
+				&axNode{ID: 3, Parent: 1, Role: role.Button, Name: "B"},
+			),
+			want: []axEvent{{Kind: accessibility.ChildrenChanged, Node: 1}},
+		},
+	} {
+		c.Equal(one.want, accessibility.Diff(one.old, one.cur), one.name)
+	}
 }
 
 func TestDiffValueEvents(t *testing.T) {
@@ -232,8 +223,8 @@ func TestDiffValueEvents(t *testing.T) {
 
 // TestDiffAttributeEvents covers the secondary facts that share one event. None of them has a kind of its own, and
 // each is something an assistive technology re-reads when it is told an element's attributes changed, so what is
-// checked here is that every one of them produces exactly one such event and that a node holding the same values
-// produces none.
+// checked here is that every one of them, gained or lost, produces exactly one such event and that a node holding the
+// same values produces none.
 func TestDiffAttributeEvents(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -249,6 +240,7 @@ func TestDiffAttributeEvents(t *testing.T) {
 		{name: "Actions", fill: func(n *axNode) { n.Actions = n.Actions.With(accessibility.SetValue) }},
 		{name: "Placeholder", fill: func(n *axNode) { n.Placeholder = "Search" }},
 		{name: "Shortcut", fill: func(n *axNode) { n.Shortcut = "Ctrl+S" }},
+		{name: "URL", fill: func(n *axNode) { n.URL = "https://example.com/one" }},
 		{name: "Level", fill: func(n *axNode) { n.Level = 2 }},
 		{name: "RowIndex", fill: func(n *axNode) { n.RowIndex = 7 }},
 		{name: "ColumnIndex", fill: func(n *axNode) { n.ColumnIndex = 3 }},
@@ -263,8 +255,14 @@ func TestDiffAttributeEvents(t *testing.T) {
 		cur := attributed(one.fill)
 		c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(diffTree(), cur),
 			one.name)
+		c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(cur, diffTree()),
+			"losing %s is as much a change as gaining it", one.name)
 		c.Nil(accessibility.Diff(cur, attributed(one.fill)), "%s must compare equal to itself", one.name)
 	}
+	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
+		accessibility.Diff(attributed(func(n *axNode) { n.URL = "https://example.com/one" }),
+			attributed(func(n *axNode) { n.URL = "https://example.com/two" })),
+		"a URL moving from one address to another")
 
 	// However many of them moved at once, the node gets one event: an assistive technology re-reads the attributes it
 	// cares about, so naming each of them separately would only repeat the same instruction.
@@ -299,70 +297,55 @@ func TestDiffAttributeEvents(t *testing.T) {
 	}, accessibility.Diff(diffTree(), both))
 }
 
-// TestDiffActionsAloneAreReported pins the case that reaches this from stock unison: List.SetAllowMultipleSelection
-// adding AddToSelection and RemoveFromSelection to every row while nothing else about any row moves. What a node can be
-// asked to do is what each adapter answers AT-SPI's NActions and GetActions from, what decides which accessibility
-// setters a macOS element responds to, and what every adapter checks before it will dispatch a request, so a client
-// holding the old set would go on offering an action that is now refused — or never offer one that has appeared.
-func TestDiffActionsAloneAreReported(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	row := func(actions accessibility.ActionSet) *accessibility.Tree {
-		tree := diffTree()
-		n := tree.Node(3)
-		n.Role = role.Row
-		n.Selectable = true
-		n.Actions = actions
-		return tree
-	}
-	single := accessibility.ActionSet(0).With(accessibility.ScrollIntoView, accessibility.Select)
-	multiple := single.With(accessibility.AddToSelection, accessibility.RemoveFromSelection)
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(row(single), row(multiple)))
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(row(multiple), row(single)),
-		"losing an action is as much a change as gaining one")
-	c.Nil(accessibility.Diff(row(multiple), row(multiple)))
-}
-
-// TestDiffPlaceholderAloneIsReported pins the case that reaches this from stock unison: a combo field switching its
-// watermark between two prompts while its content stays empty. The node's name, value and text are identical either
-// way and the placeholder is the only difference, so without an event nothing would prompt a screen reader to re-read
-// it and Orca would go on announcing the prompt that is no longer shown.
-func TestDiffPlaceholderAloneIsReported(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	field := func(placeholder string) *accessibility.Tree {
-		tree := fieldTree("", 0, 0)
-		tree.Node(2).Placeholder = placeholder
-		return tree
-	}
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
-		accessibility.Diff(field("not set"), field("empty")))
-}
-
-// TestDiffMultilineAloneIsReported pins the case that reaches this from stock unison: a single-line field that wraps
-// reports Multiline from the number of lines it actually drew, so resizing the field around text that already fits
-// flips it while the text, the selection and the caret all stay where they were. Every adapter turns it into something
-// a client caches — the SINGLE_LINE and MULTI_LINE states on AT-SPI — so without an event a field that has grown onto
-// a second line would go on being read out as a single run, with no line-by-line navigation through it, for the life
-// of the window.
+// TestDiffMultilineAloneIsReported pins the AttributesChanged a node gets, in both directions, when its text stays put
+// but something every adapter caches about it flips. One is Multiline, which a wrapping single-line field reports from
+// the lines it actually drew, so a resize flips it; clients cache it, on AT-SPI as the SINGLE_LINE and MULTI_LINE
+// states. The other is a DocumentInfo arriving or leaving beside text of the node's own: what the node presents as text
+// never moves, yet every adapter keys what it offers on whether it carries a stream. No node in the root package
+// carries both today, which is exactly why that guarantee is pinned here.
 func TestDiffMultilineAloneIsReported(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
+	want := []axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}
 	field := func(multiline bool) *accessibility.Tree {
 		tree := fieldTree("a long line that wraps", 3, 3)
 		tree.Node(2).Text.Multiline = multiline
 		return tree
 	}
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(field(false), field(true)))
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(field(true), field(false)),
-		"shrinking back onto one line is as much a change as growing off it")
-	c.Nil(accessibility.Diff(field(true), field(true)))
+	for _, one := range []struct {
+		build func(on bool) *accessibility.Tree
+		name  string
+	}{
+		{name: "Multiline", build: field},
+		{
+			name: "a Document beside text",
+			build: func(composed bool) *accessibility.Tree {
+				n := &axNode{
+					ID: 2, Parent: 1, Role: role.Document, Focusable: true, Focused: true,
+					Text: &accessibility.TextInfo{Text: "hello", Multiline: true},
+				}
+				if composed {
+					n.Document = &accessibility.DocumentInfo{
+						Text: accessibility.TextInfo{Text: "hello", Multiline: true},
+					}
+				}
+				return newTree(2,
+					&axNode{ID: 1, Role: role.Window, Name: windowName, Focused: true, Children: []axID{2}}, n)
+			},
+		},
+	} {
+		c.Equal(want, accessibility.Diff(one.build(false), one.build(true)), "gaining %s", one.name)
+		c.Equal(want, accessibility.Diff(one.build(true), one.build(false)),
+			"losing %s is as much a change as gaining it", one.name)
+		c.Nil(accessibility.Diff(one.build(true), one.build(true)), "%s must compare equal to itself", one.name)
+		c.Nil(accessibility.Diff(one.build(false), one.build(false)), "%s must compare equal to itself", one.name)
+	}
 
 	// A node carrying no text lays nothing out over anything, so text arriving already wrapped moves the answer too.
 	bare := fieldTree("", 0, 0)
 	bare.Node(2).Text = nil
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(bare, field(true)))
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(bare, field(false)),
+	c.Equal(want, accessibility.Diff(bare, field(true)))
+	c.Equal(want, accessibility.Diff(bare, field(false)),
 		"text arriving on a node that carried none is a change even when it fits on one line: see TestDiffTextGainedOrLost")
 }
 
@@ -383,44 +366,6 @@ func TestDiffTextGainedOrLost(t *testing.T) {
 	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(withText, without),
 		"losing the text altogether is as much a change as gaining it")
 	c.Nil(accessibility.Diff(without, without))
-}
-
-// TestDiffShortcutAloneIsReported pins the case that reaches this from stock unison: MenuItem.SetKeyBinding rebinding
-// an item's accelerator while nothing else about it moves. Every adapter caches the accelerator as a property of the
-// element — UI Automation re-reads AcceleratorKey only when a property-changed event says to — so without an event the
-// item would go on announcing the key that used to work.
-func TestDiffShortcutAloneIsReported(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	item := func(shortcut string) *accessibility.Tree {
-		tree := diffTree()
-		tree.Node(3).Role = role.MenuItem
-		tree.Node(3).Shortcut = shortcut
-		return tree
-	}
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
-		accessibility.Diff(item("Ctrl+S"), item("Ctrl+Shift+S")))
-	c.Nil(accessibility.Diff(item("Ctrl+S"), item("Ctrl+S")))
-}
-
-// TestDiffStepAloneIsReported covers the other fact an assistive technology reads out of the numeric group without any
-// event of its own naming it: how far one press of an arrow key moves the value. A spin button that changes its
-// increment while sitting on the same value tells the person a different thing about what a key press will do.
-func TestDiffStepAloneIsReported(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	spinner := func(step float64) *accessibility.Tree {
-		tree := diffTree()
-		n := tree.Node(3)
-		n.Role = role.SpinButton
-		n.HasNumber = true
-		n.Number = 5
-		n.Max = 100
-		n.Step = step
-		return tree
-	}
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}}, accessibility.Diff(spinner(1), spinner(10)))
-	c.Nil(accessibility.Diff(spinner(1), spinner(1)))
 }
 
 // TestDiffToleratesNaN covers the one value that is not equal to itself. A NaN reaching a node — from a widget whose
@@ -488,31 +433,6 @@ func TestDiffNumberReportsRangeChanges(t *testing.T) {
 	cur.Node(3).Max = 20
 	c.Equal([]axEvent{{Kind: accessibility.NumberChanged, Node: 3, Old: "5", New: "5"}},
 		accessibility.Diff(old, cur))
-}
-
-func TestDiffStateEvents(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	old := diffTree()
-	cur := diffTree()
-	cur.Node(3).HasCheck = true
-	cur.Node(3).Checked = checkenum.On
-	c.Equal([]axEvent{
-		{Kind: accessibility.StateChanged, Node: 3, State: accessibility.StateChecked, Old: "off", New: "on"},
-	}, accessibility.Diff(old, cur))
-
-	// The flags come out in a fixed order regardless of which of them changed.
-	old = diffTree()
-	cur = diffTree()
-	n := cur.Node(3)
-	n.Expanded = true
-	n.Disabled = true
-	n.Selected = true
-	c.Equal([]axEvent{
-		{Kind: accessibility.StateChanged, Node: 3, State: accessibility.StateDisabled, Old: "false", New: "true"},
-		{Kind: accessibility.StateChanged, Node: 3, State: accessibility.StateSelected, Old: "false", New: "true"},
-		{Kind: accessibility.StateChanged, Node: 3, State: accessibility.StateExpanded, Old: "false", New: "true"},
-	}, accessibility.Diff(old, cur))
 }
 
 // TestDiffStateEventsCoverEveryState pins each of the sixteen states to the one pair of fields it is derived from, by
@@ -592,72 +512,51 @@ func TestDiffStateEventsCoverEveryState(t *testing.T) {
 	})))
 }
 
-// TestDiffFocusedIsNotAState checks that moving the focus produces one FocusChanged rather than that plus a pair of
-// redundant state events on the nodes that gained and lost it.
-func TestDiffFocusedIsNotAState(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	old := diffTree()
-	old.Node(3).Focused = true
-	cur := diffTree()
-	cur.Node(3).Focused = false
-	cur.Focus = 0
-	c.Equal([]axEvent{{Kind: accessibility.FocusChanged, Node: 0}}, accessibility.Diff(old, cur))
-}
-
-func TestDiffTextReplacement(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Equal([]axEvent{
-		{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
-		{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
-	}, accessibility.Diff(fieldTree("hello", 0, 0), fieldTree("help", 0, 0)))
-}
-
+// TestDiffTextInsertOnly checks that an edit which only inserts, or only deletes, is reported as that one event at the
+// point of the edit, with no empty counterpart, and that offsets and lengths count runes rather than bytes, since every
+// adapter converts from runes to whatever its platform counts in.
 func TestDiffTextInsertOnly(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	c.Equal([]axEvent{
-		{Kind: accessibility.TextInserted, Node: 2, Start: 2, Length: 1, New: "y"},
-		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 3},
-	}, accessibility.Diff(fieldTree("he", 2, 2), fieldTree("hey", 3, 3)))
-
-	// Typing in the middle must be reported at the point of the edit, not as a replacement of the tail.
-	c.Equal([]axEvent{{Kind: accessibility.TextInserted, Node: 2, Start: 1, Length: 1, New: "X"}},
-		accessibility.Diff(fieldTree("ab", 0, 0), fieldTree("aXb", 0, 0)))
-}
-
-func TestDiffTextDeleteAll(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Equal([]axEvent{
-		{Kind: accessibility.TextDeleted, Node: 2, Start: 0, Length: 3, Old: "abc"},
-		{Kind: accessibility.TextSelectionChanged, Node: 2},
-	}, accessibility.Diff(fieldTree("abc", 3, 3), fieldTree("", 0, 0)))
-}
-
-// TestDiffTextUsesRuneOffsets checks that offsets and lengths count runes rather than bytes, since every adapter
-// converts from runes to whatever its platform counts in.
-func TestDiffTextUsesRuneOffsets(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Equal([]axEvent{{Kind: accessibility.TextInserted, Node: 2, Start: 2, Length: 1, New: "c"}},
-		accessibility.Diff(fieldTree("äö", 0, 0), fieldTree("äöc", 0, 0)))
-}
-
-func TestDiffTextSelectionOnly(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Equal([]axEvent{{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2}},
-		accessibility.Diff(fieldTree("hello", 0, 0), fieldTree("hello", 1, 3)))
-
-	// A node that has stopped carrying text, or has only just started, produces no text events at all: the one event
-	// is the AttributesChanged that says the text came or went, which TestDiffTextGainedOrLost pins.
-	withText := fieldTree("hello", 0, 0)
-	without := fieldTree("hello", 0, 0)
-	without.Node(2).Text = nil
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(withText, without))
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}}, accessibility.Diff(without, withText))
+	for _, one := range []struct {
+		old  *accessibility.Tree
+		cur  *accessibility.Tree
+		name string
+		want []axEvent
+	}{
+		{
+			name: "typing at the end inserts there and moves the caret",
+			old:  fieldTree("he", 2, 2),
+			cur:  fieldTree("hey", 3, 3),
+			want: []axEvent{
+				{Kind: accessibility.TextInserted, Node: 2, Start: 2, Length: 1, New: "y"},
+				{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 3},
+			},
+		},
+		{
+			name: "typing in the middle is reported at the point of the edit, not as a replacement of the tail",
+			old:  fieldTree("ab", 0, 0),
+			cur:  fieldTree("aXb", 0, 0),
+			want: []axEvent{{Kind: accessibility.TextInserted, Node: 2, Start: 1, Length: 1, New: "X"}},
+		},
+		{
+			name: "offsets count runes rather than bytes",
+			old:  fieldTree("äö", 0, 0),
+			cur:  fieldTree("äöc", 0, 0),
+			want: []axEvent{{Kind: accessibility.TextInserted, Node: 2, Start: 2, Length: 1, New: "c"}},
+		},
+		{
+			name: "deleting everything reports no empty insertion",
+			old:  fieldTree("abc", 3, 3),
+			cur:  fieldTree("", 0, 0),
+			want: []axEvent{
+				{Kind: accessibility.TextDeleted, Node: 2, Start: 0, Length: 3, Old: "abc"},
+				{Kind: accessibility.TextSelectionChanged, Node: 2},
+			},
+		},
+	} {
+		c.Equal(one.want, accessibility.Diff(one.old, one.cur), one.name)
+	}
 }
 
 // TestDiffTextSelectionCaretAndOrdering covers the two things the selection event has to get right beyond the offsets
@@ -683,12 +582,16 @@ func TestDiffTextSelectionCaretAndOrdering(t *testing.T) {
 		accessibility.Diff(fieldTree("hello", 0, 0), reversed))
 }
 
+// TestDiffFocusComesLast checks that FocusChanged follows every other event, and that the Focused flags moving with the
+// focus produce no state events of their own beside it.
 func TestDiffFocusComesLast(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	old := diffTree()
+	old.Node(3).Focused = true
 	cur := diffTree()
 	cur.Node(2).Name = "Renamed"
+	cur.Node(2).Focused = true
 	cur.Node(3).Children = []axID{4}
 	cur.Nodes[4] = &axNode{ID: 4, Parent: 3, Role: role.Label, Name: "Badge"}
 	cur.Focus = 2
@@ -761,41 +664,54 @@ func TestDiffIsDeterministic(t *testing.T) {
 // TestDiffDocumentTextEvents pins that a Document's composed stream is diffed exactly as a field's own text is. The
 // stream is where a document's text lives — Node.Text stays nil on one, so that only the adapters presenting a document
 // as text ever see it — and an assistive technology reading a document with its caret is told what changed and where
-// the caret went in the same events it is told for a field.
+// the caret went in the same events it is told for a field, including when only the reading caret moved, which is
+// every arrow key a person reading a document presses.
 func TestDiffDocumentTextEvents(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	c.Equal([]axEvent{
-		{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
-		{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
-		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 4},
-		{Kind: accessibility.TextDeleted, Node: 3, Start: 3, Length: 2, Old: "lo"},
-		{Kind: accessibility.TextInserted, Node: 3, Start: 3, Length: 1, New: "p"},
-		{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 4},
-	}, accessibility.Diff(documentTree("hello", 5, 5), documentTree("help", 4, 4)),
-		"the document and the block beneath it each report their own edit")
-}
-
-// TestDiffDocumentSelectionOnly covers the reading caret moving with the content standing still, which is every arrow
-// key a person reading a document presses.
-func TestDiffDocumentSelectionOnly(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Equal([]axEvent{
-		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2},
-		{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 1, Length: 2},
-	}, accessibility.Diff(documentTree("hello", 0, 0), documentTree("hello", 1, 3)))
-
-	// The caret moving from one end of an unchanged selection to the other is a change on the stream as much as on a
-	// field, since it is the end a screen reader goes on reading from.
-	atEnd := documentTree("hello", 1, 3)
-	atStart := documentTree("hello", 1, 3)
-	atStart.Node(2).Document.Text.Caret = 1
-	atStart.Node(3).Text.Caret = 1
-	c.Equal([]axEvent{
-		{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2},
-		{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 1, Length: 2},
-	}, accessibility.Diff(atEnd, atStart))
+	caretAtStart := documentTree("hello", 1, 3)
+	caretAtStart.Node(2).Document.Text.Caret = 1
+	caretAtStart.Node(3).Text.Caret = 1
+	for _, one := range []struct {
+		old  *accessibility.Tree
+		cur  *accessibility.Tree
+		name string
+		want []axEvent
+	}{
+		{
+			name: "the document and the block beneath it each report their own edit",
+			old:  documentTree("hello", 5, 5),
+			cur:  documentTree("help", 4, 4),
+			want: []axEvent{
+				{Kind: accessibility.TextDeleted, Node: 2, Start: 3, Length: 2, Old: "lo"},
+				{Kind: accessibility.TextInserted, Node: 2, Start: 3, Length: 1, New: "p"},
+				{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 4},
+				{Kind: accessibility.TextDeleted, Node: 3, Start: 3, Length: 2, Old: "lo"},
+				{Kind: accessibility.TextInserted, Node: 3, Start: 3, Length: 1, New: "p"},
+				{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 4},
+			},
+		},
+		{
+			name: "a selection moving over content that stands still is reported",
+			old:  documentTree("hello", 0, 0),
+			cur:  documentTree("hello", 1, 3),
+			want: []axEvent{
+				{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2},
+				{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 1, Length: 2},
+			},
+		},
+		{
+			name: "the caret moving to the other end of an unchanged selection is reported, as on a field",
+			old:  documentTree("hello", 1, 3),
+			cur:  caretAtStart,
+			want: []axEvent{
+				{Kind: accessibility.TextSelectionChanged, Node: 2, Start: 1, Length: 2},
+				{Kind: accessibility.TextSelectionChanged, Node: 3, Start: 1, Length: 2},
+			},
+		},
+	} {
+		c.Equal(one.want, accessibility.Diff(one.old, one.cur), one.name)
+	}
 }
 
 // TestDiffDocumentGainedOrLost pins the AttributesChanged a node gets when it starts, or stops, carrying a composed
@@ -822,56 +738,6 @@ func TestDiffDocumentGainedOrLost(t *testing.T) {
 			c.NotEqual(accessibility.TextSelectionChanged, event.Kind)
 		}
 	}
-}
-
-// TestDiffURLChange pins that re-pointing a link is reported. Every adapter carries the target as a property of the
-// element that a client reads once and caches, so a link that had been given a new target would otherwise go on telling
-// the person where it used to go.
-func TestDiffURLChange(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	link := func(url string) *accessibility.Tree {
-		tree := diffTree()
-		tree.Node(3).Role = role.Link
-		tree.Node(3).URL = url
-		return tree
-	}
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
-		accessibility.Diff(link("https://example.com/one"), link("https://example.com/two")))
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 3}},
-		accessibility.Diff(link(""), link("https://example.com/one")), "gaining a target is a change too")
-	c.Nil(accessibility.Diff(link("https://example.com/one"), link("https://example.com/one")))
-}
-
-// TestDiffDocumentComingAndGoingBesideText covers a node that carries text of its own on both sides and gains or loses
-// a DocumentInfo beside it. What such a node presents as text never moves — Node.Text is answered first — so the
-// comparison of whether it presents any text at all says nothing, yet every adapter keys what it offers on the node
-// carrying a stream at all: one refuses the text interface outright to a document, another picks which stream the node
-// hands over from the same fact, and a document is a different kind of element from a group. Nothing in the root
-// package publishes both today, which is exactly why the guarantee is pinned here.
-func TestDiffDocumentComingAndGoingBesideText(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	withText := func(composed bool) *accessibility.Tree {
-		n := &axNode{
-			ID: 2, Parent: 1, Role: role.Document, Focusable: true, Focused: true,
-			Text: &accessibility.TextInfo{Text: "hello", Multiline: true},
-		}
-		if composed {
-			n.Document = &accessibility.DocumentInfo{
-				Text: accessibility.TextInfo{Text: "hello", Multiline: true},
-			}
-		}
-		return newTree(2,
-			&axNode{ID: 1, Role: role.Window, Name: windowName, Focused: true, Children: []axID{2}}, n)
-	}
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
-		accessibility.Diff(withText(false), withText(true)),
-		"gaining a stream beside text of its own moves what every adapter offers")
-	c.Equal([]axEvent{{Kind: accessibility.AttributesChanged, Node: 2}},
-		accessibility.Diff(withText(true), withText(false)), "and so does losing it")
-	c.Nil(accessibility.Diff(withText(true), withText(true)))
-	c.Nil(accessibility.Diff(withText(false), withText(false)))
 }
 
 // TestDiffSpansComingAndGoing covers a node whose text stands still while the objects sitting within it move. The runes

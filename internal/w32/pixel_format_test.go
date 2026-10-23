@@ -53,6 +53,11 @@ func TestPixelFormatSuitableForOpenGL(t *testing.T) {
 			expected: false,
 		},
 		{
+			desc:     "single-buffered format is rejected",
+			mutate:   func(pfd *PIXELFORMATDESCRIPTOR) { pfd.DwFlags &^= PFD_DOUBLEBUFFER },
+			expected: false,
+		},
+		{
 			desc: "single-buffered GDI-capable format is rejected",
 			mutate: func(pfd *PIXELFORMATDESCRIPTOR) {
 				pfd.DwFlags &^= PFD_DOUBLEBUFFER
@@ -105,19 +110,6 @@ func TestPixelFormatSuitableForOpenGL(t *testing.T) {
 		one.mutate(&pfd)
 		c.Equal(one.expected, PixelFormatSuitableForOpenGL(&pfd), "case %d: %s", i, one.desc)
 	}
-}
-
-// TestGLPixelFormatExcludesGDI pins down the constraint that motivates probing context creation on a throwaway window
-// before committing a pixel format to a real one: every format the OpenGL pipeline accepts is double-buffered, and
-// per the SetPixelFormat contract PFD_DOUBLEBUFFER excludes PFD_SUPPORT_GDI, so committing such a format leaves GDI —
-// the CPU-rendering fallback's presentation mechanism — unable to paint the window.
-func TestGLPixelFormatExcludesGDI(t *testing.T) {
-	c := check.New(t)
-	pfd := glCapablePFD()
-	c.True(PixelFormatSuitableForOpenGL(&pfd))
-	c.True(pfd.DwFlags&PFD_DOUBLEBUFFER != 0)
-	pfd.DwFlags &^= PFD_DOUBLEBUFFER
-	c.False(PixelFormatSuitableForOpenGL(&pfd))
 }
 
 func TestPixelFormatDescriptorString(t *testing.T) {

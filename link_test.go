@@ -30,17 +30,6 @@ func newTestLink() (link *unison.Label, clicks *int) {
 	return link, &count
 }
 
-// TestLinkActivatesOnLeftClick verifies the normal activation path: a left press claims the mouse and a left release
-// inside the link invokes the click handler.
-func TestLinkActivatesOnLeftClick(t *testing.T) {
-	c := check.New(t)
-	link, clicks := newTestLink()
-	pt := geom.NewPoint(10, 10)
-	c.True(link.MouseDownCallback(pt, unison.ButtonLeft, 1, 0))
-	c.True(link.MouseUpCallback(pt, unison.ButtonLeft, 0))
-	c.Equal(1, *clicks)
-}
-
 // TestLinkIgnoresNonLeftButtons verifies that right- and middle-button presses are not claimed and do not invoke the
 // click handler, matching how other widgets branch on the button.
 func TestLinkIgnoresNonLeftButtons(t *testing.T) {

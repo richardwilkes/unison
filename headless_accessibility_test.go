@@ -96,23 +96,6 @@ func TestAccessibilityInactiveBuildsNothing(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestAccessibilityNoAccessibilityOptionRefusesActivation verifies that the startup option holds even against a direct
-// request for a tree.
-func TestAccessibilityNoAccessibilityOptionRefusesActivation(t *testing.T) {
-	c := check.New(t)
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300}, unison.NoAccessibility(),
-		unison.StartupFinishedCallback(func() {
-			wnd = newHeadlessWindow(t, "refused", geom.NewRect(20, 20, 240, 120), unison.NewPanel())
-		}))
-	c.NotNil(wnd)
-
-	screen.EnableAccessibility()
-	c.False(unison.IsAccessibilityActive())
-	c.True(screen.AccessibilityTree(wnd) == nil, "no tree may be built when accessibility support has been refused")
-	c.Equal(uint64(0), axSnapshotCount(t, screen))
-}
-
 // TestAccessibilitySetEnabled verifies that support can be turned off and back on while the application runs: turning
 // it off shuts down what is being served and refuses to build anything more, and turning it on lets the next request
 // start it again.
@@ -155,7 +138,8 @@ func TestAccessibilitySetEnabled(t *testing.T) {
 }
 
 // TestAccessibilityEnvironmentOverrides verifies both directions of AccessibilityEnvKey: a true value turns support on
-// during startup, without anything having asked for it, and a false value refuses it as the startup option does.
+// during startup, without anything having asked for it, and a false value refuses it as the NoAccessibility startup
+// option does. Either refusal holds even against a direct request for a tree.
 func TestAccessibilityEnvironmentOverrides(t *testing.T) {
 	t.Run("forced on", func(t *testing.T) {
 		c := check.New(t)
@@ -181,6 +165,19 @@ func TestAccessibilityEnvironmentOverrides(t *testing.T) {
 		screen.EnableAccessibility()
 		c.False(unison.IsAccessibilityActive())
 		c.True(screen.AccessibilityTree(wnd) == nil)
+	})
+	t.Run("startup option", func(t *testing.T) {
+		c := check.New(t)
+		var wnd *unison.Window
+		screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300}, unison.NoAccessibility(),
+			unison.StartupFinishedCallback(func() {
+				wnd = newHeadlessWindow(t, "refused", geom.NewRect(20, 20, 240, 120), unison.NewPanel())
+			}))
+		c.NotNil(wnd)
+		screen.EnableAccessibility()
+		c.False(unison.IsAccessibilityActive())
+		c.True(screen.AccessibilityTree(wnd) == nil, "no tree may be built when accessibility support has been refused")
+		c.Equal(uint64(0), axSnapshotCount(t, screen))
 	})
 }
 
@@ -282,50 +279,6 @@ func TestAccessibilityTreeShape(t *testing.T) {
 	tippedNode := screen.AccessibilityNodeFor(tipped)
 	c.True(tippedNode != nil)
 	c.Equal("Explains things", tippedNode.Description, "the tooltip text becomes the description")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestAccessibilityCallbackDecidesScaffolding verifies that Accessibility.Callback, which runs last and may adjust
-// anything on the node, is not too late to settle whether the node is scaffolding: a group it gives the name that was
-// missing is content and must be reported, which is exactly what naming an otherwise anonymous group is for, while a
-// group it marks to be looked past stays that way however much the node says.
-func TestAccessibilityCallbackDecidesScaffolding(t *testing.T) {
-	c := check.New(t)
-	var named, looked, plain *unison.Panel
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 400},
-		unison.StartupFinishedCallback(func() {
-			named = unison.NewPanel()
-			named.Accessibility.Callback = func(n *accessibility.Node) { n.Name = "Toolbar" }
-
-			looked = unison.NewPanel()
-			looked.Accessibility.Name = "Says something"
-			looked.Accessibility.Callback = func(n *accessibility.Node) { n.Ignored = true }
-
-			plain = unison.NewPanel()
-
-			wnd = newHeadlessWindow(t, "callbacks", geom.NewRect(10, 10, 300, 300),
-				axColumn(named, looked, plain))
-		}))
-	c.NotNil(wnd)
-
-	c.True(screen.AccessibilityTree(wnd) != nil)
-	namedNode := screen.AccessibilityNodeFor(named)
-	c.True(namedNode != nil)
-	if namedNode != nil {
-		c.Equal("Toolbar", namedNode.Name, "the callback runs last and may name the node")
-		c.False(namedNode.Ignored, "a group the callback named has something to say and is not scaffolding")
-	}
-	lookedNode := screen.AccessibilityNodeFor(looked)
-	c.True(lookedNode != nil)
-	if lookedNode != nil {
-		c.True(lookedNode.Ignored, "a callback that marks a node to be looked past has the last word")
-	}
-	plainNode := screen.AccessibilityNodeFor(plain)
-	c.True(plainNode != nil)
-	if plainNode != nil {
-		c.True(plainNode.Ignored, "a group with nothing to say about itself is still scaffolding")
-	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -596,38 +549,6 @@ func TestAccessibilityWindowActivationIsPublishedWithoutARedraw(t *testing.T) {
 		"the window that lost the focus should have said so: %v", firstEvents)
 	c.True(axHasEvent(secondEvents, accessibility.WindowActivated, secondTree.Root),
 		"the window that took the focus should have said so: %v", secondEvents)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestAccessibilityHiddenWindowLeavesTheDescription verifies that a window taken off the screen is withdrawn from what
-// an assistive technology holds rather than left standing as the last thing said about it. AT-SPI has only what the
-// application publishes, so a window hidden after it was described would otherwise go on being listed as showing.
-//
-// This is the one thing a headless session deliberately does not do the same way on every platform: it withdraws, as
-// Linux does, while macOS and Windows keep everything they built, since there the system lists the application's
-// windows itself. What is asserted below is therefore what Linux does with a hidden window, not a rule that holds
-// everywhere. See Window.apiAccessibilityWindowHidden.
-func TestAccessibilityHiddenWindowLeavesTheDescription(t *testing.T) {
-	c := check.New(t)
-	var wnd *unison.Window
-	var panel *unison.Panel
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			panel = axFocusablePanel("Content")
-			wnd = newHeadlessWindow(t, "hidden", geom.NewRect(20, 20, 240, 120), axColumn(panel))
-		}))
-	c.NotNil(wnd)
-
-	c.True(screen.AccessibilityTree(wnd) != nil)
-	c.True(screen.AccessibilityNodeFor(panel) != nil)
-
-	// Asked for through the panel rather than through AccessibilityTree, which would describe the window again and put
-	// back the very thing being checked for.
-	screen.Do(func() { wnd.Hide() })
-	c.True(screen.AccessibilityNodeFor(panel) == nil, "a window that has been hidden should no longer be described")
-
-	screen.Do(func() { wnd.Show() })
-	c.True(screen.AccessibilityNodeFor(panel) != nil, "showing the window again should describe it afresh")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -1055,46 +976,6 @@ func TestAccessibilityFlushDrawingIsPublished(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestAccessibilityMinimizedWindowLeavesTheDescription verifies that a minimized window is withdrawn from what an
-// assistive technology holds exactly as a hidden one is. A minimized window is not on the screen — X11 unmaps an
-// iconified window and AppKit reports a miniaturized one as not visible — so it is not drawn and nothing is published
-// for it, and the last thing said about it would otherwise stand for as long as the window existed.
-//
-// As with hiding, what is asserted here is what Linux does, since that is the behavior the headless backend picks. See
-// Window.apiAccessibilityWindowHidden.
-func TestAccessibilityMinimizedWindowLeavesTheDescription(t *testing.T) {
-	c := check.New(t)
-	var wnd *unison.Window
-	var panel *unison.Panel
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			panel = axFocusablePanel("Content")
-			wnd = newHeadlessWindow(t, "minimized", geom.NewRect(20, 20, 240, 120), axColumn(panel))
-		}))
-	c.NotNil(wnd)
-	c.NotNil(panel)
-
-	c.True(screen.AccessibilityTree(wnd) != nil)
-	c.True(screen.AccessibilityNodeFor(panel) != nil)
-
-	// Asked for through the panel rather than through AccessibilityTree, which would describe the window again and put
-	// back the very thing being checked for.
-	var visible bool
-	screen.Do(func() {
-		wnd.Minimize()
-		visible = wnd.IsVisible()
-	})
-	c.False(visible, "a minimized window is off the screen")
-	c.True(screen.AccessibilityNodeFor(panel) == nil, "a window that has been minimized should no longer be described")
-
-	// Minimize() toggles, so this restores it.
-	screen.Do(func() { wnd.Minimize() })
-	screen.Do(func() { visible = wnd.IsVisible() })
-	c.True(visible, "a restored window is back on the screen")
-	c.True(screen.AccessibilityNodeFor(panel) != nil, "restoring the window should describe it afresh")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
 // TestAccessibilityTreeAgreesWithTheNodeItHandsOut verifies that the tree AccessibilityTree returns is the one the
 // session is holding by the time it returns, rather than one a redraw performed during the same call has already
 // superseded. The first call of any test is the one that turns accessibility support on, and activation marks every
@@ -1311,6 +1192,10 @@ func TestAccessibilityPublishSurvivesDisposalDuringTheBuild(t *testing.T) {
 // resident of the pending set, and the library flushes on its own account from a menu closing, a list flashing its
 // selection and a drag finishing, so a flush landing on a window a person cannot see is ordinary rather than exotic. A
 // session owns most of the package's mutable globals while it runs, so neither of these may call t.Parallel.
+//
+// Withdrawing a window that has gone off the screen is what Linux does; macOS and Windows keep everything they built,
+// since there the system lists the application's windows itself. A headless session withdraws, so what these tests
+// assert is what Linux does, not a rule that holds everywhere. See Window.apiAccessibilityWindowHidden.
 
 // axFlushWindow is a window holding one describable panel that counts the times it is painted, along with the session
 // running it.

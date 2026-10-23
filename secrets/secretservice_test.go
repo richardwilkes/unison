@@ -1295,7 +1295,7 @@ func TestSecretServiceUnavailable(t *testing.T) {
 }
 
 // TestSecretServiceWithoutASessionBus covers the path the platform store takes, through dbus.Session, when there is no
-// session bus to reach.
+// session bus to reach, and checks that the same path reaches the service once there is one.
 func TestSecretServiceWithoutASessionBus(t *testing.T) {
 	c := check.New(t)
 	restore := dbus.SetSessionForTest(nil, errors.New("no session bus"))
@@ -1311,16 +1311,11 @@ func TestSecretServiceWithoutASessionBus(t *testing.T) {
 	store = newSecretServiceStore(func() (*dbus.Conn, error) { return nil, nil })
 	_, err = ssDoGet(t, store, ssTestAccount)
 	c.True(errors.Is(err, ErrUnavailable))
-}
 
-// TestSecretServiceThroughTheSharedSession covers the path the platform store takes, through dbus.Session, when the
-// session bus is there.
-func TestSecretServiceThroughTheSharedSession(t *testing.T) {
-	c := check.New(t)
 	f := newFakeSecretService(t)
-	restore := dbus.SetSessionForTest(f.client, nil)
-	defer restore()
-	store := newSecretServiceStore(dbus.Session)
+	restoreShared := dbus.SetSessionForTest(f.client, nil)
+	defer restoreShared()
+	store = newSecretServiceStore(dbus.Session)
 	c.NoError(ssDoSet(t, store, ssTestAccount, []byte("shared")))
 	value, err := ssDoGet(t, store, ssTestAccount)
 	c.NoError(err)

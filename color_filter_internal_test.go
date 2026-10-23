@@ -16,17 +16,9 @@ import (
 	"github.com/richardwilkes/unison/enums/blendmode"
 )
 
-// TestBlendColorFilterNoOpsAreNil documents the premise of TestComposeColorFilterWithNilOperands: this package's own
-// constructors legitimately hand back a nil *ColorFilter for filters that would do nothing.
-func TestBlendColorFilterNoOpsAreNil(t *testing.T) {
-	c := check.New(t)
-	c.Nil(NewBlendColorFilter(Red, blendmode.Dst))
-	c.Nil(NewBlendColorFilter(Color(0), blendmode.SrcOver))
-	c.NotNil(NewBlendColorFilter(Red, blendmode.SrcOver))
-}
-
-// TestComposeColorFilterWithNilOperands verifies that composing with a nil *ColorFilter yields the other filter rather
-// than panicking with a nil pointer dereference.
+// TestComposeColorFilterWithNilOperands verifies that NewBlendColorFilter returns a nil *ColorFilter for a filter that
+// would do nothing, and that composing with one yields the other filter rather than panicking with a nil pointer
+// dereference.
 func TestComposeColorFilterWithNilOperands(t *testing.T) {
 	c := check.New(t)
 	real1 := NewBlendColorFilter(Red, blendmode.SrcOver)
@@ -35,6 +27,7 @@ func TestComposeColorFilterWithNilOperands(t *testing.T) {
 	c.NotNil(real2)
 	noop := NewBlendColorFilter(Red, blendmode.Dst)
 	c.Nil(noop)
+	c.Nil(NewBlendColorFilter(Color(0), blendmode.SrcOver), "a transparent color blended over anything does nothing")
 
 	// A nil operand on either side yields the other filter's contents.
 	var composed *ColorFilter

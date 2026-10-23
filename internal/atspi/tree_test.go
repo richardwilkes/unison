@@ -140,19 +140,6 @@ func TestWindowDataIndexesTheReportedChildren(t *testing.T) {
 	c.Equal(accessibility.NodeID(1), d.root().ID)
 }
 
-func TestWindowDataBuildsBothDirectionsOfEveryRelation(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	d := newWindowData(sampleTree(), sampleGeometry())
-	c.Equal([]relation{
-		{kind: RelationLabelledBy, targets: []accessibility.NodeID{3}},
-		{kind: RelationControllerFor, targets: []accessibility.NodeID{5}},
-	}, d.relationsOf(4))
-	c.Equal([]relation{{kind: RelationLabelFor, targets: []accessibility.NodeID{4}}}, d.relationsOf(3))
-	c.Equal([]relation{{kind: RelationControlledBy, targets: []accessibility.NodeID{4}}}, d.relationsOf(5))
-	c.Nil(d.relationsOf(6))
-}
-
 func TestWindowDataRelationsAreOrderedAndFiltered(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -162,7 +149,8 @@ func TestWindowDataRelationsAreOrderedAndFiltered(t *testing.T) {
 			Children: []accessibility.NodeID{2, 3, 4},
 		},
 		&accessibility.Node{ID: 2, Parent: 1, Role: role.Label, Name: "Label"},
-		&accessibility.Node{ID: 3, Parent: 1, Role: role.Group, Ignored: true},
+		// An ignored node reports no relations, so the label it names does not report it either.
+		&accessibility.Node{ID: 3, Parent: 1, Role: role.Group, Ignored: true, LabeledBy: []accessibility.NodeID{2}},
 		&accessibility.Node{
 			ID: 4, Parent: 1, Role: role.TextField,
 			// The describing node is ignored and the controlled one is not in the tree at all, so neither can be
@@ -176,21 +164,6 @@ func TestWindowDataRelationsAreOrderedAndFiltered(t *testing.T) {
 	c.Equal([]relation{{kind: RelationLabelFor, targets: []accessibility.NodeID{4}}}, d.relationsOf(2))
 	c.Nil(d.relationsOf(3))
 	c.Nil(d.relationsOf(99))
-}
-
-func TestWindowDataRelationsFromAnIgnoredNodeAreDropped(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	d := newWindowData(treeOf(1,
-		&accessibility.Node{ID: 1, Role: role.Window, Children: []accessibility.NodeID{2, 3}},
-		&accessibility.Node{ID: 2, Parent: 1, Role: role.Label},
-		&accessibility.Node{
-			ID: 3, Parent: 1, Role: role.Group, Ignored: true,
-			LabeledBy: []accessibility.NodeID{2},
-		},
-	), Geometry{})
-	c.Nil(d.relationsOf(2))
-	c.Nil(d.relationsOf(3))
 }
 
 func TestWindowDataExtents(t *testing.T) {

@@ -10,6 +10,8 @@
 package unison
 
 import (
+	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -46,58 +48,43 @@ func newTestDockContainer(dockables ...Dockable) (*Dock, *DockContainer) {
 	return dock, dc
 }
 
-// TestDockContainerCloseCurrentTabWithoutFocus verifies that closing the current (last) tab while focus is elsewhere
-// promotes a neighboring tab instead of leaving currentIndex out of range, which used to blank the container and
-// misreport CurrentDockable/CurrentDockableIndex until the next draw pass healed it.
-func TestDockContainerCloseCurrentTabWithoutFocus(t *testing.T) {
-	c := check.New(t)
-	d1 := newTestDockable("one")
-	d2 := newTestDockable("two")
-	_, dc := newTestDockContainer(d1, d2)
-	c.Equal(1, dc.CurrentDockableIndex())
-
-	dc.Close(d2)
-	c.Equal([]Dockable{d1}, dc.Dockables())
-	c.Equal(0, dc.CurrentDockableIndex())
-	c.Equal(Dockable(d1), dc.CurrentDockable())
-	c.False(d1.Hidden)
-}
-
-// TestDockContainerCloseCurrentFirstTabWithoutFocus verifies that closing the current tab promotes the following tab
-// and unhides it immediately, rather than leaving its Hidden flag stale until the next layout pass.
+// TestDockContainerCloseCurrentFirstTabWithoutFocus verifies that closing a tab while focus is elsewhere leaves
+// currentIndex in range and naming the right dockable, and updates every remaining tab's Hidden flag immediately rather
+// than at the next layout pass: closing the current tab promotes a neighbor, and closing an earlier tab keeps the same
+// dockable current. An out-of-range currentIndex used to blank the container and misreport
+// CurrentDockable/CurrentDockableIndex until the next draw pass healed it.
 func TestDockContainerCloseCurrentFirstTabWithoutFocus(t *testing.T) {
-	c := check.New(t)
-	d1 := newTestDockable("one")
-	d2 := newTestDockable("two")
-	d3 := newTestDockable("three")
-	_, dc := newTestDockContainer(d1, d2, d3)
-	dc.SetCurrentDockable(d1)
-	c.Equal(0, dc.CurrentDockableIndex())
+	for _, test := range []struct {
+		name      string
+		tabs      int
+		current   int
+		closed    int
+		wantIndex int
+	}{
+		{name: "current first tab promotes the next", tabs: 3, current: 0, closed: 0, wantIndex: 0},
+		{name: "current last tab promotes the previous", tabs: 2, current: 1, closed: 1, wantIndex: 0},
+		{name: "earlier tab keeps the current one", tabs: 3, current: 2, closed: 0, wantIndex: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			dockables := make([]Dockable, test.tabs)
+			for i := range dockables {
+				dockables[i] = newTestDockable(strconv.Itoa(i))
+			}
+			_, dc := newTestDockContainer(dockables...)
+			dc.SetCurrentDockable(dockables[test.current])
+			c.Equal(test.current, dc.CurrentDockableIndex())
 
-	dc.Close(d1)
-	c.Equal([]Dockable{d2, d3}, dc.Dockables())
-	c.Equal(0, dc.CurrentDockableIndex())
-	c.Equal(Dockable(d2), dc.CurrentDockable())
-	c.False(d2.Hidden)
-	c.True(d3.Hidden)
-}
-
-// TestDockContainerCloseNonCurrentTabWithoutFocus verifies that closing a tab before the current one keeps the same
-// dockable current, adjusting currentIndex for the shift caused by the removal.
-func TestDockContainerCloseNonCurrentTabWithoutFocus(t *testing.T) {
-	c := check.New(t)
-	d1 := newTestDockable("one")
-	d2 := newTestDockable("two")
-	d3 := newTestDockable("three")
-	_, dc := newTestDockContainer(d1, d2, d3)
-	c.Equal(2, dc.CurrentDockableIndex())
-
-	dc.Close(d1)
-	c.Equal([]Dockable{d2, d3}, dc.Dockables())
-	c.Equal(1, dc.CurrentDockableIndex())
-	c.Equal(Dockable(d3), dc.CurrentDockable())
-	c.False(d3.Hidden)
-	c.True(d2.Hidden)
+			dc.Close(dockables[test.closed])
+			remaining := slices.Delete(slices.Clone(dockables), test.closed, test.closed+1)
+			c.Equal(remaining, dc.Dockables())
+			c.Equal(test.wantIndex, dc.CurrentDockableIndex())
+			c.Equal(remaining[test.wantIndex], dc.CurrentDockable())
+			for i, d := range remaining {
+				c.Equal(i != test.wantIndex, d.AsPanel().Hidden, "only the current tab is shown (tab %d)", i)
+			}
+		})
+	}
 }
 
 // TestDockContainerCloseLastTabRemovesContainer verifies that closing the only tab removes the container from the Dock

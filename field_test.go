@@ -36,36 +36,35 @@ func TestFieldSetTextMovesSelectionToEnd(t *testing.T) {
 	c.Equal(5, end)
 }
 
+// TestFieldSetSelectionAndSelectedText verifies the selection SetSelection leaves, constrained to the text and
+// collapsed to its start when the end is before it, and what SelectedText, SelectionCount and HasSelectionRange report
+// for it.
 func TestFieldSetSelectionAndSelectedText(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewField()
-	f.SetText("hello")
-	f.SetSelection(1, 3)
-	start, end := f.Selection()
-	c.Equal(1, start)
-	c.Equal(3, end)
-	c.Equal("el", f.SelectedText())
-	c.Equal(2, f.SelectionCount())
-	c.True(f.HasSelectionRange())
-}
-
-func TestFieldSetSelectionClamps(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewField()
-	f.SetText("hello")
-
-	// Values beyond either end are constrained to the text bounds.
-	f.SetSelection(-5, 100)
-	start, end := f.Selection()
-	c.Equal(0, start)
-	c.Equal(5, end)
-
-	// An end less than the start collapses to an empty selection at the start.
-	f.SetSelection(3, 1)
-	start, end = f.Selection()
-	c.Equal(3, start)
-	c.Equal(3, end)
-	c.False(f.HasSelectionRange())
+	for _, one := range []struct {
+		name      string
+		selected  string
+		start     int
+		end       int
+		wantStart int
+		wantEnd   int
+	}{
+		{name: "within the text", start: 1, end: 3, wantStart: 1, wantEnd: 3, selected: "el"},
+		{name: "beyond either end", start: -5, end: 100, wantStart: 0, wantEnd: 5, selected: "hello"},
+		{name: "end before start", start: 3, end: 1, wantStart: 3, wantEnd: 3},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			f := unison.NewField()
+			f.SetText("hello")
+			f.SetSelection(one.start, one.end)
+			start, end := f.Selection()
+			c.Equal(one.wantStart, start)
+			c.Equal(one.wantEnd, end)
+			c.Equal(one.selected, f.SelectedText())
+			c.Equal(len(one.selected), f.SelectionCount())
+			c.Equal(one.selected != "", f.HasSelectionRange())
+		})
+	}
 }
 
 func TestFieldSelectAll(t *testing.T) {
@@ -81,54 +80,55 @@ func TestFieldSelectAll(t *testing.T) {
 	c.False(f.CanSelectAll())
 }
 
+// TestFieldDeleteSelectedRange verifies what Delete does: it removes the selected range, acts as a backspace when there
+// is none, and does nothing with the caret at the start, which CanDelete reports beforehand.
 func TestFieldDeleteSelectedRange(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewField()
-	f.SetText("hello")
-	f.SetSelection(1, 3)
-	f.Delete()
-	c.Equal("hlo", f.Text())
-	start, end := f.Selection()
-	c.Equal(1, start)
-	c.Equal(1, end)
+	for _, one := range []struct {
+		name      string
+		text      string
+		start     int
+		end       int
+		caret     int
+		canDelete bool
+	}{
+		{name: "selected range", start: 1, end: 3, canDelete: true, text: "hlo", caret: 1},
+		{name: "backspace without a range", start: 3, end: 3, canDelete: true, text: "helo", caret: 2},
+		{name: "caret at the start", start: 0, end: 0, canDelete: false, text: "hello", caret: 0},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			f := unison.NewField()
+			f.SetText("hello")
+			f.SetSelection(one.start, one.end)
+			c.Equal(one.canDelete, f.CanDelete())
+			f.Delete()
+			c.Equal(one.text, f.Text())
+			start, end := f.Selection()
+			c.Equal(one.caret, start)
+			c.Equal(one.caret, end)
+		})
+	}
 }
 
-func TestFieldDeleteActsAsBackspaceWithoutRange(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewField()
-	f.SetText("hello")
-	f.SetSelectionTo(3)
-	c.True(f.CanDelete())
-	f.Delete()
-	c.Equal("helo", f.Text())
-	start, end := f.Selection()
-	c.Equal(2, start)
-	c.Equal(2, end)
-}
-
-func TestFieldDeleteAtStartWithoutRangeIsNoOp(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewField()
-	f.SetText("hello")
-	f.SetSelectionToStart()
-	c.False(f.CanDelete())
-	f.Delete()
-	c.Equal("hello", f.Text())
-}
-
+// TestFieldSanitizeStripsControlChars verifies that a single-line field drops newlines but keeps tabs and printable
+// characters, and that a multi-line field keeps newlines.
 func TestFieldSanitizeStripsControlChars(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewField()
-	// A single-line field drops newlines but keeps tabs and printable characters.
-	f.SetText("a\nb\tc")
-	c.Equal("ab\tc", f.Text())
-}
-
-func TestMultiLineFieldKeepsNewlines(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewMultiLineField()
-	f.SetText("a\nb")
-	c.Equal("a\nb", f.Text())
+	for _, one := range []struct {
+		newField func() *unison.Field
+		name     string
+		text     string
+		want     string
+	}{
+		{name: "single-line", newField: unison.NewField, text: "a\nb\tc", want: "ab\tc"},
+		{name: "multi-line", newField: unison.NewMultiLineField, text: "a\nb", want: "a\nb"},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			f := one.newField()
+			f.SetText(one.text)
+			c.Equal(one.want, f.Text())
+		})
+	}
 }
 
 func TestMultiLineFieldEndKeyOnEmptyField(t *testing.T) {
@@ -165,72 +165,45 @@ func TestMultiLineFieldEndKeyMovesToEndOfLine(t *testing.T) {
 	c.Equal(5, end)
 }
 
+// TestMultiLineFieldHomeKeyMovesToLineStart verifies that Home moves the caret to the start of its line and stays there
+// when pressed again, and that Shift+Home extends the selection back to it.
 func TestMultiLineFieldHomeKeyMovesToLineStart(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewMultiLineField()
-	f.SetText("first\nsecond")
-	f.SetSelectionTo(9) // Middle of "second"
-	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
-	start, end := f.Selection()
-	c.Equal(6, start)
-	c.Equal(6, end)
+	for _, one := range []struct {
+		name  string
+		text  string
+		caret int
+		home  int
+	}{
+		{name: "middle of a line", text: "first\nsecond", caret: 9, home: 6},
+		// The caret is on the empty line following the trailing newline, so Home must keep it there rather than jumping
+		// to the start of the text.
+		{name: "empty trailing line", text: "ab\n", caret: 3, home: 3},
+		// The line starts just past the newline at index 0, which must not be taken as "no line break".
+		{name: "line break at the start", text: "\nabc", caret: 2, home: 1},
+		{name: "empty field", text: "", caret: 0, home: 0},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			f := unison.NewMultiLineField()
+			f.SetText(one.text)
+			f.SetSelectionTo(one.caret)
+			c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
+			start, end := f.Selection()
+			c.Equal(one.home, start)
+			c.Equal(one.home, end)
 
-	// Home when already at the start of the line stays put.
-	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
-	start, end = f.Selection()
-	c.Equal(6, start)
-	c.Equal(6, end)
+			c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
+			start, end = f.Selection()
+			c.Equal(one.home, start, "Home at the start of the line stays put")
+			c.Equal(one.home, end)
 
-	// Shift+Home extends the selection back to the start of the line.
-	f.SetSelectionTo(9)
-	c.True(f.DefaultKeyDown(unison.KeyHome, mod.Shift, false))
-	start, end = f.Selection()
-	c.Equal(6, start)
-	c.Equal(9, end)
-}
-
-func TestMultiLineFieldHomeKeyOnEmptyTrailingLine(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewMultiLineField()
-	f.SetText("ab\n")
-	f.SetSelectionTo(3)
-
-	// The caret is on the empty line following the trailing newline, so Home must keep it there rather than jumping
-	// to the start of the text.
-	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
-	start, end := f.Selection()
-	c.Equal(3, start)
-	c.Equal(3, end)
-}
-
-func TestMultiLineFieldHomeKeyWithLineBreakAtStart(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewMultiLineField()
-	f.SetText("\nabc")
-	f.SetSelectionTo(2)
-
-	// The line containing the caret starts just past the newline at index 0; Home must not treat "line break at
-	// index 0" as "no line break" and move to the start of the text.
-	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
-	start, end := f.Selection()
-	c.Equal(1, start)
-	c.Equal(1, end)
-
-	// Shift+Home from the same spot extends back to the line start only.
-	f.SetSelectionTo(2)
-	c.True(f.DefaultKeyDown(unison.KeyHome, mod.Shift, false))
-	start, end = f.Selection()
-	c.Equal(1, start)
-	c.Equal(2, end)
-}
-
-func TestMultiLineFieldHomeKeyOnEmptyField(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewMultiLineField()
-	c.True(f.DefaultKeyDown(unison.KeyHome, 0, false))
-	start, end := f.Selection()
-	c.Equal(0, start)
-	c.Equal(0, end)
+			f.SetSelectionTo(one.caret)
+			c.True(f.DefaultKeyDown(unison.KeyHome, mod.Shift, false))
+			start, end = f.Selection()
+			c.Equal(one.home, start, "Shift+Home extends the selection back to the start of the line")
+			c.Equal(one.caret, end)
+		})
+	}
 }
 
 func TestFieldCanCutCopyTrackSelection(t *testing.T) {
@@ -383,8 +356,8 @@ func TestFieldAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestFieldAccessibilityActions verifies that an assistive technology can replace a field's value, move its caret and
-// selection, and replace a range of its content in place.
+// TestFieldAccessibilityActions verifies that an assistive technology can replace a field's value, as an edit of its
+// own, move its caret and selection, and replace a range of its content in place.
 func TestFieldAccessibilityActions(t *testing.T) {
 	c := check.New(t)
 	var field *unison.Field
@@ -439,14 +412,21 @@ func TestFieldAccessibilityActions(t *testing.T) {
 	c.Equal(11, start, "the caret should sit just past what was inserted")
 	c.Equal(11, end)
 
-	// A replacement is an ordinary modification, so it can be undone exactly as a paste can.
+	// SetValue goes through SetText, which unlike ReplaceText does not move the undo id on, so it has to move it itself
+	// or an application's undo manager could fold the new value into the replacement before it.
+	var was, now int64
+	screen.Do(func() { was = field.CurrentUndoID() })
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   node.ID,
 		Action: accessibility.SetValue,
 		Value:  "replaced outright",
 	}))
-	screen.Do(func() { text = field.Text() })
+	screen.Do(func() {
+		text = field.Text()
+		now = field.CurrentUndoID()
+	})
 	c.Equal("replaced outright", text)
+	c.True(now != was, "replacing the value outright must begin an edit of its own rather than joining the last one")
 
 	// Asking for the contextual menu shows the one a right-click would have, which appears within the window here.
 	before := axRootChildCount(screen.AccessibilityTree(wnd))
@@ -996,34 +976,6 @@ func TestNumericFieldAccessibility(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestComboFieldAccessibilityKeepsItsRole verifies that a combo field, which is a field that has been told what it
-// really is, keeps that identity once the field itself has had its say.
-func TestComboFieldAccessibilityKeepsItsRole(t *testing.T) {
-	c := check.New(t)
-	first := "One"
-	second := "Two"
-	var combo *unison.Field
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			combo = unison.NewComboField([]*string{&first, &second}, &first, nil)
-			wnd = newHeadlessWindow(t, "combo role", geom.NewRect(10, 10, 300, 150), axColumn(combo))
-		}))
-	c.NotNil(wnd)
-	// Showing a window does not give it the focus, and a combo box in a window that is not the active one is published
-	// without the expansion it could not carry out. See axMayPopupMenu and axSnapshot.narrowMenuActions.
-	c.True(screen.Do(func() { wnd.ToFront() }))
-
-	screen.AccessibilityTree(wnd)
-	node := axMustNode(c, screen.AccessibilityNodeFor(combo))
-	c.Equal(role.ComboBox, node.Role, "the field must not overrule what it was told it is")
-	c.True(node.Expandable)
-	c.True(node.Actions.Has(accessibility.Expand))
-	c.Equal("One", node.Value, "it is a field, so its content is still its value")
-	c.True(node.Text != nil)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
 // TestFieldAccessibilityContextMenuTakesTheFocus verifies that asking a field that is not holding the focus for its
 // contextual menu gives it the focus first. The menu is built out of the cut, copy, paste and select-all commands,
 // every one of which is routed to whatever currently holds the focus, so a menu shown for an unfocused field described,
@@ -1130,45 +1082,6 @@ func TestFieldAccessibilityContextMenuRefusedInABackgroundWindow(t *testing.T) {
 	}), "and shows it")
 	c.Equal(before+1, axRootChildCount(screen.AccessibilityTree(background)),
 		"the menu should have opened in the field's own window")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestFieldAccessibilitySetValueStartsANewUndo verifies that replacing a field's value outright begins an edit of its
-// own. SetText, unlike the replacement path, does not move the undo id on, so an application's undo manager was free to
-// absorb an assistive technology's replacement into whatever edit preceded it.
-func TestFieldAccessibilitySetValueStartsANewUndo(t *testing.T) {
-	c := check.New(t)
-	var field *unison.Field
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			field = unison.NewField()
-			field.SetText("before")
-			wnd = newHeadlessWindow(t, "undo id", geom.NewRect(10, 10, 300, 150), axColumn(field))
-		}))
-	c.NotNil(wnd)
-	c.True(screen.Do(func() { wnd.ToFront() }))
-
-	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(field)
-	c.True(node != nil)
-	if node == nil {
-		return
-	}
-	var was, now int64
-	var text string
-	screen.Do(func() { was = field.CurrentUndoID() })
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   node.ID,
-		Action: accessibility.SetValue,
-		Value:  "after",
-	}))
-	screen.Do(func() {
-		now = field.CurrentUndoID()
-		text = field.Text()
-	})
-	c.Equal("after", text)
-	c.True(now != was, "replacing the value outright must begin an edit of its own rather than joining the last one")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

@@ -50,12 +50,15 @@ func TestFallbackToCPURenderingWarnsOnce(t *testing.T) {
 	c.Equal("", buf.String())
 }
 
+// TestApplyCPURenderingEnvRequest verifies that CPURenderingEnvKey turns CPU rendering on only when it holds a true
+// value, and that a false value does not turn off a fallback already in effect.
 func TestApplyCPURenderingEnvRequest(t *testing.T) {
 	for _, test := range []struct {
-		name  string
-		value string
-		set   bool
-		want  bool
+		name   string
+		value  string
+		set    bool
+		active bool
+		want   bool
 	}{
 		{name: "unset", want: false},
 		{name: "one", value: "1", set: true, want: true},
@@ -65,12 +68,13 @@ func TestApplyCPURenderingEnvRequest(t *testing.T) {
 		{name: "false", value: "false", set: true, want: false},
 		{name: "empty", value: "", set: true, want: false},
 		{name: "unparseable", value: "maybe", set: true, want: false},
+		{name: "zero keeps fallback", value: "0", set: true, active: true, want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			c := check.New(t)
 			saved := cpuRenderingActive
 			defer func() { cpuRenderingActive = saved }()
-			cpuRenderingActive = false
+			cpuRenderingActive = test.active
 			// t.Setenv is called unconditionally because it is what registers restoration of whatever the variable
 			// held before the test, which the unset case below would otherwise discard permanently.
 			t.Setenv(CPURenderingEnvKey, test.value)
@@ -81,16 +85,6 @@ func TestApplyCPURenderingEnvRequest(t *testing.T) {
 			c.Equal(test.want, IsCPURenderingActive())
 		})
 	}
-}
-
-func TestApplyCPURenderingEnvRequestDoesNotUndoFallback(t *testing.T) {
-	c := check.New(t)
-	saved := cpuRenderingActive
-	defer func() { cpuRenderingActive = saved }()
-	cpuRenderingActive = true
-	t.Setenv(CPURenderingEnvKey, "0")
-	applyCPURenderingEnvRequest()
-	c.True(IsCPURenderingActive())
 }
 
 func TestSurfaceCPURendering(t *testing.T) {

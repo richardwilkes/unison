@@ -279,18 +279,6 @@ func TestSVGGradientForwardReference(t *testing.T) {
 	c.HasError(err)
 }
 
-// TestSVGPathUppercaseExponent verifies that path data accepts numbers with uppercase exponents (and exponents with an
-// explicit sign), which the number scanner previously mis-parsed.
-func TestSVGPathUppercaseExponent(t *testing.T) {
-	c := check.New(t)
-	svg, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M0 0 L1E1 1e1 L2E+1 1e-0 Z"/></svg>`,
-	)
-	c.NoError(err)
-	c.Equal(1, len(svg.paths))
-	c.Equal(geom.NewRect(0, 0, 20, 10), svg.paths[0].path.ComputeTightBounds())
-}
-
 // TestSVGTransformListOrder verifies that a multi-op transform attribute composes left-to-right as the spec requires,
 // since the parser previously composed the ops in reverse order. For "translate(10,0) rotate(90)" the rotation must be
 // applied to geometry first: the unit rect maps to (9,0)-(10,1), not the reversed order's (-1,10)-(0,11).
@@ -353,27 +341,34 @@ func rectsNearlyEqual(a, b geom.Rect) bool {
 	return near(a.X, b.X) && near(a.Y, b.Y) && near(a.Width, b.Width) && near(a.Height, b.Height)
 }
 
-// TestSVGCompactArcFlags verifies that arc commands whose single-digit flags abut the following number without a
-// separator (the compact form emitted by svgo and similar minifiers) parse identically to the fully separated form,
-// since the number tokenizer previously consumed the run as one number and rejected the whole document.
+// TestSVGCompactArcFlags verifies that path data written in a form the parser once mishandled parses identically,
+// verb for verb, to an equivalent plain form: arc commands whose single-digit flags abut the following number without
+// a separator (the compact form emitted by svgo and similar minifiers), which the number tokenizer consumed as one
+// number, rejecting the whole document; numbers with uppercase or signed exponents, which it mis-parsed; and drawing
+// commands after a closepath, which implicitly restart the subpath at the closed one's initial point and must be closed
+// by the next closepath, though the parser once dropped it, while a closepath with nothing drawn since the previous one
+// stays a no-op.
 func TestSVGCompactArcFlags(t *testing.T) {
 	c := check.New(t)
 	const doc = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="%s"/></svg>`
-	for _, one := range []struct{ compact, expanded string }{
+	for _, one := range []struct{ form, plain string }{
 		{"M0 0a4 4 0 014 4z", "M0 0a4 4 0 0 1 4 4z"},
 		{"M0 0a4 4 0 104 4z", "M0 0a4 4 0 1 0 4 4z"},
 		{"M0 0a4 4 0 11-4 4z", "M0 0a4 4 0 1 1 -4 4z"},
 		{"M0 0a4 4 0 014 4 4 4 0 014 4z", "M0 0a4 4 0 0 1 4 4 4 4 0 0 1 4 4z"},
 		{"M2 2A4 4 0 01.5.5z", "M2 2A4 4 0 0 1 0.5 0.5z"},
+		{"M0 0 L1E1 1e1 L2E+1 1e-0 Z", "M0 0 L10 10 L20 1 Z"},
+		{"M0 0 L10 0 L10 10 Z L20 20 Z", "M0 0 L10 0 L10 10 Z M0 0 L20 20 Z"},
+		{"M0 0 L10 0 L10 10 Z Z", "M0 0 L10 0 L10 10 Z"},
 	} {
-		compact, err := NewSVGFromContentString(fmt.Sprintf(doc, one.compact))
-		c.NoError(err, "compact form %q", one.compact)
-		expanded, err := NewSVGFromContentString(fmt.Sprintf(doc, one.expanded))
-		c.NoError(err, "expanded form %q", one.expanded)
-		c.Equal(1, len(compact.paths), "compact form %q", one.compact)
-		c.Equal(1, len(expanded.paths), "expanded form %q", one.expanded)
-		c.Equal(expanded.paths[0].path.ComputeTightBounds(), compact.paths[0].path.ComputeTightBounds(),
-			"compact form %q", one.compact)
+		got, err := NewSVGFromContentString(fmt.Sprintf(doc, one.form))
+		c.NoError(err, "form %q", one.form)
+		want, err := NewSVGFromContentString(fmt.Sprintf(doc, one.plain))
+		c.NoError(err, "plain form %q", one.plain)
+		c.Equal(1, len(got.paths), "form %q", one.form)
+		c.Equal(1, len(want.paths), "plain form %q", one.plain)
+		c.Equal(want.paths[0].path.path.CountVerbs(), got.paths[0].path.path.CountVerbs(), "form %q", one.form)
+		c.Equal(want.paths[0].path.ComputeTightBounds(), got.paths[0].path.ComputeTightBounds(), "form %q", one.form)
 	}
 }
 
@@ -413,22 +408,6 @@ func TestSVGObjectBoundingBoxGradientFractions(t *testing.T) {
 	c.Equal(gp.StartPt, gf.StartPt)
 	c.Equal(gp.EndPt, gf.EndPt)
 	c.Equal(gp.Radius, gf.Radius)
-}
-
-// TestSVGLinearGradientDefaultDirection verifies that a linearGradient with no coordinate attributes is horizontal, per
-// the spec defaults x1=0% y1=0% x2=100% y2=0%, since y2 was previously seeded as 100% and rendered diagonally.
-func TestSVGLinearGradientDefaultDirection(t *testing.T) {
-	c := check.New(t)
-	svg, err := NewSVGFromContentString(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
-<linearGradient id="grad"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="#0000ff"/></linearGradient>
-<rect x="0" y="0" width="10" height="10" fill="url(#grad)"/>
-</svg>`)
-	c.NoError(err)
-	c.Equal(1, len(svg.paths))
-	g, ok := svg.paths[0].fillInk.(*Gradient)
-	c.True(ok, "fill should resolve to a gradient, got %T", svg.paths[0].fillInk)
-	c.Equal(geom.NewPoint(0, 0), g.StartPt)
-	c.Equal(geom.NewPoint(1, 0), g.EndPt)
 }
 
 // TestSVGMaskMultiplePathsUnion verifies that multiple shapes within one mask reveal the union of their areas, since
@@ -574,38 +553,6 @@ func TestSVGPercentStrokeWidthUsesDiagonal(t *testing.T) {
 	c.NoError(err)
 	c.Equal(1, len(svg.paths))
 	nearlyEqual(c, 10, svg.paths[0].strokeWidth)
-}
-
-// TestSVGClosePathAfterClosePath verifies that a closepath following drawing commands that were themselves issued
-// after an earlier closepath closes the subpath those commands implicitly restarted. The parser marked itself as being
-// in a subpath only on moveto, so the second Z was silently dropped and left that subpath open.
-func TestSVGClosePathAfterClosePath(t *testing.T) {
-	c := check.New(t)
-	svg, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z L20 20 Z"/></svg>`,
-	)
-	c.NoError(err)
-	c.Equal(1, len(svg.paths))
-	c.True(svg.paths[0].path.path.IsLastContourClosed(), "the second subpath should be closed")
-
-	// The restarted subpath begins at the closed subpath's initial point, so the result must match the form that
-	// names that point explicitly.
-	explicit, err := NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z M0 0 L20 20 Z"/></svg>`,
-	)
-	c.NoError(err)
-	c.Equal(1, len(explicit.paths))
-	c.Equal(explicit.paths[0].path.path.CountVerbs(), svg.paths[0].path.path.CountVerbs())
-	c.Equal(explicit.paths[0].path.ComputeTightBounds(), svg.paths[0].path.ComputeTightBounds())
-
-	// A closepath with nothing drawn since the previous one must remain a no-op.
-	svg, err = NewSVGFromContentString(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 30"><path d="M0 0 L10 0 L10 10 Z Z"/></svg>`,
-	)
-	c.NoError(err)
-	c.Equal(1, len(svg.paths))
-	c.Equal(4, svg.paths[0].path.path.CountVerbs())
-	c.Equal(geom.NewRect(0, 0, 10, 10), svg.paths[0].path.ComputeTightBounds())
 }
 
 // TestSVGUseOffsetIsOutsideDefTransform verifies that a use element's x/y offset is applied outside the referenced

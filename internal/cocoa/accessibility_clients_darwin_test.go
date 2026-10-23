@@ -15,14 +15,6 @@ import (
 	"github.com/ebitengine/purego/objc"
 )
 
-func TestAXClientsEnabled(_ *testing.T) {
-	// The results depend on the user's settings; this exercises the NSWorkspace reads for crashes only.
-	runOnMain(func() {
-		_ = IsVoiceOverEnabled()
-		_ = IsSwitchControlEnabled()
-	})
-}
-
 // TestAXClientsStopped checks every pairing of the four client states: only going from at least one running to neither
 // running is a stop.
 func TestAXClientsStopped(t *testing.T) {

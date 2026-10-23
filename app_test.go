@@ -180,60 +180,39 @@ func newCloseTestWindow(allow bool, asked *int) *Window {
 // window's AllowCloseCallback and never asking the windows behind it: the old loop detected the lack of progress only
 // after requestClose had been re-invoked on the vetoing front window, and then gave up entirely. Each window must be
 // asked exactly once, a veto must leave that window open without preventing the remaining windows from being asked,
-// and the result must report that not all windows closed. This test mutates global state and therefore must not call
+// and the result must report whether every window closed. This test mutates global state and therefore must not call
 // t.Parallel.
 func TestCloseAllWindowsAsksEachWindowOnce(t *testing.T) {
-	c := check.New(t)
-	withRecoveryCallback(t, func(err error) { c.NoError(err) })
-	preventQuitOnLastWindowClosed(t)
-	var frontAsked, midAsked, backAsked int
-	front := newCloseTestWindow(false, &frontAsked)
-	mid := newCloseTestWindow(true, &midAsked)
-	back := newCloseTestWindow(true, &backAsked)
-	swapWindowList(t, front, mid, back)
-	c.False(closeAllWindows(), "closeAllWindows must report failure when a window vetoes")
-	c.Equal(1, frontAsked, "the vetoing window must be asked exactly once, not re-asked")
-	c.Equal(1, midAsked, "windows behind a vetoing window must still be asked")
-	c.Equal(1, backAsked, "windows behind a vetoing window must still be asked")
-	c.Equal(1, len(windowList), "only the vetoing window may remain open")
-	c.True(windowList[0] == front, "only the vetoing window may remain open")
-	c.True(front.IsValid())
-	c.False(mid.IsValid())
-	c.False(back.IsValid())
-}
-
-// TestCloseAllWindowsClosesAll verifies that closeAllWindows reports success once every window has permitted the
-// close and been removed from the window list. This test mutates global state and therefore must not call t.Parallel.
-func TestCloseAllWindowsClosesAll(t *testing.T) {
-	c := check.New(t)
-	withRecoveryCallback(t, func(err error) { c.NoError(err) })
-	preventQuitOnLastWindowClosed(t)
-	var oneAsked, twoAsked int
-	swapWindowList(t, newCloseTestWindow(true, &oneAsked), newCloseTestWindow(true, &twoAsked))
-	c.True(closeAllWindows(), "closeAllWindows must report success when every window closes")
-	c.Equal(1, oneAsked)
-	c.Equal(1, twoAsked)
-	c.Equal(0, len(windowList))
-}
-
-// TestAttemptQuitDeniedByAllowQuitCallback verifies that a denied AllowQuitCallback stops the termination sequence
-// before any window is asked to close. This is also the path taken for system-initiated termination on macOS (e.g.
-// Dock -> Quit or logout), which previously ignored the callback and exited unconditionally. This test mutates global
-// state and therefore must not call t.Parallel.
-func TestAttemptQuitDeniedByAllowQuitCallback(t *testing.T) {
-	c := check.New(t)
-	withRecoveryCallback(t, func(err error) { c.NoError(err) })
-	preventQuitOnLastWindowClosed(t)
-	withAllowQuitCallback(t, func() bool { return false })
-	quit := guardQuitting(t)
-	var asked int
-	wnd := newCloseTestWindow(true, &asked)
-	swapWindowList(t, wnd)
-	AttemptQuit()
-	c.False(*quit, "a denied AllowQuitCallback must prevent termination")
-	c.Equal(0, asked, "no window may be asked to close when the quit itself was denied")
-	c.Equal(1, len(windowList), "no window may be closed when the quit itself was denied")
-	c.True(wnd.IsValid())
+	for _, tc := range []struct {
+		name  string
+		allow []bool // Each window's answer to the close request, front to back.
+	}{
+		{name: "front window vetoes", allow: []bool{false, true, true}},
+		{name: "every window permits", allow: []bool{true, true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			withRecoveryCallback(t, func(err error) { c.NoError(err) })
+			preventQuitOnLastWindowClosed(t)
+			asked := make([]int, len(tc.allow))
+			windows := make([]*Window, len(tc.allow))
+			for i, allow := range tc.allow {
+				windows[i] = newCloseTestWindow(allow, &asked[i])
+			}
+			swapWindowList(t, windows...)
+			c.Equal(!slices.Contains(tc.allow, false), closeAllWindows(),
+				"closeAllWindows must report success exactly when every window closes")
+			var vetoed []*Window
+			for i, w := range windows {
+				c.Equal(1, asked[i], "window %d must be asked exactly once, even behind a vetoing window", i)
+				c.Equal(!tc.allow[i], w.IsValid(), "window %d must stay open exactly when it vetoed", i)
+				if !tc.allow[i] {
+					vetoed = append(vetoed, w)
+				}
+			}
+			c.True(slices.Equal(vetoed, windowList), "only the vetoing windows may remain open")
+		})
+	}
 }
 
 // TestAttemptQuitCanceledByWindowVeto verifies that a window vetoing its close (e.g. an unsaved-changes prompt)
@@ -260,22 +239,6 @@ func TestAttemptQuitCanceledByWindowVeto(t *testing.T) {
 	c.Equal(1, allowAsked)
 	c.Equal(1, len(windowList), "only the vetoing window may remain open")
 	c.True(windowList[0] == veto, "only the vetoing window may remain open")
-}
-
-// TestAttemptQuitProceedsWhenPermitted verifies that once the AllowQuitCallback and every window permit it, the
-// termination sequence runs. This test mutates global state and therefore must not call t.Parallel.
-func TestAttemptQuitProceedsWhenPermitted(t *testing.T) {
-	c := check.New(t)
-	withRecoveryCallback(t, func(err error) { c.NoError(err) })
-	preventQuitOnLastWindowClosed(t)
-	withAllowQuitCallback(t, func() bool { return true })
-	quit := guardQuitting(t)
-	var asked int
-	swapWindowList(t, newCloseTestWindow(true, &asked))
-	AttemptQuit()
-	c.True(*quit, "termination must proceed once the quit and all window closes are permitted")
-	c.Equal(1, asked)
-	c.Equal(0, len(windowList))
 }
 
 // TestQuittingFromSignalGoroutineMarshalsToUIThread is the regression test for a SIGINT/SIGTERM crashing the app

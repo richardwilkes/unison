@@ -3144,11 +3144,26 @@ func axModalTestTree(modal bool, generation uint64) *accessibility.Tree {
 // TestAXModalWindow proves a modal dialog is reported as modal. Window.RunModal runs unison's own event loop rather
 // than an NSApp modal session, so no window of ours ever becomes NSApp's modal window and AppKit cannot derive
 // AXModal for itself the way the style mask and the window level give it AXResizable and AXFloating. The adapter sets
-// the NSWindow's own accessibilityModal instead, on the first publish and whenever it changes.
+// the NSWindow's own accessibilityModal instead, on the first publish, modal or not, and whenever it changes.
 func TestAXModalWindow(t *testing.T) {
 	runOnMain(func() {
+		// An ordinary window is told so on the first publish, too, so nothing is left to whatever the NSWindow
+		// happened to hold.
+		_, a, cleanup := newAXAdapterWithTree(t, axModalTestTree(false, 1))
+		if a != nil {
+			if !a.modalKnown || a.modal {
+				t.Errorf("after an ordinary first publish, the adapter holds modal = %v, known = %v, want false and "+
+					"true", a.modal, a.modalKnown)
+			}
+			WithPool(func() {
+				if objc.Send[bool](objc.ID(a.wnd), Sel("isAccessibilityModal")) {
+					t.Error("an ordinary window reports itself as modal")
+				}
+			})
+		}
+		cleanup()
 		modal := axModalTestTree(true, 1)
-		_, a, cleanup := newAXAdapterWithTree(t, modal)
+		_, a, cleanup = newAXAdapterWithTree(t, modal)
 		defer cleanup()
 		if a == nil {
 			return
@@ -3166,7 +3181,7 @@ func TestAXModalWindow(t *testing.T) {
 				t.Error("the window still reports itself as modal after the root node stopped being modal")
 			}
 		})
-		// And a publish that changes nothing about the modality leaves it where it is.
+		// Making the root modal again tells the window again.
 		again := axModalTestTree(true, 3)
 		a.Publish(again, accessibility.Diff(ordinary, again))
 		if !a.modal || !a.modalKnown {
@@ -3175,26 +3190,6 @@ func TestAXModalWindow(t *testing.T) {
 		WithPool(func() {
 			if !objc.Send[bool](objc.ID(a.wnd), Sel("isAccessibilityModal")) {
 				t.Error("the window does not report itself as modal after the root node became modal again")
-			}
-		})
-	})
-}
-
-// TestAXOrdinaryWindowIsNotModal proves the ordinary case says so: a window whose root is not modal is told as much
-// on the first publish, so nothing is left to whatever the NSWindow happened to hold.
-func TestAXOrdinaryWindowIsNotModal(t *testing.T) {
-	runOnMain(func() {
-		_, a, _, cleanup := newAXTestAdapter(t)
-		defer cleanup()
-		if a == nil {
-			return
-		}
-		if !a.modalKnown || a.modal {
-			t.Errorf("the adapter holds modal = %v, known = %v, want false and true", a.modal, a.modalKnown)
-		}
-		WithPool(func() {
-			if objc.Send[bool](objc.ID(a.wnd), Sel("isAccessibilityModal")) {
-				t.Error("an ordinary window reports itself as modal")
 			}
 		})
 	})
@@ -5843,107 +5838,95 @@ func axRowFocusCheck(t *testing.T, v View, a *AXAdapter, posted []axRecordedNoti
 	})
 }
 
-// TestAXFocusMovesOntoAListRow proves a list that reports the keyboard focus on its current row moves the focus
-// notification onto the row rather than the list. A list whose only notification per key press was
-// NSAccessibilitySelectedRowsChangedNotification on the list itself left the VoiceOver cursor where it was, which is
-// what was measured against a real AXUIElement client before this changed; posting the focused-element notification
-// against the row is what WebKit and Chromium do for an active descendant, and VoiceOver follows it.
+// TestAXFocusMovesOntoAListRow proves a list, a table or an outline that reports the keyboard focus on its current row
+// moves the focus notification onto the row rather than the container. A list whose only notification per key press
+// was NSAccessibilitySelectedRowsChangedNotification on the list itself left the VoiceOver cursor where it was, which
+// is what was measured against a real AXUIElement client before this changed; posting the focused-element notification
+// against the row is what WebKit and Chromium do for an active descendant, and VoiceOver follows it. VoiceOver reaches
+// a table's rows through the table's AXRows rather than as plain children, and an outline's rows carry the outline row
+// subrole and a disclosure level it speaks when it lands on one.
 func TestAXFocusMovesOntoAListRow(t *testing.T) {
-	runOnMain(func() {
-		before := axRowFocusTree(role.List, -1)
-		v, a, cleanup := newAXAdapterWithTree(t, before)
-		defer cleanup()
-		if a == nil {
-			return
-		}
-		// The container is asked about first, so that the check that it stops reporting the focus is asking a real
-		// element rather than finding none at all. Nothing has asked about the rows, though, which is the ordinary
-		// case for an arrow key: the element has to be created for the notification to name anything at all.
-		WithPool(func() { axTestChildren(t, v, 1) })
-		if a.Element(axRowFocusRow0ID) != 0 {
-			t.Fatal("a row already has an element before anything asked about one")
-		}
-		onRow0 := axRowFocusTree(role.List, 0)
-		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, before, onRow0), axRowFocusRow0ID)
-		onRow1 := axRowFocusTree(role.List, 1)
-		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow0, onRow1), axRowFocusRow1ID)
-		WithPool(func() {
-			// The row is a row of the list it sits in, which is what VoiceOver reads it as, and it names that list
-			// back: an element the focus lands on has to be reachable by walking the window as well.
-			element := a.Element(axRowFocusRow1ID)
-			wantRole := GoStringFromNSString(AppKitString(axRoleRow))
-			if got := GoStringFromNSString(element.Send(Sel("accessibilityRole"))); got != wantRole {
-				t.Errorf("the focused list item's role is %s, want %s", got, wantRole)
-			}
-			if got := element.Send(Sel("accessibilityParent")); got != a.Element(axRowFocusContainerID) {
-				t.Errorf("the focused row's parent is %#x, want the list %#x", got,
-					a.Element(axRowFocusContainerID))
-			}
-			if got := objc.Send[int64](element, Sel("accessibilityIndex")); got != 1 {
-				t.Errorf("the focused row's index is %d, want 1", got)
-			}
-			if !objc.Send[bool](element, Sel("isAccessibilitySelected")) {
-				t.Error("the focused row reports AXSelected false")
-			}
+	for _, c := range []struct {
+		check     func(t *testing.T, a *AXAdapter, row objc.ID)
+		name      string
+		rowLevel  int
+		container role.Enum
+	}{
+		{
+			name:      "list",
+			container: role.List,
+			rowLevel:  1,
+			check: func(t *testing.T, a *AXAdapter, row objc.ID) {
+				// The row is a row of the list it sits in, which is what VoiceOver reads it as, and it names that
+				// list back: an element the focus lands on has to be reachable by walking the window as well.
+				wantRole := GoStringFromNSString(AppKitString(axRoleRow))
+				if got := GoStringFromNSString(row.Send(Sel("accessibilityRole"))); got != wantRole {
+					t.Errorf("the focused list item's role is %s, want %s", got, wantRole)
+				}
+				if got := row.Send(Sel("accessibilityParent")); got != a.Element(axRowFocusContainerID) {
+					t.Errorf("the focused row's parent is %#x, want the list %#x", got,
+						a.Element(axRowFocusContainerID))
+				}
+				if got := objc.Send[int64](row, Sel("accessibilityIndex")); got != 1 {
+					t.Errorf("the focused row's index is %d, want 1", got)
+				}
+				if !objc.Send[bool](row, Sel("isAccessibilitySelected")) {
+					t.Error("the focused row reports AXSelected false")
+				}
+			},
+		},
+		{
+			name:      "table",
+			container: role.Table,
+			rowLevel:  1,
+			check: func(t *testing.T, a *AXAdapter, row objc.ID) {
+				rows := IDsFromNSArray(a.Element(axRowFocusContainerID).Send(Sel("accessibilityRows")))
+				if len(rows) != 2 || rows[1] != row {
+					t.Errorf("the table's rows are %v, want the two rows with the focused one last", rows)
+				}
+			},
+		},
+		{
+			name:      "outline",
+			container: role.Tree,
+			rowLevel:  2,
+			check: func(t *testing.T, _ *AXAdapter, row objc.ID) {
+				wantSubrole := GoStringFromNSString(AppKitString(axSubroleOutlineRow))
+				if got := GoStringFromNSString(row.Send(Sel("accessibilitySubrole"))); got != wantSubrole {
+					t.Errorf("the focused outline row's subrole is %s, want %s", got, wantSubrole)
+				}
+				if got := objc.Send[int64](row, Sel("accessibilityDisclosureLevel")); got != 1 {
+					t.Errorf("the focused outline row's disclosure level is %d, want 1", got)
+				}
+			},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			runOnMain(func() {
+				before := axRowFocusTree(c.container, -1)
+				v, a, cleanup := newAXAdapterWithTree(t, before)
+				defer cleanup()
+				if a == nil {
+					return
+				}
+				// The container is asked about first, so that the check that it stops reporting the focus is asking a
+				// real element rather than finding none at all. Nothing has asked about the rows, though, which is the
+				// ordinary case for an arrow key: the element has to be created for the notification to name anything
+				// at all.
+				WithPool(func() { axTestChildren(t, v, 1) })
+				if a.Element(axRowFocusRow0ID) != 0 {
+					t.Error("a row already has an element before anything asked about one")
+					return
+				}
+				onRow0 := axRowFocusTree(c.container, 0)
+				axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, before, onRow0), axRowFocusRow0ID)
+				onRow1 := axRowFocusTree(c.container, 1)
+				onRow1.Nodes[axRowFocusRow1ID].Level = c.rowLevel
+				axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow0, onRow1), axRowFocusRow1ID)
+				WithPool(func() { c.check(t, a, a.Element(axRowFocusRow1ID)) })
+			})
 		})
-	})
-}
-
-// TestAXFocusMovesOntoATableRow proves the same for a table's rows, which VoiceOver reaches through the table's
-// AXRows rather than as plain children.
-func TestAXFocusMovesOntoATableRow(t *testing.T) {
-	runOnMain(func() {
-		before := axRowFocusTree(role.Table, -1)
-		v, a, cleanup := newAXAdapterWithTree(t, before)
-		defer cleanup()
-		if a == nil {
-			return
-		}
-		// The container is asked about first, so that the check that it stops reporting the focus is asking a real
-		// element rather than finding none at all.
-		WithPool(func() { axTestChildren(t, v, 1) })
-		onRow0 := axRowFocusTree(role.Table, 0)
-		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, before, onRow0), axRowFocusRow0ID)
-		onRow1 := axRowFocusTree(role.Table, 1)
-		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow0, onRow1), axRowFocusRow1ID)
-		WithPool(func() {
-			rows := IDsFromNSArray(a.Element(axRowFocusContainerID).Send(Sel("accessibilityRows")))
-			if len(rows) != 2 || rows[1] != a.Element(axRowFocusRow1ID) {
-				t.Errorf("the table's rows are %v, want the two rows with the focused one last", rows)
-			}
-		})
-	})
-}
-
-// TestAXFocusMovesOntoAnOutlineRow proves the same for an outline's rows, which carry the outline row subrole and a
-// disclosure level VoiceOver speaks when it lands on one.
-func TestAXFocusMovesOntoAnOutlineRow(t *testing.T) {
-	runOnMain(func() {
-		before := axRowFocusTree(role.Tree, -1)
-		v, a, cleanup := newAXAdapterWithTree(t, before)
-		defer cleanup()
-		if a == nil {
-			return
-		}
-		// The container is asked about first, so that the check that it stops reporting the focus is asking a real
-		// element rather than finding none at all.
-		WithPool(func() { axTestChildren(t, v, 1) })
-		onRow0 := axRowFocusTree(role.Tree, 0)
-		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, before, onRow0), axRowFocusRow0ID)
-		onRow1 := axRowFocusTree(role.Tree, 1)
-		onRow1.Nodes[axRowFocusRow1ID].Level = 2
-		axRowFocusCheck(t, v, a, axRowFocusPublish(t, a, onRow0, onRow1), axRowFocusRow1ID)
-		WithPool(func() {
-			element := a.Element(axRowFocusRow1ID)
-			wantSubrole := GoStringFromNSString(AppKitString(axSubroleOutlineRow))
-			if got := GoStringFromNSString(element.Send(Sel("accessibilitySubrole"))); got != wantSubrole {
-				t.Errorf("the focused outline row's subrole is %s, want %s", got, wantSubrole)
-			}
-			if got := objc.Send[int64](element, Sel("accessibilityDisclosureLevel")); got != 1 {
-				t.Errorf("the focused outline row's disclosure level is %d, want 1", got)
-			}
-		})
-	})
+	}
 }
 
 // TestAXFocusBackOffARow proves a list that loses its selection reports the focus on itself again, which is what an
@@ -6224,7 +6207,9 @@ func axContentNameTree() *accessibility.Tree {
 	}
 }
 
-// TestAXContentNamedItems proves a list row or a table cell the widget left nameless is described by what it holds.
+// TestAXContentNamedItems proves a list row or a table cell the widget left nameless is described by what it holds,
+// while a row the widget named, such as the whole-row name a table gives each row, keeps that name with no value
+// beside it to repeat it.
 //
 // VoiceOver speaks an element's description, its value and its position when the keyboard focus lands on it, and does
 // not read what an AXRow holds, so a row that answers neither was announced as nothing but "row 4 of 12" — which is
@@ -6255,6 +6240,8 @@ func TestAXContentNamedItems(t *testing.T) {
 				},
 				// A row the widget named keeps that name: the description is built only where there is none.
 				{what: "the named row", node: axContentNamedItemID, label: "Overview"},
+				// A table row speaks the name the table put on it, not its cells, and nothing repeats it as a value.
+				{what: "the named table row", node: axContentRowID, label: "Row"},
 				// A cell drawn with two labels says both, in the order they are drawn.
 				{what: "the cell holding two labels", node: axContentWideCellID, label: "Left Right"},
 				// A cell that is stood in for is left alone, since a client is never shown it; what it holds speaks
@@ -6639,75 +6626,68 @@ func TestAXFocusedCellAttributes(t *testing.T) {
 
 // TestAXFocusRequestedOnACellNamesTheCell proves a client that asks for the keyboard focus on the element it was handed
 // for a cell moves the cell cursor: the request names the cell, whatever is presented in the cell's place. A label
-// cannot take the focus itself, so a request naming it would be refused and the cursor would never move.
+// cannot take the focus itself, so a request naming it would be refused and the cursor would never move. The other half
+// of the rule axFocusTarget follows: a cell whose single content can take the focus itself, such as a field or a check
+// box, leaves the request with that content, since the table follows the focus into the cell (see
+// Table.adoptCellIfFocused) and redirecting it would never reach the widget the person wants to use.
 func TestAXFocusRequestedOnACellNamesTheCell(t *testing.T) {
 	defer func() { AccessibilityActionCallback = nil }()
-	runOnMain(func() {
-		tree := axCellFocusTree(0, -1)
-		_, a, cleanup := newAXAdapterWithTree(t, tree)
-		defer cleanup()
-		if a == nil {
-			return
-		}
-		var requests []accessibility.ActionRequest
-		AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
-			requests = append(requests, req)
-		}
-		WithPool(func() {
-			for _, cell := range []accessibility.NodeID{axCellR0C0ID, axCellR0C1ID} {
-				element := axCellElementFor(a, cell)
-				if !axAttributeSettable(element, "AXFocused") {
-					t.Errorf("cell %d does not report AXFocused as settable", cell)
+	for _, c := range []struct {
+		name             string
+		want             []accessibility.ActionRequest
+		col              int
+		focusableContent bool
+	}{
+		{
+			name: "label in a cell",
+			col:  -1,
+			want: []accessibility.ActionRequest{
+				{Node: axCellR0C0ID, Action: accessibility.Focus},
+				{Node: axCellR0C1ID, Action: accessibility.Focus},
+			},
+		},
+		{
+			// The label becomes something that can take the focus of its own, which is what a check box or a field
+			// in a cell looks like to this side of the adapter. The empty cell beside it still keeps its request.
+			name:             "focusable content in a cell",
+			col:              1,
+			focusableContent: true,
+			want: []accessibility.ActionRequest{
+				{Node: axCellR0C0ID, Action: accessibility.Focus},
+				{Node: axCellR0LabelID, Action: accessibility.Focus},
+			},
+		},
+	} {
+		runOnMain(func() {
+			tree := axCellFocusTree(0, c.col)
+			if c.focusableContent {
+				content := tree.Nodes[axCellR0LabelID]
+				content.Focusable = true
+				content.Actions = content.Actions.With(accessibility.Focus)
+			}
+			_, a, cleanup := newAXAdapterWithTree(t, tree)
+			defer cleanup()
+			if a == nil {
+				return
+			}
+			var requests []accessibility.ActionRequest
+			AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
+				requests = append(requests, req)
+			}
+			WithPool(func() {
+				for _, cell := range []accessibility.NodeID{axCellR0C0ID, axCellR0C1ID} {
+					element := axCellElementFor(a, cell)
+					if !axAttributeSettable(element, "AXFocused") {
+						t.Errorf("%s: cell %d does not report AXFocused as settable", c.name, cell)
+					}
+					element.Send(Sel("setAccessibilityFocused:"), true)
 				}
-				element.Send(Sel("setAccessibilityFocused:"), true)
+			})
+			if !slices.Equal(requests, c.want) {
+				t.Errorf("%s: focusing the cells asked for %v, want %v", c.name, requests, c.want)
 			}
 		})
-		want := []accessibility.ActionRequest{
-			{Node: axCellR0C0ID, Action: accessibility.Focus},
-			{Node: axCellR0C1ID, Action: accessibility.Focus},
-		}
-		if !slices.Equal(requests, want) {
-			t.Errorf("focusing the cells asked for %v, want %v", requests, want)
-		}
-	})
-}
-
-// TestAXFocusRequestedOnCellContentThatTakesItNamesTheContent proves the other half of the rule axFocusTarget follows:
-// a cell whose single content can take the keyboard focus itself — a field, a check box, a button — keeps the request
-// for itself rather than having it redirected onto the cell. Focusing the widget is what putting the keyboard into that
-// cell means for a widget, and the table follows it there (see Table.adoptCellIfFocused), so redirecting would ask for
-// the cursor to move without ever reaching the thing the person wants to type into or press.
-func TestAXFocusRequestedOnCellContentThatTakesItNamesTheContent(t *testing.T) {
-	defer func() { AccessibilityActionCallback = nil }()
-	runOnMain(func() {
-		tree := axCellFocusTree(0, 1)
-		// The label standing in for the second cell becomes something that can take the focus of its own, which is what
-		// a check box or a field in a cell looks like to this side of the adapter.
-		content := tree.Nodes[axCellR0LabelID]
-		content.Focusable = true
-		content.Actions = content.Actions.With(accessibility.Focus)
-		_, a, cleanup := newAXAdapterWithTree(t, tree)
-		defer cleanup()
-		if a == nil {
-			return
-		}
-		var requests []accessibility.ActionRequest
-		AccessibilityActionCallback = func(_ Window, req accessibility.ActionRequest) {
-			requests = append(requests, req)
-		}
-		WithPool(func() {
-			axCellElementFor(a, axCellR0C1ID).Send(Sel("setAccessibilityFocused:"), true)
-			// The cell beside it holds nothing that can take the focus, so its request is still the cell's own.
-			axCellElementFor(a, axCellR0C0ID).Send(Sel("setAccessibilityFocused:"), true)
-		})
-		want := []accessibility.ActionRequest{
-			{Node: axCellR0LabelID, Action: accessibility.Focus},
-			{Node: axCellR0C0ID, Action: accessibility.Focus},
-		}
-		if !slices.Equal(requests, want) {
-			t.Errorf("focusing the cells asked for %v, want %v", requests, want)
-		}
-	})
+	}
 }
 
 // The node ids axCellIndexTree builds.
@@ -6789,33 +6769,6 @@ func TestAXCellIndexWithoutColumnInformation(t *testing.T) {
 			// answers with that cell's place.
 			if got := objc.Send[int64](a.elementFor(axIndexLabelID), Sel("accessibilityIndex")); got != 1 {
 				t.Errorf("the label standing in for the second cell reports the index %d, want 1", got)
-			}
-		})
-	})
-}
-
-// TestAXRowSpeaksItsWholeName proves the name a table now puts on a row — the whole row, column by column — is what the
-// row's element reports as its description, and that nothing repeats it: the row reports no value beside it, and it is
-// not described by its cells the way a nameless row is (see axContentName). VoiceOver speaks an AXRow's description
-// when the focus lands on it and does not read the row's children, so the description is the whole of what is heard on
-// Up and Down.
-func TestAXRowSpeaksItsWholeName(t *testing.T) {
-	runOnMain(func() {
-		tree := axCellFocusTree(0, -1)
-		_, a, cleanup := newAXAdapterWithTree(t, tree)
-		defer cleanup()
-		if a == nil {
-			return
-		}
-		WithPool(func() {
-			element := a.elementFor(axCellRow0ID)
-			if got := GoStringFromNSString(element.Send(Sel("accessibilityLabel"))); got !=
-				"report.docx, Size 35 KB" {
-				t.Errorf("the row reports the description %q, want the whole row", got)
-			}
-			if got := element.Send(Sel("accessibilityValue")); got != 0 {
-				t.Errorf("the row reports the value %q as well as its description, which is spoken twice",
-					GoStringFromNSString(got))
 			}
 		})
 	})

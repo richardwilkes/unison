@@ -166,6 +166,8 @@ func TestAccessibilityOpenMenuWithNothingHighlightedFocusesTheMenu(t *testing.T)
 	a.screen.MouseMove(axScreenPoint(a.screen, a.wnd, item), mod.None)
 	tree = a.screen.AccessibilityTree(a.wnd)
 	c.Equal(item.ID, tree.Focus, "the item the pointer is over is what the person is choosing from")
+	a.screen.Do(func() { stillFocused = a.field.Is(a.wnd.CurrentFocus()) })
+	c.True(stillFocused, "the keyboard focus stays on the field while an item is highlighted")
 	tree = a.pointAway()
 	c.Equal(menuNode.ID, tree.Focus, "the menu takes the focus back rather than the field")
 	c.False(tree.Node(fieldNode.ID).Focused)
@@ -235,7 +237,8 @@ func TestAccessibilityHighlightedMenuItemOffersFocus(t *testing.T) {
 // merely passing over a title on the bar highlights it — a separator is the line drawn between the things that can be
 // chosen rather than one of them, and a disabled item is one every request is refused for, so offering to move the
 // focus onto any of them would advertise something an assistive technology would then be refused, or would have it
-// announce that the person had moved onto a divider.
+// announce that the person had moved onto a divider. Neither the separator nor the disabled item offers Press, and both
+// refuse one: the item's handler must not run even though only its validator, not its panel, disables it.
 func TestAccessibilityMenuItemFocusIsWithheldWhereItCannotBeUsed(t *testing.T) {
 	c := check.New(t)
 	const (
@@ -244,6 +247,7 @@ func TestAccessibilityMenuItemFocusIsWithheldWhereItCannotBeUsed(t *testing.T) {
 		pasteID
 	)
 	var wnd *unison.Window
+	activated := 0
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
 		unison.StartupFinishedCallback(func() {
 			wnd = newHeadlessWindow(t, "menu focus", geom.NewRect(10, 10, 400, 300), unison.NewPanel())
@@ -256,7 +260,8 @@ func TestAccessibilityMenuItemFocusIsWithheldWhereItCannotBeUsed(t *testing.T) {
 				edit.InsertItem(-1, f.NewItem(cutID, "Cut", unison.KeyBinding{}, nil, nil))
 				edit.InsertSeparator(-1, false)
 				edit.InsertItem(-1, f.NewItem(pasteID, "Paste", unison.KeyBinding{},
-					func(_ unison.MenuItem) bool { return false }, nil))
+					func(_ unison.MenuItem) bool { return false },
+					func(_ unison.MenuItem) { activated++ }))
 				bar.InsertMenu(-1, edit)
 			})
 			wnd.ToFront()
@@ -290,12 +295,18 @@ func TestAccessibilityMenuItemFocusIsWithheldWhereItCannotBeUsed(t *testing.T) {
 		return
 	}
 	c.True(cut.Actions.Has(accessibility.Focus), "an item that can be chosen can be moved onto")
+	c.True(cut.Actions.Has(accessibility.Press))
 
 	separators := axNodesWithRole(tree, role.Separator)
 	c.Equal(1, len(separators), "the separator in the menu is described as one")
 	if len(separators) == 1 {
 		c.False(separators[0].Focusable, "a divider is not something a person moves onto")
 		c.False(separators[0].Actions.Has(accessibility.Focus))
+		c.False(separators[0].Actions.Has(accessibility.Press), "there is nothing in a separator to press")
+		c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+			Node:   separators[0].ID,
+			Action: accessibility.Press,
+		}), "a press that did nothing must not be reported as carried out")
 	}
 
 	paste := axNamed(tree, "Paste")
@@ -310,6 +321,15 @@ func TestAccessibilityMenuItemFocusIsWithheldWhereItCannotBeUsed(t *testing.T) {
 		Node:   paste.ID,
 		Action: accessibility.Focus,
 	}), "and the request is refused rather than moving the highlight onto something that cannot be used")
+	c.False(paste.Actions.Has(accessibility.Press), "a disabled item must not offer to be pressed")
+	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   paste.ID,
+		Action: accessibility.Press,
+	}), "a disabled item must refuse to be pressed")
+	screen.Sync()
+	var count int
+	screen.Do(func() { count = activated })
+	c.Equal(0, count, "the item's handler must not have run")
 
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   cut.ID,
@@ -513,8 +533,7 @@ func (p *axRowPanel) focusTarget(row int) accessibility.NodeID {
 	return p.rowIDs[row]
 }
 
-// axRowWindow is a window holding an axRowPanel, another panel that can take the focus away from it, and a menu bar
-// with one menu, which is what the displacement test opens.
+// axRowWindow is a window holding an axRowPanel and another panel that can take the focus away from it.
 type axRowWindow struct {
 	screen *unison.HeadlessScreen
 	wnd    *unison.Window
@@ -525,26 +544,15 @@ type axRowWindow struct {
 // newAXRowWindow starts a session showing an axRowWindow, with nothing holding the keyboard focus yet.
 func newAXRowWindow(t *testing.T, title string) *axRowWindow {
 	t.Helper()
-	const (
-		menuID = unison.UserBaseID + iota
-		cutID
-	)
 	out := &axRowWindow{}
 	out.screen = startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
 		unison.StartupFinishedCallback(func() {
 			out.rows = newAXRowPanel("Alpha", "Beta", "Gamma")
 			out.other = axFocusablePanel("Other")
 			out.wnd = newHeadlessWindow(t, title, geom.NewRect(10, 10, 400, 300), axColumn(out.rows, out.other))
-			if out.wnd == nil {
-				return
+			if out.wnd != nil {
+				out.wnd.ToFront()
 			}
-			unison.DefaultMenuFactory().BarForWindow(out.wnd, func(bar unison.Menu) {
-				f := bar.Factory()
-				edit := f.NewMenu(menuID, "Edit", nil)
-				edit.InsertItem(-1, f.NewItem(cutID, "Cut", unison.KeyBinding{}, nil, nil))
-				bar.InsertMenu(-1, edit)
-			})
-			out.wnd.ToFront()
 		}))
 	out.screen.Sync()
 	out.screen.EnableAccessibility()
@@ -582,7 +590,9 @@ func (a *axRowWindow) results() (first, second bool) {
 // TestAccessibilityFocusChildReportsTheFocusOnTheRow covers the delegation itself: the row the panel handed the focus
 // to is what Tree.Focus names and the only node reporting it, the panel's own node has stopped, and the move is
 // reported to an assistive technology as a focus change naming the row — which is the whole point, since a screen
-// reader follows focus events and hears nothing from a selection change on a container.
+// reader follows focus events and hears nothing from a selection change on a container. Before the panel holds the
+// focus it has none to hand on, and a tree that said otherwise would point an assistive technology at a row of a
+// control the person is not in.
 func TestAccessibilityFocusChildReportsTheFocusOnTheRow(t *testing.T) {
 	c := check.New(t)
 	a := newAXRowWindow(t, "focus child")
@@ -591,18 +601,28 @@ func TestAccessibilityFocusChildReportsTheFocusOnTheRow(t *testing.T) {
 		return
 	}
 	a.screen.Do(func() { a.wnd.SetFocus(a.other) })
-	c.True(a.screen.AccessibilityTree(a.wnd) != nil)
-	a.screen.AccessibilityEvents(a.wnd)
-
-	a.focusRows()
 	tree := a.screen.AccessibilityTree(a.wnd)
 	c.True(tree != nil)
 	if tree == nil {
 		return
 	}
 	first, _ := a.results()
-	c.True(first, "the panel holds the focus, so handing it to a row must be accepted")
+	c.False(first, "a panel that does not hold the focus may not hand it on")
 	row := a.rowNode(tree, 0)
+	c.True(row != nil && !row.Focused, "no row may report a focus the panel does not have")
+	otherNode := axMustNode(c, a.screen.AccessibilityNodeFor(a.other))
+	c.Equal(otherNode.ID, tree.Focus, "the focus stays where it actually is")
+	a.screen.AccessibilityEvents(a.wnd)
+
+	a.focusRows()
+	tree = a.screen.AccessibilityTree(a.wnd)
+	c.True(tree != nil)
+	if tree == nil {
+		return
+	}
+	first, _ = a.results()
+	c.True(first, "the panel holds the focus, so handing it to a row must be accepted")
+	row = a.rowNode(tree, 0)
 	c.True(row != nil)
 	if row == nil {
 		return
@@ -647,132 +667,86 @@ func TestAccessibilityFocusChildReportsTheFocusOnTheRow(t *testing.T) {
 	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
 }
 
-// TestAccessibilityFocusChildRefusedWithoutTheFocus covers the first thing the delegation has to be true about: a panel
-// that does not hold the keyboard focus has no focus to hand on, and a tree that said otherwise would point an
-// assistive technology at a row of a control the person is not in.
-func TestAccessibilityFocusChildRefusedWithoutTheFocus(t *testing.T) {
-	c := check.New(t)
-	a := newAXRowWindow(t, "focus child without focus")
-	c.NotNil(a.wnd)
-	if a.wnd == nil {
-		return
-	}
-	a.screen.Do(func() { a.wnd.SetFocus(a.other) })
-	tree := a.screen.AccessibilityTree(a.wnd)
-	c.True(tree != nil)
-	if tree == nil {
-		return
-	}
-	first, _ := a.results()
-	c.False(first, "a panel that does not hold the focus may not hand it on")
-	row := a.rowNode(tree, 0)
-	c.True(row != nil && !row.Focused, "no row may report a focus the panel does not have")
-	otherNode := a.screen.AccessibilityNodeFor(a.other)
-	c.True(otherNode != nil)
-	if otherNode == nil {
-		return
-	}
-	c.Equal(otherNode.ID, tree.Focus, "the focus stays where it actually is")
-	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
-}
-
-// TestAccessibilityFocusChildRefusedWhenDisabled covers the two disabled cases, both of which would offer an assistive
-// technology a place the person cannot be: a disabled panel — which the window may still leave the keyboard focus on —
-// and a row that is itself disabled, which every request about would be refused.
+// TestAccessibilityFocusChildRefusedWhenDisabled covers what a panel holding the focus may not hand it to. A disabled
+// row, or any row of a disabled panel — which the window may still leave the keyboard focus on — would offer an
+// assistive technology a place the person cannot be. An id belonging to another panel of the window, or to no node at
+// all, as one kept from an earlier description does, is not this panel's to point at.
 func TestAccessibilityFocusChildRefusedWhenDisabled(t *testing.T) {
-	c := check.New(t)
-	a := newAXRowWindow(t, "focus child disabled")
-	c.NotNil(a.wnd)
-	if a.wnd == nil {
-		return
+	for _, one := range []struct {
+		// set changes one thing about the row panel, which holds the focus; other is the node id of the other panel.
+		set  func(rows *axRowPanel, other accessibility.NodeID)
+		name string
+		why  string
+		// panelDisabled is set when the panel itself is disabled, which takes the focus past it to an ancestor.
+		panelDisabled bool
+		// otherFirst describes the other panel ahead of the row panel, so that its node is in the tree by the time
+		// it is refused and what refuses it is that it is not beneath the row panel.
+		otherFirst bool
+	}{
+		{
+			name: "disabled row",
+			why:  "a disabled row is no use as the place the person is said to be",
+			set:  func(rows *axRowPanel, _ accessibility.NodeID) { rows.disabledRows = true },
+		},
+		{
+			name:          "disabled panel",
+			why:           "a disabled panel may not hand on the focus the window left it holding",
+			set:           func(rows *axRowPanel, _ accessibility.NodeID) { rows.SetEnabled(false) },
+			panelDisabled: true,
+		},
+		{
+			name:       "node of another panel",
+			why:        "a node that is not beneath the panel is not the panel's to hand the focus to",
+			set:        func(rows *axRowPanel, other accessibility.NodeID) { rows.target = other },
+			otherFirst: true,
+		},
+		{
+			name: "node not in the tree",
+			why:  "a node that is not in the tree cannot be handed the focus",
+			set:  func(rows *axRowPanel, _ accessibility.NodeID) { rows.target = accessibility.NodeID(1 << 40) },
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			a := newAXRowWindow(t, "focus child refused")
+			c.NotNil(a.wnd)
+			if a.wnd == nil {
+				return
+			}
+			if one.otherFirst {
+				a.screen.Do(func() {
+					content := a.rows.Parent()
+					content.RemoveChild(a.other)
+					content.AddChildAtIndex(a.other, 0)
+				})
+			}
+			a.focusRows()
+			c.True(a.screen.AccessibilityTree(a.wnd) != nil)
+			otherNode := axMustNode(c, a.screen.AccessibilityNodeFor(a.other))
+			a.screen.Do(func() { one.set(a.rows, otherNode.ID) })
+			tree := a.screen.AccessibilityTree(a.wnd)
+			c.True(tree != nil)
+			if tree == nil {
+				return
+			}
+			first, _ := a.results()
+			c.False(first, one.why)
+			row := axMustNode(c, a.rowNode(tree, 0))
+			c.False(row.Focused, "the row must not report a focus it was refused")
+			c.False(axMustNode(c, tree.Node(otherNode.ID)).Focused)
+			panelNode := axMustNode(c, a.screen.AccessibilityNodeFor(a.rows))
+			if one.panelDisabled {
+				c.True(panelNode.Disabled)
+				c.False(panelNode.Focused, "a disabled node is published without the focus")
+				c.True(tree.Focus != 0 && tree.Focus != row.ID && tree.Focus != panelNode.ID,
+					"the focus must fall back to an ancestor that can be shown")
+			} else {
+				c.True(panelNode.Focused, "the refusal must leave the panel reporting the focus it really holds")
+				c.Equal(panelNode.ID, tree.Focus)
+			}
+			c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
+		})
 	}
-	a.focusRows()
-	a.screen.Do(func() { a.rows.disabledRows = true })
-	tree := a.screen.AccessibilityTree(a.wnd)
-	c.True(tree != nil)
-	if tree == nil {
-		return
-	}
-	first, _ := a.results()
-	c.False(first, "a disabled row is no use as the place the person is said to be")
-	row := a.rowNode(tree, 0)
-	c.True(row != nil && !row.Focused)
-	panelNode := a.screen.AccessibilityNodeFor(a.rows)
-	c.True(panelNode != nil)
-	if panelNode == nil {
-		return
-	}
-	c.True(panelNode.Focused, "the refusal must leave the panel reporting the focus it really holds")
-	c.Equal(panelNode.ID, tree.Focus)
-
-	a.screen.Do(func() {
-		a.rows.disabledRows = false
-		a.rows.SetEnabled(false)
-	})
-	tree = a.screen.AccessibilityTree(a.wnd)
-	c.True(tree != nil)
-	if tree == nil {
-		return
-	}
-	first, _ = a.results()
-	c.False(first, "a disabled panel may not hand on the focus the window left it holding")
-	row = a.rowNode(tree, 0)
-	c.True(row != nil && !row.Focused)
-	panelNode = a.screen.AccessibilityNodeFor(a.rows)
-	c.True(panelNode != nil)
-	if panelNode == nil {
-		return
-	}
-	c.True(panelNode.Disabled)
-	c.False(panelNode.Focused, "a disabled node is published without the focus")
-	c.True(tree.Focus != 0 && tree.Focus != row.ID && tree.Focus != panelNode.ID,
-		"the focus must fall back to an ancestor that can be shown")
-	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
-}
-
-// TestAccessibilityFocusChildRefusedOutsideTheSubtree covers an id that is not this panel's to point at: one belonging
-// to another panel of the window, and one belonging to no node at all, which is what a widget that kept an id from an
-// earlier description would hand over.
-func TestAccessibilityFocusChildRefusedOutsideTheSubtree(t *testing.T) {
-	c := check.New(t)
-	a := newAXRowWindow(t, "focus child outside")
-	c.NotNil(a.wnd)
-	if a.wnd == nil {
-		return
-	}
-	a.focusRows()
-	c.True(a.screen.AccessibilityTree(a.wnd) != nil)
-	otherNode := a.screen.AccessibilityNodeFor(a.other)
-	c.True(otherNode != nil)
-	if otherNode == nil {
-		return
-	}
-
-	a.screen.Do(func() { a.rows.target = otherNode.ID })
-	tree := a.screen.AccessibilityTree(a.wnd)
-	c.True(tree != nil)
-	if tree == nil {
-		return
-	}
-	first, _ := a.results()
-	c.False(first, "a node that is not beneath the panel is not the panel's to hand the focus to")
-	c.False(tree.Node(otherNode.ID).Focused)
-	panelNode := a.screen.AccessibilityNodeFor(a.rows)
-	c.True(panelNode != nil && panelNode.Focused)
-	c.Equal(panelNode.ID, tree.Focus)
-
-	a.screen.Do(func() { a.rows.target = accessibility.NodeID(1 << 40) })
-	tree = a.screen.AccessibilityTree(a.wnd)
-	c.True(tree != nil)
-	if tree == nil {
-		return
-	}
-	first, _ = a.results()
-	c.False(first, "a node that is not in the tree cannot be handed the focus")
-	panelNode = a.screen.AccessibilityNodeFor(a.rows)
-	c.True(panelNode != nil && panelNode.Focused)
-	c.Equal(panelNode.ID, tree.Focus)
-	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
 }
 
 // TestAccessibilityFocusChildOutlastsACallbackClaim covers what an Accessibility.Callback that sets Focused on the
@@ -879,56 +853,5 @@ func TestAccessibilityFocusChildMovesWithinOneDescription(t *testing.T) {
 	c.Equal(secondRow.ID, tree.Focus)
 	panelNode := a.screen.AccessibilityNodeFor(a.rows)
 	c.True(panelNode != nil && !panelNode.Focused)
-	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
-}
-
-// TestAccessibilityFocusChildDisplacedByAnOpenMenu covers what an open menu does to a delegated focus: it displaces it
-// exactly as it displaces the focus of a panel that kept it. The keys go to the menu, so the menu is where the person
-// is, and a row still claiming the focus would be the second focused object in the window that displacement exists to
-// prevent.
-func TestAccessibilityFocusChildDisplacedByAnOpenMenu(t *testing.T) {
-	c := check.New(t)
-	a := newAXRowWindow(t, "focus child menu")
-	c.NotNil(a.wnd)
-	if a.wnd == nil {
-		return
-	}
-	a.focusRows()
-	tree := a.screen.AccessibilityTree(a.wnd)
-	c.True(tree != nil)
-	if tree == nil {
-		return
-	}
-	row := a.rowNode(tree, 0)
-	c.True(row != nil && row.Focused)
-	title := axNamed(tree, "Edit")
-	c.True(title != nil)
-	if title == nil {
-		return
-	}
-
-	a.screen.Click(axScreenPoint(a.screen, a.wnd, title))
-	tree = a.screen.AccessibilityTree(a.wnd)
-	c.True(tree != nil)
-	if tree == nil {
-		return
-	}
-	row = a.rowNode(tree, 0)
-	c.True(row != nil)
-	if row == nil {
-		return
-	}
-	c.False(row.Focused, "an open menu displaces a delegated focus as it displaces any other")
-	panelNode := a.screen.AccessibilityNodeFor(a.rows)
-	c.True(panelNode != nil && !panelNode.Focused)
-	c.True(tree.Focus != row.ID, "the focus must be reported within the menu")
-	focused := 0
-	tree.Walk(func(n *accessibility.Node) bool {
-		if n.Focused && n.ID != tree.Root {
-			focused++
-		}
-		return true
-	})
-	c.Equal(1, focused, "exactly one node other than the root may report the focus: %d", focused)
 	c.Equal(0, len(a.screen.Errors()), "nothing should have panicked: %v", a.screen.Errors())
 }

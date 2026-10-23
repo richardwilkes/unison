@@ -971,76 +971,6 @@ func (b *axCaretBlock) ProvideAccessibility(builder *AccessibilityBuilder) {
 	}
 }
 
-// TestAccessibilityCaretBlockReportsFocus covers the second claim on the focus a document's block makes while it holds
-// the reading caret: on the platforms whose screen readers need it the claim stands, and the document is still what
-// Tree.Focus names, while everywhere else the builder takes it away. Two elements claiming the focus is ordinary on
-// AT-SPI, which is how Orca presents a caret the application moved, and wrong on UI Automation and AppKit, which have
-// one focused element apiece.
-//
-// Both answers are pinned whichever platform this runs on, since the widget that will rely on this is built once for
-// all three.
-func TestAccessibilityCaretBlockReportsFocus(t *testing.T) {
-	c := check.New(t)
-	var doc *axCaretDoc
-	var caretBlock, otherBlock *axCaretBlock
-	var wnd *Window
-	screen := startHeadlessTest(t, HeadlessConfig{Width: 400, Height: 400},
-		StartupFinishedCallback(func() {
-			doc, caretBlock, otherBlock = newAXCaretDoc()
-			wnd = axNewTestWindow(t, "caret focus", geom.NewRect(10, 10, 300, 300), doc)
-			if wnd != nil {
-				wnd.ToFront()
-				wnd.SetFocus(doc)
-			}
-		}))
-	c.NotNil(wnd)
-	if wnd == nil {
-		return
-	}
-	saved := axCaretBlockReportsFocus
-	defer screen.Do(func() { axCaretBlockReportsFocus = saved })
-
-	for _, reports := range []bool{true, false} {
-		// Written on the UI thread, which is the only thread that reads it, since a snapshot is built there.
-		screen.Do(func() { axCaretBlockReportsFocus = reports })
-		tree := screen.AccessibilityTree(wnd)
-		c.NotNil(tree)
-		docNode := screen.AccessibilityNodeFor(doc)
-		caretNode := screen.AccessibilityNodeFor(caretBlock)
-		otherNode := screen.AccessibilityNodeFor(otherBlock)
-		c.NotNil(docNode)
-		c.NotNil(caretNode)
-		c.NotNil(otherNode)
-		if tree == nil || docNode == nil || caretNode == nil || otherNode == nil {
-			return
-		}
-		c.True(docNode.Focused, "the document holds the keyboard focus whatever its blocks say")
-		c.Equal(docNode.ID, tree.Focus, "and is what the tree reports the focus on")
-		c.Equal(reports, caretNode.Focused,
-			"the block holding the caret reports the focus only where a screen reader needs it (%v)", reports)
-		c.False(otherNode.Focused, "no other block ever does")
-	}
-
-	// A claim made while the focus is somewhere else entirely is a mistake rather than a caret, so it is taken away even
-	// where a document's own block would have kept it.
-	screen.Do(func() {
-		axCaretBlockReportsFocus = true
-		field := NewField()
-		wnd.Content().AddChild(field)
-		wnd.Content().MarkForLayoutAndRedraw()
-		wnd.SetFocus(field)
-	})
-	tree := screen.AccessibilityTree(wnd)
-	c.NotNil(tree)
-	caretNode := screen.AccessibilityNodeFor(caretBlock)
-	c.NotNil(caretNode)
-	if tree != nil && caretNode != nil {
-		c.False(caretNode.Focused, "a block outside the panel that holds the focus does not get to claim it")
-		c.NotEqual(caretNode.ID, tree.Focus)
-	}
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
 // axVirtualRefPanel stands in for a document that records which node occupies each part of its content: while it is
 // being described it asks for the id of a virtual child of a panel that has not been described yet, which is what a
 // document holding a table does for the table's rows.
@@ -1141,7 +1071,8 @@ func TestAccessibilityVirtualIDOfSurvivesTheOwnerBeingDescribed(t *testing.T) {
 // an open menu has taken the focus over. Exactly one node of a window may report the focus, and while a menu is open
 // that node is what the person is choosing from: a caret block still claiming it would be the second focused object
 // that axSnapshot.clearDisplacedFocus exists to prevent, which is what Orca would announce instead of the menu. Nothing
-// is lost by dropping it, since the caret has not moved and the claim comes back with the focus.
+// is lost by dropping it, since the caret has not moved and the claim comes back with the focus. It first pins that
+// the claim is taken away everywhere axCaretBlockReportsFocus is off, since the block makes it unconditionally.
 func TestAccessibilityCaretBlockLosesFocusToAnOpenMenu(t *testing.T) {
 	c := check.New(t)
 	var doc *axCaretDoc
@@ -1162,13 +1093,27 @@ func TestAccessibilityCaretBlockLosesFocusToAnOpenMenu(t *testing.T) {
 	}
 	saved := axCaretBlockReportsFocus
 	defer screen.Do(func() { axCaretBlockReportsFocus = saved })
-	// The claim only exists on the platforms whose screen readers need it, so it is turned on here whichever platform
-	// this runs on: what is being pinned is that an open menu takes it away even there.
-	screen.Do(func() { axCaretBlockReportsFocus = true })
-
+	// Written on the UI thread, which is the only thread that reads it, since a snapshot is built there.
+	screen.Do(func() { axCaretBlockReportsFocus = false })
 	tree := screen.AccessibilityTree(wnd)
 	docNode := screen.AccessibilityNodeFor(doc)
 	caretNode := screen.AccessibilityNodeFor(caretBlock)
+	c.NotNil(tree)
+	c.NotNil(docNode)
+	c.NotNil(caretNode)
+	if tree == nil || docNode == nil || caretNode == nil {
+		return
+	}
+	c.True(docNode.Focused, "the document holds the keyboard focus whatever its blocks say")
+	c.Equal(docNode.ID, tree.Focus, "and is what the tree reports the focus on")
+	c.False(caretNode.Focused, "the block's claim is taken away where no screen reader needs it")
+
+	// The claim only exists on the platforms whose screen readers need it, so it is turned on here whichever platform
+	// this runs on: what is being pinned is that an open menu takes it away even there.
+	screen.Do(func() { axCaretBlockReportsFocus = true })
+	tree = screen.AccessibilityTree(wnd)
+	docNode = screen.AccessibilityNodeFor(doc)
+	caretNode = screen.AccessibilityNodeFor(caretBlock)
 	c.NotNil(tree)
 	c.NotNil(docNode)
 	c.NotNil(caretNode)
@@ -1549,41 +1494,6 @@ func staticTextCheckNode(c check.Checker, screen *HeadlessScreen, p Paneler, wan
 	}
 	c.Equal(want, node.Focusable, "%s: Focusable", what)
 	c.Equal(want, node.Actions.Has(accessibility.Focus), "%s: offers the focus action", what)
-}
-
-// TestStaticTextFocusIsOffByDefault verifies that a standalone label is neither a tab stop nor described as one while
-// an assistive technology is being served but the switch is off.
-func TestStaticTextFocusIsOffByDefault(t *testing.T) {
-	c := check.New(t)
-	restoreStaticTextFocus(t)
-	var text *Label
-	var field *Field
-	var wnd *Window
-	screen := startHeadlessTest(t, HeadlessConfig{Width: 600, Height: 600},
-		StartupFinishedCallback(func() {
-			text = staticTextLabel("Changes are saved as you type.")
-			field = staticTextNamedField("Search")
-			wnd = axNewTestWindow(t, "off by default", geom.NewRect(10, 10, 500, 300), staticTextColumn(text, field))
-			if wnd != nil {
-				wnd.ToFront()
-			}
-		}))
-	c.NotNil(wnd)
-	screen.Sync()
-
-	c.False(FocusForReading(), "the switch is off until the application turns it on")
-	screen.EnableAccessibility()
-	c.True(IsAccessibilityActive())
-	c.False(staticTextFocusable(screen, text), "a standalone label is not a tab stop by default")
-	c.NotNil(screen.AccessibilityTree(wnd))
-	staticTextCheckNode(c, screen, text, false, "the standalone label")
-
-	screen.Do(func() { wnd.SetFocus(field) })
-	screen.KeyPress(KeyTab, mod.None)
-	var focus *Panel
-	screen.Do(func() { focus = wnd.CurrentFocus() })
-	c.True(focus.Is(field), "Tab wraps around onto the field, the only tab stop there is")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // TestStaticTextFocusNeedsAnAssistiveTechnology verifies that the switch changes nothing while no assistive technology

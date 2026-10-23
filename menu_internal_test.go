@@ -36,21 +36,6 @@ func newTestMenuPanel(x, y, width, height float32) *menuPanel {
 	return p
 }
 
-// TestPopupClosesOnOutsideClickWithoutMenuBar verifies that a click outside an open popup menu tears the menu down
-// even when the window has no in-window menu bar (e.g. a dialog), rather than leaving it stuck open.
-func TestPopupClosesOnOutsideClickWithoutMenuBar(t *testing.T) {
-	c := check.New(t)
-	root := newRootPanel(nil)
-	c.Nil(root.menuBar)
-	mp := newTestMenuPanel(10, 10, 100, 100)
-	root.insertMenu(mp)
-	c.Equal(1, len(root.openMenuPanels))
-	c.False(root.preMouseDown(nil, geom.NewPoint(200, 200)))
-	c.Equal(0, len(root.openMenuPanels))
-	c.Nil(mp.menu.popupPanel)
-	c.Nil(mp.Parent())
-}
-
 // newTestPopupWindow hand-builds a popup menu window of owner whose content is panel, for the tests that run without a
 // session.
 func newTestPopupWindow(owner *Window, panel *menuPanel) *Window {
@@ -88,22 +73,6 @@ func TestPopupClickInsideClosesOnlyNewerMenus(t *testing.T) {
 	c.False(owner.root.preMouseDown(owner, geom.NewPoint(150, 150)))
 	c.Equal(0, len(owner.root.openMenuPanels))
 	c.Nil(older.menu.popupPanel)
-}
-
-// TestPopupClosesOnWindowMoveWithoutMenuBar verifies that moving a window without an in-window menu bar still closes
-// any open popup menus, while moving the popup menu window itself, which placing it does, leaves them open.
-func TestPopupClosesOnWindowMoveWithoutMenuBar(t *testing.T) {
-	c := check.New(t)
-	owner := &Window{}
-	owner.root = newRootPanel(owner)
-	mp := newTestMenuPanel(10, 10, 100, 100)
-	popup := newTestPopupWindow(owner, mp)
-	owner.root.insertMenu(mp)
-	popup.root.preMoved(popup)
-	c.Equal(1, len(owner.root.openMenuPanels))
-	owner.root.preMoved(owner)
-	c.Equal(0, len(owner.root.openMenuPanels))
-	c.Nil(mp.menu.popupPanel)
 }
 
 // TestKeyEventsSwallowedWhileMenuOpenWithoutMenuBar verifies that key events are consumed while a popup menu is open
@@ -264,21 +233,6 @@ func TestEnsureOnDisplayKeepsMenuBelowTop(t *testing.T) {
 	}, rects)
 }
 
-// TestFitMenuRectInDisplaySpace verifies the fitting in the raw pixels of a Windows display, which is the space
-// ensureOnDisplay converts into: on a 2880x1620 display at 150%, a 200x150 logical drop-down at raw (2400, 1200)
-// covers 300x225 raw pixels and fits where it is, and on a 3840x2160 display at 200% a menu-bar menu below a bar at raw
-// y 1100 keeps its height, or is shrunk to the space left rather than collapsed.
-func TestFitMenuRectInDisplaySpace(t *testing.T) {
-	c := check.New(t)
-	usable := geom.NewRect(0, 0, 2880, 1620)
-	c.Equal(geom.NewRect(2400, 1200, 300, 225), fitMenuRect(geom.NewRect(2400, 1200, 300, 225), usable, menuFit{}))
-	c.Equal(geom.NewRect(2580, 1395, 300, 225), fitMenuRect(geom.NewRect(2700, 1500, 300, 225), usable, menuFit{}))
-	usable = geom.NewRect(0, 0, 3840, 2160)
-	bar := menuFit{bar: true, barTop: 1050, barBottom: 1100, minHeight: 100}
-	c.Equal(geom.NewRect(100, 1100, 400, 800), fitMenuRect(geom.NewRect(100, 1100, 400, 800), usable, bar))
-	c.Equal(geom.NewRect(100, 1100, 400, 1060), fitMenuRect(geom.NewRect(100, 1100, 400, 2000), usable, bar))
-}
-
 // TestPopupWindowStacksAboveItsOwner verifies that a menu opens in a popup window of its own, placed from the owner's
 // coordinates and stacked above it, which never becomes the active window or takes the focus.
 func TestPopupWindowStacksAboveItsOwner(t *testing.T) {
@@ -314,97 +268,58 @@ func TestPopupWindowStacksAboveItsOwner(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestPressInOwnerClosesEveryMenu verifies that a click in the owner, outside every menu, closes the menus and disposes
-// of their popup windows.
-func TestPressInOwnerClosesEveryMenu(t *testing.T) {
-	c := check.New(t)
-	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
-	var m *menu
-	var chosen []string
-	var popup *Window
-	c.True(screen.Do(func() {
-		m = newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two")
-		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
-		if m.popupPanel != nil {
-			popup = m.popupPanel.Window()
-		}
-	}))
-	c.NotNil(popup)
-	screen.Click(geom.NewPoint(340, 240))
-	var open int
-	var popupValid, menuOpen bool
-	var picked []string
-	c.True(screen.Do(func() {
-		open = len(owner.root.openMenuPanels)
-		popupValid = popup.IsValid()
-		menuOpen = m.popupPanel != nil
-		picked = slices.Clone(chosen)
-	}))
-	c.Equal(0, open)
-	c.False(popupValid, "the popup window is disposed of")
-	c.False(menuOpen)
-	c.Equal(0, len(picked))
-	c.True(screen.FocusedWindow() == owner)
-}
-
-// TestEscapeClosesTheMenu verifies that Escape, which the owner receives, closes a menu open in a popup window.
-func TestEscapeClosesTheMenu(t *testing.T) {
-	c := check.New(t)
-	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
-	var chosen []string
-	var popup *Window
-	c.True(screen.Do(func() {
-		m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two")
-		m.Popup(geom.NewRect(20, 20, 0, 0), 0)
-		if m.popupPanel != nil {
-			popup = m.popupPanel.Window()
-		}
-	}))
-	c.NotNil(popup)
-	screen.KeyPress(KeyEscape, 0)
-	var open int
-	var popupValid bool
-	var picked []string
-	c.True(screen.Do(func() {
-		open = len(owner.root.openMenuPanels)
-		popupValid = popup.IsValid()
-		picked = slices.Clone(chosen)
-	}))
-	c.Equal(0, open)
-	c.False(popupValid)
-	c.Equal(0, len(picked))
-}
-
-// TestMenuKeyboardNavigationRoutesThroughTheOwner verifies that the arrow keys and Return, which arrive at the owner
-// since the popup never holds the focus, drive the menu in the popup window and choose from it.
+// TestMenuKeyboardNavigationRoutesThroughTheOwner verifies that the keys, which arrive at the owner since the popup
+// never holds the focus, drive the menu in the popup window: the arrow keys and Return choose from it, and Escape
+// closes it without choosing the highlighted item.
 func TestMenuKeyboardNavigationRoutesThroughTheOwner(t *testing.T) {
-	c := check.New(t)
-	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
-	var chosen []string
-	var popup *Window
-	c.True(screen.Do(func() {
-		m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two", "Three")
-		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
-		if m.popupPanel != nil {
-			popup = m.popupPanel.Window()
-		}
-	}))
-	c.NotNil(popup)
-	screen.KeyPress(KeyDown, 0)
-	screen.KeyPress(KeyDown, 0)
-	c.True(screen.FocusedWindow() == owner)
-	screen.KeyPress(KeyReturn, 0)
-	var open int
-	var popupValid bool
-	var picked []string
-	c.True(screen.Do(func() {
-		open = len(owner.root.openMenuPanels)
-		popupValid = popup.IsValid()
-		picked = slices.Clone(chosen)
-	}))
-	c.Equal([]string{"Two"}, picked)
-	c.Equal(0, open)
-	c.False(popupValid)
+	for _, one := range []struct {
+		name      string
+		keys      []KeyCode
+		want      []string
+		highlight int
+	}{
+		{
+			name:      "arrows and return choose an item",
+			keys:      []KeyCode{KeyDown, KeyDown, KeyReturn},
+			want:      []string{"Two"},
+			highlight: -1,
+		},
+		{
+			name:      "escape closes without choosing",
+			keys:      []KeyCode{KeyEscape},
+			highlight: 0,
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
+			var chosen []string
+			var popup *Window
+			c.True(screen.Do(func() {
+				m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One", "Two", "Three")
+				m.Popup(geom.NewRect(20, 20, 0, 0), one.highlight)
+				if m.popupPanel != nil {
+					popup = m.popupPanel.Window()
+				}
+			}))
+			c.NotNil(popup)
+			for _, key := range one.keys {
+				c.True(screen.FocusedWindow() == owner, "the owner keeps the focus while the menu is open")
+				screen.KeyPress(key, 0)
+			}
+			var open int
+			var popupValid bool
+			var picked []string
+			c.True(screen.Do(func() {
+				open = len(owner.root.openMenuPanels)
+				popupValid = popup.IsValid()
+				picked = slices.Clone(chosen)
+			}))
+			c.Equal(one.want, picked)
+			c.Equal(0, open)
+			c.False(popupValid)
+		})
+	}
 }
 
 // TestSubMenuOpensBesideItsParentPopup verifies that a sub-menu opens in a popup window of its own beside the item in
@@ -513,63 +428,102 @@ func TestLongMenuShrinksToTheDisplayAndScrolls(t *testing.T) {
 	c.True(after.Y >= 0 && after.Bottom() <= rect.Height, "and is scrolled into view by the arrow keys: %v", after)
 }
 
-// TestBarMenuStaysBelowTheBar verifies that a menu opened from the menu bar of a window low on the screen, with room
-// for a few of its items beneath the bar, is placed below the bar, in screen coordinates, and shrinks to the space left
-// beneath it rather than covering the bar.
+// TestBarMenuStaysBelowTheBar verifies, end to end, that a menu opened from the menu bar of a window low on the screen,
+// with room for a few of its items beneath the bar, is placed below the bar, in screen coordinates, and shrinks to the
+// space left beneath it rather than covering the bar, while one whose bar sits at the bottom of the screen is placed
+// above the bar, keeping its height, rather than squeezed into the sliver beneath it.
 func TestBarMenuStaysBelowTheBar(t *testing.T) {
-	c := check.New(t)
-	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 250, 300, 80))
-	var chosen []string
-	var m *menu
-	c.True(screen.Do(func() {
-		DefaultMenuFactory().BarForWindow(owner, func(bar Menu) {
-			if f, ok := bar.Factory().(*inWindowMenuFactory); ok {
-				m = newTestMenu(f, UserBaseID, &chosen, menuItemTitles(40)...)
-				bar.InsertMenu(-1, m)
+	for _, one := range []struct {
+		verify func(c check.Checker, rect geom.Rect, barTop, barBottom, height float32)
+		name   string
+		items  int
+		y      float32
+	}{
+		{
+			name:  "below a bar low on the screen",
+			items: 40,
+			y:     250,
+			verify: func(c check.Checker, rect geom.Rect, _, barBottom, _ float32) {
+				c.True(barBottom > 250 && barBottom < 300, "the test needs the bar low on the screen: %v", barBottom)
+				c.Equal(barBottom, rect.Y, "the menu starts at the bottom of the bar")
+				c.Equal(400-barBottom, rect.Height, "and shrinks to the space left beneath it")
+			},
+		},
+		{
+			name:  "above a bar at the bottom of the screen",
+			items: 5,
+			y:     372,
+			verify: func(c check.Checker, rect geom.Rect, barTop, barBottom, height float32) {
+				c.True(barBottom > 390 && barTop < 400, "the test needs the bar at the bottom of the screen: %v-%v",
+					barTop, barBottom)
+				c.Equal(barTop, rect.Bottom(), "the menu ends at the top of the bar")
+				c.Equal(height, rect.Height, "and keeps its height")
+			},
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, one.y, 300, 80))
+			var chosen []string
+			var m *menu
+			c.True(screen.Do(func() {
+				DefaultMenuFactory().BarForWindow(owner, func(bar Menu) {
+					if f, ok := bar.Factory().(*inWindowMenuFactory); ok {
+						m = newTestMenu(f, UserBaseID, &chosen, menuItemTitles(one.items)...)
+						bar.InsertMenu(-1, m)
+					}
+				})
+			}))
+			c.NotNil(m, "the test needs an in-window menu bar")
+			if m == nil {
+				return
 			}
+			screen.Sync() // the bar has to have been laid out before there is a title to open from
+			screen.Click(screen.PanelCenter(m.titleItem.panel))
+			var rect geom.Rect
+			var barTop, barBottom, height float32
+			var opened bool
+			c.True(screen.Do(func() {
+				if opened = m.popupPanel != nil; opened {
+					rect = m.popupPanel.Window().ContentRect()
+					height = m.popupPanel.FrameRect().Height
+				}
+				title := m.titleItem.panel
+				tr := title.RectToRoot(title.ContentRect(true))
+				barTop = owner.apiPointToScreen(tr.Point).Y
+				barBottom = owner.apiPointToScreen(geom.NewPoint(0, tr.Bottom())).Y
+			}))
+			c.True(opened)
+			one.verify(c, rect, barTop, barBottom, height)
 		})
-	}))
-	c.NotNil(m, "the test needs an in-window menu bar")
-	if m == nil {
-		return
 	}
-	screen.Sync() // the bar has to have been laid out before there is a title to open from
-	screen.Click(screen.PanelCenter(m.titleItem.panel))
-	var rect geom.Rect
-	var barBottom float32
-	var opened bool
-	c.True(screen.Do(func() {
-		if opened = m.popupPanel != nil; opened {
-			rect = m.popupPanel.Window().ContentRect()
-		}
-		title := m.titleItem.panel
-		barBottom = owner.apiPointToScreen(geom.NewPoint(0, title.RectToRoot(title.ContentRect(true)).Bottom())).Y
-	}))
-	c.True(opened)
-	c.True(barBottom > 250 && barBottom < 300, "the test needs the bar low on the screen: %v", barBottom)
-	c.Equal(barBottom, rect.Y, "the menu starts at the bottom of the bar")
-	c.Equal(400-barBottom, rect.Height, "and shrinks to the space left beneath it")
 }
 
-// TestOwnerMoveClosesTheMenus verifies that moving the owner closes its menus.
+// TestOwnerMoveClosesTheMenus verifies that moving the owner closes its menus, while moving the popup menu window
+// itself, which placing it does, leaves them open.
 func TestOwnerMoveClosesTheMenus(t *testing.T) {
 	c := check.New(t)
 	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 50, 300, 200))
 	var chosen []string
 	var popup *Window
-	var open int
+	var openAfterPopupMove, open int
 	var popupValid bool
 	c.True(screen.Do(func() {
 		m := newTestMenu(&inWindowMenuFactory{}, UserBaseID, &chosen, "One")
 		m.Popup(geom.NewRect(20, 20, 0, 0), -1)
 		if m.popupPanel != nil {
 			popup = m.popupPanel.Window()
+			r := popup.ContentRect()
+			r.X += 10
+			popup.SetContentRect(r)
+			openAfterPopupMove = len(owner.root.openMenuPanels)
 		}
 		owner.SetContentRect(geom.NewRect(60, 60, 300, 200))
 		open = len(owner.root.openMenuPanels)
 		popupValid = popup.IsValid()
 	}))
 	c.NotNil(popup)
+	c.Equal(1, openAfterPopupMove, "moving the popup window leaves its menu open")
 	c.Equal(0, open)
 	c.False(popupValid)
 }
@@ -1087,7 +1041,9 @@ func TestMenuWindowRectWithoutADisplay(t *testing.T) {
 // TestBarMenuOpensAboveABarWithNoRoomBelow verifies that a menu opened from a menu bar title with too little room
 // beneath it for its first three items is placed above the bar, with its bottom at the bar's top and shrunk to the
 // space above when it has to be, while one with room for them stays below, shrunk to that room, and one whose bar has
-// even less room above it than below stays below as well.
+// even less room above it than below stays below as well. It also checks the fitting in the raw pixels of a Windows
+// display, the space ensureOnDisplay converts into: a menu that fits stays put, one that does not is shifted onto the
+// display, and a bar menu keeps its height or is shrunk to the space left below the bar rather than collapsed.
 func TestBarMenuOpensAboveABarWithNoRoomBelow(t *testing.T) {
 	c := check.New(t)
 	usable := geom.NewRect(0, 0, 400, 300)
@@ -1107,47 +1063,17 @@ func TestBarMenuOpensAboveABarWithNoRoomBelow(t *testing.T) {
 	usable = geom.NewRect(0, 0, 400, 50)
 	c.Equal(geom.NewRect(10, 20, 100, 30), fitMenuRect(geom.NewRect(10, 20, 100, 200), usable, fit(0, 20)),
 		"a bar with less room above it than below keeps its menu below")
-}
-
-// TestBarMenuAtTheScreenBottomOpensAbove verifies, end to end, that a menu opened from the menu bar of a window whose
-// bar sits at the bottom of the screen is placed above the bar rather than squeezed into the sliver beneath it.
-func TestBarMenuAtTheScreenBottomOpensAbove(t *testing.T) {
-	c := check.New(t)
-	screen, owner := startMenuTest(t, geom.NewSize(500, 400), geom.NewRect(50, 372, 300, 80))
-	var chosen []string
-	var m *menu
-	c.True(screen.Do(func() {
-		DefaultMenuFactory().BarForWindow(owner, func(bar Menu) {
-			if f, ok := bar.Factory().(*inWindowMenuFactory); ok {
-				m = newTestMenu(f, UserBaseID, &chosen, menuItemTitles(5)...)
-				bar.InsertMenu(-1, m)
-			}
-		})
-	}))
-	c.NotNil(m, "the test needs an in-window menu bar")
-	if m == nil {
-		return
-	}
-	screen.Sync()
-	screen.Click(screen.PanelCenter(m.titleItem.panel))
-	var rect geom.Rect
-	var barTop, barBottom, height float32
-	var opened bool
-	c.True(screen.Do(func() {
-		if opened = m.popupPanel != nil; opened {
-			rect = m.popupPanel.Window().ContentRect()
-			height = m.popupPanel.FrameRect().Height
-		}
-		title := m.titleItem.panel
-		tr := title.RectToRoot(title.ContentRect(true))
-		barTop = owner.apiPointToScreen(tr.Point).Y
-		barBottom = owner.apiPointToScreen(geom.NewPoint(0, tr.Bottom())).Y
-	}))
-	c.True(opened)
-	c.True(barBottom > 390 && barTop < 400, "the test needs the bar at the bottom of the screen: %v-%v", barTop,
-		barBottom)
-	c.Equal(barTop, rect.Bottom(), "the menu ends at the top of the bar")
-	c.Equal(height, rect.Height, "and keeps its height")
+	usable = geom.NewRect(0, 0, 2880, 1620)
+	c.Equal(geom.NewRect(2400, 1200, 300, 225), fitMenuRect(geom.NewRect(2400, 1200, 300, 225), usable, menuFit{}),
+		"a drop-down that fits a 2880x1620 display at 150% stays where it is")
+	c.Equal(geom.NewRect(2580, 1395, 300, 225), fitMenuRect(geom.NewRect(2700, 1500, 300, 225), usable, menuFit{}),
+		"one that runs off it is shifted back onto it")
+	usable = geom.NewRect(0, 0, 3840, 2160)
+	rawBar := menuFit{bar: true, barTop: 1050, barBottom: 1100, minHeight: 100}
+	c.Equal(geom.NewRect(100, 1100, 400, 800), fitMenuRect(geom.NewRect(100, 1100, 400, 800), usable, rawBar),
+		"a bar menu with room below a bar on a 3840x2160 display at 200% keeps its height")
+	c.Equal(geom.NewRect(100, 1100, 400, 1060), fitMenuRect(geom.NewRect(100, 1100, 400, 2000), usable, rawBar),
+		"one taller than that room is shrunk to it rather than collapsed")
 }
 
 // TestKeyClosedSubMenuStaysClosedUnderThePointer verifies that a sub-menu too wide for either side of its item, and so

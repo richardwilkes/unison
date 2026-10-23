@@ -63,7 +63,8 @@ func dataForEntries(entries []clipboardEntry, target Atom) []byte {
 // contributes. The label used to be pinned to the item's first target, which is UTF8_STRING for every text-conforming
 // flavor, so a second such flavor lost its label to the first item's claim on that target. The helper window still
 // owned the selection and served the bytes, but ClipboardDataTypes omitted the UTI and an in-process GetClipboardBytes
-// for it returned nil, even though the data had just been placed on the clipboard.
+// for it returned nil, even though the data had just been placed on the clipboard. It also checks that the synthesized
+// TEXT alias serves the first text item's bytes.
 func TestBuildSelectionEntriesLabelsEveryDataType(t *testing.T) {
 	c := check.New(t)
 	const plainMime = "text/plain"
@@ -118,21 +119,9 @@ func TestBuildSelectionEntriesLabelsEveryDataType(t *testing.T) {
 	for target, count := range seen {
 		c.Equal(1, count, "target %d must be offered exactly once", target)
 	}
-}
 
-// TestBuildSelectionEntriesSingleTextFlavor verifies the ordinary single-item case still labels its leading target and
-// offers the conventional text aliases.
-func TestBuildSelectionEntriesSingleTextFlavor(t *testing.T) {
-	c := check.New(t)
-	conn := newEntriesTestConn(uti.UTF8PlainText.UTI, "text/plain;charset=utf-8", `text/plain;charset="utf-8"`)
-	data := []byte("hello")
-	entries := conn.buildSelectionEntries(drag.Data{Type: uti.UTF8PlainText, Data: data})
-
-	c.Equal(uti.UTF8PlainText.UTI, dataTypeForEntries(entries, conn.Atoms.UTF8String))
-	// STRING carries the Latin-1 form and TEXT is a synthesized alias, so neither one is labeled.
-	c.Equal("", dataTypeForEntries(entries, AtomString))
-	c.Equal("", dataTypeForEntries(entries, conn.Atoms.Text))
-	c.Equal(data, dataForEntries(entries, conn.Atoms.Text))
+	// TEXT is an unlabeled alias synthesized by the first text item, so it serves that item's bytes.
+	c.Equal(utf8Data, dataForEntries(entries, conn.Atoms.Text))
 }
 
 // newClipboardTestConn creates a Conn whose wire is one end of an in-memory pipe and returns the other end for a fake

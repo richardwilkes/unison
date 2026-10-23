@@ -94,20 +94,6 @@ func TestDockLayoutDockToEmpty(t *testing.T) {
 	c.False(layout.Horizontal) // Bottom is a vertical split
 }
 
-func TestDockLayoutDockWithinSecondNode(t *testing.T) {
-	c := check.New(t)
-	d, layout := newTestDock()
-	a := &DockContainer{Dock: d}
-	b := &DockContainer{Dock: d}
-	layout.DockTo(a, layout, side.Left)
-	layout.DockTo(b, layout, side.Right)
-	// a was in slot 0; Right places b in slot 1, keeping a where it was.
-	c.Equal(DockLayoutNode(a), layout.nodes[0])
-	c.Equal(DockLayoutNode(b), layout.nodes[1])
-	c.True(layout.Full())
-	c.True(layout.Horizontal)
-}
-
 func TestDockLayoutDockWithinPushesDown(t *testing.T) {
 	c := check.New(t)
 	d, layout := newTestDock()
@@ -155,12 +141,16 @@ func TestDockLayoutRepositionWithinSameLayout(t *testing.T) {
 	b := &DockContainer{Dock: d}
 	layout.DockTo(a, layout, side.Left)
 	layout.DockTo(b, layout, side.Right)
-	c.Equal(DockLayoutNode(a), layout.nodes[0])
-	c.Equal(DockLayoutNode(b), layout.nodes[1])
+	// a was in slot 0; Right places b in slot 1, keeping a where it was. The two containers are deeply equal, so the
+	// slots are compared by identity.
+	c.True(layout.nodes[0] == DockLayoutNode(a))
+	c.True(layout.nodes[1] == DockLayoutNode(b))
+	c.True(layout.Full())
+	c.True(layout.Horizontal)
 	// Move a (currently in slot 0) to the right; it should swap into slot 1 with b moving to slot 0.
 	layout.DockTo(a, layout, side.Right)
-	c.Equal(DockLayoutNode(b), layout.nodes[0])
-	c.Equal(DockLayoutNode(a), layout.nodes[1])
+	c.True(layout.nodes[0] == DockLayoutNode(b))
+	c.True(layout.nodes[1] == DockLayoutNode(a))
 	c.True(layout.Full())
 }
 
@@ -362,80 +352,75 @@ func TestDockLayoutLayoutSizes(t *testing.T) {
 	c.Equal(geom.NewSize(100*2+dividerSize, 60), pref)
 }
 
-func TestDockLayoutPerformLayoutSingleNode(t *testing.T) {
-	c := check.New(t)
-	d, layout := newTestDock()
-	layout.parent = &DockLayout{dock: d} // skip the root ContentRect path
-	node := &fakeDockNode{}
-	layout.nodes[0] = node
-	layout.frame = geom.NewRect(5, 7, 200, 100)
-	layout.PerformLayout(nil)
-	c.Equal(geom.NewRect(5, 7, 200, 100), node.frame)
-}
-
+// TestDockLayoutPerformLayoutVertical checks the frames PerformLayout gives a lone node, and two nodes split vertically
+// or horizontally by a default, explicit or clamped divider.
 func TestDockLayoutPerformLayoutVertical(t *testing.T) {
-	c := check.New(t)
-	d, layout := newTestDock()
-	dividerSize := d.DockDividerSize()
-	layout.parent = &DockLayout{dock: d}
-	node0 := &fakeDockNode{}
-	node1 := &fakeDockNode{}
-	layout.nodes[0] = node0
-	layout.nodes[1] = node1
-	layout.Horizontal = false
-	layout.frame = geom.NewRect(0, 0, 200, 108)
-
-	// Default divider splits the available (frame minus divider) space evenly.
-	layout.divider = -1
-	layout.PerformLayout(nil)
-	available := float32(108) - dividerSize
-	primary := available / 2
-	c.Equal(geom.NewRect(0, 0, 200, primary), node0.frame)
-	c.Equal(geom.NewRect(0, primary+dividerSize, 200, available-primary), node1.frame)
-
-	// Explicit divider position.
-	layout.divider = 30
-	layout.PerformLayout(nil)
-	c.Equal(geom.NewRect(0, 0, 200, 30), node0.frame)
-	c.Equal(geom.NewRect(0, 30+dividerSize, 200, available-30), node1.frame)
-}
-
-func TestDockLayoutPerformLayoutHorizontal(t *testing.T) {
-	c := check.New(t)
-	d, layout := newTestDock()
-	dividerSize := d.DockDividerSize()
-	layout.parent = &DockLayout{dock: d}
-	node0 := &fakeDockNode{}
-	node1 := &fakeDockNode{}
-	layout.nodes[0] = node0
-	layout.nodes[1] = node1
-	layout.Horizontal = true
-	layout.frame = geom.NewRect(0, 0, 208, 100)
-
-	layout.divider = 40
-	layout.PerformLayout(nil)
-	available := float32(208) - dividerSize
-	c.Equal(geom.NewRect(0, 0, 40, 100), node0.frame)
-	c.Equal(geom.NewRect(40+dividerSize, 0, available-40, 100), node1.frame)
-}
-
-func TestDockLayoutPerformLayoutClampsDivider(t *testing.T) {
-	c := check.New(t)
-	d, layout := newTestDock()
-	dividerSize := d.DockDividerSize()
-	layout.parent = &DockLayout{dock: d}
-	node0 := &fakeDockNode{}
-	node1 := &fakeDockNode{}
-	layout.nodes[0] = node0
-	layout.nodes[1] = node1
-	layout.Horizontal = false
-	layout.frame = geom.NewRect(0, 0, 200, 108)
-
-	// A divider larger than the available space is clamped down to the available space.
-	layout.divider = 10000
-	layout.PerformLayout(nil)
-	available := 108 - dividerSize
-	c.Equal(float32(10000), layout.divider)
-	c.Equal(geom.NewRect(0, 0, 200, available), node0.frame)
-	c.Equal(geom.NewRect(0, available+dividerSize, 200, 0), node1.frame)
+	dividerSize := DefaultDockTheme.DockDividerSize()
+	vAvailable := 108 - dividerSize
+	hAvailable := 208 - dividerSize
+	for _, tc := range []struct {
+		name       string
+		frame      geom.Rect
+		want0      geom.Rect
+		want1      geom.Rect
+		divider    float32
+		single     bool
+		horizontal bool
+	}{
+		{
+			name:    "single node fills the frame",
+			frame:   geom.NewRect(5, 7, 200, 100),
+			want0:   geom.NewRect(5, 7, 200, 100),
+			divider: -1,
+			single:  true,
+		},
+		{
+			name:    "default divider splits the available space evenly",
+			frame:   geom.NewRect(0, 0, 200, 108),
+			want0:   geom.NewRect(0, 0, 200, vAvailable/2),
+			want1:   geom.NewRect(0, vAvailable/2+dividerSize, 200, vAvailable-vAvailable/2),
+			divider: -1,
+		},
+		{
+			name:    "explicit divider",
+			frame:   geom.NewRect(0, 0, 200, 108),
+			want0:   geom.NewRect(0, 0, 200, 30),
+			want1:   geom.NewRect(0, 30+dividerSize, 200, vAvailable-30),
+			divider: 30,
+		},
+		{
+			name:    "divider clamped to the available space",
+			frame:   geom.NewRect(0, 0, 200, 108),
+			want0:   geom.NewRect(0, 0, 200, vAvailable),
+			want1:   geom.NewRect(0, vAvailable+dividerSize, 200, 0),
+			divider: 10000,
+		},
+		{
+			name:       "horizontal",
+			frame:      geom.NewRect(0, 0, 208, 100),
+			want0:      geom.NewRect(0, 0, 40, 100),
+			want1:      geom.NewRect(40+dividerSize, 0, hAvailable-40, 100),
+			divider:    40,
+			horizontal: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			d, layout := newTestDock()
+			layout.parent = &DockLayout{dock: d} // skip the root ContentRect path
+			node0 := &fakeDockNode{}
+			node1 := &fakeDockNode{}
+			layout.nodes[0] = node0
+			if !tc.single {
+				layout.nodes[1] = node1
+			}
+			layout.Horizontal = tc.horizontal
+			layout.frame = tc.frame
+			layout.divider = tc.divider
+			layout.PerformLayout(nil)
+			c.Equal(tc.want0, node0.frame)
+			c.Equal(tc.want1, node1.frame)
+			c.Equal(tc.divider, layout.divider, "laying out must not clamp the raw divider")
+		})
+	}
 }

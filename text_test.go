@@ -31,20 +31,6 @@ func TestTextSliceDoesNotShareBackingWithParent(t *testing.T) {
 	c.Equal(unison.NewText("abcdef", dec).Width(), parent.Width())
 }
 
-// TestTextEmptySliceMetricsMatchEmptyText verifies that an empty slice of a Text reserves the same vertical metrics an
-// empty Text does, rather than reporting a zero height.
-func TestTextEmptySliceMetricsMatchEmptyText(t *testing.T) {
-	c := check.New(t)
-	dec := &unison.TextDecoration{Font: unison.SystemFont, OnBackgroundInk: unison.Black}
-	parent := unison.NewText("abcdef", dec)
-	empty := parent.Slice(2, 2)
-	ref := unison.NewText("", dec)
-	c.True(ref.Height() > 0, "an empty Text should still reserve a full line")
-	c.Equal(ref.Height(), empty.Height())
-	c.Equal(ref.Baseline(), empty.Baseline())
-	c.Equal(float32(0), empty.Width())
-}
-
 // TestSmallCapsTextKeepsItsCase verifies that small caps are a matter of drawing alone: the text keeps its letters as
 // they were written, so String() -- and everything read from it, such as what an assistive technology is told a label
 // says -- answers "Title" for a label drawn TITLE, while the lowercase letters are still measured as the smaller

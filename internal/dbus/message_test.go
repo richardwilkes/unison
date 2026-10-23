@@ -158,13 +158,20 @@ func TestDecodeErrors(t *testing.T) {
 	copy(oversizedFields[12:16], u32At(MaxArraySize+1))
 	shortFields := concat(hello)
 	copy(shortFields[12:16], u32At(109))
+	bigEndianBadVersion := toBigEndian(hello, "")
+	bigEndianBadVersion[3] = 2
+	bigEndianOversizedFields := toBigEndian(hello, "")
+	copy(bigEndianOversizedFields[12:16], []byte{0xFF, 0xFF, 0xFF, 0xFF})
 	for _, one := range []struct {
+		want error // Nil when any error will do
 		name string
 		data []byte
 	}{
-		{name: "empty", data: nil},
-		{name: "short header", data: hello[:15]},
-		{name: "truncated header fields", data: hello[:64]},
+		// A stream that ends before a message begins is io.EOF, and one that ends partway through a message is
+		// io.ErrUnexpectedEOF, so that a reader can tell a clean end from a truncation.
+		{name: "empty", data: nil, want: io.EOF},
+		{name: "short header", data: hello[:15], want: io.ErrUnexpectedEOF},
+		{name: "truncated header fields", data: hello[:64], want: io.ErrUnexpectedEOF},
 		{name: "endianness flag that contradicts the bytes", data: mislabeledEndian},
 		{name: "invalid endianness", data: badEndian},
 		{name: "unsupported protocol version", data: badVersion},
@@ -174,74 +181,24 @@ func TestDecodeErrors(t *testing.T) {
 		{name: "oversized body", data: oversizedBody},
 		{name: "oversized header fields", data: oversizedFields},
 		{name: "header field array that ends mid-field", data: shortFields},
+		// A big-endian message is rejected for the same faults.
+		{name: "big-endian truncated header fields", data: toBigEndian(hello, "")[:100], want: io.ErrUnexpectedEOF},
+		{name: "big-endian unsupported protocol version", data: bigEndianBadVersion},
+		{name: "big-endian oversized header fields", data: bigEndianOversizedFields},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			t.Parallel()
 			c := check.New(t)
 			_, err := Decode(bytes.NewReader(one.data))
 			c.HasError(err)
+			if one.want != nil {
+				c.True(errors.Is(err, one.want), "expected %v, got %v", one.want, err)
+			}
 		})
 	}
 }
 
 func TestDecodeRejectsMalformedHeaderFields(t *testing.T) {
-	t.Parallel()
-	for _, one := range []struct {
-		name   string
-		fields []any
-	}{
-		{name: "duplicate path", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/b")}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-		}},
-		{name: "path with the wrong type", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "s", Value: "/a"}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-		}},
-		{name: "reply serial with the wrong type", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-			Struct{byte(fieldReplySerial), Variant{Sig: "s", Value: "1"}},
-		}},
-		{name: "zero reply serial", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-			Struct{byte(fieldReplySerial), Variant{Sig: "u", Value: uint32(0)}},
-		}},
-		{name: "missing member", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-		}},
-		{name: "invalid member", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "not.a.member"}},
-		}},
-		{name: "invalid sender", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-			Struct{byte(fieldSender), Variant{Sig: "s", Value: "no-dots"}},
-		}},
-		{name: "field code the specification marks invalid", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-			Struct{byte(0), Variant{Sig: "s", Value: "reserved"}},
-		}},
-		{name: "unix file descriptor count with the wrong type", fields: []any{
-			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-			Struct{byte(fieldUnixFDs), Variant{Sig: "s", Value: "1"}},
-		}},
-	} {
-		t.Run(one.name, func(t *testing.T) {
-			t.Parallel()
-			c := check.New(t)
-			_, err := Decode(bytes.NewReader(encodeWithFields(t, TypeMethodCall, one.fields)))
-			c.HasError(err)
-		})
-	}
-}
-
-func TestDecodeRejectsMessagesMissingRequiredFields(t *testing.T) {
 	t.Parallel()
 	var (
 		path        = Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}}
@@ -250,13 +207,54 @@ func TestDecodeRejectsMessagesMissingRequiredFields(t *testing.T) {
 		replySerial = Struct{byte(fieldReplySerial), Variant{Sig: "u", Value: uint32(1)}}
 		errorName   = Struct{byte(fieldErrorName), Variant{Sig: "s", Value: Failed}}
 	)
-	// Every type but the method call used to reach validateRequiredFields only through Encode, which is the one
-	// direction that cannot be driven by a peer; these are the messages that arrive from one.
 	for _, one := range []struct {
 		name    string
 		fields  []any
 		msgType Type
 	}{
+		{name: "duplicate path", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/b")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+		}},
+		{name: "path with the wrong type", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "s", Value: "/a"}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+		}},
+		{name: "reply serial with the wrong type", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+			Struct{byte(fieldReplySerial), Variant{Sig: "s", Value: "1"}},
+		}},
+		{name: "zero reply serial", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+			Struct{byte(fieldReplySerial), Variant{Sig: "u", Value: uint32(0)}},
+		}},
+		{name: "missing member", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+		}},
+		{name: "invalid member", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "not.a.member"}},
+		}},
+		{name: "invalid sender", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+			Struct{byte(fieldSender), Variant{Sig: "s", Value: "no-dots"}},
+		}},
+		{name: "field code the specification marks invalid", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+			Struct{byte(0), Variant{Sig: "s", Value: "reserved"}},
+		}},
+		{name: "unix file descriptor count with the wrong type", msgType: TypeMethodCall, fields: []any{
+			Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
+			Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
+			Struct{byte(fieldUnixFDs), Variant{Sig: "s", Value: "1"}},
+		}},
+		// Every type but the method call used to reach validateRequiredFields only through Encode, which is the one
+		// direction that cannot be driven by a peer; these are the messages that arrive from one.
 		{name: "method return without a reply serial", msgType: TypeMethodReturn},
 		{name: "error without an error name", msgType: TypeError, fields: []any{replySerial}},
 		{name: "error without a reply serial", msgType: TypeError, fields: []any{errorName}},
@@ -267,12 +265,13 @@ func TestDecodeRejectsMessagesMissingRequiredFields(t *testing.T) {
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			t.Parallel()
+			c := check.New(t)
 			_, err := Decode(bytes.NewReader(encodeWithFields(t, one.msgType, one.fields)))
-			check.New(t).HasError(err)
+			c.HasError(err)
 		})
 	}
-	// The same messages with the fields they require do decode, so each case above is about the missing field rather
-	// than about anything else in the message.
+	// The same messages with the fields they require do decode, so each missing field case above is about the missing
+	// field rather than about anything else in the message.
 	c := check.New(t)
 	for _, one := range []struct {
 		name    string
@@ -287,21 +286,6 @@ func TestDecodeRejectsMessagesMissingRequiredFields(t *testing.T) {
 		_, err := Decode(bytes.NewReader(encodeWithFields(t, one.msgType, one.fields)))
 		c.NoError(err, one.name)
 	}
-}
-
-func TestDecodeIgnoresUnknownHeaderFields(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	data := encodeWithFields(t, TypeMethodCall, []any{
-		Struct{byte(fieldPath), Variant{Sig: "o", Value: ObjectPath("/a")}},
-		Struct{byte(fieldMember), Variant{Sig: "s", Value: "M"}},
-		Struct{byte(fieldUnixFDs), Variant{Sig: "u", Value: uint32(0)}},
-		Struct{byte(42), Variant{Sig: "s", Value: "from the future"}},
-	})
-	m, err := Decode(bytes.NewReader(data))
-	c.NoError(err)
-	c.Equal(ObjectPath("/a"), m.Path)
-	c.Equal("M", m.Member)
 }
 
 func TestDecodeRejectsNonNULPaddingBeforeTheBody(t *testing.T) {
@@ -431,7 +415,8 @@ func TestADecodedMessageIsChargedWhatItKeepsAlive(t *testing.T) {
 // unmarshaler do it, and a mistake in any of it would leave the reader part way through the field: the fields that
 // follow would then be read out of bytes that are not theirs, and the body out of bytes that are not the body. The
 // fields are arranged so that every shape is followed by another one, and the whole message by a body, so that a
-// misaligned reader has something to trip over rather than simply running out of message.
+// misaligned reader has something to trip over rather than simply running out of message. A UNIX_FDS field is among
+// them too: file descriptors are not supported, so its count is ignored rather than refused.
 func TestDecodeStepsOverEveryShapeOfIgnorableHeaderField(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -457,6 +442,7 @@ func TestDecodeStepsOverEveryShapeOfIgnorableHeaderField(t *testing.T) {
 		// entered from something other than the top of a field.
 		ignorableField(Struct{[]uint32{12, 13}, byte(14)}),
 		ignorableField(Variant{Sig: "(ys)", Value: Struct{byte(15), "in a variant in a structure"}}),
+		Struct{byte(fieldUnixFDs), Variant{Sig: "u", Value: uint32(0)}},
 		// One more of the shapes that only reads a length, after everything above, so that a reader left part way
 		// through any of it reads a length out of the wrong bytes rather than reaching the end of the array.
 		ignorableField("the last of them"),
@@ -735,6 +721,13 @@ func TestSetBodyAndArgs(t *testing.T) {
 	c.NoError(err)
 	c.Equal([]any{"insert", int32(3), int32(2), Variant{Sig: "s", Value: "ab"}}, args)
 	c.HasError(m.SetBody(1))
+	// An empty slice cannot say what its elements would have been, so an empty array needs an Array to state it.
+	c.HasError(m.SetBody([]any{}))
+	c.NoError(m.SetBody(Array{Elem: "(so)"}))
+	c.Equal(Signature("a(so)"), m.Signature)
+	args, err = m.Args()
+	c.NoError(err)
+	c.Equal([]any{[]ObjectRef{}}, args)
 	c.NoError(m.SetBodyWithSignature("i", 1))
 	c.Equal(Signature("i"), m.Signature)
 	c.HasError(m.SetBodyWithSignature("ii", int32(1)))
@@ -749,19 +742,6 @@ func TestSetBodyAndArgs(t *testing.T) {
 	m.Body = []byte{1}
 	_, err = m.Args()
 	c.HasError(err)
-}
-
-func TestSetBodyWithAnEmptyArray(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	m := NewReply(&Message{Serial: 1})
-	m.Serial = 2
-	c.HasError(m.SetBody([]any{}))
-	c.NoError(m.SetBody(Array{Elem: "(so)"}))
-	c.Equal(Signature("a(so)"), m.Signature)
-	args, err := m.Args()
-	c.NoError(err)
-	c.Equal([]any{[]ObjectRef{}}, args)
 }
 
 func TestNewErrorAndAsError(t *testing.T) {
@@ -861,35 +841,37 @@ func TestNewReply(t *testing.T) {
 func TestMessageStringIncludesEveryField(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	m := &Message{
-		Type:        TypeError,
-		Serial:      2,
-		ReplySerial: 1,
-		Sender:      testSender,
-		Destination: testDestination,
-		Path:        "/a",
-		Interface:   eventInterface,
-		Member:      "M",
-		ErrorName:   Failed,
-		Signature:   "s",
+	noInterface := NewMethodCall(busName, "/", "", "NoInterface")
+	noInterface.Serial = 3
+	for _, one := range []struct {
+		msg  *Message
+		want string
+	}{
+		{
+			msg: &Message{
+				Type:        TypeError,
+				Serial:      2,
+				ReplySerial: 1,
+				Sender:      testSender,
+				Destination: testDestination,
+				Path:        "/a",
+				Interface:   eventInterface,
+				Member:      "M",
+				ErrorName:   Failed,
+				Signature:   "s",
+			},
+			want: "error #2 reply-to #1 from :1.42 to :1.7 /a org.a11y.atspi.Event.Object.M " + Failed + " (s)",
+		},
+		// A member is only ever separated from an interface by a dot, so a message that has no interface must not be
+		// made to look as though its path or its serial were one.
+		{msg: noInterface, want: "method call #3 to org.freedesktop.DBus / NoInterface"},
+		{
+			msg:  &Message{Type: TypeMethodReturn, Serial: 4, ReplySerial: 3, Member: "M"},
+			want: "method return #4 reply-to #3 M",
+		},
+	} {
+		c.Equal(one.want, one.msg.String())
 	}
-	c.Equal("error #2 reply-to #1 from :1.42 to :1.7 /a org.a11y.atspi.Event.Object.M "+Failed+" (s)", m.String())
-}
-
-func TestMessageStringWithoutAnInterface(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	// A member is only ever separated from an interface by a dot, so a message that has no interface must not be made
-	// to look as though its path or its serial were one.
-	m := NewMethodCall(busName, "/", "", "NoInterface")
-	m.Serial = 3
-	c.Equal("method call #3 to org.freedesktop.DBus / NoInterface", m.String())
-	c.Equal("method return #4 reply-to #3 M", (&Message{
-		Type:        TypeMethodReturn,
-		Serial:      4,
-		ReplySerial: 3,
-		Member:      "M",
-	}).String())
 }
 
 func TestTypeString(t *testing.T) {
@@ -912,18 +894,6 @@ func TestDecodeUnknownMessageType(t *testing.T) {
 	decoded, err := Decode(bytes.NewReader(data))
 	c.NoError(err)
 	c.Equal(m, withoutWireSize(t, decoded, len(data)))
-}
-
-func TestDecodeDistinguishesEndOfStreamFromTruncation(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	_, hello := helloMessage()
-	_, err := Decode(bytes.NewReader(nil))
-	c.True(errors.Is(err, io.EOF))
-	_, err = Decode(bytes.NewReader(hello[:8]))
-	c.True(errors.Is(err, io.ErrUnexpectedEOF))
-	_, err = Decode(bytes.NewReader(hello[:100]))
-	c.True(errors.Is(err, io.ErrUnexpectedEOF))
 }
 
 func TestDecodeBigEndianHeader(t *testing.T) {
@@ -971,21 +941,4 @@ func TestDecodeBigEndianBody(t *testing.T) {
 			c.Equal(littleEndian, encoded)
 		})
 	}
-}
-
-func TestDecodeBigEndianRejectsTheSameThingsAsLittleEndian(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	_, hello := helloMessage()
-	truncated := toBigEndian(hello, "")
-	_, err := Decode(bytes.NewReader(truncated[:100]))
-	c.True(errors.Is(err, io.ErrUnexpectedEOF))
-	badVersion := toBigEndian(hello, "")
-	badVersion[3] = 2
-	_, err = Decode(bytes.NewReader(badVersion))
-	c.HasError(err)
-	oversizedFields := toBigEndian(hello, "")
-	copy(oversizedFields[12:16], []byte{0xFF, 0xFF, 0xFF, 0xFF})
-	_, err = Decode(bytes.NewReader(oversizedFields))
-	c.HasError(err)
 }

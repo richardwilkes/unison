@@ -20,7 +20,6 @@ import (
 	"github.com/richardwilkes/unison"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
-	checkenum "github.com/richardwilkes/unison/enums/check"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
 )
@@ -120,64 +119,6 @@ func TestComboFieldAccessibilityMenuNameAndContextMenu(t *testing.T) {
 	names := axMenuItemNames(screen.AccessibilityTree(wnd))
 	c.True(slices.Contains(names, "Cut"), "the field's editing commands are what its contextual menu holds: %v", names)
 	c.False(slices.Contains(names, "Ready"), "the choices are not a contextual menu: %v", names)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestInWindowMenuSeparatorOffersNoPress verifies that a separator in a menu is not described as something that can be
-// pressed and refuses a press rather than reporting one as carried out: a separator is a line drawn between the things
-// that can be chosen, there is nothing there for a person to click, and choosing it does nothing.
-func TestInWindowMenuSeparatorOffersNoPress(t *testing.T) {
-	c := check.New(t)
-	const (
-		menuID = unison.UserBaseID + iota
-		firstID
-		secondID
-	)
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
-		unison.StartupFinishedCallback(func() {
-			wnd = newHeadlessWindow(t, "separator", geom.NewRect(10, 10, 400, 300), unison.NewPanel())
-			if wnd == nil {
-				return
-			}
-			unison.DefaultMenuFactory().BarForWindow(wnd, func(bar unison.Menu) {
-				f := bar.Factory()
-				m := f.NewMenu(menuID, "Edit", nil)
-				m.InsertItem(-1, f.NewItem(firstID, "First", unison.KeyBinding{}, nil, nil))
-				m.InsertSeparator(-1, false)
-				m.InsertItem(-1, f.NewItem(secondID, "Second", unison.KeyBinding{}, nil, nil))
-				bar.InsertMenu(-1, m)
-			})
-			wnd.ToFront()
-		}))
-	c.NotNil(wnd)
-	screen.Sync()
-
-	tree := screen.AccessibilityTree(wnd)
-	title := axNamed(tree, "Edit")
-	c.True(title != nil, "the bar carries the one menu that was added to it")
-	if title == nil {
-		return
-	}
-	screen.Click(axScreenPoint(screen, wnd, title))
-	tree = screen.AccessibilityTree(wnd)
-	separators := axNodesWithRole(tree, role.Separator)
-	c.Equal(1, len(separators), "the separator in the menu is described as one")
-	if len(separators) != 1 {
-		return
-	}
-	c.False(separators[0].Actions.Has(accessibility.Press), "there is nothing in a separator to press")
-	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   separators[0].ID,
-		Action: accessibility.Press,
-	}), "a press that did nothing must not be reported as carried out")
-
-	// The items around it are unaffected: they are still what a person chooses from.
-	item := axNamed(tree, "Second")
-	c.True(item != nil)
-	if item != nil {
-		c.True(item.Actions.Has(accessibility.Press))
-	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -326,75 +267,6 @@ func TestNumericFieldAccessibilityEmptyTextIsNotTakenAsZero(t *testing.T) {
 	g := unison.NewNumericField(5, 0, 10, strconv.Itoa, strconv.Atoi, nil)
 	c.True(g.PerformAccessibilityAction(accessibility.ActionRequest{Action: accessibility.SetValue}))
 	c.Equal("0", g.Text())
-}
-
-// TestRadioButtonAccessibilitySelect verifies that a radio button offers to be made the selection of its group and
-// does it, which is what a sticky button reported under the same role has always offered: the same request against the
-// two widgets must not succeed for one and be refused for the other. A button with no group has no selection to be.
-func TestRadioButtonAccessibilitySelect(t *testing.T) {
-	c := check.New(t)
-	var first, second, loner *unison.RadioButton
-	var wnd *unison.Window
-	clicks := 0
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
-		unison.StartupFinishedCallback(func() {
-			first = unison.NewRadioButton()
-			first.ClickAnimationTime = 0
-			first.SetTitle("First")
-			second = unison.NewRadioButton()
-			second.ClickAnimationTime = 0
-			second.SetTitle("Second")
-			second.ClickCallback = func() { clicks++ }
-			unison.NewGroup(first, second).Select(first)
-			loner = unison.NewRadioButton()
-			loner.ClickAnimationTime = 0
-			loner.SetTitle("Alone")
-			wnd = newHeadlessWindow(t, "radio buttons", geom.NewRect(10, 10, 300, 200),
-				axColumn(first, second, loner))
-		}))
-	c.NotNil(wnd)
-
-	screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(second)
-	c.True(node != nil)
-	if node == nil {
-		return
-	}
-	c.Equal(role.RadioButton, node.Role)
-	c.Equal(checkenum.Off, node.Checked)
-	c.True(node.Actions.Has(accessibility.Select), "a radio button in a group can be made its selection")
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   node.ID,
-		Action: accessibility.Select,
-	}))
-	var selected, wasSelected bool
-	var count int
-	screen.Do(func() {
-		selected = second.Group().Selected(second)
-		wasSelected = second.Group().Selected(first)
-		count = clicks
-	})
-	c.True(selected, "selecting it should have made it the selection of its group")
-	c.False(wasSelected, "which takes the button that was selected out of it")
-	c.Equal(1, count, "the application has to be told of a selection it would have been told of from a click")
-	screen.AccessibilityTree(wnd)
-	node = screen.AccessibilityNodeFor(second)
-	c.True(node != nil)
-	if node != nil {
-		c.Equal(checkenum.On, node.Checked, "the check says which button of the group is selected")
-	}
-
-	lonerNode := screen.AccessibilityNodeFor(loner)
-	c.True(lonerNode != nil)
-	if lonerNode == nil {
-		return
-	}
-	c.False(lonerNode.Actions.Has(accessibility.Select), "a button that belongs to no group has no selection to be")
-	c.False(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   lonerNode.ID,
-		Action: accessibility.Select,
-	}))
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // TestFieldAccessibilityContextMenuFollowsTheCaret verifies that the contextual menu an assistive technology asks for

@@ -321,39 +321,22 @@ func TestFlushDoesNotEvictTrackedRequest(t *testing.T) {
 	conn.abortStartup()
 }
 
-// TestAbortStartupReleasesResources verifies that a NewConn failure after the reader and writer goroutines have been
-// started closes the socket and terminates both goroutines instead of leaking them.
-func TestAbortStartupReleasesResources(t *testing.T) {
-	c := check.New(t)
-	conn, server := newPipeConn()
-	done := make(chan struct{})
-	go func() {
-		conn.abortStartup()
-		close(done)
-	}()
-	// The socket must be closed: the server side's read ends once the client end shuts down.
-	buffer := make([]byte, 1)
-	_, err := server.Read(buffer)
-	c.NotNil(err)
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		t.Fatal("abortStartup failed to terminate the connection goroutines")
-	}
-	c.True(conn.Dead(), "the event stream must be shut down after an aborted startup")
-}
-
 // TestDeadImmediatelyAfterShutdown verifies the shutdown ordering contract: readClosed must be the last thing to close
 // during shutdown, so anyone it unblocks (abortStartup, waiters in sendNewRequest) already observes Dead as true. The
 // deferred closeEvents in readResponses used to run after readClosed was closed, leaving a window where the connection
 // looked fully shut down but Dead still reported false. The loop shuts down many connections because a single pass
-// rarely lands in that window.
+// rarely lands in that window. Each pass also checks that abortStartup, which handles a NewConn failure after the
+// reader and writer goroutines have started, closes the socket rather than leaking it.
 func TestDeadImmediatelyAfterShutdown(t *testing.T) {
 	for i := range 200 {
 		conn, server := newPipeConn()
 		conn.abortStartup()
 		if !conn.Dead() {
 			t.Fatalf("iteration %d: Dead must report true once abortStartup returns", i)
+		}
+		// The server side's read ends once the client end shuts down.
+		if _, err := server.Read(make([]byte, 1)); err == nil {
+			t.Fatalf("iteration %d: abortStartup must close the socket", i)
 		}
 		xio.CloseIgnoringErrors(server)
 	}
@@ -828,83 +811,118 @@ func patternedData(size int) []byte {
 	return data
 }
 
-// TestChangePropertyIncrChunkIsSingleRequest verifies the contract completeIncrTransfers relies upon: a write of one
-// full INCR chunk (the maximum request size minus the 24-byte ChangeProperty header) must go out as a single
-// ChangeProperty request, so the requestor sees exactly one PropertyNotify per chunk.
-func TestChangePropertyIncrChunkIsSingleRequest(t *testing.T) {
-	c := check.New(t)
-	var chunkSize int
-	requests := captureRequests(t, math.MaxUint16, func(conn *Conn) {
-		chunkSize = conn.incrThreshold() - 24
-		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 8, PropModeReplace, patternedData(chunkSize))
-	})
-	c.Equal(262116, chunkSize)
-	c.Equal(1, len(requests))
-	req := parseChangeProperty(t, requests[0])
-	c.Equal(byte(PropModeReplace), req.mode)
-	c.Equal(uint32(chunkSize), req.unitCount)
-	c.Equal(math.MaxUint16, req.words)
-	c.Equal(patternedData(chunkSize), req.data)
-}
-
-// TestChangePropertySplitsOversizedData verifies that data too large for one request is split into a Replace followed
-// by Append requests, each within the maximum request size, and that the payload survives reassembly.
+// TestChangePropertySplitsOversizedData verifies that ChangeProperty splits data too large for one request on format
+// unit boundaries, each request within the server's advertised maximum request length, and that the payload survives
+// reassembly. An oversized Replace becomes a Replace followed by Appends, while every chunk of an oversized Append
+// stays an Append. One full INCR chunk (incrThreshold less the 24-byte ChangeProperty header) must go out as a single
+// request, since completeIncrTransfers relies on the requestor seeing exactly one PropertyNotify per chunk, and a
+// zero-length write must still send a request, since the INCR protocol uses its PropertyNotify to end a transfer.
 func TestChangePropertySplitsOversizedData(t *testing.T) {
-	c := check.New(t)
-	const maxData = (math.MaxUint16 - 6) * 4
-	data := patternedData(maxData + 5)
-	requests := captureRequests(t, math.MaxUint16, func(conn *Conn) {
-		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 8, PropModeReplace, data)
-	})
-	c.Equal(2, len(requests))
-	first := parseChangeProperty(t, requests[0])
-	c.Equal(byte(PropModeReplace), first.mode)
-	c.Equal(uint32(maxData), first.unitCount)
-	second := parseChangeProperty(t, requests[1])
-	c.Equal(byte(PropModeAppend), second.mode)
-	c.Equal(uint32(5), second.unitCount)
-	c.Equal(data, append(first.data, second.data...))
-}
-
-// TestChangePropertyHonorsServerMaximumRequestLength verifies that chunking respects the server's advertised maximum
-// request length even when it is smaller than the largest encodable request.
-func TestChangePropertyHonorsServerMaximumRequestLength(t *testing.T) {
-	c := check.New(t)
-	const maxWords = 4096
-	const maxDataUnits = (maxWords - 6) * 4 / 4 // format 32: 4 bytes per unit
-	data := patternedData((maxDataUnits + 2) * 4)
-	requests := captureRequests(t, maxWords, func(conn *Conn) {
-		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 32, PropModeReplace, data)
-	})
-	c.Equal(2, len(requests))
-	var reassembled []byte
-	for i, raw := range requests {
-		req := parseChangeProperty(t, raw)
-		if req.words > maxWords {
-			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
-		}
-		reassembled = append(reassembled, req.data...)
+	const (
+		maxBytes      = (math.MaxUint16 - 6) * 4 // Data bytes per request at the largest encodable request.
+		smallMaxWords = 4096
+		smallMaxBytes = (smallMaxWords - 6) * 4 // Data bytes per request at a smaller server maximum.
+	)
+	for _, tc := range []struct {
+		name     string
+		units    []uint32
+		modes    []byte
+		words    []int
+		size     int
+		maxWords uint16
+		format   byte
+		mode     byte
+		// incrChunk sizes the data as one full INCR chunk in place of size.
+		incrChunk bool
+	}{
+		{
+			name:     "oversized replace continues as appends",
+			maxWords: math.MaxUint16,
+			format:   8,
+			mode:     PropModeReplace,
+			size:     maxBytes + 5,
+			units:    []uint32{maxBytes, 5},
+			modes:    []byte{PropModeReplace, PropModeAppend},
+			words:    []int{math.MaxUint16, 8},
+		},
+		{
+			name:      "one full INCR chunk is a single request",
+			maxWords:  math.MaxUint16,
+			format:    8,
+			mode:      PropModeReplace,
+			incrChunk: true,
+			units:     []uint32{maxBytes},
+			modes:     []byte{PropModeReplace},
+			words:     []int{math.MaxUint16},
+		},
+		{
+			name:     "format 32 honors a smaller server maximum",
+			maxWords: smallMaxWords,
+			format:   32,
+			mode:     PropModeReplace,
+			size:     smallMaxBytes + 2*4,
+			units:    []uint32{smallMaxBytes / 4, 2},
+			modes:    []byte{PropModeReplace, PropModeAppend},
+			words:    []int{smallMaxWords, 8},
+		},
+		{
+			name:     "format 16 splits on unit boundaries",
+			maxWords: smallMaxWords,
+			format:   16,
+			mode:     PropModeReplace,
+			size:     smallMaxBytes + 2,
+			units:    []uint32{smallMaxBytes / 2, 1},
+			modes:    []byte{PropModeReplace, PropModeAppend},
+			words:    []int{smallMaxWords, 7},
+		},
+		{
+			name:     "oversized append stays an append",
+			maxWords: smallMaxWords,
+			format:   8,
+			mode:     PropModeAppend,
+			size:     smallMaxBytes + 7,
+			units:    []uint32{smallMaxBytes, 7},
+			modes:    []byte{PropModeAppend, PropModeAppend},
+			words:    []int{smallMaxWords, 8},
+		},
+		{
+			name:     "zero-length write still sends a request",
+			maxWords: math.MaxUint16,
+			format:   8,
+			mode:     PropModeReplace,
+			units:    []uint32{0},
+			modes:    []byte{PropModeReplace},
+			words:    []int{6},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			var data []byte
+			requests := captureRequests(t, tc.maxWords, func(conn *Conn) {
+				size := tc.size
+				if tc.incrChunk {
+					size = conn.incrThreshold() - 24
+				}
+				data = patternedData(size)
+				conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), tc.format, tc.mode, data)
+			})
+			if len(requests) != len(tc.units) {
+				t.Fatalf("expected %d requests, got %d", len(tc.units), len(requests))
+			}
+			reassembled := make([]byte, 0, len(data))
+			for i, raw := range requests {
+				req := parseChangeProperty(t, raw)
+				if req.words > int(tc.maxWords) {
+					t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, tc.maxWords)
+				}
+				c.Equal(tc.words[i], req.words, "request %d", i)
+				c.Equal(tc.modes[i], req.mode, "request %d", i)
+				c.Equal(tc.units[i], req.unitCount, "request %d", i)
+				reassembled = append(reassembled, req.data...)
+			}
+			c.Equal(data, reassembled)
+		})
 	}
-	c.Equal(uint32(maxDataUnits), parseChangeProperty(t, requests[0]).unitCount)
-	c.Equal(uint32(2), parseChangeProperty(t, requests[1]).unitCount)
-	c.Equal(data, reassembled)
-}
-
-// TestChangePropertyFormat16Chunking verifies that chunk boundaries land on format unit boundaries for 16-bit data.
-func TestChangePropertyFormat16Chunking(t *testing.T) {
-	c := check.New(t)
-	const maxWords = 4096
-	const maxDataUnits = (maxWords - 6) * 4 / 2 // format 16: 2 bytes per unit
-	data := patternedData((maxDataUnits + 1) * 2)
-	requests := captureRequests(t, maxWords, func(conn *Conn) {
-		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 16, PropModeReplace, data)
-	})
-	c.Equal(2, len(requests))
-	first := parseChangeProperty(t, requests[0])
-	c.Equal(uint32(maxDataUnits), first.unitCount)
-	second := parseChangeProperty(t, requests[1])
-	c.Equal(uint32(1), second.unitCount)
-	c.Equal(data, append(first.data, second.data...))
 }
 
 // TestChangePropertyRejectsPartialUnitData verifies that data whose length is not a multiple of the format unit size
@@ -916,29 +934,6 @@ func TestChangePropertyRejectsPartialUnitData(t *testing.T) {
 		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 32, PropModeAppend, patternedData(6))
 	})
 	c.Equal(0, len(requests))
-}
-
-// TestChangePropertyAppendChunking verifies that oversized appends are split into multiple append requests that
-// preserve the data's order, rather than sending only the first chunk and discarding the remainder.
-func TestChangePropertyAppendChunking(t *testing.T) {
-	c := check.New(t)
-	const maxWords = 4096
-	const maxData = (maxWords - 6) * 4
-	data := patternedData(maxData + 7)
-	requests := captureRequests(t, maxWords, func(conn *Conn) {
-		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 8, PropModeAppend, data)
-	})
-	c.Equal(2, len(requests))
-	var reassembled []byte
-	for i, raw := range requests {
-		req := parseChangeProperty(t, raw)
-		c.Equal(byte(PropModeAppend), req.mode)
-		if req.words > maxWords {
-			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
-		}
-		reassembled = append(reassembled, req.data...)
-	}
-	c.Equal(data, reassembled)
 }
 
 // TestChangePropertyPrependChunking verifies that oversized prepends are split into multiple prepend requests sent in
@@ -965,19 +960,6 @@ func TestChangePropertyPrependChunking(t *testing.T) {
 	c.Equal(uint32(maxDataUnits), parseChangeProperty(t, requests[0]).unitCount)
 	c.Equal(uint32(3), parseChangeProperty(t, requests[2]).unitCount)
 	c.Equal(data, property)
-}
-
-// TestChangePropertyZeroLengthStillSends verifies that a zero-length write still produces a single request, since the
-// INCR protocol uses the resulting PropertyNotify to signal the end of a transfer.
-func TestChangePropertyZeroLengthStillSends(t *testing.T) {
-	c := check.New(t)
-	requests := captureRequests(t, math.MaxUint16, func(conn *Conn) {
-		conn.ChangeProperty(WindowID(1), Atom(2), Atom(3), 8, PropModeReplace, nil)
-	})
-	c.Equal(1, len(requests))
-	req := parseChangeProperty(t, requests[0])
-	c.Equal(uint32(0), req.unitCount)
-	c.Equal(6, req.words)
 }
 
 // TestParseDisplayEnv verifies DISPLAY parsing, in particular that the screen separator dot is only recognized after
@@ -1305,23 +1287,10 @@ func remaining(conn *Conn) []Event {
 	}
 }
 
-// TestPollEventsBeforeStopsAtBarrier verifies that an event queued behind a barrier event is left alone. Motion
-// coalescing during a drag relies on this: pulling the motion that arrived after a ButtonRelease out from behind it
-// would report the pointer's post-release position as the drop position.
-func TestPollEventsBeforeStopsAtBarrier(t *testing.T) {
-	c := check.New(t)
-	release := &ButtonReleaseEvent{}
-	motion := &MotionNotifyEvent{}
-	conn := queueEvents(release, motion)
-
-	c.Nil(conn.PollEventsBefore(isMotion, isButtonRelease), "motion behind a barrier must not be returned")
-
-	// Neither the barrier nor the event behind it may be consumed.
-	c.Equal([]Event{release, motion}, remaining(conn))
-}
-
 // TestPollEventsBeforeReturnsMatchAheadOfBarrier verifies that matching events queued ahead of the barrier are still
-// returned, one call at a time, until the barrier is reached.
+// returned, one call at a time, until the barrier is reached, and that a matching event behind it is left alone. Motion
+// coalescing during a drag relies on the latter: pulling the motion that arrived after a ButtonRelease out from behind
+// it would report the pointer's post-release position as the drop position.
 func TestPollEventsBeforeReturnsMatchAheadOfBarrier(t *testing.T) {
 	c := check.New(t)
 	first := &MotionNotifyEvent{}
@@ -1380,26 +1349,17 @@ func TestPollEventsBeforeWithoutBarrier(t *testing.T) {
 	c.Equal([]Event{expose, press}, remaining(conn))
 }
 
-// TestPostEmptyEventDeliversWakeUp verifies the basic contract: posting on an open connection places a nil wake-up
-// event on the events channel.
-func TestPostEmptyEventDeliversWakeUp(t *testing.T) {
-	c := check.New(t)
-	conn := &Conn{events: make(chan Event, 4)}
-	conn.PostEmptyEvent()
-	c.Equal(1, len(conn.events))
-	e := <-conn.events
-	c.True(e == nil, "the wake-up event must be nil")
-}
-
-// TestPostEmptyEventDoesNotBlockWhenFull verifies that posting to a full events channel returns immediately instead
-// of blocking. Blocking there while holding postEventLock would deadlock a concurrent closeEvents during shutdown,
-// and the wake-up is redundant anyway: a full channel already guarantees any waiter will wake.
+// TestPostEmptyEventDoesNotBlockWhenFull verifies that posting places a nil wake-up event on the events channel and
+// that posting to a full channel returns immediately instead of blocking. Blocking there while holding postEventLock
+// would deadlock a concurrent closeEvents during shutdown, and the wake-up is redundant anyway: a full channel already
+// guarantees any waiter will wake.
 func TestPostEmptyEventDoesNotBlockWhenFull(t *testing.T) {
 	c := check.New(t)
 	conn := &Conn{events: make(chan Event, 1)}
 	conn.PostEmptyEvent()
 	conn.PostEmptyEvent() // Would block forever before the fix's non-blocking send if delivery were attempted.
 	c.Equal(1, len(conn.events))
+	c.True(<-conn.events == nil, "the wake-up event must be nil")
 }
 
 // TestPostEmptyEventSafeOnUnconnectedConn verifies that posting on a zero-value Conn (nil events channel) is a no-op
@@ -1570,53 +1530,88 @@ func premultipliedBGRA(img *image.NRGBA, x, y, w, h int) []byte {
 	return out
 }
 
-// TestPutImageSingleRequest verifies the wire form of an image that fits in one request, including a hand-computed
-// pre-multiplied BGRA pixel.
-func TestPutImageSingleRequest(t *testing.T) {
-	c := check.New(t)
-	img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
-	img.SetNRGBA(0, 0, color.NRGBA{R: 200, G: 100, B: 40, A: 128})
-	requests := captureCheckedRequests(t, math.MaxUint16, func(conn *Conn) {
-		conn.PutImage(DrawableID(1), GCID(2), 30, -40, img)
-	})
-	c.Equal(1, len(requests))
-	req := parsePutImage(t, requests[0])
-	c.Equal(byte(ImageFormatZPixmap), req.format)
-	c.Equal(byte(32), req.depth)
-	c.Equal(byte(0), req.leftPad)
-	c.Equal(1, req.width)
-	c.Equal(1, req.height)
-	c.Equal(30, req.dstX)
-	c.Equal(-40, req.dstY)
-	c.Equal(7, req.words)
-	// (B, G, R) of (40, 100, 200) pre-multiplied by alpha 128/255, then the original alpha.
-	c.Equal([]byte{20, 50, 100, 128}, req.data)
-}
-
-// TestPutImageChunksRowsToServerMax verifies that a tall image is split into row chunks sized by the server-advertised
-// maximum request length (not the compile-time maximum encodable request) and that the payload survives reassembly.
+// TestPutImageChunksRowsToServerMax verifies the PutImage wire form, a depth 32 ZPixmap with no left pad carrying
+// pre-multiplied BGRA pixels, and that a tall image is split into row chunks sized by the server-advertised maximum
+// request length (not the compile-time maximum encodable request) with the payload surviving reassembly. A sub-image,
+// whose bounds have a non-zero origin and whose stride is wider than its pixel rows, must be read through its own
+// geometry rather than as packed, zero-origin pixel data, so its expected bytes come from the parent's coordinates.
 func TestPutImageChunksRowsToServerMax(t *testing.T) {
-	c := check.New(t)
-	const maxWords = 306 // Fits 300 pixels per request, which is 3 rows of 100.
-	img := putImageTestImage(100, 10)
-	requests := captureCheckedRequests(t, maxWords, func(conn *Conn) {
-		conn.PutImage(DrawableID(1), GCID(2), 5, 7, img)
-	})
-	c.Equal(4, len(requests))
-	var reassembled []byte
-	for i, raw := range requests {
-		req := parsePutImage(t, raw)
-		if req.words > maxWords {
-			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
-		}
-		c.Equal(100, req.width)
-		c.Equal(5, req.dstX)
-		c.Equal(7+i*3, req.dstY)
-		reassembled = append(reassembled, req.data...)
+	pixel := image.NewNRGBA(image.Rect(0, 0, 1, 1))
+	pixel.SetNRGBA(0, 0, color.NRGBA{R: 200, G: 100, B: 40, A: 128})
+	tall := putImageTestImage(100, 10)
+	base := putImageTestImage(8, 8)
+	sub, ok := base.SubImage(image.Rect(2, 3, 6, 7)).(*image.NRGBA)
+	if !ok {
+		t.Fatal("SubImage did not return an *image.NRGBA")
 	}
-	c.Equal(3, parsePutImage(t, requests[0]).height)
-	c.Equal(1, parsePutImage(t, requests[3]).height)
-	c.Equal(premultipliedBGRA(img, 0, 0, 100, 10), reassembled)
+	for _, tc := range []struct {
+		name     string
+		img      *image.NRGBA
+		want     []byte
+		heights  []int
+		width    int
+		dstX     int16
+		dstY     int16
+		maxWords uint16
+	}{
+		{
+			name:     "single pixel",
+			img:      pixel,
+			maxWords: math.MaxUint16,
+			dstX:     30,
+			dstY:     -40,
+			width:    1,
+			heights:  []int{1},
+			// (B, G, R) of (40, 100, 200) pre-multiplied by alpha 128/255, then the original alpha.
+			want: []byte{20, 50, 100, 128},
+		},
+		{
+			name:     "tall image splits into row chunks",
+			img:      tall,
+			maxWords: 306, // Fits 300 pixels per request, which is 3 rows of 100.
+			dstX:     5,
+			dstY:     7,
+			width:    100,
+			heights:  []int{3, 3, 3, 1},
+			want:     premultipliedBGRA(tall, 0, 0, 100, 10),
+		},
+		{
+			name:     "sub-image respects its stride and origin",
+			img:      sub,
+			maxWords: math.MaxUint16,
+			width:    4,
+			heights:  []int{4},
+			want:     premultipliedBGRA(base, 2, 3, 4, 4),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			requests := captureCheckedRequests(t, tc.maxWords, func(conn *Conn) {
+				conn.PutImage(DrawableID(1), GCID(2), tc.dstX, tc.dstY, tc.img)
+			})
+			if len(requests) != len(tc.heights) {
+				t.Fatalf("expected %d requests, got %d", len(tc.heights), len(requests))
+			}
+			reassembled := make([]byte, 0, len(tc.want))
+			dstY := int(tc.dstY)
+			for i, raw := range requests {
+				req := parsePutImage(t, raw)
+				if req.words > int(tc.maxWords) {
+					t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, tc.maxWords)
+				}
+				c.Equal(byte(ImageFormatZPixmap), req.format)
+				c.Equal(byte(32), req.depth)
+				c.Equal(byte(0), req.leftPad)
+				c.Equal(tc.width, req.width)
+				c.Equal(tc.heights[i], req.height, "request %d", i)
+				c.Equal(int(tc.dstX), req.dstX)
+				c.Equal(dstY, req.dstY, "request %d", i)
+				dstY += tc.heights[i]
+				reassembled = append(reassembled, req.data...)
+			}
+			c.Equal(tc.want, reassembled)
+		})
+	}
 }
 
 // TestPutImageSplitsRowsWiderThanMaxRequest verifies that an image whose single row exceeds the maximum request size
@@ -1657,26 +1652,6 @@ func TestPutImageZeroSizedImage(t *testing.T) {
 	c.Equal(0, len(requests))
 }
 
-// TestPutImageSubImageRespectsStrideAndOrigin verifies that a sub-image — whose bounds have a non-zero origin and
-// whose stride is wider than its pixel rows — is read through its own geometry rather than assuming packed,
-// zero-origin pixel data. The expected bytes are computed from the parent image's coordinates.
-func TestPutImageSubImageRespectsStrideAndOrigin(t *testing.T) {
-	c := check.New(t)
-	base := putImageTestImage(8, 8)
-	sub, ok := base.SubImage(image.Rect(2, 3, 6, 7)).(*image.NRGBA)
-	if !ok {
-		t.Fatal("SubImage did not return an *image.NRGBA")
-	}
-	requests := captureCheckedRequests(t, math.MaxUint16, func(conn *Conn) {
-		conn.PutImage(DrawableID(1), GCID(2), 0, 0, sub)
-	})
-	c.Equal(1, len(requests))
-	req := parsePutImage(t, requests[0])
-	c.Equal(4, req.width)
-	c.Equal(4, req.height)
-	c.Equal(premultipliedBGRA(base, 2, 3, 4, 4), req.data)
-}
-
 // premulTestPixels returns a pixel buffer for PutImageRGBAPremul: rowPixels words per row for height rows, where the
 // leftmost width words of each row hold distinct premultiplied RGBA values and any remaining stride padding is filled
 // with a sentinel that must never appear on the wire.
@@ -1710,55 +1685,83 @@ func premulBGRAWire(pixels []uint32, rowPixels, x, y, w, h int) []byte {
 	return out
 }
 
-// TestPutImageRGBAPremulSingleRequest verifies the wire form of a premultiplied-RGBA upload that fits in one request,
-// including a hand-computed BGRA pixel and the caller-supplied drawable depth.
-func TestPutImageRGBAPremulSingleRequest(t *testing.T) {
-	c := check.New(t)
-	pixels := []uint32{100 | 50<<8 | 20<<16 | 128<<24}
-	requests := captureCheckedRequests(t, math.MaxUint16, func(conn *Conn) {
-		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 30, -40, 1, 1, 1, pixels, 24)
-	})
-	c.Equal(1, len(requests))
-	req := parsePutImage(t, requests[0])
-	c.Equal(byte(ImageFormatZPixmap), req.format)
-	c.Equal(byte(24), req.depth)
-	c.Equal(byte(0), req.leftPad)
-	c.Equal(1, req.width)
-	c.Equal(1, req.height)
-	c.Equal(30, req.dstX)
-	c.Equal(-40, req.dstY)
-	c.Equal(7, req.words)
-	// The (R, G, B, A) device word (100, 50, 20, 128) reordered to wire (B, G, R, A).
-	c.Equal([]byte{20, 50, 100, 128}, req.data)
-}
-
-// TestPutImageRGBAPremulChunksRowsAndRespectsStride verifies that a tall upload is split into row chunks sized by the
-// server-advertised maximum request length and that rows are read through the pixel stride, never leaking padding
-// words onto the wire.
+// TestPutImageRGBAPremulChunksRowsAndRespectsStride verifies the PutImageRGBAPremul wire form, a ZPixmap at the
+// caller-supplied depth with no left pad carrying each device word in BGRA byte order, and that a tall upload is split
+// into row chunks sized by the server-advertised maximum request length, with rows read through the pixel stride,
+// never leaking padding words onto the wire.
 func TestPutImageRGBAPremulChunksRowsAndRespectsStride(t *testing.T) {
-	c := check.New(t)
-	const maxWords = 306 // Fits 300 pixels per request, which is 3 rows of 100.
-	const width, height, rowPixels = 100, 10, 128
-	pixels := premulTestPixels(width, height, rowPixels)
-	requests := captureCheckedRequests(t, maxWords, func(conn *Conn) {
-		conn.PutImageRGBAPremul(DrawableID(1), GCID(2), 5, 7, width, height, rowPixels, pixels, 32)
-	})
-	c.Equal(4, len(requests))
-	var reassembled []byte
-	for i, raw := range requests {
-		req := parsePutImage(t, raw)
-		if req.words > maxWords {
-			t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, maxWords)
-		}
-		c.Equal(byte(32), req.depth)
-		c.Equal(width, req.width)
-		c.Equal(5, req.dstX)
-		c.Equal(7+i*3, req.dstY)
-		reassembled = append(reassembled, req.data...)
+	const tallWidth, tallHeight, tallRowPixels = 100, 10, 128
+	tall := premulTestPixels(tallWidth, tallHeight, tallRowPixels)
+	for _, tc := range []struct {
+		name      string
+		pixels    []uint32
+		want      []byte
+		heights   []int
+		width     int32
+		height    int32
+		rowPixels int32
+		dstX      int16
+		dstY      int16
+		maxWords  uint16
+		depth     byte
+	}{
+		{
+			name:      "single pixel at depth 24",
+			pixels:    []uint32{100 | 50<<8 | 20<<16 | 128<<24},
+			maxWords:  math.MaxUint16,
+			dstX:      30,
+			dstY:      -40,
+			width:     1,
+			height:    1,
+			rowPixels: 1,
+			depth:     24,
+			heights:   []int{1},
+			// The (R, G, B, A) device word (100, 50, 20, 128) reordered to wire (B, G, R, A).
+			want: []byte{20, 50, 100, 128},
+		},
+		{
+			name:      "tall upload splits into row chunks",
+			pixels:    tall,
+			maxWords:  306, // Fits 300 pixels per request, which is 3 rows of 100.
+			dstX:      5,
+			dstY:      7,
+			width:     tallWidth,
+			height:    tallHeight,
+			rowPixels: tallRowPixels,
+			depth:     32,
+			heights:   []int{3, 3, 3, 1},
+			want:      premulBGRAWire(tall, tallRowPixels, 0, 0, tallWidth, tallHeight),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			requests := captureCheckedRequests(t, tc.maxWords, func(conn *Conn) {
+				conn.PutImageRGBAPremul(DrawableID(1), GCID(2), tc.dstX, tc.dstY, tc.width, tc.height, tc.rowPixels,
+					tc.pixels, tc.depth)
+			})
+			if len(requests) != len(tc.heights) {
+				t.Fatalf("expected %d requests, got %d", len(tc.heights), len(requests))
+			}
+			reassembled := make([]byte, 0, len(tc.want))
+			dstY := int(tc.dstY)
+			for i, raw := range requests {
+				req := parsePutImage(t, raw)
+				if req.words > int(tc.maxWords) {
+					t.Errorf("request %d is %d words, exceeding the server maximum of %d", i, req.words, tc.maxWords)
+				}
+				c.Equal(byte(ImageFormatZPixmap), req.format)
+				c.Equal(tc.depth, req.depth)
+				c.Equal(byte(0), req.leftPad)
+				c.Equal(int(tc.width), req.width)
+				c.Equal(tc.heights[i], req.height, "request %d", i)
+				c.Equal(int(tc.dstX), req.dstX)
+				c.Equal(dstY, req.dstY, "request %d", i)
+				dstY += tc.heights[i]
+				reassembled = append(reassembled, req.data...)
+			}
+			c.Equal(tc.want, reassembled)
+		})
 	}
-	c.Equal(3, parsePutImage(t, requests[0]).height)
-	c.Equal(1, parsePutImage(t, requests[3]).height)
-	c.Equal(premulBGRAWire(pixels, rowPixels, 0, 0, width, height), reassembled)
 }
 
 // TestPutImageRGBAPremulSplitsRowsWiderThanMaxRequest verifies that an upload whose single row exceeds the maximum
@@ -1985,67 +1988,86 @@ func TestXauthAddressMatches(t *testing.T) {
 // TestReadAuthorityMatchesInternetFamily is the regression test for remote TCP displays being unable to authenticate:
 // their Xauthority entries are stored as FamilyInternet/FamilyInternet6 with a binary IP address, which the scan
 // previously could never match (it only accepted FamilyWild and FamilyLocal), so any remote server requiring
-// MIT-MAGIC-COOKIE-1 refused the connection.
+// MIT-MAGIC-COOKIE-1 refused the connection. An IPv6 connection must take its FamilyInternet6 entry and never the
+// FamilyInternet form, a local connection must match no Internet entry, and FamilyLocal and FamilyWild entries must
+// still match.
 func TestReadAuthorityMatchesInternetFamily(t *testing.T) {
-	c := check.New(t)
 	const authName = "MIT-MAGIC-COOKIE-1"
-	cookie := []byte{0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4}
-	writeXauthorityFile(t,
+	v4 := net.ParseIP("192.168.1.10")
+	v4Cookie := []byte{0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4}
+	v4Entries := [][]byte{
 		xauthEntry(xauthFamilyLocal, []byte("otherhost"), "0", authName, []byte("wrong-local")),
 		xauthEntry(xauthFamilyInternet, net.ParseIP("10.0.0.1").To4(), "0", authName, []byte("wrong-address")),
-		xauthEntry(xauthFamilyInternet, net.ParseIP("192.168.1.10").To4(), "1", authName, []byte("wrong-display")),
-		xauthEntry(xauthFamilyInternet, net.ParseIP("192.168.1.10").To4(), "0", authName, cookie),
-	)
-	conn := &Conn{
-		conn:    &fakeAddrConn{remote: &net.TCPAddr{IP: net.ParseIP("192.168.1.10"), Port: 6000}},
-		display: "0",
+		xauthEntry(xauthFamilyInternet, v4.To4(), "1", authName, []byte("wrong-display")),
+		xauthEntry(xauthFamilyInternet, v4.To4(), "0", authName, v4Cookie),
 	}
-	name, data := conn.readAuthority("192.168.1.10")
-	c.Equal(authName, name)
-	c.Equal(cookie, data)
-	// A local (unix socket) connection has no remote IP, so none of the Internet entries may match it.
-	local := &Conn{display: "0"}
-	name, data = local.readAuthority("myhost")
-	c.Equal("", name)
-	c.Equal(0, len(data))
-}
-
-// TestReadAuthorityInternet6Entry verifies that IPv6 TCP connections match FamilyInternet6 entries and never the
-// same-address FamilyInternet form.
-func TestReadAuthorityInternet6Entry(t *testing.T) {
-	c := check.New(t)
-	const authName = "MIT-MAGIC-COOKIE-1"
-	cookie := []byte{9, 8, 7, 6}
-	ip := net.ParseIP("fd00::1234")
-	writeXauthorityFile(t,
-		xauthEntry(xauthFamilyInternet, ip.To16()[:4], "0", authName, []byte("wrong-family")),
-		xauthEntry(xauthFamilyInternet6, ip.To16(), "0", authName, cookie),
-	)
-	conn := &Conn{
-		conn:    &fakeAddrConn{remote: &net.TCPAddr{IP: ip, Port: 6000}},
-		display: "0",
-	}
-	name, data := conn.readAuthority("fd00::1234")
-	c.Equal(authName, name)
-	c.Equal(cookie, data)
-}
-
-// TestReadAuthorityStillMatchesLocalAndWild verifies that the pre-existing FamilyLocal and FamilyWild matching still
-// works after the Internet-family support was added.
-func TestReadAuthorityStillMatchesLocalAndWild(t *testing.T) {
-	c := check.New(t)
-	const authName = "MIT-MAGIC-COOKIE-1"
+	v6 := net.ParseIP("fd00::1234")
+	v6Cookie := []byte{9, 8, 7, 6}
 	localCookie := []byte{1, 1, 2, 2}
 	wildCookie := []byte{3, 3, 4, 4}
-	writeXauthorityFile(t,
-		xauthEntry(xauthFamilyLocal, []byte("myhost"), "0", authName, localCookie),
+	const localHost = "myhost"
+	localAndWildEntries := [][]byte{
+		xauthEntry(xauthFamilyLocal, []byte(localHost), "0", authName, localCookie),
 		xauthEntry(xauthFamilyWild, nil, "", authName, wildCookie),
-	)
-	conn := &Conn{display: "0"}
-	name, data := conn.readAuthority("myhost")
-	c.Equal(authName, name)
-	c.Equal(localCookie, data)
-	name, data = conn.readAuthority("someotherhost")
-	c.Equal(authName, name)
-	c.Equal(wildCookie, data)
+	}
+	for _, tc := range []struct {
+		name     string
+		host     string
+		wantName string
+		entries  [][]byte
+		// remote is the server's address for a TCP connection; nil means a local (unix socket) connection.
+		remote   net.IP
+		wantData []byte
+	}{
+		{
+			name:     "IPv4 connection takes the Internet entry for its address and display",
+			entries:  v4Entries,
+			remote:   v4,
+			host:     "192.168.1.10",
+			wantName: authName,
+			wantData: v4Cookie,
+		},
+		{
+			name:    "local connection has no remote IP to match an Internet entry",
+			entries: v4Entries,
+			host:    localHost,
+		},
+		{
+			name: "IPv6 connection takes the Internet6 entry",
+			entries: [][]byte{
+				xauthEntry(xauthFamilyInternet, v6.To16()[:4], "0", authName, []byte("wrong-family")),
+				xauthEntry(xauthFamilyInternet6, v6.To16(), "0", authName, v6Cookie),
+			},
+			remote:   v6,
+			host:     "fd00::1234",
+			wantName: authName,
+			wantData: v6Cookie,
+		},
+		{
+			name:     "FamilyLocal entry matches the hostname",
+			entries:  localAndWildEntries,
+			host:     localHost,
+			wantName: authName,
+			wantData: localCookie,
+		},
+		{
+			name:     "FamilyWild entry with no display matches any other host",
+			entries:  localAndWildEntries,
+			host:     "someotherhost",
+			wantName: authName,
+			wantData: wildCookie,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			writeXauthorityFile(t, tc.entries...)
+			conn := &Conn{display: "0"}
+			if tc.remote != nil {
+				conn.conn = &fakeAddrConn{remote: &net.TCPAddr{IP: tc.remote, Port: 6000}}
+			}
+			name, data := conn.readAuthority(tc.host)
+			c.Equal(tc.wantName, name)
+			c.True(bytes.Equal(tc.wantData, data), "expected cookie %v, got %v", tc.wantData, data)
+		})
+	}
 }

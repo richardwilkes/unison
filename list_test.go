@@ -57,15 +57,28 @@ func TestListReplace(t *testing.T) {
 	c.Equal(3, l.Count())
 }
 
+// TestListInsertShiftsSelection verifies that the selection follows the rows an insertion moves, and that inserting no
+// rows leaves it alone, where moving the selected rows up by nothing used to clear them.
 func TestListInsertShiftsSelection(t *testing.T) {
-	c := check.New(t)
-	l := newTestList("a", "b", "c")
-	l.Select(false, 2) // select "c"
-	l.Insert(1, "x", "y")
-	c.Equal(5, l.Count())
-	c.Equal("c", l.DataAtIndex(4))
-	// The selection follows the moved item.
-	c.Equal([]int{4}, selectedIndexes(l))
+	for _, tc := range []struct {
+		name     string
+		selected []int
+		values   []string
+		want     []int
+	}{
+		{name: "the selection follows the moved rows", selected: []int{2}, values: []string{"x", "y"}, want: []int{4}},
+		{name: "inserting nothing keeps the selection", selected: []int{1, 2}, want: []int{1, 2}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			l := newTestList("a", "b", "c")
+			l.Select(false, tc.selected...)
+			l.Insert(1, tc.values...)
+			c.Equal(3+len(tc.values), l.Count())
+			c.Equal("c", l.DataAtIndex(2+len(tc.values)))
+			c.Equal(tc.want, selectedIndexes(l))
+		})
+	}
 }
 
 // TestListInsertLeavesTheCallersSliceAlone verifies that inserting part of a slice with spare capacity does not write
@@ -83,17 +96,6 @@ func TestListInsertLeavesTheCallersSliceAlone(t *testing.T) {
 	c.Equal("y", l.DataAtIndex(3))
 }
 
-// TestListInsertNothingKeepsTheSelection verifies that inserting no rows leaves the selection alone, where moving the
-// selected rows up by nothing used to clear them.
-func TestListInsertNothingKeepsTheSelection(t *testing.T) {
-	c := check.New(t)
-	l := newTestList("a", "b", "c")
-	l.Select(false, 1, 2)
-	l.Insert(1)
-	c.Equal(3, l.Count())
-	c.Equal([]int{1, 2}, selectedIndexes(l))
-}
-
 func TestListInsertClampsIndex(t *testing.T) {
 	c := check.New(t)
 	l := newTestList("a", "b")
@@ -101,60 +103,47 @@ func TestListInsertClampsIndex(t *testing.T) {
 	c.Equal("z", l.DataAtIndex(2))
 }
 
-func TestListRemoveShiftsSelection(t *testing.T) {
-	c := check.New(t)
-	l := newTestList("a", "b", "c", "d")
-	l.Select(true, 1, 3)
-	l.Remove(2) // remove "c"
-	c.Equal(3, l.Count())
-	// Index 1 ("b") stays; index 3 ("d") slides down to 2.
-	c.Equal([]int{1, 2}, selectedIndexes(l))
-	c.Equal("d", l.DataAtIndex(2))
-}
-
+// TestListRemoveRangeShiftsSelection verifies that removing rows, as a range or one at a time with Remove, drops them
+// from the selection and moves the selection past them down by as many.
 func TestListRemoveRangeShiftsSelection(t *testing.T) {
-	c := check.New(t)
-	l := newTestList("a", "b", "c", "d", "e")
-	l.SelectAll()
-	l.RemoveRange(1, 2) // remove "b","c"
-	c.Equal(3, l.Count())
-	c.Equal([]int{0, 1, 2}, selectedIndexes(l))
-	c.Equal("d", l.DataAtIndex(1))
-}
-
-func TestListInsertShiftsAnchor(t *testing.T) {
-	c := check.New(t)
-	l := newTestList("a", "b", "c")
-	l.Select(false, 2) // anchor at "c"
-	c.Equal(2, l.Anchor())
-	l.Insert(1, "x", "y")
-	// The anchor follows the moved item.
-	c.Equal(4, l.Anchor())
-	// Inserting after the anchor leaves it alone.
-	l.Insert(5, "z")
-	c.Equal(4, l.Anchor())
-}
-
-func TestListRemoveAdjustsAnchor(t *testing.T) {
-	c := check.New(t)
-	l := newTestList("a", "b", "c", "d")
-	l.Select(false, 2) // anchor at "c"
-	l.Remove(0)        // remove "a"; anchor slides down with its row
-	c.Equal(1, l.Anchor())
-	l.Remove(2) // remove "d", after the anchor; anchor unchanged
-	c.Equal(1, l.Anchor())
-	l.Remove(1) // remove the anchored row itself
-	c.Equal(-1, l.Anchor())
-}
-
-func TestListRemoveRangeAdjustsAnchor(t *testing.T) {
-	c := check.New(t)
-	l := newTestList("a", "b", "c", "d", "e")
-	l.Select(false, 4) // anchor at "e"
-	l.RemoveRange(0, 1)
-	c.Equal(2, l.Anchor())
-	l.RemoveRange(1, 2) // range covers the anchored row
-	c.Equal(-1, l.Anchor())
+	for _, tc := range []struct {
+		remove   func(l *unison.List[string])
+		name     string
+		rows     []string
+		selected []int
+		want     []int
+		count    int
+		dAt      int // Where "d", the first row past the removed ones, ends up.
+	}{
+		{
+			name:     "a range",
+			rows:     []string{"a", "b", "c", "d", "e"},
+			selected: []int{0, 1, 2, 3, 4},
+			remove:   func(l *unison.List[string]) { l.RemoveRange(1, 2) },
+			count:    3,
+			want:     []int{0, 1, 2},
+			dAt:      1,
+		},
+		{
+			name:     "one row",
+			rows:     []string{"a", "b", "c", "d"},
+			selected: []int{1, 3},
+			remove:   func(l *unison.List[string]) { l.Remove(2) },
+			count:    3,
+			want:     []int{1, 2},
+			dAt:      2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			l := newTestList(tc.rows...)
+			l.Select(false, tc.selected...)
+			tc.remove(l)
+			c.Equal(tc.count, l.Count())
+			c.Equal(tc.want, selectedIndexes(l))
+			c.Equal("d", l.DataAtIndex(tc.dAt))
+		})
+	}
 }
 
 func TestListRemoveRangeNoPhantomSelection(t *testing.T) {
@@ -186,11 +175,16 @@ func TestListSelectReplaceVsAdd(t *testing.T) {
 	c.Equal(3, l.Anchor())
 }
 
+// TestListSelectRangeClamps verifies that SelectRange clamps out-of-range indexes to the rows and anchors at the start
+// of the range.
 func TestListSelectRangeClamps(t *testing.T) {
 	c := check.New(t)
 	l := newTestList("a", "b", "c", "d", "e")
 	l.SelectRange(-3, 99, false)
 	c.Equal([]int{0, 1, 2, 3, 4}, selectedIndexes(l))
+	l.SelectRange(1, 99, false)
+	c.Equal([]int{1, 2, 3, 4}, selectedIndexes(l))
+	c.Equal(1, l.Anchor())
 }
 
 func TestListSelectAllAndCanSelectAll(t *testing.T) {
@@ -809,32 +803,43 @@ func TestListAccessibilityFocusOnARowOutOfSight(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestListLeadMovesWithTheRows verifies that the row the person is on is kept in step with the rows around it as they
-// are added and removed, exactly as the anchor a shift-click extends from is, and that it is let go of when the row
-// itself goes away.
+// TestListLeadMovesWithTheRows verifies that the row the person is on, and the anchor a shift-click extends from, are
+// each kept in step with the rows around them as they are added and removed, and let go of when their row itself goes
+// away.
 func TestListLeadMovesWithTheRows(t *testing.T) {
 	c := check.New(t)
 	l := newTestList("a", "b", "c", "d", "e")
 	c.Equal(-1, l.Lead(), "a list nobody has been in has no lead row")
 	l.Select(false, 2)
 	c.Equal(2, l.Lead())
+	c.Equal(2, l.Anchor())
 
 	l.Insert(0, "x", "y")
 	c.Equal(4, l.Lead(), "rows added above move the lead row down with the row it names")
+	c.Equal(4, l.Anchor(), "rows added above move the anchor down with the row it names")
 	l.Insert(6, "z")
 	c.Equal(4, l.Lead(), "rows added below leave it where it is")
+	c.Equal(4, l.Anchor(), "rows added below leave the anchor where it is")
 
 	l.Remove(0)
 	c.Equal(3, l.Lead())
+	c.Equal(3, l.Anchor())
+	l.Remove(5)
+	c.Equal(3, l.Lead(), "a row removed below leaves the lead row where it is")
+	c.Equal(3, l.Anchor(), "a row removed below leaves the anchor where it is")
 	l.Remove(3)
 	c.Equal(-1, l.Lead(), "the lead row is let go of when the row it names is removed")
+	c.Equal(-1, l.Anchor(), "the anchor is let go of when the row it names is removed")
 
 	l.Select(false, 4)
 	c.Equal(4, l.Lead())
+	c.Equal(4, l.Anchor())
 	l.RemoveRange(0, 1)
 	c.Equal(2, l.Lead())
+	c.Equal(2, l.Anchor())
 	l.RemoveRange(1, 2)
 	c.Equal(-1, l.Lead())
+	c.Equal(-1, l.Anchor())
 
 	l.Select(false, 0)
 	l.Clear()

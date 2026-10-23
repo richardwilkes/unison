@@ -94,19 +94,10 @@ func TestSumLengths(t *testing.T) {
 	}
 }
 
-// TestSumEmpty pins the empty-input half of the contract: 0, and specifically positive zero.
-func TestSumEmpty(t *testing.T) {
-	for name, values := range map[string][]float32{"nil": nil, "empty": {}} {
-		if bits := math.Float32bits(Sum(values)); bits != 0 {
-			t.Fatalf("%s: Sum = %08x, want 00000000", name, bits)
-		}
-	}
-}
-
 // TestSumSpecialValues drives the float32 classes the arithmetic treats specially — NaN, both infinities, signed zero,
 // denormals, mixed signs and catastrophic cancellation — through every lane position and both sides of the chunk/tail
-// split, and requires Sum to reproduce the reference association exactly. The cases with a single defensible answer
-// also state it outright, so a change that broke propagation could not hide behind a matching reference.
+// split, and requires Sum to reproduce the reference association exactly. The answers the contract fixes outright are
+// also checked directly, so broken propagation or association could not hide behind a matching reference.
 func TestSumSpecialValues(t *testing.T) {
 	var (
 		inf  = float32(math.Inf(1))
@@ -142,7 +133,9 @@ func TestSumSpecialValues(t *testing.T) {
 	}
 
 	// The answers the contract fixes outright, checked against the contract rather than against the reference. +0 is
-	// the identity every accumulator starts from, which is why an input of nothing but negative zeros sums to +0.
+	// the identity every accumulator starts from, which is why an input of nothing but negative zeros sums to +0. For
+	// 2^24 then seven 1s, acc0 rounds 2^24+1 away while acc1-acc3 each hold an exact 2, so the fixed association gives
+	// 2^24+6 where a sequential loop rounds every add away and lands on 2^24.
 	isNaN := func(got float32) bool { return math.IsNaN(float64(got)) }
 	for name, tc := range map[string]struct {
 		check  func(got float32) bool
@@ -162,6 +155,10 @@ func TestSumSpecialValues(t *testing.T) {
 		"neg zeros sum to +0": {
 			check:  func(got float32) bool { return math.Float32bits(got) == 0 },
 			values: []float32{nz, nz, nz, nz, nz},
+		},
+		"association differs from sequential": {
+			check:  func(got float32) bool { return math.Float32bits(got) == math.Float32bits(1<<24+6) },
+			values: []float32{1 << 24, 1, 1, 1, 1, 1, 1, 1},
 		},
 	} {
 		if got := Sum(tc.values); !tc.check(got) {
@@ -186,27 +183,11 @@ func TestSumRandom(t *testing.T) {
 	}
 }
 
-// TestSumDivergesFromSequential pins the divergence Sum's doc comment describes, with the smallest input that shows it:
-// eight elements led by 2^24. A sequential loop adds 1 to 2^24 seven times and rounds every one of them away (2^24+1 is
-// not representable and ties to even), landing on 2^24. The fixed association instead pairs values[0] with values[4] in
-// acc0 — which still rounds away — while acc1, acc2 and acc3 each accumulate 1+1 = 2 exactly, and 2^24+2+2+2 is exact,
-// so the answer is 2^24+6. Both are legitimate float32 sums of the same input; only one of them is the same on every
-// platform, which is the whole reason the association is nailed down.
-func TestSumDivergesFromSequential(t *testing.T) {
-	values := []float32{1 << 24, 1, 1, 1, 1, 1, 1, 1}
-	if got, want := Sum(values), float32(1<<24+6); math.Float32bits(got) != math.Float32bits(want) {
-		t.Fatalf("Sum = %v, want %v", got, want)
-	}
-	if got, want := seqSum(values), float32(1<<24); math.Float32bits(got) != math.Float32bits(want) {
-		t.Fatalf("seqSum = %v, want %v", got, want)
-	}
-}
-
-// TestSumTracksSequentialSum documents the size of that divergence on well-behaved input: for values that are all the
-// same sign, where nothing cancels, both orderings are accurate to the standard n*eps relative bound, so they cannot
-// differ from each other by more than twice it. The check is a relative tolerance, not a bit comparison — the two
-// results are expected to differ, just not by much — and it is the one place in this file where being off by a ULP is
-// not a failure.
+// TestSumTracksSequentialSum documents how far Sum's fixed association drifts from a sequential loop on well-behaved
+// input: for values that are all the same sign, where nothing cancels, both orderings are accurate to the standard
+// n*eps relative bound, so they cannot differ from each other by more than twice it. The check is a relative tolerance,
+// not a bit comparison — the two results are expected to differ, just not by much — and it is the one place in this
+// file where being off by a ULP is not a failure.
 func TestSumTracksSequentialSum(t *testing.T) {
 	rng := rand.New(rand.NewPCG(13, 14)) //nolint:gosec // Deterministic seed for reproducible tests
 	for _, n := range []int{7, 64, 1000, 4096} {

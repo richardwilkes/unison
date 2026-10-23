@@ -33,59 +33,58 @@ func dragTo(s *unison.Slider, x float32) {
 	s.DefaultMouseDrag(geom.NewPoint(x, 10), 1, mod.None)
 }
 
-func TestSliderDragWithZeroMinimum(t *testing.T) {
-	c := check.New(t)
-	s := newTestSlider(0, 100, 0)
-	dragTo(s, 7)
-	c.Equal(float32(0), s.Value())
-	dragTo(s, 57)
-	c.Equal(float32(50), s.Value())
-	dragTo(s, 107)
-	c.Equal(float32(100), s.Value())
-}
-
+// TestSliderDragWithNonZeroMinimum verifies that a drag maps the 100-pixel track linearly onto the slider's range,
+// whether its minimum is positive, zero or negative, and that a drag past either end of the track clamps to that end.
 func TestSliderDragWithNonZeroMinimum(t *testing.T) {
-	c := check.New(t)
-	s := newTestSlider(50, 100, 50)
-	dragTo(s, 107)
-	c.Equal(float32(100), s.Value())
-	dragTo(s, 57)
-	c.Equal(float32(75), s.Value())
-	dragTo(s, 7)
-	c.Equal(float32(50), s.Value())
+	type drag struct{ x, want float32 }
+	for _, one := range []struct {
+		name                    string
+		drags                   []drag
+		minimum, maximum, value float32
+	}{
+		{
+			name:    "positive minimum",
+			drags:   []drag{{107, 100}, {57, 75}, {7, 50}},
+			minimum: 50,
+			maximum: 100,
+			value:   50,
+		},
+		{
+			name:    "zero minimum",
+			drags:   []drag{{7, 0}, {57, 50}, {107, 100}},
+			minimum: 0,
+			maximum: 100,
+			value:   0,
+		},
+		{
+			name:    "negative minimum",
+			drags:   []drag{{7, -100}, {57, 0}, {107, 100}},
+			minimum: -100,
+			maximum: 100,
+			value:   0,
+		},
+		{
+			name:    "past the track ends",
+			drags:   []drag{{-500, 50}, {500, 100}},
+			minimum: 50,
+			maximum: 100,
+			value:   75,
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			s := newTestSlider(one.minimum, one.maximum, one.value)
+			for _, d := range one.drags {
+				dragTo(s, d.x)
+				c.Equal(d.want, s.Value(), "dragged to x=%v", d.x)
+			}
+		})
+	}
 }
 
-func TestSliderDragWithNegativeMinimum(t *testing.T) {
-	c := check.New(t)
-	s := newTestSlider(-100, 100, 0)
-	dragTo(s, 7)
-	c.Equal(float32(-100), s.Value())
-	dragTo(s, 57)
-	c.Equal(float32(0), s.Value())
-	dragTo(s, 107)
-	c.Equal(float32(100), s.Value())
-}
-
-func TestSliderDragClampsToTrackEnds(t *testing.T) {
-	c := check.New(t)
-	s := newTestSlider(50, 100, 75)
-	dragTo(s, -500)
-	c.Equal(float32(50), s.Value())
-	dragTo(s, 500)
-	c.Equal(float32(100), s.Value())
-}
-
-func TestSliderSetValueClamps(t *testing.T) {
-	c := check.New(t)
-	s := unison.NewSlider(50, 100, 75)
-	s.SetValue(0)
-	c.Equal(float32(50), s.Value())
-	s.SetValue(200)
-	c.Equal(float32(100), s.Value())
-}
-
-// TestSliderRangeChangeNotifiesWhenValueMoves verifies that narrowing the range reports the value it displaces.
-// SetMinimum and SetMaximum used to clamp the value directly, so listeners never learned the value had changed.
+// TestSliderRangeChangeNotifiesWhenValueMoves verifies that narrowing the range reports the value it displaces, and
+// that SetValue clamps a value outside the range to its nearer end. SetMinimum and SetMaximum used to clamp the value
+// directly, so listeners never learned the value had changed.
 func TestSliderRangeChangeNotifiesWhenValueMoves(t *testing.T) {
 	c := check.New(t)
 
@@ -114,6 +113,11 @@ func TestSliderRangeChangeNotifiesWhenValueMoves(t *testing.T) {
 	s.SetMaximum(20)
 	c.Equal(float32(20), s.Value())
 	c.Equal(2, changes)
+
+	s.SetValue(-10)
+	c.Equal(float32(0), s.Value(), "SetValue clamps to the minimum")
+	s.SetValue(200)
+	c.Equal(float32(20), s.Value(), "and to the maximum")
 }
 
 // TestSliderRangeChangeAppliesSnap verifies that a value the range change moves goes through the snap callback, just as
@@ -145,7 +149,8 @@ func newTestVerticalSlider(minimum, maximum, value float32) *unison.Slider {
 
 // TestSliderVerticalArrowKeysFollowTheDrawnAxis verifies that the up and down arrows move a vertical slider's thumb the
 // way they point. A vertical slider draws its maximum at the bottom, and dragging downwards raises its value, so the
-// down arrow has to raise it too; it used to lower it, which moved the thumb visibly upwards.
+// down arrow has to raise it too; it used to lower it, which moved the thumb visibly upwards. A horizontal slider keeps
+// the arrow directions every platform gives one: up and right raise the value, down and left lower it.
 func TestSliderVerticalArrowKeysFollowTheDrawnAxis(t *testing.T) {
 	c := check.New(t)
 	s := newTestVerticalSlider(0, 100, 50)
@@ -174,13 +179,8 @@ func TestSliderVerticalArrowKeysFollowTheDrawnAxis(t *testing.T) {
 	c.Equal(float32(100), s.Value())
 	c.True(s.DefaultKeyDown(unison.KeyHome, mod.None, false))
 	c.Equal(float32(0), s.Value())
-}
 
-// TestSliderHorizontalArrowKeys verifies that a horizontal slider keeps the arrow directions every platform gives one:
-// up and right raise the value, down and left lower it.
-func TestSliderHorizontalArrowKeys(t *testing.T) {
-	c := check.New(t)
-	s := newTestSlider(0, 100, 50)
+	s = newTestSlider(0, 100, 50)
 	c.True(s.DefaultKeyDown(unison.KeyUp, mod.None, false))
 	c.Equal(float32(51), s.Value(), "the up arrow raises a horizontal slider")
 	c.True(s.DefaultKeyDown(unison.KeyDown, mod.None, false))

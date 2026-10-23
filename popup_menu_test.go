@@ -63,32 +63,37 @@ func TestPopupSelectByValue(t *testing.T) {
 	c.Equal("b", p.Text())
 }
 
-func TestPopupSelectIndexReplaces(t *testing.T) {
-	c := check.New(t)
-	p := newTestPopup("a", "b", "c")
-	p.SelectIndex(0)
-	c.Equal([]int{0}, p.SelectedIndexes())
-	p.SelectIndex(2)
-	c.Equal([]int{2}, p.SelectedIndexes())
-}
-
+// TestPopupSelectMultipleShowsMultiple checks what SelectIndex leaves selected and shown: each call replaces the
+// selection, a separator can't be selected, and more than one selected item shows as "Multiple".
 func TestPopupSelectMultipleShowsMultiple(t *testing.T) {
-	c := check.New(t)
-	p := newTestPopup("a", "b", "c")
-	p.SelectIndex(0, 2)
-	c.Equal([]int{0, 2}, p.SelectedIndexes())
-	c.Equal("Multiple", p.Text())
-}
-
-func TestPopupSelectIgnoresSeparator(t *testing.T) {
-	c := check.New(t)
-	p := newTestPopup("a")
-	p.AddSeparator()
-	p.AddItem("c")
-	// Selecting the separator index has no effect.
-	p.SelectIndex(1)
-	c.Equal(-1, p.SelectedIndex())
-	c.Equal("", p.Text())
+	for _, tc := range []struct {
+		name      string
+		text      string
+		selects   [][]int
+		want      []int
+		separator bool
+	}{
+		{name: "multiple", text: "Multiple", selects: [][]int{{0, 2}}, want: []int{0, 2}},
+		{name: "replaces the previous selection", text: "c", selects: [][]int{{0}, {2}}, want: []int{2}},
+		// Selecting the separator index has no effect.
+		{name: "ignores a separator", selects: [][]int{{1}}, separator: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			p := newTestPopup("a")
+			if tc.separator {
+				p.AddSeparator()
+			} else {
+				p.AddItem("b")
+			}
+			p.AddItem("c")
+			for _, indexes := range tc.selects {
+				p.SelectIndex(indexes...)
+			}
+			c.Equal(tc.want, p.SelectedIndexes())
+			c.Equal(tc.text, p.Text())
+		})
+	}
 }
 
 func TestPopupSelectionChangedCallback(t *testing.T) {
@@ -105,38 +110,60 @@ func TestPopupSelectionChangedCallback(t *testing.T) {
 	c.Equal(2, calls)
 }
 
+// TestPopupRemoveItemAtShiftsSelection checks that removing an item, by index or by value, keeps the same item selected
+// as the ones after it slide down, and that removing a missing value changes nothing.
 func TestPopupRemoveItemAtShiftsSelection(t *testing.T) {
-	c := check.New(t)
-	p := newTestPopup("a", "b", "c", "d")
-	p.SelectIndex(3)  // select "d"
-	p.RemoveItemAt(1) // remove "b"
-	c.Equal(3, p.ItemCount())
-	// "d" slid down from index 3 to index 2 and stays selected.
-	c.Equal([]int{2}, p.SelectedIndexes())
-	item, ok := p.Selected()
-	c.True(ok)
-	c.Equal("d", item)
-}
-
-func TestPopupRemoveItemByValue(t *testing.T) {
-	c := check.New(t)
-	p := newTestPopup("a", "b", "c")
-	p.SelectIndex(2)
-	p.RemoveItem("a")
-	c.Equal(2, p.ItemCount())
-	c.Equal("c", p.Text())
-}
-
-func TestPopupRemoveMissingItemLeavesSelectionAlone(t *testing.T) {
-	c := check.New(t)
-	p := newTestPopup("a", "b", "c")
-	p.SelectIndex(2)
-	p.RemoveItem("missing")
-	c.Equal(3, p.ItemCount())
-	c.Equal([]int{2}, p.SelectedIndexes())
-	item, ok := p.Selected()
-	c.True(ok)
-	c.Equal("c", item)
+	for _, tc := range []struct {
+		remove   func(p *unison.PopupMenu[string])
+		name     string
+		selected string
+		items    []string
+		want     []int
+		selectAt int
+		count    int
+	}{
+		// "d" slid down from index 3 to index 2 and stays selected.
+		{
+			remove:   func(p *unison.PopupMenu[string]) { p.RemoveItemAt(1) }, // remove "b"
+			name:     "by index",
+			selected: "d",
+			items:    []string{"a", "b", "c", "d"},
+			want:     []int{2},
+			selectAt: 3,
+			count:    3,
+		},
+		{
+			remove:   func(p *unison.PopupMenu[string]) { p.RemoveItem("a") },
+			name:     "by value",
+			selected: "c",
+			items:    []string{"a", "b", "c"},
+			want:     []int{1},
+			selectAt: 2,
+			count:    2,
+		},
+		{
+			remove:   func(p *unison.PopupMenu[string]) { p.RemoveItem("missing") },
+			name:     "missing value leaves the selection alone",
+			selected: "c",
+			items:    []string{"a", "b", "c"},
+			want:     []int{2},
+			selectAt: 2,
+			count:    3,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			p := newTestPopup(tc.items...)
+			p.SelectIndex(tc.selectAt)
+			tc.remove(p)
+			c.Equal(tc.count, p.ItemCount())
+			c.Equal(tc.want, p.SelectedIndexes())
+			item, ok := p.Selected()
+			c.True(ok)
+			c.Equal(tc.selected, item)
+			c.Equal(tc.selected, p.Text())
+		})
+	}
 }
 
 func TestPopupSetItemEnabledAndReplace(t *testing.T) {

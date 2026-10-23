@@ -962,106 +962,93 @@ func TestTableCellFocusedCellUsesPlainInks(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestTableFocusCellSelectsTheRow verifies that the focus arriving in a cell of a row that is not selected takes the
-// person to that cell: the row becomes the whole of the selection and the cursor lands on the column, so that Tab
-// carries both along with the focus and Escape hands the focus back to the table on the cell that was being edited.
-// Leaving the selection where it was left the ring and the cursor on some other row, and Escape then landed on a cell
-// nobody was in.
+// TestTableFocusCellSelectsTheRow verifies that the focus arriving in a cell of a row that is not selected, whether
+// through FocusCell or through the click into a Field that starts most editing sessions, takes the person to that
+// cell: the row becomes the whole of the selection and the cursor lands on the column, so that Tab carries both along
+// with the focus and Escape hands the focus back to the table on the cell that was being edited. Leaving the selection
+// where it was left the ring and the cursor on some other row, and Escape then landed on a cell nobody was in.
 func TestTableFocusCellSelectsTheRow(t *testing.T) {
-	c := check.New(t)
-	var e *editTable
-	var wnd *unison.Window
-	changes := 0
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
-		unison.StartupFinishedCallback(func() {
-			e = newEditTable(3, 2, "abc", false)
-			wnd, _ = newEditWindow(t, e, false)
-		}))
-	c.NotNil(wnd)
-	if wnd == nil {
-		return
+	for _, one := range []struct {
+		focus func(c check.Checker, screen *unison.HeadlessScreen, e *editTable)
+		name  string
+	}{
+		{
+			focus: func(c check.Checker, screen *unison.HeadlessScreen, e *editTable) {
+				var focused bool
+				c.True(screen.Do(func() { focused = e.table.FocusCell(2, 0) }))
+				c.True(focused)
+			},
+			name: "FocusCell",
+		},
+		{
+			focus: func(c check.Checker, screen *unison.HeadlessScreen, e *editTable) {
+				screen.Click(cellCenter(screen, e.table, 2, 0))
+				c.True(e.snapshot(c, screen, 2, 0).fieldFocused, "the click should have put the focus into the field")
+			},
+			name: "click into the field",
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			var e *editTable
+			var wnd *unison.Window
+			changes := 0
+			screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+				unison.StartupFinishedCallback(func() {
+					e = newEditTable(3, 2, "abc", false)
+					wnd, _ = newEditWindow(t, e, false)
+				}))
+			c.NotNil(wnd)
+			if wnd == nil {
+				return
+			}
+
+			// The person starts on the second cell of the middle row, with the selection counting from there.
+			c.True(screen.Do(func() {
+				c.True(e.table.SetLeadCell(1, 1))
+				e.table.SelectionChangedCallback = func() { changes++ }
+			}))
+			one.focus(c, screen, e)
+			var indexes []int
+			var row, col int
+			c.True(screen.Do(func() {
+				indexes = selectedTableIndexes(e.table)
+				row = e.table.LeadRowIndex()
+				col = e.table.LeadColumnIndex()
+			}))
+			c.Equal([]int{2}, indexes, "the row whose cell took the focus becomes the whole of the selection")
+			c.Equal(2, row)
+			c.Equal(0, col, "and the cursor lands on the cell the focus went to")
+			c.Equal(1, changes, "and the application hears of the one change that really happened")
+
+			// Tab moves the focus along the row, and the cursor goes with it.
+			screen.KeyPress(unison.KeyTab, 0)
+			s := e.snapshot(c, screen, 2, 1)
+			c.True(s.fieldFocused)
+			c.Equal(2, s.focusRow)
+			c.Equal(1, s.focusCol)
+			c.True(screen.Do(func() {
+				indexes = selectedTableIndexes(e.table)
+				col = e.table.LeadColumnIndex()
+			}))
+			c.Equal(1, col, "the cursor follows the focus across the row")
+			c.Equal([]int{2}, indexes)
+			c.Equal(1, changes, "a move within the row that was already the whole of the selection changes nothing")
+
+			// Escape ends the editing and leaves the person standing on the cell they were working in.
+			screen.KeyPress(unison.KeyEscape, 0)
+			s = e.snapshot(c, screen, 2, 1)
+			c.True(s.tableFocused, "Escape hands the focus back to the table")
+			c.Equal(-1, s.focusCol, "the editing session is over")
+			c.True(screen.Do(func() {
+				row = e.table.LeadRowIndex()
+				col = e.table.LeadColumnIndex()
+			}))
+			c.Equal(2, row)
+			c.Equal(1, col, "the cursor is left on the cell that was being edited")
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
 	}
-
-	// The person starts on the second cell of the middle row, with the selection counting from there.
-	var focused bool
-	c.True(screen.Do(func() {
-		c.True(e.table.SetLeadCell(1, 1))
-		e.table.SelectionChangedCallback = func() { changes++ }
-		focused = e.table.FocusCell(2, 0)
-	}))
-	c.True(focused)
-	var indexes []int
-	var row, col int
-	c.True(screen.Do(func() {
-		indexes = selectedTableIndexes(e.table)
-		row = e.table.LeadRowIndex()
-		col = e.table.LeadColumnIndex()
-	}))
-	c.Equal([]int{2}, indexes, "the row whose cell took the focus becomes the whole of the selection")
-	c.Equal(2, row)
-	c.Equal(0, col)
-	c.Equal(1, changes, "and the application hears of the one change that really happened")
-
-	// Tab moves the focus along the row, and the cursor goes with it.
-	screen.KeyPress(unison.KeyTab, 0)
-	s := e.snapshot(c, screen, 2, 1)
-	c.True(s.fieldFocused)
-	c.Equal(2, s.focusRow)
-	c.Equal(1, s.focusCol)
-	c.True(screen.Do(func() {
-		indexes = selectedTableIndexes(e.table)
-		col = e.table.LeadColumnIndex()
-	}))
-	c.Equal(1, col, "the cursor follows the focus across the row")
-	c.Equal([]int{2}, indexes)
-	c.Equal(1, changes, "a move within the row that was already the whole of the selection changes nothing")
-
-	// Escape ends the editing and leaves the person standing on the cell they were working in.
-	screen.KeyPress(unison.KeyEscape, 0)
-	s = e.snapshot(c, screen, 2, 1)
-	c.True(s.tableFocused, "Escape hands the focus back to the table")
-	c.Equal(-1, s.focusCol, "the editing session is over")
-	c.True(screen.Do(func() {
-		row = e.table.LeadRowIndex()
-		col = e.table.LeadColumnIndex()
-	}))
-	c.Equal(2, row)
-	c.Equal(1, col, "the cursor is left on the cell that was being edited")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestTableCellFieldClickSelectsTheRow verifies the same thing for the gesture that starts most editing sessions: a
-// click into a Field in a row that is not selected selects that row and puts the cell cursor on the cell that was
-// clicked, which is where Escape from the editor leaves the person.
-func TestTableCellFieldClickSelectsTheRow(t *testing.T) {
-	c := check.New(t)
-	var e *editTable
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
-		unison.StartupFinishedCallback(func() {
-			e = newEditTable(3, 2, "abc", false)
-			e.table.SelectByIndex(0)
-			wnd, _ = newEditWindow(t, e, false)
-		}))
-	c.NotNil(wnd)
-	if wnd == nil {
-		return
-	}
-
-	screen.Click(cellCenter(screen, e.table, 2, 1))
-	s := e.snapshot(c, screen, 2, 1)
-	c.True(s.fieldFocused, "the click should have put the focus into the field")
-	var indexes []int
-	var row, col int
-	c.True(screen.Do(func() {
-		indexes = selectedTableIndexes(e.table)
-		row = e.table.LeadRowIndex()
-		col = e.table.LeadColumnIndex()
-	}))
-	c.Equal([]int{2}, indexes, "clicking into a widget a cell holds selects the row it belongs to")
-	c.Equal(2, row)
-	c.Equal(1, col, "and puts the cursor on the cell being worked in")
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // TestTableDragAndUpAfterModelShrink verifies that a mouse drag or mouse up whose interaction row was captured at
@@ -1247,41 +1234,51 @@ func TestTableMouseExitAfterColumnRemoval(t *testing.T) {
 	c.Equal(2, exits)
 }
 
-// TestTableColumnWithOnlyMinimumIsResizable verifies that a column with a positive Minimum and no Maximum can be
-// resized. The gate treated a Maximum of 0 as a hard bound, while the resize clamping treats it as "no maximum", so
-// such a column could never be resized at all.
+// TestTableColumnWithOnlyMinimumIsResizable verifies that dragging a column's divider resizes it unless its Minimum
+// and Maximum pin it to a single width. The gate treated a Maximum of 0 as a hard bound, while the resize clamping
+// treats it as "no maximum", so a column with a positive Minimum and no Maximum could never be resized at all.
 func TestTableColumnWithOnlyMinimumIsResizable(t *testing.T) {
-	c := check.New(t)
-	table := newTestTable(flatRows(2)...)
-	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100, Minimum: 50}, {ID: 1, Current: 100}}
-	table.SyncToModel()
+	for _, one := range []struct {
+		name      string
+		column    unison.ColumnInfo
+		want      float32
+		resizable bool
+	}{
+		{
+			name:      "only a minimum",
+			column:    unison.ColumnInfo{ID: 0, Current: 100, Minimum: 50},
+			want:      120,
+			resizable: true,
+		},
+		{
+			name:   "pinned to one width",
+			column: unison.ColumnInfo{ID: 0, Current: 100, Minimum: 100, Maximum: 100},
+			want:   100,
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			table := newTestTable(flatRows(2)...)
+			table.Columns = []unison.ColumnInfo{one.column, {ID: 1, Current: 100}}
+			table.SyncToModel()
 
-	divider := geom.NewPoint(100, 5)
-	c.Equal(0, table.OverColumnDivider(divider.X), "expected a divider at the column boundary")
-	table.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0)
-	table.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
-	c.Equal(float32(120), table.Columns[0].Current)
+			divider := geom.NewPoint(100, 5)
+			c.Equal(0, table.OverColumnDivider(divider.X), "expected a divider at the column boundary")
+			table.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0)
+			last := divider.Add(geom.NewPoint(20, 0))
+			table.DefaultMouseDrag(last, unison.ButtonLeft, 0)
+			c.Equal(one.want, table.Columns[0].Current)
 
-	// The Minimum is still honored: dragging far to the left stops at the minimum plus the cell padding overhead.
-	table.DefaultMouseDrag(geom.NewPoint(-500, 5), unison.ButtonLeft, 0)
-	c.Equal(50+table.Padding.Left+table.Padding.Right, table.Columns[0].Current)
-	table.DefaultMouseUp(geom.NewPoint(-500, 5), unison.ButtonLeft, 0)
-}
-
-// TestTableColumnPinnedToOneWidthIsNotResizable verifies that a column whose Minimum and Maximum pin it to a single
-// width still refuses to be resized.
-func TestTableColumnPinnedToOneWidthIsNotResizable(t *testing.T) {
-	c := check.New(t)
-	table := newTestTable(flatRows(2)...)
-	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100, Minimum: 100, Maximum: 100}, {ID: 1, Current: 100}}
-	table.SyncToModel()
-
-	divider := geom.NewPoint(100, 5)
-	c.Equal(0, table.OverColumnDivider(divider.X), "expected a divider at the column boundary")
-	table.DefaultMouseDown(divider, unison.ButtonLeft, 1, 0)
-	table.DefaultMouseDrag(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
-	c.Equal(float32(100), table.Columns[0].Current)
-	table.DefaultMouseUp(divider.Add(geom.NewPoint(20, 0)), unison.ButtonLeft, 0)
+			if one.resizable {
+				// The Minimum is still honored: dragging far to the left stops at the minimum plus the cell padding
+				// overhead.
+				last = geom.NewPoint(-500, 5)
+				table.DefaultMouseDrag(last, unison.ButtonLeft, 0)
+				c.Equal(one.column.Minimum+table.Padding.Left+table.Padding.Right, table.Columns[0].Current)
+			}
+			table.DefaultMouseUp(last, unison.ButtonLeft, 0)
+		})
+	}
 }
 
 // selectedTableIndexes returns the indexes of the selected rows, in order.
@@ -1485,26 +1482,6 @@ func TestTableCellCursorRightOpensBeforeItEnters(t *testing.T) {
 	c.Equal(0, table.LeadColumnIndex(), "with nothing left to open, the next Right enters the cells")
 }
 
-// TestTableSetLeadCellNotifiesOnce verifies that SetLeadCell reports one selection change when the row changes and
-// none when the cursor merely moves within the row that was already the whole of the selection, which is what an
-// assistive technology stepping across the cells asks for.
-func TestTableSetLeadCellNotifiesOnce(t *testing.T) {
-	c := check.New(t)
-	table := newCursorTable(flatRows(3)...)
-	table.SelectByIndex(0)
-	changes := 0
-	table.SelectionChangedCallback = func() { changes++ }
-
-	c.True(table.SetLeadCell(2, 1))
-	c.Equal(1, changes, "moving onto another row is one selection change")
-
-	c.True(table.SetLeadCell(2, 2))
-	c.True(table.SetLeadCell(2, -1))
-	c.Equal(1, changes, "moving within the row that is already the selection is not a selection change at all")
-	c.Equal(-1, table.LeadColumnIndex())
-	c.Equal(2, table.LeadRowIndex())
-}
-
 // TestTableCellCursorVerticalKeysKeepTheColumn verifies that the keys that move through the rows keep the column the
 // cursor is in, which is what lets a person read down a column, and that Home and End move the cursor across the row
 // unmodified but go on moving through the rows when shifted.
@@ -1607,20 +1584,27 @@ func TestTableCellCursorNeedsARowToStandOn(t *testing.T) {
 }
 
 // TestTableSetLeadCell verifies the programmatic way onto a cell: it selects the row, puts the cursor where it was
-// asked for, and refuses anything the table is not showing.
+// asked for, and refuses anything the table is not showing. It reports one selection change when the row changes and
+// none when the cursor merely moves within the row that was already the whole of the selection, which is what an
+// assistive technology stepping across the cells asks for.
 func TestTableSetLeadCell(t *testing.T) {
 	c := check.New(t)
 	table := newCursorTable(flatRows(3)...)
 	table.SelectByIndex(0)
+	changes := 0
+	table.SelectionChangedCallback = func() { changes++ }
 
 	c.True(table.SetLeadCell(2, 1))
 	c.Equal(2, table.LeadRowIndex())
 	c.Equal(1, table.LeadColumnIndex())
 	c.Equal([]int{2}, selectedTableIndexes(table), "the cell's row becomes the whole of the selection")
+	c.Equal(1, changes, "moving onto another row is one selection change")
 
+	c.True(table.SetLeadCell(2, 2))
 	c.True(table.SetLeadCell(2, -1), "a column of -1 puts the person on the row itself")
 	c.Equal(-1, table.LeadColumnIndex())
 	c.Equal(2, table.LeadRowIndex())
+	c.Equal(1, changes, "moving within the row that is already the selection is not a selection change at all")
 
 	c.False(table.SetLeadCell(3, 0), "a row the table is not showing is refused")
 	c.False(table.SetLeadCell(-1, 0))
@@ -1777,63 +1761,10 @@ func TestTableCellCursorSpacePressesTheCell(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestTableCellCursorDrawsARing verifies that the cursor is something a sighted person can see as well: a ring is
-// drawn around the cell it is on, and nothing is drawn while the person is at row level.
-func TestTableCellCursorDrawsARing(t *testing.T) {
-	c := check.New(t)
-	var table *unison.Table[*tableTestRow]
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
-		unison.StartupFinishedCallback(func() {
-			table = axNewTable(flatRows(3)...)
-			wnd = newHeadlessWindow(t, "cursor ring", geom.NewRect(10, 10, 400, 200), axColumn(table))
-			if wnd != nil {
-				wnd.ToFront()
-			}
-		}))
-	c.NotNil(wnd)
-	if wnd == nil {
-		return
-	}
-	screen.Do(func() {
-		table.RequestFocus()
-		table.SelectByIndex(1)
-	})
-	screen.Sync()
-	atRowLevel := screen.CaptureWindow(wnd)
-	c.NotNil(atRowLevel)
-
-	screen.KeyPress(unison.KeyRight, 0)
-	screen.Sync()
-	onFirstCell := screen.CaptureWindow(wnd)
-	c.NotNil(onFirstCell)
-	if atRowLevel == nil || onFirstCell == nil {
-		return
-	}
-	c.False(slices.Equal(atRowLevel.Pix, onFirstCell.Pix), "the ring is drawn around the cell the cursor moved onto")
-
-	screen.KeyPress(unison.KeyRight, 0)
-	screen.Sync()
-	onSecondCell := screen.CaptureWindow(wnd)
-	c.NotNil(onSecondCell)
-	if onSecondCell != nil {
-		c.False(slices.Equal(onFirstCell.Pix, onSecondCell.Pix), "and moves with the cursor")
-	}
-
-	screen.KeyPress(unison.KeyEscape, 0)
-	screen.Sync()
-	again := screen.CaptureWindow(wnd)
-	c.NotNil(again)
-	if again != nil {
-		c.True(slices.Equal(atRowLevel.Pix, again.Pix),
-			"nothing is drawn at row level, and nothing else repainted for the cursor either")
-	}
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
 // TestTableCellCursorRingShowsOverAWidgetCell verifies that the ring survives a cell whose content paints its own
 // background, which is the ordinary case for a table of fields and check boxes: it is drawn after the cells, along the
-// cell's edges, where the content cannot cover it, and it does not paint across the content itself.
+// cell's edges, where the content cannot cover it, and it does not paint across the content itself. The ring moves
+// with the cursor, and nothing is drawn once the person is back at row level.
 func TestTableCellCursorRingShowsOverAWidgetCell(t *testing.T) {
 	c := check.New(t)
 	var e *editTable
@@ -1889,6 +1820,16 @@ func TestTableCellCursorRingShowsOverAWidgetCell(t *testing.T) {
 		"and along its left edge")
 	c.Equal(atRowLevel.NRGBAAt(middle.X, middle.Y), onFieldCell.NRGBAAt(middle.X, middle.Y),
 		"and is not painted across the field's own content")
+
+	screen.KeyPress(unison.KeyRight, 0)
+	screen.Sync()
+	onSecondCell := screen.CaptureWindow(wnd)
+	c.NotNil(onSecondCell)
+	screen.Do(func() { col = e.table.LeadColumnIndex() })
+	c.Equal(1, col)
+	if onSecondCell != nil {
+		c.False(slices.Equal(onFieldCell.Pix, onSecondCell.Pix), "the ring moves with the cursor")
+	}
 
 	screen.KeyPress(unison.KeyEscape, 0)
 	screen.Sync()
@@ -2123,12 +2064,13 @@ func TestTableAccessibilityRowPressIsOfferedOnlyWhenItDoesSomething(t *testing.T
 
 // TestTableAccessibilityCellActsOnContentThatCanRespond verifies that a request aimed at a cell reaches something that
 // can carry it out: a disabled widget is passed over rather than refusing the request on behalf of the enabled one
-// behind it, and a toggle goes to the widget that has a state to move on rather than to a button that would refuse it.
+// behind it, an enabled widget inside a disabled panel is reached just as a click would reach it, and a toggle goes to
+// the widget that has a state to move on rather than to a button that would refuse it.
 func TestTableAccessibilityCellActsOnContentThatCanRespond(t *testing.T) {
 	c := check.New(t)
 	var table *unison.Table[*tableTestRow]
 	var wnd *unison.Window
-	var behindDisabled, besideButton *unison.CheckBox
+	var behindDisabled, besideButton, insideDisabled *unison.CheckBox
 	disabledClicks := 0
 	buttonClicks := 0
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
@@ -2139,8 +2081,19 @@ func TestTableAccessibilityCellActsOnContentThatCanRespond(t *testing.T) {
 			besideButton = unison.NewCheckBox()
 			besideButton.ClickAnimationTime = 0
 			besideButton.SetTitle("Beside")
+			insideDisabled = unison.NewCheckBox()
+			insideDisabled.ClickAnimationTime = 0
+			insideDisabled.SetTitle("Done")
 			row := newTableTestRow("r0")
 			row.cellFactory = func(_, col int) unison.Paneler {
+				if col == 2 {
+					disabled := unison.NewPanel()
+					disabled.SetLayout(&unison.FlexLayout{Columns: 1})
+					disabled.SetEnabled(false)
+					insideDisabled.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Middle})
+					disabled.AddChild(insideDisabled)
+					return disabled
+				}
 				wrapper := unison.NewPanel()
 				wrapper.SetLayout(&unison.FlexLayout{Columns: 2, HSpacing: unison.StdHSpacing})
 				button := unison.NewButton()
@@ -2163,6 +2116,8 @@ func TestTableAccessibilityCellActsOnContentThatCanRespond(t *testing.T) {
 				return wrapper
 			}
 			table = axNewTable(row)
+			table.Columns = append(table.Columns, unison.ColumnInfo{ID: 2, Current: 100})
+			table.SyncToModel()
 			wnd = newHeadlessWindow(t, "cell targets", geom.NewRect(10, 10, 500, 200), table)
 		}))
 	c.NotNil(wnd)
@@ -2176,8 +2131,8 @@ func TestTableAccessibilityCellActsOnContentThatCanRespond(t *testing.T) {
 		return
 	}
 	cells := axChildNodes(tree, rows[0])
-	c.Equal(2, len(cells))
-	if len(cells) != 2 {
+	c.Equal(3, len(cells))
+	if len(cells) != 3 {
 		return
 	}
 	c.True(cells[0].Actions.Has(accessibility.Press), "the enabled check box behind the disabled button can be pressed")
@@ -2219,6 +2174,18 @@ func TestTableAccessibilityCellActsOnContentThatCanRespond(t *testing.T) {
 	}))
 	screen.Do(func() { clicks = buttonClicks })
 	c.Equal(1, clicks, "the press should have reached the button")
+
+	// Being enabled is a panel's own property rather than something it passes down, so a click lands on the check box
+	// inside the disabled panel just as it would if nothing around it were disabled, and a request from an assistive
+	// technology must reach it too rather than being advertised and then refused.
+	c.True(cells[2].Actions.Has(accessibility.Press), "the cell offers the press its content can take")
+	c.True(cells[2].Actions.Has(accessibility.Toggle))
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   cells[2].ID,
+		Action: accessibility.Press,
+	}), "what the cell offered must be something it will actually do")
+	screen.Do(func() { state = insideDisabled.State })
+	c.Equal(checkenum.On, state, "the press should have reached the check box inside the disabled panel")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -2345,62 +2312,6 @@ func TestTableAccessibilityOutOfSequenceRowsBringTheirAncestors(t *testing.T) {
 	if visible != nil {
 		c.True(len(visible.Children) > 0, "a visible row still holds its disclosure triangle and cells")
 	}
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestTableAccessibilityCellReachesContentUnderADisabledWrapper verifies that a cell holding a disabled panel with an
-// enabled widget inside it offers what that widget can do and then does it. Being enabled is a panel's own property
-// rather than something it passes down, so a click lands on the widget just as it would if nothing around it were
-// disabled, and a request from an assistive technology must reach it too rather than being advertised and then refused.
-func TestTableAccessibilityCellReachesContentUnderADisabledWrapper(t *testing.T) {
-	c := check.New(t)
-	var table *unison.Table[*tableTestRow]
-	var wnd *unison.Window
-	var box *unison.CheckBox
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
-		unison.StartupFinishedCallback(func() {
-			box = unison.NewCheckBox()
-			box.ClickAnimationTime = 0
-			box.SetTitle("Done")
-			row := newTableTestRow("r0")
-			row.cellFactory = func(_, col int) unison.Paneler {
-				if col != 0 {
-					return unison.NewPanel()
-				}
-				wrapper := unison.NewPanel()
-				wrapper.SetLayout(&unison.FlexLayout{Columns: 1})
-				wrapper.SetEnabled(false)
-				box.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Middle})
-				wrapper.AddChild(box)
-				return wrapper
-			}
-			table = axNewTable(row)
-			wnd = newHeadlessWindow(t, "disabled wrapper", geom.NewRect(10, 10, 500, 200), table)
-		}))
-	c.NotNil(wnd)
-
-	tree := screen.AccessibilityTree(wnd)
-	node := screen.AccessibilityNodeFor(table)
-	c.True(node != nil)
-	rows := axChildNodes(tree, node)
-	c.Equal(1, len(rows))
-	if len(rows) != 1 {
-		return
-	}
-	cells := axChildNodes(tree, rows[0])
-	c.True(len(cells) > 0)
-	if len(cells) == 0 {
-		return
-	}
-	c.True(cells[0].Actions.Has(accessibility.Press), "the cell offers the press its content can take")
-	c.True(cells[0].Actions.Has(accessibility.Toggle))
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   cells[0].ID,
-		Action: accessibility.Press,
-	}), "what the cell offered must be something it will actually do")
-	var state checkenum.Enum
-	screen.Do(func() { state = box.State })
-	c.Equal(checkenum.On, state, "the press should have reached the check box inside the disabled wrapper")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

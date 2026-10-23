@@ -294,42 +294,6 @@ func TestMenuItemAction(t *testing.T) {
 	})
 }
 
-// TestMenuReleaseCleansUpRegistrations proves Menu.Release removes the menu's updater and every contained item's
-// validator and handler from the registration maps.
-func TestMenuReleaseCleansUpRegistrations(t *testing.T) {
-	runOnMain(func() {
-		sharedApp()
-		m := NewMenu("Cleanup", func(Menu) {})
-		mi1 := NewMenuItem(401, "One", "", 0, func(MenuItem) bool { return true }, func(MenuItem) {})
-		mi2 := NewMenuItem(402, "Two", "", 0, func(MenuItem) bool { return true }, func(MenuItem) {})
-		m.InsertItemAtIndex(mi1, 0)
-		m.InsertItemAtIndex(mi2, 1)
-		if _, ok := menuUpdaters[m]; !ok {
-			t.Error("menuUpdaters is missing the menu before Release")
-		}
-		for _, mi := range []MenuItem{mi1, mi2} {
-			if _, ok := menuItemValidators[mi]; !ok {
-				t.Errorf("menuItemValidators is missing item %d before Release", mi.Tag())
-			}
-			if _, ok := menuItemHandlers[mi]; !ok {
-				t.Errorf("menuItemHandlers is missing item %d before Release", mi.Tag())
-			}
-		}
-		m.Release()
-		if _, ok := menuUpdaters[m]; ok {
-			t.Error("menuUpdaters still contains the menu after Release")
-		}
-		for _, mi := range []MenuItem{mi1, mi2} {
-			if _, ok := menuItemValidators[mi]; ok {
-				t.Error("menuItemValidators still contains an item after Release")
-			}
-			if _, ok := menuItemHandlers[mi]; ok {
-				t.Error("menuItemHandlers still contains an item after Release")
-			}
-		}
-	})
-}
-
 // TestMenuTreeReleaseDeallocatesAndCleansUp proves the ownership contract end to end: creation hands back the only
 // reference, InsertItemAtIndex and SetSubMenu transfer references into the tree, and releasing the root deallocates
 // every item and submenu (verified by dealloc spies) while emptying the registration maps for the whole tree,
@@ -348,13 +312,14 @@ func TestMenuTreeReleaseDeallocatesAndCleansUp(t *testing.T) {
 			subItem = NewMenuItem(502, "SubChild", "", 0, func(MenuItem) bool { return true }, func(MenuItem) {})
 			attachDeallocSpy(t, subItem, &subItemGone)
 			sub.InsertItemAtIndex(subItem, 0)
-			parent = NewMenuItem(501, "Parent", "", 0, nil, func(MenuItem) {})
+			parent = NewMenuItem(501, "Parent", "", 0, func(MenuItem) bool { return true }, func(MenuItem) {})
 			attachDeallocSpy(t, parent, &parentGone)
 			parent.SetSubMenu(sub)
 			m.InsertItemAtIndex(parent, 0)
 			for name, ok := range map[string]bool{
 				"menuUpdaters[m]":             menuUpdaters[m] != nil,
 				"menuUpdaters[sub]":           menuUpdaters[sub] != nil,
+				"menuItemValidators[parent]":  menuItemValidators[parent] != nil,
 				"menuItemHandlers[parent]":    menuItemHandlers[parent] != nil,
 				"menuItemValidators[subItem]": menuItemValidators[subItem] != nil,
 				"menuItemHandlers[subItem]":   menuItemHandlers[subItem] != nil,
@@ -376,6 +341,9 @@ func TestMenuTreeReleaseDeallocatesAndCleansUp(t *testing.T) {
 		}
 		if _, ok := menuUpdaters[sub]; ok {
 			t.Error("menuUpdaters still contains the submenu after Release")
+		}
+		if _, ok := menuItemValidators[parent]; ok {
+			t.Error("menuItemValidators still contains the parent item after Release")
 		}
 		if _, ok := menuItemHandlers[parent]; ok {
 			t.Error("menuItemHandlers still contains the parent item after Release")

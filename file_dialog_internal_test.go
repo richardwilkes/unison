@@ -28,66 +28,93 @@ func requireChain(t *testing.T, chain []*parentDirItem, want ...*parentDirItem) 
 	c := check.New(t)
 	c.Equal(len(want), len(chain))
 	for i, w := range want {
-		c.Equal(w.name, chain[i].name, "name at index", i)
-		c.Equal(w.path, chain[i].path, "path at index", i)
+		c.Equal(w.name, chain[i].name, "name at index %d", i)
+		c.Equal(w.path, chain[i].path, "path at index %d", i)
 	}
 }
 
+// TestParentDirChainUnix verifies that parentDirChain lists the directories from dir up to its root, deepest first,
+// for Unix, drive-qualified and UNC paths alike, and ends with a root entry whose name and path are both vol+sep, so
+// the root can be navigated to from the popup and a dir that is itself the root gets one properly named entry.
 func TestParentDirChainUnix(t *testing.T) {
-	requireChain(t, parentDirChain("/Users/rich", "", "/"),
-		&parentDirItem{name: "rich", path: "/Users/rich"},
-		&parentDirItem{name: "Users", path: "/Users"},
-		&parentDirItem{name: "/", path: "/"},
-	)
-}
-
-func TestParentDirChainUnixRoot(t *testing.T) {
-	requireChain(t, parentDirChain("/", "", "/"),
-		&parentDirItem{name: "/", path: "/"},
-	)
-}
-
-func TestParentDirChainWindowsIncludesDriveRoot(t *testing.T) {
-	// For a drive-qualified path, the chain must end with the drive root so it can be navigated to from the popup.
-	requireChain(t, parentDirChain(`C:\Users\rich`, "C:", `\`),
-		&parentDirItem{name: "rich", path: `C:\Users\rich`},
-		&parentDirItem{name: "Users", path: `C:\Users`},
-		&parentDirItem{name: testDriveRoot, path: testDriveRoot},
-	)
-}
-
-func TestParentDirChainWindowsDriveRootOnly(t *testing.T) {
-	// A current dir of the drive root itself must produce a single, properly-named entry, not one with an empty name.
-	requireChain(t, parentDirChain(testDriveRoot, "C:", `\`),
-		&parentDirItem{name: testDriveRoot, path: testDriveRoot},
-	)
-}
-
-func TestParentDirChainWindowsUNC(t *testing.T) {
-	requireChain(t, parentDirChain(`\\server\share\docs\misc`, `\\server\share`, `\`),
-		&parentDirItem{name: "misc", path: `\\server\share\docs\misc`},
-		&parentDirItem{name: "docs", path: `\\server\share\docs`},
-		&parentDirItem{name: testUNCRoot, path: testUNCRoot},
-	)
-}
-
-func TestParentDirChainWindowsUNCRoot(t *testing.T) {
-	requireChain(t, parentDirChain(testUNCRoot, `\\server\share`, `\`),
-		&parentDirItem{name: testUNCRoot, path: testUNCRoot},
-	)
-}
-
-func TestParentDirChainNativeSeparatorMatchesFilepath(t *testing.T) {
-	// Sanity check with the native separator and a path assembled via filepath, mirroring how rebuildParentDirs calls
-	// this helper.
-	dir := filepath.Join(pathSeparator, "a", "b", "c")
-	chain := parentDirChain(dir, filepath.VolumeName(dir), pathSeparator)
-	requireChain(t, chain,
-		&parentDirItem{name: "c", path: filepath.Join(pathSeparator, "a", "b", "c")},
-		&parentDirItem{name: "b", path: filepath.Join(pathSeparator, "a", "b")},
-		&parentDirItem{name: "a", path: filepath.Join(pathSeparator, "a")},
-		&parentDirItem{name: pathSeparator, path: pathSeparator},
-	)
+	nativeDir := filepath.Join(pathSeparator, "a", "b", "c")
+	for _, one := range []struct {
+		name string
+		dir  string
+		vol  string
+		sep  string
+		want []*parentDirItem
+	}{
+		{
+			name: "unix path",
+			dir:  "/Users/rich",
+			sep:  "/",
+			want: []*parentDirItem{
+				{name: "rich", path: "/Users/rich"},
+				{name: "Users", path: "/Users"},
+				{name: "/", path: "/"},
+			},
+		},
+		{
+			name: "unix root",
+			dir:  "/",
+			sep:  "/",
+			want: []*parentDirItem{{name: "/", path: "/"}},
+		},
+		{
+			name: "drive path ends at the drive root",
+			dir:  `C:\Users\rich`,
+			vol:  "C:",
+			sep:  `\`,
+			want: []*parentDirItem{
+				{name: "rich", path: `C:\Users\rich`},
+				{name: "Users", path: `C:\Users`},
+				{name: testDriveRoot, path: testDriveRoot},
+			},
+		},
+		{
+			name: "drive root alone is named, not empty",
+			dir:  testDriveRoot,
+			vol:  "C:",
+			sep:  `\`,
+			want: []*parentDirItem{{name: testDriveRoot, path: testDriveRoot}},
+		},
+		{
+			name: "unc path ends at the share root",
+			dir:  `\\server\share\docs\misc`,
+			vol:  `\\server\share`,
+			sep:  `\`,
+			want: []*parentDirItem{
+				{name: "misc", path: `\\server\share\docs\misc`},
+				{name: "docs", path: `\\server\share\docs`},
+				{name: testUNCRoot, path: testUNCRoot},
+			},
+		},
+		{
+			name: "unc share root alone",
+			dir:  testUNCRoot,
+			vol:  `\\server\share`,
+			sep:  `\`,
+			want: []*parentDirItem{{name: testUNCRoot, path: testUNCRoot}},
+		},
+		{
+			// Assembled via filepath with the native separator, as rebuildParentDirs calls it.
+			name: "native separator",
+			dir:  nativeDir,
+			vol:  filepath.VolumeName(nativeDir),
+			sep:  pathSeparator,
+			want: []*parentDirItem{
+				{name: "c", path: nativeDir},
+				{name: "b", path: filepath.Join(pathSeparator, "a", "b")},
+				{name: "a", path: filepath.Join(pathSeparator, "a")},
+				{name: pathSeparator, path: pathSeparator},
+			},
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			requireChain(t, parentDirChain(one.dir, one.vol, one.sep), one.want...)
+		})
+	}
 }
 
 // newTestFileDialog builds a fileDialog over a throwaway directory containing two subdirectories ("adir" and "zdir")

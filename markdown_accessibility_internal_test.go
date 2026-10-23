@@ -185,7 +185,8 @@ func TestMarkdownRowFlags(t *testing.T) {
 
 // TestMarkdownDocumentCacheInvalidation verifies that the text of a document is worked out once and then reused, and
 // that everything which could move a rune of it throws it away again: new content, a new layout, and an image arriving
-// where a placeholder was.
+// where a placeholder was. The frame change in child hierarchy callback is the only thing that notices a new layout, so
+// it must still do so when an application installs its own and calls DefaultFrameChangeInChildHierarchy from it.
 func TestMarkdownDocumentCacheInvalidation(t *testing.T) {
 	c := check.New(t)
 	screen, _, md := axNewTestMarkdown(t, "# Title\n\nSome words.\n\n![x](missing-image-for-test.png)\n", 300)
@@ -225,6 +226,22 @@ func TestMarkdownDocumentCacheInvalidation(t *testing.T) {
 		c.True(md.axDoc == nil, "anything within the document moving throws it away as well, since where the lines "+
 			"are is read from where the panels drawing them were placed")
 		c.True(md.axDocument() != composed)
+	})
+
+	screen.Do(func() {
+		told := 0
+		md.FrameChangeInChildHierarchyCallback = func(panel *Panel) {
+			told++
+			md.DefaultFrameChangeInChildHierarchy(panel)
+		}
+		composed := md.axDocument()
+		moved := md.Children()[0]
+		frame := moved.FrameRect()
+		frame.Y += 5
+		moved.SetFrameRect(frame)
+		c.True(told > 0, "an application that put its own callback in is the one that is told")
+		c.True(md.axDoc == nil, "and the default it called threw the composed stream away")
+		c.True(md.axDocument() != composed, "so the next thing to ask is given the document as it now is")
 	})
 
 	screen.Do(func() {
@@ -520,31 +537,6 @@ func TestMarkdownStreamComposesLooseRowsAndImages(t *testing.T) {
 		}
 		c.True(forImage, "the image occupies the rune that stands in for it, so it can be reached from the text")
 		c.False(forRow, "while the row is no element of the document and names no node in the tree")
-	})
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestMarkdownFrameChangeCallbackChains verifies the one callback a document cannot lose. Everything the text of a
-// document says about itself is read from where the panels drawing it were placed, and the frame change in child
-// hierarchy callback is the only thing that throws that away when they move, so an application that wants to be told as
-// well installs its own and calls the default from it — which is what DefaultFrameChangeInChildHierarchy is for.
-func TestMarkdownFrameChangeCallbackChains(t *testing.T) {
-	c := check.New(t)
-	screen, _, md := axNewTestMarkdown(t, "# Title\n\nSome words.\n", 300)
-	screen.Do(func() {
-		told := 0
-		md.FrameChangeInChildHierarchyCallback = func(panel *Panel) {
-			told++
-			md.DefaultFrameChangeInChildHierarchy(panel)
-		}
-		composed := md.axDocument()
-		moved := md.Children()[0]
-		frame := moved.FrameRect()
-		frame.Y += 5
-		moved.SetFrameRect(frame)
-		c.True(told > 0, "an application that put its own callback in is the one that is told")
-		c.True(md.axDoc == nil, "and the default it called threw the composed stream away")
-		c.True(md.axDocument() != composed, "so the next thing to ask is given the document as it now is")
 	})
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

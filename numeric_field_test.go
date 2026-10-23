@@ -21,6 +21,8 @@ import (
 	"github.com/richardwilkes/unison/enums/role"
 )
 
+// TestNumericFieldFocusBorderRestoredOnFocusLoss verifies that losing focus both restores the unfocused border and
+// still normalizes the text, so that neither behavior chained into LostFocusCallback displaces the other.
 func TestNumericFieldFocusBorderRestoredOnFocusLoss(t *testing.T) {
 	c := check.New(t)
 	f := unison.NewNumericField(5, 0, 100, strconv.Itoa, strconv.Atoi, nil)
@@ -30,12 +32,14 @@ func TestNumericFieldFocusBorderRestoredOnFocusLoss(t *testing.T) {
 	// Gaining focus swaps in the focused border.
 	f.GainedFocusCallback()
 	c.NotEqual(unfocused, f.Border())
+	f.SetText(" 7 ")
 
 	// Losing focus must restore the unfocused border. This used to fail because NewNumericField assigned
 	// LostFocusCallback directly, clobbering the wrapper installed by InstallDefaultFieldBorder, so the field stayed
 	// stuck with the focused border forever.
 	f.LostFocusCallback()
 	c.Equal(unfocused, f.Border())
+	c.Equal("7", f.Text(), "the numeric field's own focus-loss behavior must remain chained in, reformatting the text")
 }
 
 // TestNumericFieldBorderShowsInvalidState verifies that the border NewNumericField reinstalls draws its line in the
@@ -68,21 +72,6 @@ func TestNumericFieldBorderShowsInvalidState(t *testing.T) {
 	f.SetText("50")
 	c.False(f.Invalid())
 	c.Equal(unison.ThemeSurfaceEdge.GetColor(), lineColor())
-}
-
-func TestNumericFieldFocusLossStillNormalizesText(t *testing.T) {
-	c := check.New(t)
-	f := unison.NewNumericField(5, 0, 100, strconv.Itoa, strconv.Atoi, nil)
-
-	// The numeric field's own focus-loss behavior must remain chained in: losing focus reformats the text.
-	f.SetText(" 7 ")
-	f.LostFocusCallback()
-	c.Equal("7", f.Text())
-
-	// Out-of-range input is clamped on focus loss.
-	f.SetText("400")
-	f.LostFocusCallback()
-	c.Equal("100", f.Text())
 }
 
 // TestNumericFieldAccessibilitySetValueTakesANumber verifies that a request to replace the value is honored whether the

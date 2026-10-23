@@ -251,37 +251,11 @@ func TestMacMonitorHidesSuggestionsOnOutsidePresses(t *testing.T) {
 	c.Equal(2, removals)
 }
 
-// TestMacCoveredMoveExitsOnce verifies that a key window, which AppKit sends the mouse-moved events made over the
-// windows above it, exits what the pointer left and takes down the tooltip once per crossing, as the crossing events of
-// the other platforms do, rather than on every move: a window's MouseExitCallback that keeps the panel it is told about
-// would otherwise be told of the same crossing on every move over the other window.
-func TestMacCoveredMoveExitsOnce(t *testing.T) {
-	c := check.New(t)
-	w := &Window{wnd: &apiWindow{}}
-	w.root = newRootPanel(w)
-	exits := 0
-	w.MouseExitCallback = func() bool {
-		exits++
-		return true
-	}
-	w.lastTooltip = NewPanel()
-	c.True(w.macCoveredMove(true))
-	c.True(w.macCoveredMove(true))
-	c.True(w.macCoveredMove(true))
-	c.Equal(1, exits, "a run of moves over another window exits once")
-	c.Equal(1, w.tooltipSequence, "and clears the tooltip once")
-	c.Nil(w.lastTooltip, "forgetting the one asked for")
-	c.False(w.macCoveredMove(false))
-	c.Equal(1, exits, "a move back over the window exits nothing")
-	c.True(w.macCoveredMove(true))
-	c.Equal(2, exits, "the next crossing exits again")
-	c.Equal(2, w.tooltipSequence, "and clears the tooltip again")
-}
-
 // TestMacMouseExitedExitsOnce verifies that a crossing out of the key window exits and takes down the tooltip once,
-// though AppKit reports it both through the window's tracking area and through the mouse-moved events it goes on
-// sending the key window over whatever the pointer is now over, and that the tracking area's report of the pointer
-// coming back starts a new crossing.
+// whether AppKit reports it through the window's tracking area and the mouse-moved events it goes on sending the key
+// window over whatever the pointer is now over, or through those events alone, and that a move back over the window or
+// the tracking area's report of the pointer coming back starts a new crossing. A window's MouseExitCallback that keeps
+// the panel it is told about would otherwise be told of the same crossing on every move over the other window.
 func TestMacMouseExitedExitsOnce(t *testing.T) {
 	c := check.New(t)
 	w := &Window{wnd: &apiWindow{}, cursor: &Cursor{}}
@@ -309,6 +283,14 @@ func TestMacMouseExitedExitsOnce(t *testing.T) {
 	c.False(w.macCoveredMove(false))
 	w.macMouseExited()
 	c.Equal(2, exits, "a move back over the window starts a new crossing")
+
+	c.False(w.macCoveredMove(false))
+	c.Equal(2, exits, "a move back over the window exits nothing")
+	c.True(w.macCoveredMove(true))
+	c.True(w.macCoveredMove(true))
+	c.True(w.macCoveredMove(true))
+	c.Equal(3, exits, "a run of moves over another window exits once")
+	c.Equal(4, w.tooltipSequence, "and every crossing has cleared the tooltip once")
 }
 
 // TestMacPopupShowsCursorOwnerHid verifies that the cursor typing in a window hid comes back over one of the window's

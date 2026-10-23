@@ -29,9 +29,10 @@ const (
 	comboOptionC = "Alder"
 )
 
-// TestComboFieldAccessibilityReportsWhetherItIsOpen verifies that a combo field says whether its dropdown is showing
-// and can be asked to put it away again. It always claimed to be collapsed, whatever was on the screen, so UI
-// Automation's ExpandCollapseState and AT-SPI's STATE_EXPANDED never moved and there was no collapse to ask for.
+// TestComboFieldAccessibilityReportsWhetherItIsOpen verifies that a combo field is described as a single combo box that
+// keeps its field's value and text, says whether its dropdown is showing and can be asked to put it away again. It
+// always claimed to be collapsed, whatever was on the screen, so UI Automation's ExpandCollapseState and AT-SPI's
+// STATE_EXPANDED never moved and there was no collapse to ask for.
 func TestComboFieldAccessibilityReportsWhetherItIsOpen(t *testing.T) {
 	c := check.New(t)
 	first := "One"
@@ -44,20 +45,27 @@ func TestComboFieldAccessibilityReportsWhetherItIsOpen(t *testing.T) {
 			wnd = newHeadlessWindow(t, "combo state", geom.NewRect(10, 10, 300, 150), axColumn(combo))
 		}))
 	c.NotNil(wnd)
+	// Showing a window does not give it the focus, and a combo box in a window that is not the active one is published
+	// without the expansion it could not carry out. See axMayPopupMenu and axSnapshot.narrowMenuActions.
 	c.True(screen.Do(func() { wnd.ToFront() }))
 
-	screen.AccessibilityTree(wnd)
+	tree := screen.AccessibilityTree(wnd)
 	node := screen.AccessibilityNodeFor(combo)
 	c.True(node != nil)
 	if node == nil {
 		return
 	}
+	c.Equal(role.ComboBox, node.Role, "the field must not overrule what it was told it is")
+	c.Equal("One", node.Value, "it is a field, so its content is still its value")
+	c.True(node.Text != nil)
+	c.Equal(0, len(tree.UnignoredChildren(node.ID)),
+		"the dropdown button is part of the field rather than an element of its own")
 	c.True(node.Expandable)
 	c.False(node.Expanded, "nothing is showing yet")
 	c.True(node.Actions.Has(accessibility.Expand))
 	c.True(node.Actions.Has(accessibility.Collapse))
 
-	before := axRootChildCount(screen.AccessibilityTree(wnd))
+	before := axRootChildCount(tree)
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
 		Node:   node.ID,
 		Action: accessibility.Expand,
@@ -88,64 +96,6 @@ func TestComboFieldAccessibilityReportsWhetherItIsOpen(t *testing.T) {
 	c.True(node != nil)
 	if node != nil {
 		c.False(node.Expanded)
-	}
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestComboFieldAccessibilityMarksEveryChoiceAndPointsAtItsMenu verifies two things about an opened combo field: every
-// option is described as one of a set of check items, with the field's current value checked and the rest explicitly
-// not, and the field points at the menu panel showing them.
-//
-// The options used to be given no check state at all, so nothing in the dropdown said which of them the field was
-// showing — an item that has never been given a state is described as a plain command. And the field never filled in
-// Controls, which PopupMenu does for the menu it opens, so an assistive technology could tie a popup to its choices but
-// not a combo field to its own, despite the two being written to describe themselves alike.
-func TestComboFieldAccessibilityMarksEveryChoiceAndPointsAtItsMenu(t *testing.T) {
-	c := check.New(t)
-	first := comboOptionA
-	second := comboOptionB
-	third := comboOptionC
-	var combo *unison.Field
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			combo = unison.NewComboField([]*string{&first, &second, &third}, &second, nil)
-			wnd = newHeadlessWindow(t, "combo checks", geom.NewRect(10, 10, 300, 150), axColumn(combo))
-		}))
-	c.NotNil(wnd)
-	c.True(screen.Do(func() { wnd.ToFront() }))
-
-	screen.AccessibilityTree(wnd)
-	node := axMustNode(c, screen.AccessibilityNodeFor(combo))
-	c.Equal(0, len(node.Controls), "nothing is showing yet, so there is nothing to point at")
-	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
-		Node:   node.ID,
-		Action: accessibility.Expand,
-	}))
-
-	tree := screen.AccessibilityTree(wnd)
-	items := axNodesWithRole(tree, role.MenuItem)
-	c.Equal(3, len(items), "one menu item per option")
-	checked := 0
-	for _, item := range items {
-		c.True(item.HasCheck, "%q has to be described as one of a set of choices rather than as a plain command",
-			item.Name)
-		switch item.Checked {
-		case checkenum.On:
-			checked++
-			c.Equal(comboOptionB, item.Name, "the checked choice is the value the field is holding")
-		default:
-			c.Equal(checkenum.Off, item.Checked, "%q is a choice that has not been made rather than a half-made one",
-				item.Name)
-		}
-	}
-	c.Equal(1, checked, "exactly one of the choices is checked")
-
-	node = axMustNode(c, screen.AccessibilityNodeFor(combo))
-	c.Equal(1, len(node.Controls), "the field points at the menu its choices are showing in")
-	if len(node.Controls) == 1 {
-		menuNode := axMustNode(c, tree.Node(node.Controls[0]))
-		c.Equal(role.Menu, menuNode.Role, "what it points at is the menu panel itself")
 	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
@@ -322,46 +272,89 @@ func TestFieldDropdownAsksForOptionsOnlyWhenOpening(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestFieldDropdownChecksTheTextExactly verifies that only the option equal to the field's text, case included, is
-// checked, that every option has a check state, and that the field points at its menu, which is named after it.
+// TestFieldDropdownChecksTheTextExactly verifies that every option of an opened dropdown has a check state and that
+// only the one matching the field's current value is checked: the option equal to its text, case included, only the
+// first of any duplicates of it, and a combo field's current value. It also verifies that the field points at its
+// menu, which is named after it, once that menu is open and not before.
 func TestFieldDropdownChecksTheTextExactly(t *testing.T) {
-	c := check.New(t)
-	var field *unison.Field
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			field = unison.NewField()
-			field.SetText(comboOptionB)
-			field.Accessibility.Name = "Tree"
-			field.InstallDropdown(func() []string { return []string{comboOptionA, comboOptionB, "rowan", comboOptionC} })
-			wnd = newHeadlessWindow(t, "dropdown checks", geom.NewRect(10, 10, 300, 150), axColumn(field))
-		}))
-	c.NotNil(wnd)
-	c.True(screen.Do(func() { wnd.ToFront() }))
+	for _, one := range []struct {
+		name  string
+		build func() *unison.Field
+		// want is the check state expected of each item, in the order of the options.
+		want []checkenum.Enum
+	}{
+		{
+			name: "text matched exactly",
+			build: func() *unison.Field {
+				field := unison.NewField()
+				field.SetText(comboOptionB)
+				field.InstallDropdown(func() []string {
+					return []string{comboOptionA, comboOptionB, "rowan", comboOptionC}
+				})
+				return field
+			},
+			want: []checkenum.Enum{checkenum.Off, checkenum.On, checkenum.Off, checkenum.Off},
+		},
+		{
+			name: "first duplicate only",
+			build: func() *unison.Field {
+				field := unison.NewField()
+				field.SetText(comboOptionB)
+				field.InstallDropdown(func() []string { return []string{comboOptionA, comboOptionB, comboOptionB} })
+				return field
+			},
+			want: []checkenum.Enum{checkenum.Off, checkenum.On, checkenum.Off},
+		},
+		{
+			name: "combo field current value",
+			build: func() *unison.Field {
+				first := comboOptionA
+				second := comboOptionB
+				third := comboOptionC
+				return unison.NewComboField([]*string{&first, &second, &third}, &second, nil)
+			},
+			want: []checkenum.Enum{checkenum.Off, checkenum.On, checkenum.Off},
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			var field *unison.Field
+			var wnd *unison.Window
+			screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+				unison.StartupFinishedCallback(func() {
+					field = one.build()
+					field.Accessibility.Name = "Tree"
+					wnd = newHeadlessWindow(t, "dropdown checks", geom.NewRect(10, 10, 300, 150), axColumn(field))
+				}))
+			c.NotNil(wnd)
+			c.True(screen.Do(func() { wnd.ToFront() }))
 
-	screen.AccessibilityTree(wnd)
-	dropdownClick(c, screen, field)
-	tree := screen.AccessibilityTree(wnd)
-	items := axNodesWithRole(tree, role.MenuItem)
-	c.Equal(4, len(items))
-	for _, item := range items {
-		c.True(item.HasCheck, "%q has a check state", item.Name)
-		expected := checkenum.Off
-		if item.Name == comboOptionB {
-			expected = checkenum.On
-		}
-		c.Equal(expected, item.Checked, "%q", item.Name)
-	}
+			screen.AccessibilityTree(wnd)
+			node := axMustNode(c, screen.AccessibilityNodeFor(field))
+			c.Equal(0, len(node.Controls), "nothing is showing yet, so there is nothing to point at")
+			dropdownClick(c, screen, field)
+			tree := screen.AccessibilityTree(wnd)
+			items := axNodesWithRole(tree, role.MenuItem)
+			c.Equal(len(one.want), len(items), "one menu item per option")
+			for i, item := range items {
+				c.True(item.HasCheck,
+					"%q has to be described as one of a set of choices rather than as a plain command", item.Name)
+				if i < len(one.want) {
+					c.Equal(one.want[i], item.Checked, "item %d, %q", i, item.Name)
+				}
+			}
 
-	node := axMustNode(c, screen.AccessibilityNodeFor(field))
-	c.Equal(1, len(node.Controls), "the field points at its menu")
-	if len(node.Controls) == 1 {
-		menuNode := axMustNode(c, tree.Node(node.Controls[0]))
-		c.Equal(role.Menu, menuNode.Role)
-		c.Equal("Tree", menuNode.Name, "the menu is named after the field")
+			node = axMustNode(c, screen.AccessibilityNodeFor(field))
+			c.Equal(1, len(node.Controls), "the field points at its menu")
+			if len(node.Controls) == 1 {
+				menuNode := axMustNode(c, tree.Node(node.Controls[0]))
+				c.Equal(role.Menu, menuNode.Role)
+				c.Equal("Tree", menuNode.Name, "the menu is named after the field")
+			}
+			screen.KeyPress(unison.KeyEscape, mod.None)
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
 	}
-	screen.KeyPress(unison.KeyEscape, mod.None)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // TestFieldDropdownChoiceGoesThroughSetText verifies that a choice replaces the field's text as an edit of its own,
@@ -711,104 +704,71 @@ func TestFieldDropdownOnAnEmbeddingField(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestFieldDropdownChecksOnlyTheFirstDuplicate verifies that when the options repeat the field's text, only the first
-// of the duplicates is checked and the menu opens on it.
-func TestFieldDropdownChecksOnlyTheFirstDuplicate(t *testing.T) {
-	c := check.New(t)
-	var field *unison.Field
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			field = unison.NewField()
-			field.SetText(comboOptionB)
-			field.InstallDropdown(func() []string { return []string{comboOptionA, comboOptionB, comboOptionB} })
-			wnd = newHeadlessWindow(t, "dropdown duplicates", geom.NewRect(10, 10, 300, 150), axColumn(field))
-		}))
-	c.NotNil(wnd)
-	c.True(screen.Do(func() { wnd.ToFront() }))
-
-	screen.AccessibilityTree(wnd)
-	dropdownClick(c, screen, field)
-	items := axNodesWithRole(screen.AccessibilityTree(wnd), role.MenuItem)
-	c.Equal(3, len(items))
-	if len(items) == 3 {
-		c.Equal(checkenum.Off, items[0].Checked)
-		c.Equal(checkenum.On, items[1].Checked, "the first duplicate is checked")
-		c.Equal(checkenum.Off, items[2].Checked, "the second duplicate is not")
-	}
-	screen.KeyPress(unison.KeyEscape, mod.None)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestFieldDropdownLeavesModifiedDownToTheField verifies that the down arrow with a modifier held is the field's own
-// command, extending the selection or moving the caret to the end, rather than opening the menu.
+// TestFieldDropdownLeavesModifiedDownToTheField verifies that the down arrow is the field's own command, extending the
+// selection or moving the caret to the end, rather than opening the menu, when a modifier is held or when there are no
+// options to show, and that a bare Down with options still opens the menu.
 func TestFieldDropdownLeavesModifiedDownToTheField(t *testing.T) {
 	c := check.New(t)
+	offered := []string{comboOptionA, comboOptionB}
+	options := offered
 	var field *unison.Field
 	var wnd *unison.Window
 	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
 		unison.StartupFinishedCallback(func() {
 			field = unison.NewField()
 			field.SetText(comboOptionA)
-			field.InstallDropdown(func() []string { return []string{comboOptionA, comboOptionB} })
+			field.InstallDropdown(func() []string { return options })
 			wnd = newHeadlessWindow(t, "dropdown modifiers", geom.NewRect(10, 10, 300, 150), axColumn(field))
 		}))
 	c.NotNil(wnd)
 	c.True(screen.Do(func() {
 		wnd.ToFront()
 		wnd.SetFocus(field)
-		field.SetSelectionToStart()
 	}))
-	selection := func() (start, end int) {
+
+	for _, one := range []struct {
+		name    string
+		why     string
+		options []string
+		start   int
+		mods    mod.Modifiers
+	}{
+		{
+			name:    "Shift+Down",
+			why:     "extends the selection to the end",
+			options: offered,
+			mods:    mod.Shift,
+		},
+		{
+			name:    "Command+Down",
+			why:     "moves the caret to the end",
+			options: offered,
+			start:   len(comboOptionA),
+			mods:    mod.OSMenuCommand(),
+		},
+		{
+			name:  "Down with nothing to offer",
+			why:   "is left to the field, which moves the caret to the end",
+			start: len(comboOptionA),
+			mods:  mod.None,
+		},
+	} {
+		screen.Do(func() {
+			options = one.options
+			field.SetSelectionToStart()
+		})
+		screen.KeyPress(unison.KeyDown, one.mods)
+		c.Equal(0, dropdownMenuCount(screen, wnd), "%s does not open the menu", one.name)
+		var start, end int
 		screen.Do(func() { start, end = field.Selection() })
-		return start, end
+		c.Equal(one.start, start, "%s %s", one.name, one.why)
+		c.Equal(len(comboOptionA), end, "%s %s", one.name, one.why)
 	}
 
-	screen.KeyPress(unison.KeyDown, mod.Shift)
-	c.Equal(0, dropdownMenuCount(screen, wnd), "Shift+Down does not open the menu")
-	start, end := selection()
-	c.Equal(0, start)
-	c.Equal(len(comboOptionA), end, "Shift+Down extends the selection to the end")
-
-	screen.Do(func() { field.SetSelectionToStart() })
-	screen.KeyPress(unison.KeyDown, mod.OSMenuCommand())
-	c.Equal(0, dropdownMenuCount(screen, wnd), "Command+Down does not open the menu")
-	start, end = selection()
-	c.Equal(len(comboOptionA), start, "Command+Down moves the caret to the end")
-	c.Equal(len(comboOptionA), end)
-
+	screen.Do(func() { options = offered })
 	screen.KeyPress(unison.KeyDown, mod.None)
-	c.Equal(1, dropdownMenuCount(screen, wnd), "a bare Down still opens the menu")
+	c.Equal(1, dropdownMenuCount(screen, wnd), "a bare Down with options still opens the menu")
 	screen.KeyPress(unison.KeyEscape, mod.None)
-	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestFieldDropdownWithNothingToOfferLeavesDownToTheField verifies that when the options are empty, the down arrow is
-// left to the field, which moves the caret to the end, rather than being swallowed by a menu that never opens.
-func TestFieldDropdownWithNothingToOfferLeavesDownToTheField(t *testing.T) {
-	c := check.New(t)
-	var field *unison.Field
-	var wnd *unison.Window
-	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
-		unison.StartupFinishedCallback(func() {
-			field = unison.NewField()
-			field.SetText(comboOptionA)
-			field.InstallDropdown(func() []string { return nil })
-			wnd = newHeadlessWindow(t, "dropdown empty keys", geom.NewRect(10, 10, 300, 150), axColumn(field))
-		}))
-	c.NotNil(wnd)
-	c.True(screen.Do(func() {
-		wnd.ToFront()
-		wnd.SetFocus(field)
-		field.SetSelectionToStart()
-	}))
-
-	screen.KeyPress(unison.KeyDown, mod.None)
-	c.Equal(0, dropdownMenuCount(screen, wnd))
-	var start, end int
-	screen.Do(func() { start, end = field.Selection() })
-	c.Equal(len(comboOptionA), start, "the field moves the caret to the end")
-	c.Equal(len(comboOptionA), end)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 

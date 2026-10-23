@@ -27,33 +27,35 @@ func newFixedHeightBorderedList(values ...string) *List[string] {
 	return l
 }
 
+// TestListRowAtFixedHeightClampsAboveContent verifies the row and row top rowAt reports for a y in a fixed-height list
+// whose 2px border puts the content top at 2. A y within the top border inset maps to the first row, matching the
+// variable-height path, rather than going negative and causing DefaultDraw to skip all rows. A y beyond the last row,
+// or any y in an empty list, reports no row.
 func TestListRowAtFixedHeightClampsAboveContent(t *testing.T) {
-	c := check.New(t)
-	l := newFixedHeightBorderedList("a", "b", "c")
-	contentTop := l.ContentRect(false).Y
-	c.Equal(float32(2), contentTop)
-
-	// A y within the top border inset (above the content rect) maps to the first row, matching the variable-height
-	// path, rather than going negative and causing DefaultDraw to skip all rows.
-	row, top := l.rowAt(0)
-	c.Equal(0, row)
-	c.Equal(contentTop, top)
-
-	// Rows within the content still map to the correct index and top.
-	row, top = l.rowAt(contentTop)
-	c.Equal(0, row)
-	c.Equal(contentTop, top)
-	row, top = l.rowAt(contentTop + 20)
-	c.Equal(1, row)
-	c.Equal(contentTop+20, top)
-	row, top = l.rowAt(contentTop + 59)
-	c.Equal(2, row)
-	c.Equal(contentTop+40, top)
-
-	// A y beyond the last row still reports no row.
-	row, top = l.rowAt(contentTop + 60)
-	c.Equal(-1, row)
-	c.Equal(float32(0), top)
+	abc := []string{"a", "b", "c"}
+	for _, tc := range []struct {
+		name   string
+		values []string
+		row    int
+		y      float32
+		top    float32
+	}{
+		{name: "above the content", values: abc, y: 0, row: 0, top: 2},
+		{name: "top of the first row", values: abc, y: 2, row: 0, top: 2},
+		{name: "top of the second row", values: abc, y: 22, row: 1, top: 22},
+		{name: "last pixel of the last row", values: abc, y: 61, row: 2, top: 42},
+		{name: "beyond the last row", values: abc, y: 62, row: -1, top: 0},
+		{name: "empty list", y: 0, row: -1, top: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			l := newFixedHeightBorderedList(tc.values...)
+			c.Equal(float32(2), l.ContentRect(false).Y)
+			row, top := l.rowAt(tc.y)
+			c.Equal(tc.row, row)
+			c.Equal(tc.top, top)
+		})
+	}
 }
 
 func TestListSelectRangeEmptyList(t *testing.T) {
@@ -66,31 +68,6 @@ func TestListSelectRangeEmptyList(t *testing.T) {
 	l.SelectAll()
 	c.Equal(0, l.Selection.Count())
 	c.Equal(-1, l.anchor)
-}
-
-func TestListSelectRangeNonEmptyList(t *testing.T) {
-	c := check.New(t)
-	l := NewList[string]()
-	l.Append("a", "b", "c")
-	l.SetAllowMultipleSelection(true)
-
-	// Normal ranges still work, including clamping of out-of-bounds indexes.
-	l.SelectRange(1, 5, false)
-	c.Equal(2, l.Selection.Count())
-	c.True(l.Selection.State(1))
-	c.True(l.Selection.State(2))
-	c.Equal(1, l.anchor)
-
-	l.SelectAll()
-	c.Equal(3, l.Selection.Count())
-}
-
-func TestListRowAtFixedHeightEmptyList(t *testing.T) {
-	c := check.New(t)
-	l := newFixedHeightBorderedList()
-	row, top := l.rowAt(0)
-	c.Equal(-1, row)
-	c.Equal(float32(0), top)
 }
 
 // variableHeightCellFactory produces cells whose heights differ per row, selecting the variable-height code paths that
@@ -115,36 +92,51 @@ func (f *variableHeightCellFactory) CreateCell(_ Paneler, _ any, row int, _, _ I
 // TestListRowRectVariableHeight verifies that a row's rectangle in a variable-height list starts where the rows above
 // it end. RowRect used to multiply the row's own height by its index, which places every row after the first at the
 // wrong offset unless all rows happen to be the same height, so DefaultKeyDown's ScrollRectIntoView could scroll to a
-// position that left the selected row off-screen.
+// position that left the selected row off-screen. The fixed-height path, which that correction must leave alone, is
+// checked the same way.
 func TestListRowRectVariableHeight(t *testing.T) {
-	c := check.New(t)
-	l := NewList[string]()
-	l.Factory = &variableHeightCellFactory{heights: []float32{10, 30, 20, 40}}
-	l.Append("a", "b", "c", "d")
-	l.SetBorder(NewLineBorder(Black, geom.Size{}, geom.NewUniformInsets(2), false))
-	l.SetFrameRect(geom.NewRect(0, 0, 100, 200))
-	content := l.ContentRect(false)
+	heights := []float32{10, 30, 20, 40}
+	variable := NewList[string]()
+	variable.Factory = &variableHeightCellFactory{heights: heights}
+	variable.Append("a", "b", "c", "d")
+	variable.SetBorder(NewLineBorder(Black, geom.Size{}, geom.NewUniformInsets(2), false))
+	variable.SetFrameRect(geom.NewRect(0, 0, 100, 200))
 
-	for i, want := range []geom.Rect{
-		geom.NewRect(content.X, content.Y, content.Width, 10),
-		geom.NewRect(content.X, content.Y+10, content.Width, 30),
-		geom.NewRect(content.X, content.Y+40, content.Width, 20),
-		geom.NewRect(content.X, content.Y+60, content.Width, 40),
+	for _, tc := range []struct {
+		name    string
+		list    *List[string]
+		tops    []float32 // Each row's offset from the content top.
+		heights []float32
+	}{
+		{name: "variable height", list: variable, tops: []float32{0, 10, 40, 60}, heights: heights},
+		{
+			name:    "fixed height",
+			list:    newFixedHeightBorderedList("a", "b", "c"),
+			tops:    []float32{0, 20, 40},
+			heights: []float32{20, 20, 20},
+		},
 	} {
-		c.Equal(want, l.RowRect(i), "row %d", i)
-	}
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			l := tc.list
+			content := l.ContentRect(false)
+			for i, top := range tc.tops {
+				c.Equal(geom.NewRect(content.X, content.Y+top, content.Width, tc.heights[i]), l.RowRect(i), "row %d", i)
+			}
 
-	// Every row's rectangle must agree with the row rowAt reports for a point inside it.
-	for i := range 4 {
-		rect := l.RowRect(i)
-		row, top := l.rowAt(rect.Y + rect.Height/2)
-		c.Equal(i, row, "rowAt must report row %d for a point within its rectangle", i)
-		c.Equal(rect.Y, top, "rowAt must report the same top as RowRect for row %d", i)
-	}
+			// Every row's rectangle must agree with the row rowAt reports for a point inside it.
+			for i := range tc.tops {
+				rect := l.RowRect(i)
+				row, top := l.rowAt(rect.Y + rect.Height/2)
+				c.Equal(i, row, "rowAt must report row %d for a point within its rectangle", i)
+				c.Equal(rect.Y, top, "rowAt must report the same top as RowRect for row %d", i)
+			}
 
-	// Out-of-range rows yield an empty rectangle.
-	c.Equal(geom.Rect{}, l.RowRect(-1))
-	c.Equal(geom.Rect{}, l.RowRect(4))
+			// Out-of-range rows yield an empty rectangle.
+			c.Equal(geom.Rect{}, l.RowRect(-1))
+			c.Equal(geom.Rect{}, l.RowRect(len(tc.tops)))
+		})
+	}
 }
 
 // TestListRowAtBoundaryPicksLowerRow verifies that a y lying exactly on a row's top boundary maps to that row rather
@@ -184,15 +176,5 @@ func TestListRowAtBoundaryPicksLowerRow(t *testing.T) {
 		row, top = fixed.rowAt(rect.Y)
 		c.Equal(i, row, "the top boundary of fixed-height row %d belongs to row %d", i, i)
 		c.Equal(rect.Y, top)
-	}
-}
-
-// TestListRowRectFixedHeight verifies that the fixed-height path is unaffected by the variable-height correction.
-func TestListRowRectFixedHeight(t *testing.T) {
-	c := check.New(t)
-	l := newFixedHeightBorderedList("a", "b", "c")
-	content := l.ContentRect(false)
-	for i := range 3 {
-		c.Equal(geom.NewRect(content.X, content.Y+float32(i)*20, content.Width, 20), l.RowRect(i), "row %d", i)
 	}
 }

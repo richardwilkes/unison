@@ -934,33 +934,6 @@ func TestTextAttributesFromRuns(t *testing.T) {
 	}, ta.values(NodePath(102), InterfaceText, "GetAttributes", "i", int32(0)))
 }
 
-// TestTextAttributesOfStyledRuns covers the values themselves, which are the ones ATK reports and the ones Orca reads.
-// A run that says nothing about its family or its size reports neither, rather than reporting an empty name and a size
-// of zero as though the text were drawn in them.
-func TestTextAttributesOfStyledRuns(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Equal(dbus.Dict{
-		{Key: weightTextAttribute, Value: "400"},
-		{Key: styleTextAttribute, Value: normalStyleValue},
-		{Key: underlineTextAttribute, Value: noUnderlineValue},
-		{Key: strikethroughTextAttribute, Value: falseValue},
-	}, runAttributes(accessibility.TextRun{End: 4}), "a run that says nothing is regular, upright and undecorated")
-	c.Equal(dbus.Dict{
-		{Key: weightTextAttribute, Value: "300"},
-		{Key: styleTextAttribute, Value: italicStyleValue},
-		{Key: underlineTextAttribute, Value: singleUnderlineValue},
-		{Key: strikethroughTextAttribute, Value: trueValue},
-		{Key: familyNameTextAttribute, Value: "Mono"},
-		{Key: sizeTextAttribute, Value: "10.5"},
-	}, runAttributes(accessibility.TextRun{
-		Family: "Mono", Size: 10.5, Start: 0, End: 4, Weight: 300, Italic: true, Underline: true,
-		Strikethrough: true, Monospace: true,
-	}), "a fractional size keeps its fraction, and a monospaced face is said with its name")
-	c.Equal(dbus.Dict{}, defaultTextAttributes(nil), "a node with no text has no defaults")
-	c.Equal(dbus.Dict{}, defaultTextAttributes(&accessibility.TextInfo{Text: "plain"}))
-}
-
 // TestScrollSubstringTo covers the call Orca makes after every caret move it asks for, which is what keeps a document
 // whose reader has arrowed past the bottom of the view port scrolling along with them.
 func TestScrollSubstringTo(t *testing.T) {
@@ -1051,6 +1024,7 @@ func TestCaretPlacementInAReadOnlyBlock(t *testing.T) {
 // — it reads weight to decide whether a stretch of text is bold, style for italic, underline and strikethrough for the
 // two decorations, and xml-roles together with tag to recognize a block of code — so a typo inside one of those
 // constants would leave every other expectation in the suite agreeing with it and silently break what Orca matches on.
+// A node with no text hands over no default attributes at all.
 func TestTextAttributeWireStrings(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -1083,9 +1057,25 @@ func TestTextAttributeWireStrings(t *testing.T) {
 				{Key: "size", Value: "12.5"},
 			},
 		},
+		{
+			why: "a monospaced face is said with its name and nothing more",
+			run: accessibility.TextRun{
+				Family: "Mono", Size: 10.5, Start: 0, End: 4, Weight: 300, Italic: true, Underline: true,
+				Strikethrough: true, Monospace: true,
+			},
+			want: dbus.Dict{
+				{Key: "weight", Value: "300"},
+				{Key: "style", Value: "italic"},
+				{Key: "underline", Value: "single"},
+				{Key: "strikethrough", Value: "true"},
+				{Key: "family-name", Value: "Mono"},
+				{Key: "size", Value: "10.5"},
+			},
+		},
 	} {
 		c.Equal(one.want, runAttributes(one.run), one.why)
 	}
+	c.Equal(dbus.Dict{}, defaultTextAttributes(nil), "a node with no text has no defaults")
 
 	// The object attributes of a block of code, which is the one role AT-SPI has no role for: the pair below is what
 	// Orca reads on a web page, where a code block is a <pre> element carrying the code role.

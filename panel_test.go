@@ -50,58 +50,79 @@ func framedPanel(x, y, width, height float32, scale geom.Point) *unison.Panel {
 	return p
 }
 
-func TestPanelAtReturnsSelfWhenNoChildContainsPoint(t *testing.T) {
-	c := check.New(t)
-	root := framedPanel(0, 0, 200, 200, geom.Point{})
-	child := framedPanel(10, 10, 50, 50, geom.Point{})
-	root.AddChild(child)
-	// (5,5) is outside the child's frame, so the deepest hit is the root itself.
-	c.Equal(root, root.PanelAt(geom.NewPoint(5, 5)))
-}
-
+// TestPanelAtDescendsIntoChild verifies that PanelAt returns the deepest visible panel containing the point, mapping
+// the point into each child's frame and scale on the way down, and the panel itself when no child contains it. Of two
+// overlapping siblings, the earlier one wins.
 func TestPanelAtDescendsIntoChild(t *testing.T) {
-	c := check.New(t)
-	root := framedPanel(0, 0, 200, 200, geom.Point{})
-	child := framedPanel(10, 10, 50, 50, geom.Point{})
-	root.AddChild(child)
-	// (15,15) falls within the child's frame [10,60).
-	c.Equal(child, root.PanelAt(geom.NewPoint(15, 15)))
-}
-
-func TestPanelAtSkipsHiddenChildren(t *testing.T) {
-	c := check.New(t)
-	root := framedPanel(0, 0, 200, 200, geom.Point{})
-	child := framedPanel(10, 10, 50, 50, geom.Point{})
-	root.AddChild(child)
-	child.Hidden = true
-	// The point is within the child's frame, but a hidden child is not a hit target.
-	c.Equal(root, root.PanelAt(geom.NewPoint(15, 15)))
-}
-
-func TestPanelAtAppliesScaleWhenDescending(t *testing.T) {
-	c := check.New(t)
-	root := framedPanel(0, 0, 200, 200, geom.Point{})
-	child := framedPanel(10, 10, 100, 100, geom.NewPoint(2, 2))
-	// The grandchild's frame is expressed in the child's (scaled) coordinate system.
-	grandchild := framedPanel(5, 5, 10, 10, geom.Point{})
-	root.AddChild(child)
-	child.AddChild(grandchild)
-	// (20,20) is in the child; child-local is (20-10,20-10)/2 = (5,5), which is the grandchild's origin.
-	c.Equal(grandchild, root.PanelAt(geom.NewPoint(20, 20)))
-	// (8,8) is outside the child's frame entirely, so the root is the hit.
-	c.Equal(root, root.PanelAt(geom.NewPoint(8, 8)))
-}
-
-func TestPanelAtPrefersLaterSibling(t *testing.T) {
-	c := check.New(t)
-	root := framedPanel(0, 0, 200, 200, geom.Point{})
-	first := framedPanel(10, 10, 50, 50, geom.Point{})
-	// Overlaps 'first' in the region [10,60).
-	second := framedPanel(10, 10, 50, 50, geom.Point{})
-	root.AddChild(first)
-	root.AddChild(second)
-	// PanelAt iterates children in order and returns the first whose frame contains the point.
-	c.Equal(first, root.PanelAt(geom.NewPoint(15, 15)))
+	// scaledTree returns a root holding a child scaled by 2, which holds a grandchild whose frame is expressed in the
+	// child's scaled coordinates, along with that grandchild.
+	scaledTree := func() (root, grandchild *unison.Panel) {
+		root = framedPanel(0, 0, 200, 200, geom.Point{})
+		child := framedPanel(10, 10, 100, 100, geom.NewPoint(2, 2))
+		grandchild = framedPanel(5, 5, 10, 10, geom.Point{})
+		root.AddChild(child)
+		child.AddChild(grandchild)
+		return root, grandchild
+	}
+	for _, tc := range []struct {
+		build func() (root, want *unison.Panel)
+		name  string
+		pt    geom.Point
+	}{
+		{
+			name: "a child containing the point",
+			pt:   geom.NewPoint(15, 15), // Within the child's frame [10,60).
+			build: func() (root, want *unison.Panel) {
+				root = framedPanel(0, 0, 200, 200, geom.Point{})
+				child := framedPanel(10, 10, 50, 50, geom.Point{})
+				root.AddChild(child)
+				return root, child
+			},
+		},
+		{
+			name: "a hidden child is not a hit target",
+			pt:   geom.NewPoint(15, 15),
+			build: func() (root, want *unison.Panel) {
+				root = framedPanel(0, 0, 200, 200, geom.Point{})
+				child := framedPanel(10, 10, 50, 50, geom.Point{})
+				child.Hidden = true
+				root.AddChild(child)
+				return root, root
+			},
+		},
+		{
+			name: "a scaled child maps the point into its own coordinates",
+			// (20,20) is in the child; child-local is (20-10,20-10)/2 = (5,5), which is the grandchild's origin.
+			pt:    geom.NewPoint(20, 20),
+			build: scaledTree,
+		},
+		{
+			name: "no child contains the point",
+			pt:   geom.NewPoint(8, 8), // Outside the child's frame entirely.
+			build: func() (root, want *unison.Panel) {
+				root, _ = scaledTree()
+				return root, root
+			},
+		},
+		{
+			name: "the earlier of two overlapping siblings",
+			pt:   geom.NewPoint(15, 15),
+			build: func() (root, want *unison.Panel) {
+				root = framedPanel(0, 0, 200, 200, geom.Point{})
+				first := framedPanel(10, 10, 50, 50, geom.Point{})
+				second := framedPanel(10, 10, 50, 50, geom.Point{})
+				root.AddChild(first)
+				root.AddChild(second)
+				return root, first
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, want := tc.build()
+			// Compared by identity, since overlapping siblings with the same frame are deeply equal.
+			check.New(t).True(root.PanelAt(tc.pt) == want, "PanelAt returned the wrong panel")
+		})
+	}
 }
 
 // Distinct command IDs used by the dispatch tests.
@@ -110,68 +131,76 @@ const (
 	testCmdB = 9002
 )
 
-func TestPerformCmdWalksToAncestor(t *testing.T) {
-	c := check.New(t)
-	parent := unison.NewPanel()
-	child := unison.NewPanel()
-	parent.AddChild(child)
-
-	performed := 0
-	parent.InstallCmdHandlers(testCmdA, unison.AlwaysEnabled, func(_ any) { performed++ })
-
-	// The child has no handler of its own, so dispatch climbs to the parent.
-	c.True(child.CanPerformCmd(nil, testCmdA))
-	child.PerformCmd(nil, testCmdA)
-	c.Equal(1, performed)
-}
-
+// TestPerformCmdPrefersNearestHandler verifies that a command sent to a child panel goes to the nearest panel up the
+// chain with a handler for it, which alone decides whether it can be performed, so a disabled nearest handler does not
+// fall back to an ancestor's. With no handler for the command, or a nil panel, nothing is performed and nothing panics.
 func TestPerformCmdPrefersNearestHandler(t *testing.T) {
-	c := check.New(t)
-	parent := unison.NewPanel()
-	child := unison.NewPanel()
-	parent.AddChild(child)
-
-	parentPerformed := 0
-	childPerformed := 0
-	parent.InstallCmdHandlers(testCmdA, unison.AlwaysEnabled, func(_ any) { parentPerformed++ })
-	child.InstallCmdHandlers(testCmdA, unison.AlwaysEnabled, func(_ any) { childPerformed++ })
-
-	child.PerformCmd(nil, testCmdA)
-	c.Equal(1, childPerformed)
-	c.Equal(0, parentPerformed)
-}
-
-func TestPerformCmdStopsAtDisabledNearestHandler(t *testing.T) {
-	c := check.New(t)
-	parent := unison.NewPanel()
-	child := unison.NewPanel()
-	parent.AddChild(child)
-
-	parentPerformed := 0
-	// The child claims the command but reports it cannot currently perform it. Because the nearest handler wins, the
-	// ancestor's handler must NOT run as a fallback.
-	parent.InstallCmdHandlers(testCmdA, unison.AlwaysEnabled, func(_ any) { parentPerformed++ })
-	child.InstallCmdHandlers(testCmdA, func(_ any) bool { return false }, func(_ any) {})
-
-	c.False(child.CanPerformCmd(nil, testCmdA))
-	child.PerformCmd(nil, testCmdA)
-	c.Equal(0, parentPerformed)
-}
-
-func TestPerformCmdUnknownIDIsNoOp(t *testing.T) {
-	c := check.New(t)
-	p := unison.NewPanel()
-	p.InstallCmdHandlers(testCmdA, unison.AlwaysEnabled, func(_ any) {})
-	c.False(p.CanPerformCmd(nil, testCmdB))
-	p.PerformCmd(nil, testCmdB) // Must not panic.
-}
-
-func TestCmdHandlersOnNilPanel(t *testing.T) {
-	c := check.New(t)
-	var p *unison.Panel
-	// Documented to be safe on a nil receiver.
-	c.False(p.CanPerformCmd(nil, testCmdA))
-	p.PerformCmd(nil, testCmdA) // Must not panic.
+	disabled := func(_ any) bool { return false }
+	for _, tc := range []struct {
+		parentCan  func(any) bool // Nil leaves the parent without a handler for testCmdA.
+		childCan   func(any) bool // Nil leaves the child without a handler for testCmdA.
+		name       string
+		id         int
+		wantParent int
+		wantChild  int
+		nilPanel   bool // Sends the command to a nil panel instead of the child.
+		wantCan    bool
+	}{
+		{
+			name:      "the nearest handler",
+			parentCan: unison.AlwaysEnabled,
+			childCan:  unison.AlwaysEnabled,
+			id:        testCmdA,
+			wantCan:   true,
+			wantChild: 1,
+		},
+		{
+			name:       "a handler only on an ancestor",
+			parentCan:  unison.AlwaysEnabled,
+			id:         testCmdA,
+			wantCan:    true,
+			wantParent: 1,
+		},
+		{
+			name:      "a disabled nearest handler",
+			parentCan: unison.AlwaysEnabled,
+			childCan:  disabled,
+			id:        testCmdA,
+		},
+		{
+			name:     "no handler for the command",
+			childCan: unison.AlwaysEnabled,
+			id:       testCmdB,
+		},
+		{
+			name:     "a nil panel",
+			id:       testCmdA,
+			nilPanel: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			parent := unison.NewPanel()
+			child := unison.NewPanel()
+			parent.AddChild(child)
+			parentPerformed := 0
+			childPerformed := 0
+			if tc.parentCan != nil {
+				parent.InstallCmdHandlers(testCmdA, tc.parentCan, func(_ any) { parentPerformed++ })
+			}
+			if tc.childCan != nil {
+				child.InstallCmdHandlers(testCmdA, tc.childCan, func(_ any) { childPerformed++ })
+			}
+			target := child
+			if tc.nilPanel {
+				target = nil
+			}
+			c.Equal(tc.wantCan, target.CanPerformCmd(nil, tc.id))
+			c.NotPanics(func() { target.PerformCmd(nil, tc.id) })
+			c.Equal(tc.wantParent, parentPerformed)
+			c.Equal(tc.wantChild, childPerformed)
+		})
+	}
 }
 
 func TestInstallCmdHandlersReturnsFormerHandlers(t *testing.T) {
@@ -217,57 +246,70 @@ func transformPanel(x, y float32, scale geom.Point) *unison.Panel {
 	return p
 }
 
-func TestPointToRootSinglePanel(t *testing.T) {
-	c := check.New(t)
-	// An unparented panel at the origin with no scale is the identity transform.
-	p := transformPanel(0, 0, geom.Point{})
-	c.Equal(geom.NewPoint(3, 4), p.PointToRoot(geom.NewPoint(3, 4)))
-
-	// An unparented panel offset from the origin adds its frame position.
-	p = transformPanel(10, 20, geom.Point{})
-	c.Equal(geom.NewPoint(13, 24), p.PointToRoot(geom.NewPoint(3, 4)))
-}
-
-func TestPointToRootHierarchy(t *testing.T) {
-	c := check.New(t)
-	root := transformPanel(0, 0, geom.Point{})
-	child := transformPanel(10, 20, geom.Point{})
-	grandchild := transformPanel(5, 5, geom.Point{})
-	root.AddChild(child)
-	child.AddChild(grandchild)
-	// (1,2) -> +grandchild(5,5) = (6,7) -> +child(10,20) = (16,27) -> +root(0,0) = (16,27).
-	c.Equal(geom.NewPoint(16, 27), grandchild.PointToRoot(geom.NewPoint(1, 2)))
-}
-
+// TestPointToRootWithScale verifies that PointToRoot scales the point by each panel's scale and then adds its frame
+// origin, on the way up to the root.
 func TestPointToRootWithScale(t *testing.T) {
-	c := check.New(t)
-	root := transformPanel(0, 0, geom.Point{})
-	child := transformPanel(10, 20, geom.NewPoint(2, 2))
-	grandchild := transformPanel(5, 5, geom.Point{})
-	root.AddChild(child)
-	child.AddChild(grandchild)
-	// (1,2) -> +grandchild(5,5) = (6,7) -> *child scale(2) +child(10,20) = (22,34) -> +root = (22,34).
-	c.Equal(geom.NewPoint(22, 34), grandchild.PointToRoot(geom.NewPoint(1, 2)))
+	// grandchild returns a panel at (5,5) within a child at (10,20) with the given scale, within a root at the origin.
+	grandchild := func(childScale geom.Point) *unison.Panel {
+		root := transformPanel(0, 0, geom.Point{})
+		child := transformPanel(10, 20, childScale)
+		p := transformPanel(5, 5, geom.Point{})
+		root.AddChild(child)
+		child.AddChild(p)
+		return p
+	}
+	for _, tc := range []struct {
+		panel *unison.Panel
+		name  string
+		pt    geom.Point
+		want  geom.Point
+	}{
+		{
+			name:  "an unparented panel at the origin",
+			panel: transformPanel(0, 0, geom.Point{}),
+			pt:    geom.NewPoint(3, 4),
+			want:  geom.NewPoint(3, 4),
+		},
+		{
+			name:  "an unparented panel away from the origin",
+			panel: transformPanel(10, 20, geom.Point{}),
+			pt:    geom.NewPoint(3, 4),
+			want:  geom.NewPoint(13, 24),
+		},
+		{
+			// (1,2) -> +grandchild(5,5) = (6,7) -> +child(10,20) = (16,27) -> +root(0,0) = (16,27).
+			name:  "an unscaled chain",
+			panel: grandchild(geom.Point{}),
+			pt:    geom.NewPoint(1, 2),
+			want:  geom.NewPoint(16, 27),
+		},
+		{
+			// (1,2) -> +grandchild(5,5) = (6,7) -> *child scale(2) +child(10,20) = (22,34) -> +root = (22,34).
+			name:  "a scaled chain",
+			panel: grandchild(geom.NewPoint(2, 2)),
+			pt:    geom.NewPoint(1, 2),
+			want:  geom.NewPoint(22, 34),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			check.New(t).Equal(tc.want, tc.panel.PointToRoot(tc.pt))
+		})
+	}
 }
 
-func TestPointFromRootRoundTrip(t *testing.T) {
-	c := check.New(t)
-	root := transformPanel(0, 0, geom.Point{})
-	child := transformPanel(10, 20, geom.NewPoint(2, 2))
-	grandchild := transformPanel(5, 5, geom.Point{})
-	root.AddChild(child)
-	child.AddChild(grandchild)
-	local := geom.NewPoint(1, 2)
-	c.Equal(local, grandchild.PointFromRoot(grandchild.PointToRoot(local)))
-}
-
+// TestPointFromRootValues verifies that PointFromRoot undoes each panel's frame origin and scale on the way down from
+// the root, so that it inverts PointToRoot through a scaled panel that is not at the origin.
 func TestPointFromRootValues(t *testing.T) {
 	c := check.New(t)
 	root := transformPanel(0, 0, geom.Point{})
 	child := transformPanel(10, 20, geom.NewPoint(2, 2))
+	grandchild := transformPanel(5, 5, geom.Point{})
 	root.AddChild(child)
+	child.AddChild(grandchild)
 	// (22,34) -> root identity -> child: (22-10, 34-20)/2 = (6,7).
 	c.Equal(geom.NewPoint(6, 7), child.PointFromRoot(geom.NewPoint(22, 34)))
+	local := geom.NewPoint(1, 2)
+	c.Equal(local, grandchild.PointFromRoot(grandchild.PointToRoot(local)))
 }
 
 func TestPointTo(t *testing.T) {
@@ -281,31 +323,26 @@ func TestPointTo(t *testing.T) {
 	c.Equal(geom.NewPoint(-39, 6), childA.PointTo(geom.NewPoint(1, 1), childB))
 }
 
-func TestPointToSelfIsIdentity(t *testing.T) {
-	c := check.New(t)
-	parent := transformPanel(0, 0, geom.Point{})
-	child := transformPanel(10, 20, geom.NewPoint(2, 2))
-	parent.AddChild(child)
-	pt := geom.NewPoint(3, 4)
-	c.Equal(pt, child.PointTo(pt, child))
-}
-
-func TestRectToRootNoScale(t *testing.T) {
-	c := check.New(t)
-	parent := transformPanel(10, 20, geom.Point{})
-	child := transformPanel(5, 5, geom.Point{})
-	parent.AddChild(child)
-	// Without scale the rect is simply translated by the accumulated offsets (5,5)+(10,20) = (15,25).
-	c.Equal(geom.NewRect(16, 27, 3, 4), child.RectToRoot(geom.NewRect(1, 2, 3, 4)))
-}
-
+// TestRectToRootWithScale verifies that RectToRoot scales a rect's origin and size by each panel's scale and
+// translates it by that panel's frame origin, on the way up to the root.
 func TestRectToRootWithScale(t *testing.T) {
-	c := check.New(t)
-	parent := transformPanel(10, 20, geom.Point{})
-	child := transformPanel(5, 5, geom.NewPoint(2, 2))
-	parent.AddChild(child)
-	// Origin (1,2) -> *2 +(5,5) +(10,20) = (17,29); size (3,4) scales to (6,8).
-	c.Equal(geom.NewRect(17, 29, 6, 8), child.RectToRoot(geom.NewRect(1, 2, 3, 4)))
+	for _, tc := range []struct {
+		name  string
+		scale geom.Point
+		want  geom.Rect
+	}{
+		// Without scale the rect is simply translated by the accumulated offsets (5,5)+(10,20) = (15,25).
+		{name: "unscaled", want: geom.NewRect(16, 27, 3, 4)},
+		// Origin (1,2) -> *2 +(5,5) +(10,20) = (17,29); size (3,4) scales to (6,8).
+		{name: "scaled", scale: geom.NewPoint(2, 2), want: geom.NewRect(17, 29, 6, 8)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := transformPanel(10, 20, geom.Point{})
+			child := transformPanel(5, 5, tc.scale)
+			parent.AddChild(child)
+			check.New(t).Equal(tc.want, child.RectToRoot(geom.NewRect(1, 2, 3, 4)))
+		})
+	}
 }
 
 func TestRectFromRootRoundTrip(t *testing.T) {

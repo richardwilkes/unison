@@ -125,59 +125,68 @@ func TestTableDropIntoDraggedRowsIsRefusedAndLeavesModelUntouched(t *testing.T) 
 	c.Equal(4, table.LastRowIndex()+1)
 }
 
-func TestTableDropDirectlyAboveItselfIsANoOp(t *testing.T) {
-	c := check.New(t)
-	rows := flatRows(3)
-	table := newTestTable(rows...)
-	installMoveDropSupport(t, table, table, rows[1])
-	di := &fakeDragInfo{dataType: tableDropDataType().UTI}
-
-	// Dropping r1 in the upper half of its own row targets its current position and must leave the order unchanged.
-	c.True(table.DropCallback(di, upperHalfOf(table, 1), 0))
-	got := table.RootRows()
-	c.Equal(3, len(got))
-	c.Equal(tid.TID("r0"), got[0].ID())
-	c.Equal(tid.TID("r1"), got[1].ID())
-	c.Equal(tid.TID("r2"), got[2].ID())
-}
-
+// TestTableDropAboveEarlierRowStillAdjustsIndex verifies where a moved root row lands when dropped in the upper half of
+// a row: within one table the insertion index accounts for the moved row's removal, so a row dropped above a later row
+// lands just before it and one dropped directly above itself stays put, while a removal from another table must not
+// shift the insertion point.
 func TestTableDropAboveEarlierRowStillAdjustsIndex(t *testing.T) {
-	c := check.New(t)
-	rows := flatRows(3)
-	table := newTestTable(rows...)
-	installMoveDropSupport(t, table, table, rows[0])
-	di := &fakeDragInfo{dataType: tableDropDataType().UTI}
+	for _, test := range []struct {
+		name       string
+		want       []tid.TID
+		wantSource []tid.TID
+		dragged    int
+		dropAbove  int
+		crossTable bool
+	}{
+		{
+			name:      "above a later row lands between it and the one before",
+			dragged:   0,
+			dropAbove: 2,
+			want:      []tid.TID{"r1", "r0", "r2"},
+		},
+		{
+			name:      "directly above itself is a no-op",
+			dragged:   1,
+			dropAbove: 1,
+			want:      []tid.TID{"r0", "r1", "r2"},
+		},
+		{
+			name:       "from another table keeps the target index",
+			crossTable: true,
+			dragged:    0,
+			dropAbove:  1,
+			want:       []tid.TID{"d0", "r0", "d1", "d2"},
+			wantSource: []tid.TID{"r1"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			var src, dst *unison.Table[*tableTestRow]
+			if test.crossTable {
+				src = newTestTable(flatRows(2)...)
+				dst = newTestTable(newTableTestRow("d0"), newTableTestRow("d1"), newTableTestRow("d2"))
+			} else {
+				src = newTestTable(flatRows(3)...)
+				dst = src
+			}
+			installMoveDropSupport(t, dst, src, src.RootRows()[test.dragged])
+			di := &fakeDragInfo{dataType: tableDropDataType().UTI}
+			rootIDs := func(table *unison.Table[*tableTestRow]) []tid.TID {
+				rows := table.RootRows()
+				ids := make([]tid.TID, len(rows))
+				for i, row := range rows {
+					ids[i] = row.ID()
+				}
+				return ids
+			}
 
-	// Dropping r0 in the upper half of r2 lands it between r1 and r2, exercising the index adjustment for removals
-	// before the insertion point.
-	c.True(table.DropCallback(di, upperHalfOf(table, 2), 0))
-	got := table.RootRows()
-	c.Equal(3, len(got))
-	c.Equal(tid.TID("r1"), got[0].ID())
-	c.Equal(tid.TID("r0"), got[1].ID())
-	c.Equal(tid.TID("r2"), got[2].ID())
-}
-
-func TestTableCrossTableDropOfRootRowKeepsTargetIndex(t *testing.T) {
-	c := check.New(t)
-	src := newTestTable(flatRows(2)...)
-	dst := newTestTable(newTableTestRow("d0"), newTableTestRow("d1"), newTableTestRow("d2"))
-	installMoveDropSupport(t, dst, src, src.RootRows()[0])
-	di := &fakeDragInfo{dataType: tableDropDataType().UTI}
-
-	// Dropping r0 in the upper half of d1 must insert it at index 1; removals from the source table must not shift the
-	// insertion point in the destination.
-	c.True(dst.DropCallback(di, upperHalfOf(dst, 1), 0))
-	got := dst.RootRows()
-	c.Equal(4, len(got))
-	c.Equal(tid.TID("d0"), got[0].ID())
-	c.Equal(tid.TID("r0"), got[1].ID())
-	c.Equal(tid.TID("d1"), got[2].ID())
-	c.Equal(tid.TID("d2"), got[3].ID())
-
-	// The source table lost the moved row.
-	c.Equal(1, len(src.RootRows()))
-	c.Equal(tid.TID("r1"), src.RootRows()[0].ID())
+			c.True(dst.DropCallback(di, upperHalfOf(dst, test.dropAbove), 0))
+			c.Equal(test.want, rootIDs(dst))
+			if test.crossTable {
+				c.Equal(test.wantSource, rootIDs(src), "the source table lost the moved row")
+			}
+		})
+	}
 }
 
 func TestTableMoveOutOfFilteredSourcePreservesHierarchy(t *testing.T) {

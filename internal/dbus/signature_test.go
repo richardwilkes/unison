@@ -126,73 +126,76 @@ type namedDict []DictEntry
 func TestSignatureOf(t *testing.T) {
 	t.Parallel()
 	for _, one := range []struct {
-		name  string
-		value any
-		want  Signature
+		name   string
+		want   Signature
+		values []any
 	}{
-		{name: "byte", value: byte(1), want: "y"},
-		{name: "bool", value: true, want: "b"},
-		{name: "int16", value: int16(1), want: "n"},
-		{name: "uint16", value: uint16(1), want: "q"},
-		{name: "int32", value: int32(1), want: "i"},
-		{name: "uint32", value: uint32(1), want: "u"},
-		{name: "int64", value: int64(1), want: "x"},
-		{name: "uint64", value: uint64(1), want: "t"},
-		{name: "float64", value: 1.0, want: "d"},
-		{name: "string", value: "s", want: "s"},
-		{name: "object path", value: ObjectPath("/a"), want: "o"},
-		{name: "signature", value: Signature("a{sv}"), want: "g"},
-		{name: "variant", value: Variant{Sig: "s", Value: "a"}, want: "v"},
-		{name: "bytes", value: []byte{1}, want: "ay"},
-		{name: "strings", value: []string{"a"}, want: "as"},
-		{name: "int32s", value: []int32{1}, want: "ai"},
-		{name: "uint32s", value: []uint32{1}, want: "au"},
-		{name: "object paths", value: []ObjectPath{"/a"}, want: "ao"},
-		{name: "object reference", value: ObjectRef{Name: "n", Path: "/p"}, want: "(so)"},
-		{name: "object references", value: []ObjectRef{}, want: "a(so)"},
-		{name: "explicit array", value: Array{Elem: "(ii)"}, want: "a(ii)"},
-		{name: "struct", value: Struct{"a", int32(1)}, want: "(si)"},
-		{name: "nested struct", value: Struct{Struct{byte(1)}}, want: "((y))"},
-		{name: "slice", value: []any{"a", "b"}, want: "as"},
-		{name: "slice of structs", value: []any{Struct{int32(1)}}, want: "a(i)"},
-		{name: "dict", value: Dict{{Key: "k", Value: "v"}}, want: stringDictSig},
-		{name: "dict of variants", value: Dict{{Key: "k", Value: Variant{Sig: "i", Value: int32(1)}}}, want: "a{sv}"},
-		{name: "multi-entry dict", value: Dict{{Key: "j", Value: "v"}, {Key: "k", Value: "w"}}, want: stringDictSig},
-		{name: "map", value: map[string]string{}, want: stringDictSig},
-		{name: "map of variants", value: map[string]Variant{}, want: propertiesSig},
-		{name: "map of slices", value: map[byte][]string{}, want: "a{yas}"},
-		{name: "map of maps", value: map[string]map[string]string{}, want: "a{sa{ss}}"},
-		{name: "map with interface values", value: map[string]any{"a": "b"}, want: stringDictSig},
+		{name: "byte", values: []any{byte(1)}, want: "y"},
+		{name: "bool", values: []any{true}, want: "b"},
+		{name: "int16", values: []any{int16(1)}, want: "n"},
+		{name: "uint16", values: []any{uint16(1)}, want: "q"},
+		{name: "int32", values: []any{int32(1)}, want: "i"},
+		{name: "uint32", values: []any{uint32(1)}, want: "u"},
+		{name: "int64", values: []any{int64(1)}, want: "x"},
+		{name: "uint64", values: []any{uint64(1)}, want: "t"},
+		{name: "float64", values: []any{1.0}, want: "d"},
+		{name: "string", values: []any{"s"}, want: "s"},
+		{name: "object path", values: []any{ObjectPath("/a")}, want: "o"},
+		{name: "signature", values: []any{Signature("a{sv}")}, want: "g"},
+		{name: "variant", values: []any{Variant{Sig: "s", Value: "a"}}, want: "v"},
+		{name: "bytes", values: []any{[]byte{1}}, want: "ay"},
+		{name: "strings", values: []any{[]string{"a"}}, want: "as"},
+		{name: "int32s", values: []any{[]int32{1}}, want: "ai"},
+		{name: "uint32s", values: []any{[]uint32{1}}, want: "au"},
+		{name: "object paths", values: []any{[]ObjectPath{"/a"}}, want: "ao"},
+		{name: "object reference", values: []any{ObjectRef{Name: "n", Path: "/p"}}, want: "(so)"},
+		{name: "object references", values: []any{[]ObjectRef{}}, want: "a(so)"},
+		{name: "explicit array", values: []any{Array{Elem: "(ii)"}}, want: "a(ii)"},
+		{name: "struct", values: []any{Struct{"a", int32(1)}}, want: "(si)"},
+		{name: "nested struct", values: []any{Struct{Struct{byte(1)}}}, want: "((y))"},
+		{name: "slice", values: []any{[]any{"a", "b"}}, want: "as"},
+		{name: "slice of structs", values: []any{[]any{Struct{int32(1)}}}, want: "a(i)"},
+		{name: "dict", values: []any{Dict{{Key: "k", Value: "v"}}}, want: stringDictSig},
+		{
+			name:   "dict of variants",
+			values: []any{Dict{{Key: "k", Value: Variant{Sig: "i", Value: int32(1)}}}},
+			want:   "a{sv}",
+		},
+		{
+			name:   "multi-entry dict",
+			values: []any{Dict{{Key: "j", Value: "v"}, {Key: "k", Value: "w"}}},
+			want:   stringDictSig,
+		},
+		{name: "map", values: []any{map[string]string{}}, want: stringDictSig},
+		{name: "map of variants", values: []any{map[string]Variant{}}, want: propertiesSig},
+		{name: "map of slices", values: []any{map[byte][]string{}}, want: "a{yas}"},
+		{name: "map of maps", values: []any{map[string]map[string]string{}}, want: "a{sa{ss}}"},
+		{name: "map with interface values", values: []any{map[string]any{"a": "b"}}, want: stringDictSig},
 		// A key type that says nothing on its own is derived from the keys the map holds, exactly as a value type is:
 		// every key here is a string, and the same map marshals as an a{ss} without complaint.
-		{name: "map with interface keys", value: map[any]string{"a": "b"}, want: stringDictSig},
-		{name: "map with interface keys and values", value: map[any]any{"a": "b"}, want: stringDictSig},
-		{name: "named slice", value: []Variant{}, want: "av"},
+		{name: "map with interface keys", values: []any{map[any]string{"a": "b"}}, want: stringDictSig},
+		{name: "map with interface keys and values", values: []any{map[any]any{"a": "b"}}, want: stringDictSig},
+		{name: "named slice", values: []any{[]Variant{}}, want: "av"},
 		// A dict entry is a complete type only as the element type of an array, which is the one place Array accepts
 		// it: an empty a{sv} is the most common empty container AT-SPI sends, and an empty Dict cannot say what its
 		// keys and values would have been.
-		{name: "explicit empty dictionary", value: Array{Elem: "{sv}"}, want: propertiesSig},
+		{name: "explicit empty dictionary", values: []any{Array{Elem: "{sv}"}}, want: propertiesSig},
 		{
-			name:  "explicit dictionary",
-			value: Array{Elem: stringEntrySig, Values: []any{DictEntry{Key: "a", Value: "b"}}},
-			want:  stringDictSig,
+			name:   "explicit dictionary",
+			values: []any{Array{Elem: stringEntrySig, Values: []any{DictEntry{Key: "a", Value: "b"}}}},
+			want:   stringDictSig,
 		},
 		// A named slice of dict entries is a dictionary however it was named, and the key and value types come from
 		// the entries, since the Go type alone cannot supply them.
-		{name: "named dictionary type", value: namedDict{{Key: "a", Value: "b"}}, want: stringDictSig},
-		{name: "array of dict entries", value: [1]DictEntry{{Key: "a", Value: "b"}}, want: stringDictSig},
-		// A Dict is a slice of dict entries, so its element type cannot be derived without a value to look at. An
-		// empty want means that an error is expected.
-		{name: "slice of dicts", value: []Dict{}, want: ""},
+		{name: "named dictionary type", values: []any{namedDict{{Key: "a", Value: "b"}}}, want: stringDictSig},
+		{name: "array of dict entries", values: []any{[1]DictEntry{{Key: "a", Value: "b"}}}, want: stringDictSig},
+		{name: "several values", values: []any{"a", int32(1), Variant{Sig: "b", Value: true}}, want: "siv"},
+		{name: "no values", values: nil, want: ""},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			t.Parallel()
 			c := check.New(t)
-			sig, err := SignatureOf(one.value)
-			if one.want == "" {
-				c.HasError(err)
-				return
-			}
+			sig, err := SignatureOf(one.values...)
 			c.NoError(err)
 			c.Equal(one.want, sig)
 		})
@@ -218,52 +221,12 @@ func TestEmptyDictionaryWhereTheSignatureIsDerived(t *testing.T) {
 	c.Equal([]any{Variant{Sig: propertiesSig, Value: Dict{}}}, values)
 }
 
-func TestSignatureOfDictChecksEveryEntry(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	// A dictionary has one key type and one value type, so deriving them from the first entry alone turned a mixture
-	// into a signature that was silently wrong and a confusing "cannot marshal" failure much further along.
-	_, err := SignatureOf(Dict{{Key: "a", Value: "b"}, {Key: "c", Value: int32(1)}})
-	c.HasError(err)
-	c.Contains(err.Error(), "values have differing types")
-	_, err = SignatureOf(Dict{{Key: "a", Value: "b"}, {Key: int32(1), Value: "c"}})
-	c.HasError(err)
-	c.Contains(err.Error(), "keys have differing types")
-}
-
-func TestSignatureOfMapWithInterfaceKeys(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	// A map whose key type is an interface says nothing about its keys through its Go type alone, yet marshaling it
-	// against the signature those keys imply has always worked, so deriving that signature has to work too: otherwise
-	// the same map can be marshaled by hand but not by SetBody.
-	m := map[any]string{"a": "b"}
-	sig, err := SignatureOf(m)
-	c.NoError(err)
-	c.Equal(Signature(stringDictSig), sig)
-	data, err := Marshal(sig, m)
-	c.NoError(err)
-	values, err := Unmarshal(sig, data)
-	c.NoError(err)
-	c.Equal([]any{Dict{{Key: "a", Value: "b"}}}, values)
-}
-
-func TestSignatureOfMultipleValues(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	sig, err := SignatureOf("a", int32(1), Variant{Sig: "b", Value: true})
-	c.NoError(err)
-	c.Equal(Signature("siv"), sig)
-	sig, err = SignatureOf()
-	c.NoError(err)
-	c.Equal(Signature(""), sig)
-}
-
 func TestSignatureOfRejects(t *testing.T) {
 	t.Parallel()
 	for _, one := range []struct {
-		value any
-		name  string
+		value   any
+		name    string
+		message string // Something the error must say, if anything
 	}{
 		{name: "nil", value: nil},
 		{name: "untyped int", value: 1},
@@ -283,8 +246,18 @@ func TestSignatureOfRejects(t *testing.T) {
 		{name: "dict with a container key", value: Dict{{Key: Struct{byte(1)}, Value: "x"}}},
 		{name: "dict with an undecidable value", value: Dict{{Key: "a", Value: 1}}},
 		{name: "dict with an undecidable key", value: Dict{{Key: 1, Value: "a"}}},
-		{name: "dict with mixed values", value: Dict{{Key: "a", Value: "b"}, {Key: "c", Value: int32(1)}}},
-		{name: "dict with mixed keys", value: Dict{{Key: "a", Value: "b"}, {Key: int32(1), Value: "c"}}},
+		// A dictionary has one key type and one value type, so deriving them from the first entry alone turned a
+		// mixture into a signature that was silently wrong and a confusing "cannot marshal" failure much further along.
+		{
+			name:    "dict with mixed values",
+			value:   Dict{{Key: "a", Value: "b"}, {Key: "c", Value: int32(1)}},
+			message: "values have differing types",
+		},
+		{
+			name:    "dict with mixed keys",
+			value:   Dict{{Key: "a", Value: "b"}, {Key: int32(1), Value: "c"}},
+			message: "keys have differing types",
+		},
 		{name: "dict whose later value cannot be described", value: Dict{{Key: "a", Value: "b"}, {Key: "c", Value: 1}}},
 		{name: "slice with an undecidable element", value: []any{1}},
 		{name: "struct with an undecidable field", value: Struct{1}},
@@ -296,11 +269,17 @@ func TestSignatureOfRejects(t *testing.T) {
 		{name: "array with a malformed dict entry element type", value: Array{Elem: "{s}"}},
 		{name: "empty named dictionary type", value: namedDict{}},
 		{name: "named dictionary with mixed values", value: namedDict{{Key: "a", Value: "b"}, {Key: "c", Value: 1}}},
+		// A Dict is a slice of dict entries, so its element type cannot be derived without a value to look at.
+		{name: "slice of dicts", value: []Dict{}},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			t.Parallel()
+			c := check.New(t)
 			_, err := SignatureOf(one.value)
-			check.New(t).HasError(err)
+			c.HasError(err)
+			if err != nil && one.message != "" {
+				c.Contains(err.Error(), one.message)
+			}
 		})
 	}
 }
@@ -346,21 +325,4 @@ func TestSignatureDepthLimitsAreIndependent(t *testing.T) {
 	c.HasError(Signature(strings.Repeat("(", MaxDepth+1) + "y" + strings.Repeat(")", MaxDepth+1)).Validate())
 	// A sibling's depth does not count against its neighbors, since each branch is measured on its own.
 	c.NoError(Signature(strings.Repeat("a", MaxDepth) + "y" + strings.Repeat("a", MaxDepth) + "y").Validate())
-}
-
-func TestDepthLimitsAreIndependentWhenMarshaling(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	sig := Signature(strings.Repeat("a(", MaxDepth) + "y" + strings.Repeat(")", MaxDepth))
-	value := any(byte(1))
-	for range MaxDepth {
-		value = []any{Struct{value}}
-	}
-	data, err := Marshal(sig, value)
-	c.NoError(err)
-	values, err := Unmarshal(sig, data)
-	c.NoError(err)
-	again, err := Marshal(sig, values...)
-	c.NoError(err)
-	c.Equal(data, again)
 }

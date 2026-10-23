@@ -20,46 +20,26 @@ import (
 
 //nolint:goconst // Explicit strings are more readable
 
-func TestNSStringRoundTrip(t *testing.T) {
-	WithPool(func() {
-		for _, s := range []string{"", "hello", "héllo wörld", "漢字テスト", "emoji 🎉👍", "line\nbreak"} { //nolint:goconst // Explicit strings are more readable
-			if got := GoStringFromNSString(NSStringFromGo(s)); got != s {
-				t.Errorf("round trip of %q produced %q", s, got)
-			}
-		}
-		if got := GoStringFromNSString(0); got != "" {
-			t.Errorf("nil NSString produced %q", got)
-		}
-	})
-}
-
-func TestNewNSString(t *testing.T) {
-	for _, s := range []string{"", "hello", "héllo wörld", "漢字テスト", "emoji 🎉👍", "line\nbreak"} {
-		// Deliberately created outside any autorelease pool — that is NewNSString's reason for existing.
-		str := NewNSString(s)
-		WithPool(func() {
-			if got := GoStringFromNSString(str); got != s {
-				t.Errorf("round trip of %q produced %q", s, got)
-			}
-		})
-		Release(str)
-	}
-}
-
-// TestNSStringInvalidUTF8 proves the NSString constructors never return nil for invalid UTF-8. NSString's own
-// UTF-8 decoders reject bad sequences with a nil result, which would flow into AppKit calls (e.g. setString:forType:
-// during a clipboard write) and raise NSInvalidArgumentException; instead, the helpers substitute the Unicode
-// replacement character.
+// TestNSStringInvalidUTF8 proves the NSString constructors round-trip valid UTF-8 unchanged and never return nil for
+// invalid UTF-8. NSString's own UTF-8 decoders reject bad sequences with a nil result, which would flow into AppKit
+// calls (e.g. setString:forType: during a clipboard write) and raise NSInvalidArgumentException; instead, the helpers
+// substitute the Unicode replacement character. A nil NSString must read back as "".
 func TestNSStringInvalidUTF8(t *testing.T) {
 	for _, c := range []struct {
 		in   string
 		want string
 	}{
+		{in: "", want: ""},
+		{in: "hello", want: "hello"}, //nolint:goconst // Explicit strings are more readable
+		{in: "héllo wörld", want: "héllo wörld"},
+		{in: "漢字テスト", want: "漢字テスト"},
+		{in: "emoji 🎉👍", want: "emoji 🎉👍"},
+		{in: "line\nbreak", want: "line\nbreak"},
 		{in: "bad\x80seq", want: "bad�seq"},
 		{in: "\xff", want: "�"},
 		{in: "truncated\xe2\x82", want: "truncated�"},
-		{in: "fine", want: "fine"},
 	} {
+		// Deliberately created outside any autorelease pool, which is NewNSString's reason for existing.
 		str := NewNSString(c.in)
 		if str == 0 {
 			t.Errorf("NewNSString(%q) returned nil", c.in)
@@ -81,6 +61,9 @@ func TestNSStringInvalidUTF8(t *testing.T) {
 				t.Errorf("NSStringFromGo(%q) round-tripped to %q, want %q", c.in, got, c.want)
 			}
 		})
+	}
+	if got := GoStringFromNSString(0); got != "" {
+		t.Errorf("nil NSString produced %q", got)
 	}
 }
 

@@ -110,11 +110,24 @@ func hygieneSourceFiles(t *testing.T) []string {
 // was for, so they are confined to the file that hands out BSTRs with their ownership spelled out. Only
 // SysAllocStringLen is bound at all — NewBSTR builds both the empty and the non-empty case with it — so the entry for
 // the other one guards against its return rather than against a second caller.
+//
+// runtime.KeepAlive: every native call goes through syscall.SyscallN or x/sys/windows (*LazyProc).Call/(*Proc).Call,
+// all marked //go:uintptrescapes, so a uintptr(unsafe.Pointer(p)) conversion written in the call's argument list is
+// already kept alive for the call (see the package documentation); a KeepAlive therefore signals a conversion hoisted
+// out of the call expression, the one pattern that genuinely is unsafe. WM_CAP_/WM_DM_/WM_PLAYBACK_: video-capture
+// and DirectShow macro sets that once padded the window-message constants despite not being window messages at all.
+// maxUint16Array: DisplayName built an unsafe.Slice of ~2^30 elements over a small CoTaskMem allocation, violating
+// the unsafe.Slice contract; windows.UTF16PtrToString is the correct tool.
 var forbiddenSourcePatterns = map[string]map[string]bool{
 	"syscall.NewLazyDLL(": {},
 	"CoInitializeEx(":     {},
 	"SysAllocString(":     {bstrAllocatorFile: true},
 	"SysAllocStringLen(":  {bstrAllocatorFile: true},
+	"runtime.KeepAlive(":  {},
+	"WM_CAP_":             {},
+	"WM_DM_":              {},
+	"WM_PLAYBACK_":        {},
+	"maxUint16Array":      {},
 }
 
 // TestSourceHygiene guards against reintroducing the patterns forbiddenSourcePatterns describes, outside of whichever
@@ -130,7 +143,7 @@ func TestSourceHygiene(t *testing.T) {
 				continue
 			}
 			if strings.Contains(content, forbidden) {
-				t.Errorf("%s contains forbidden call %s", name, forbidden)
+				t.Errorf("%s contains forbidden pattern %s", name, forbidden)
 			}
 		}
 	}
@@ -153,28 +166,6 @@ func TestBSTRAllocatorsAreConfined(t *testing.T) {
 			}
 			return true
 		})
-	}
-}
-
-// TestPointerLifetimeAndDeadCodeHygiene guards against reintroducing patterns this package has deliberately removed.
-// runtime.KeepAlive: every native call goes through syscall.SyscallN or x/sys/windows (*LazyProc).Call/(*Proc).Call,
-// all marked //go:uintptrescapes, so a uintptr(unsafe.Pointer(p)) conversion written in the call's argument list is
-// already kept alive for the call (see the package documentation); a KeepAlive therefore signals a conversion hoisted
-// out of the call expression, the one pattern that genuinely is unsafe. WM_CAP_/WM_DM_/WM_PLAYBACK_: video-capture
-// and DirectShow macro sets that once padded the window-message constants despite not being window messages at all.
-// maxUint16Array: DisplayName built an unsafe.Slice of ~2^30 elements over a small CoTaskMem allocation, violating
-// the unsafe.Slice contract; windows.UTF16PtrToString is the correct tool.
-func TestPointerLifetimeAndDeadCodeHygiene(t *testing.T) {
-	c := check.New(t)
-	for _, name := range hygieneSourceFiles(t) {
-		data, readErr := os.ReadFile(name)
-		c.NoError(readErr)
-		content := string(data)
-		for _, forbidden := range []string{"runtime.KeepAlive(", "WM_CAP_", "WM_DM_", "WM_PLAYBACK_", "maxUint16Array"} {
-			if strings.Contains(content, forbidden) {
-				t.Errorf("%s contains forbidden pattern %s", name, forbidden)
-			}
-		}
 	}
 }
 

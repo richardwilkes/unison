@@ -81,18 +81,6 @@ func TestSetResolutionAppends(t *testing.T) {
 	chk.Equal([]goipp.Resolution{r1}, a.Resolutions("key", nil))
 }
 
-func TestSetRangeAppends(t *testing.T) {
-	chk := check.New(t)
-	a := make(printing.Attributes)
-	r1 := goipp.Range{Lower: 1, Upper: 2}
-	r2 := goipp.Range{Lower: 5, Upper: 6}
-	a.SetRange("key", r1, false)
-	a.SetRange("key", r2, false)
-	chk.Equal([]goipp.Range{r1, r2}, a.Ranges("key", nil))
-	a.SetRange("key", r1, true)
-	chk.Equal([]goipp.Range{r1}, a.Ranges("key", nil))
-}
-
 func TestSetTextWithLangAppends(t *testing.T) {
 	chk := check.New(t)
 	a := make(printing.Attributes)

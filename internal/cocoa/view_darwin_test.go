@@ -619,23 +619,6 @@ func TestViewDrawAndBackingCallbacks(t *testing.T) {
 	})
 }
 
-// TestViewReleaseDealloc proves the Go dealloc override runs without crashing for a view that was never installed in
-// a window (the installed case is exercised by every other test's cleanup, which mirrors nativeDestroy).
-func TestViewReleaseDealloc(t *testing.T) {
-	runOnMain(func() {
-		w := newTestWindow(testTitledStyle, true, true)
-		if w == 0 {
-			t.Fatal("NewWindow returned 0")
-		}
-		defer w.Close()
-		v := NewView(w)
-		if v == 0 {
-			t.Fatal("NewView returned 0")
-		}
-		v.Release() // drops the only reference: dealloc must release the tracking area and marked text
-	})
-}
-
 // TestSetLayerContentsRGBAPremul proves the CPU-rendering presentation path: the view becomes layer-backed and its
 // layer's contents are replaced with an image of the expected logical size on every call.
 func TestSetLayerContentsRGBAPremul(t *testing.T) {

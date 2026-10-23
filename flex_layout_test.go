@@ -58,19 +58,37 @@ func TestFlexLayoutZeroColumns(t *testing.T) {
 	c.Equal(geom.Rect{}, parent.Children()[1].FrameRect())
 }
 
+// TestFlexLayoutPreferredSizes checks that the preferred size of a two-column layout sums the widest cell of each
+// column and the tallest cell of each row, plus the spacing between them.
 func TestFlexLayoutPreferredSizes(t *testing.T) {
-	c := check.New(t)
-	// Two columns, two rows. Column widths are the max of their cells; row heights likewise.
-	parent := newFlexParent(&unison.FlexLayout{Columns: 2},
-		fixedPanel(100, 20),
-		fixedPanel(50, 30),
-		fixedPanel(60, 40),
-		fixedPanel(30, 10),
-	)
-	_, prefSize, maxSize := parent.Sizes(geom.Size{})
-	c.Equal(geom.NewSize(150, 70), prefSize)
-	c.True(maxSize.Width >= unison.DefaultMaxSize)
-	c.True(maxSize.Height >= unison.DefaultMaxSize)
+	for _, tc := range []struct {
+		layout *unison.FlexLayout
+		name   string
+		want   geom.Size
+	}{
+		{layout: &unison.FlexLayout{Columns: 2}, name: "no spacing", want: geom.NewSize(150, 70)},
+		// Widths: 100 + 50 + one 4px gap = 154. Heights: 30 + 40 + one 6px gap = 76.
+		{
+			layout: &unison.FlexLayout{Columns: 2, HSpacing: 4, VSpacing: 6},
+			name:   "spacing",
+			want:   geom.NewSize(154, 76),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			// Two columns, two rows. Column widths are the max of their cells; row heights likewise.
+			parent := newFlexParent(tc.layout,
+				fixedPanel(100, 20),
+				fixedPanel(50, 30),
+				fixedPanel(60, 40),
+				fixedPanel(30, 10),
+			)
+			_, prefSize, maxSize := parent.Sizes(geom.Size{})
+			c.Equal(tc.want, prefSize)
+			c.True(maxSize.Width >= unison.DefaultMaxSize)
+			c.True(maxSize.Height >= unison.DefaultMaxSize)
+		})
+	}
 }
 
 func TestFlexLayoutMinimumSizes(t *testing.T) {
@@ -81,19 +99,6 @@ func TestFlexLayoutMinimumSizes(t *testing.T) {
 	minSize, prefSize, _ := parent.Sizes(geom.Size{})
 	c.Equal(geom.NewSize(50, 10), minSize)
 	c.Equal(geom.NewSize(100, 20), prefSize)
-}
-
-func TestFlexLayoutSpacing(t *testing.T) {
-	c := check.New(t)
-	parent := newFlexParent(&unison.FlexLayout{Columns: 2, HSpacing: 4, VSpacing: 6},
-		fixedPanel(100, 20),
-		fixedPanel(50, 30),
-		fixedPanel(60, 40),
-		fixedPanel(30, 10),
-	)
-	_, prefSize, _ := parent.Sizes(geom.Size{})
-	// Widths: 100 + 50 + one 4px gap = 154. Heights: 30 + 40 + one 6px gap = 76.
-	c.Equal(geom.NewSize(154, 76), prefSize)
 }
 
 func TestFlexLayoutNegativeSpacingClamped(t *testing.T) {
@@ -181,42 +186,46 @@ func TestFlexLayoutFillAndGrab(t *testing.T) {
 	c.Equal(geom.NewRect(0, 0, 200, 100), child.FrameRect())
 }
 
-func TestFlexLayoutHGrabHonorsMinWidthWhenShrinking(t *testing.T) {
-	c := check.New(t)
-	child := sizedPanel(geom.NewSize(10, 20), geom.NewSize(200, 20))
-	child.SetLayoutData(&unison.FlexLayoutData{
-		MinSize: geom.NewSize(100, 0),
-		HSpan:   1,
-		VSpan:   1,
-		HAlign:  align.Fill,
-		VAlign:  align.Fill,
-		HGrab:   true,
-	})
-	parent := newFlexParent(&unison.FlexLayout{Columns: 1}, child)
-	parent.SetFrameRect(geom.NewRect(0, 0, 60, 40))
-	parent.ValidateLayout()
-	// The grabbing column must stop shrinking at the explicit MinSize.Width, not collapse to the available 60.
-	c.Equal(float32(100), child.FrameRect().Width)
-}
-
+// TestFlexLayoutHGrabMinWidthNextToFixedColumn checks that a shrinking grabbing column stops at its explicit
+// MinSize.Width rather than collapsing to the available width, both alone and beside a fixed column that keeps its own.
 func TestFlexLayoutHGrabMinWidthNextToFixedColumn(t *testing.T) {
-	c := check.New(t)
-	label := fixedPanel(40, 20)
-	field := sizedPanel(geom.NewSize(10, 20), geom.NewSize(150, 20))
-	field.SetLayoutData(&unison.FlexLayoutData{
-		MinSize: geom.NewSize(80, 0),
-		HSpan:   1,
-		VSpan:   1,
-		HAlign:  align.Fill,
-		VAlign:  align.Middle,
-		HGrab:   true,
-	})
-	parent := newFlexParent(&unison.FlexLayout{Columns: 2}, label, field)
-	parent.SetFrameRect(geom.NewRect(0, 0, 100, 40))
-	parent.ValidateLayout()
-	// Only the grabbing column shrinks, and it floors at its MinSize.Width.
-	c.Equal(float32(40), label.FrameRect().Width)
-	c.Equal(float32(80), field.FrameRect().Width)
+	for _, tc := range []struct {
+		name       string
+		prefWidth  float32
+		minWidth   float32
+		frameWidth float32
+		fixed      bool
+	}{
+		{name: "alone", prefWidth: 200, minWidth: 100, frameWidth: 60},
+		{name: "next to a fixed column", prefWidth: 150, minWidth: 80, frameWidth: 100, fixed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			field := sizedPanel(geom.NewSize(10, 20), geom.NewSize(tc.prefWidth, 20))
+			field.SetLayoutData(&unison.FlexLayoutData{
+				MinSize: geom.NewSize(tc.minWidth, 0),
+				HSpan:   1,
+				VSpan:   1,
+				HAlign:  align.Fill,
+				VAlign:  align.Middle,
+				HGrab:   true,
+			})
+			children := []*unison.Panel{field}
+			var label *unison.Panel
+			if tc.fixed {
+				label = fixedPanel(40, 20)
+				children = []*unison.Panel{label, field}
+			}
+			parent := newFlexParent(&unison.FlexLayout{Columns: len(children)}, children...)
+			parent.SetFrameRect(geom.NewRect(0, 0, tc.frameWidth, 40))
+			parent.ValidateLayout()
+			// Only the grabbing column shrinks, and it floors at its MinSize.Width.
+			if label != nil {
+				c.Equal(float32(40), label.FrameRect().Width)
+			}
+			c.Equal(tc.minWidth, field.FrameRect().Width)
+		})
+	}
 }
 
 func TestFlexLayoutHGrabWithoutMinWidthShrinksFreely(t *testing.T) {
@@ -237,47 +246,49 @@ func TestFlexLayoutHGrabWithoutMinWidthShrinksFreely(t *testing.T) {
 	c.Equal(float32(30), child.FrameRect().Width)
 }
 
-func TestFlexLayoutHGrabSpanHonorsMinWidthWhenShrinking(t *testing.T) {
-	c := check.New(t)
-	spanning := sizedPanel(geom.NewSize(10, 20), geom.NewSize(200, 20))
-	spanning.SetLayoutData(&unison.FlexLayoutData{
-		MinSize: geom.NewSize(100, 0),
-		HSpan:   2,
-		VSpan:   1,
-		HAlign:  align.Fill,
-		VAlign:  align.Fill,
-		HGrab:   true,
-	})
-	parent := newFlexParent(&unison.FlexLayout{Columns: 2}, spanning)
-	parent.SetFrameRect(geom.NewRect(0, 0, 60, 40))
-	parent.ValidateLayout()
-	// A column-spanning grabbing child must respect its explicit MinSize.Width just as an unspanned one does.
-	c.Equal(float32(100), spanning.FrameRect().Width)
-}
-
+// TestFlexLayoutHGrabSpanMinWidthNextToFixedColumns checks that a shrinking column-spanning grabbing child stops at its
+// explicit MinSize.Width just as an unspanned one does, both alone and above fixed cells.
 func TestFlexLayoutHGrabSpanMinWidthNextToFixedColumns(t *testing.T) {
-	c := check.New(t)
-	spanning := sizedPanel(geom.NewSize(10, 20), geom.NewSize(200, 20))
-	spanning.SetLayoutData(&unison.FlexLayoutData{
-		MinSize: geom.NewSize(150, 0),
-		HSpan:   2,
-		VSpan:   1,
-		HAlign:  align.Fill,
-		VAlign:  align.Fill,
-		HGrab:   true,
-	})
-	first := fixedPanel(50, 20)
-	second := fixedPanel(50, 20)
-	parent := newFlexParent(&unison.FlexLayout{Columns: 2}, spanning, first, second)
-	parent.SetFrameRect(geom.NewRect(0, 0, 60, 60))
-	parent.ValidateLayout()
-	// The two columns can't shrink below the fixed cells in the second row, and the spanning child's minimum
-	// widens the grabbing column enough to reach 150 across the span.
-	c.Equal(float32(150), spanning.FrameRect().Width)
-	c.Equal(geom.NewRect(0, 20, 50, 20), first.FrameRect())
-	// The second column absorbed the rest of the span's minimum, so its cell starts at 50 and runs to 150.
-	c.Equal(float32(50), second.FrameRect().X)
-	c.Equal(float32(50), second.FrameRect().Width)
+	for _, tc := range []struct {
+		name     string
+		minWidth float32
+		fixed    bool
+	}{
+		{name: "alone", minWidth: 100},
+		{name: "above fixed cells", minWidth: 150, fixed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			spanning := sizedPanel(geom.NewSize(10, 20), geom.NewSize(200, 20))
+			spanning.SetLayoutData(&unison.FlexLayoutData{
+				MinSize: geom.NewSize(tc.minWidth, 0),
+				HSpan:   2,
+				VSpan:   1,
+				HAlign:  align.Fill,
+				VAlign:  align.Fill,
+				HGrab:   true,
+			})
+			children := []*unison.Panel{spanning}
+			var first, second *unison.Panel
+			if tc.fixed {
+				first = fixedPanel(50, 20)
+				second = fixedPanel(50, 20)
+				children = append(children, first, second)
+			}
+			parent := newFlexParent(&unison.FlexLayout{Columns: 2}, children...)
+			parent.SetFrameRect(geom.NewRect(0, 0, 60, 60))
+			parent.ValidateLayout()
+			// With fixed cells, the two columns can't shrink below them in the second row either, and the spanning
+			// child's minimum widens the grabbing column enough to reach it across the span.
+			c.Equal(tc.minWidth, spanning.FrameRect().Width)
+			if tc.fixed {
+				c.Equal(geom.NewRect(0, 20, 50, 20), first.FrameRect())
+				// The second column absorbed the rest of the span's minimum, so its cell starts at 50 and runs to 150.
+				c.Equal(float32(50), second.FrameRect().X)
+				c.Equal(float32(50), second.FrameRect().Width)
+			}
+		})
+	}
 }
 
 func TestFlexLayoutColumnDistributionTerminates(t *testing.T) {
@@ -346,21 +357,24 @@ func layoutWithinTimeout(t *testing.T, parent *unison.Panel) {
 	}
 }
 
+// TestFlexLayoutAlignWithinTarget checks where the layout's HAlign and VAlign place its content within a larger target.
 func TestFlexLayoutAlignWithinTarget(t *testing.T) {
-	c := check.New(t)
-	child := fixedPanel(50, 20)
-	parent := newFlexParent(&unison.FlexLayout{Columns: 1, HAlign: align.Middle, VAlign: align.Middle}, child)
-	parent.SetFrameRect(geom.NewRect(0, 0, 100, 60))
-	parent.ValidateLayout()
-	// The content is centered within the larger target: (100-50)/2 = 25, (60-20)/2 = 20.
-	c.Equal(geom.NewRect(25, 20, 50, 20), child.FrameRect())
-}
-
-func TestFlexLayoutAlignEndWithinTarget(t *testing.T) {
-	c := check.New(t)
-	child := fixedPanel(50, 20)
-	parent := newFlexParent(&unison.FlexLayout{Columns: 1, HAlign: align.End, VAlign: align.End}, child)
-	parent.SetFrameRect(geom.NewRect(0, 0, 100, 60))
-	parent.ValidateLayout()
-	c.Equal(geom.NewRect(50, 40, 50, 20), child.FrameRect())
+	for _, tc := range []struct {
+		name      string
+		want      geom.Rect
+		alignment align.Enum
+	}{
+		// The content is centered: (100-50)/2 = 25, (60-20)/2 = 20.
+		{name: "middle", want: geom.NewRect(25, 20, 50, 20), alignment: align.Middle},
+		{name: "end", want: geom.NewRect(50, 40, 50, 20), alignment: align.End},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			child := fixedPanel(50, 20)
+			parent := newFlexParent(&unison.FlexLayout{Columns: 1, HAlign: tc.alignment, VAlign: tc.alignment}, child)
+			parent.SetFrameRect(geom.NewRect(0, 0, 100, 60))
+			parent.ValidateLayout()
+			c.Equal(tc.want, child.FrameRect())
+		})
+	}
 }

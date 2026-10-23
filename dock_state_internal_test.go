@@ -78,71 +78,78 @@ func TestDockStateApplyPerformsLayout(t *testing.T) {
 	c.False(dc.FrameRect().Empty())
 }
 
-// TestDockStateCurrentIndexSkipsUnkeyedDockables verifies that the recorded current tab survives a round trip when a
-// dockable ahead of it has no key. Children omits unkeyed dockables and apply() resolves CurrentIndex against that
-// filtered list, so recording the position within the full dockable list selected the wrong tab on restore (or fell
-// through to the container's default when the index landed out of range).
-func TestDockStateCurrentIndexSkipsUnkeyedDockables(t *testing.T) {
-	c := check.New(t)
-	unkeyed := newTestDockable("unkeyed")
-	first := newTestDockable("first")
-	current := newTestDockable("current")
-	dock, dc := newTestDockContainer(unkeyed, first, current)
-	dock.SetFrameRect(geom.NewRect(0, 0, 400, 300))
-	c.Equal(2, dc.CurrentDockableIndex(), "newTestDockContainer leaves the last dockable current")
-
-	keyOf := func(d Dockable) string {
-		if d == Dockable(unkeyed) {
-			return ""
-		}
-		return d.Title()
-	}
-
-	// The current dockable is the second of the two that get saved, so the one-based index is 2, not the 3 its
-	// position in the unfiltered list would produce.
-	containerState := collectDockState(dc, keyOf)
-	c.Equal(ContainerType, containerState.Type)
-	c.Equal(2, len(containerState.Children))
-	c.Equal(2, containerState.CurrentIndex)
-
-	restored := map[string]Dockable{"first": newTestDockable("first"), "current": newTestDockable("current")}
-	target := NewDock()
-	target.SetFrameRect(geom.NewRect(0, 0, 400, 300))
-	NewDockState(dock, keyOf).Apply(target, func(key string) Dockable { return restored[key] })
-
-	restoredContainer := Ancestor[*DockContainer](restored["current"])
-	c.NotNil(restoredContainer)
-	c.Equal(restored["current"], restoredContainer.CurrentDockable())
-	c.Equal(1, restoredContainer.CurrentDockableIndex())
-}
-
-// TestDockStateCurrentIndexWithUnkeyedCurrent verifies that a container whose current dockable is itself unkeyed
-// records no current index, since it has no entry in Children to point at, and restores without disturbing the
+// TestDockStateCurrentIndexWithUnkeyedCurrent verifies that the recorded current tab survives a round trip when some
+// dockables have no key. Children omits unkeyed dockables and apply() resolves CurrentIndex against that filtered list,
+// so recording the position within the full dockable list selected the wrong tab on restore. A current dockable that
+// is itself unkeyed has no entry in Children to point at, so it records no index and restores without disturbing the
 // container's own default selection.
 func TestDockStateCurrentIndexWithUnkeyedCurrent(t *testing.T) {
-	c := check.New(t)
-	first := newTestDockable("first")
-	unkeyed := newTestDockable("unkeyed")
-	dock, dc := newTestDockContainer(first, unkeyed)
-	dock.SetFrameRect(geom.NewRect(0, 0, 400, 300))
-	c.Equal(1, dc.CurrentDockableIndex())
+	const unkeyed = "unkeyed"
+	const first = "first"
+	for _, test := range []struct {
+		name              string
+		wantCurrent       string
+		titles            []string
+		wantChildren      int
+		wantCurrentIndex  int
+		wantRestoredIndex int
+	}{
+		{
+			name:              "unkeyed current records no index",
+			titles:            []string{first, unkeyed},
+			wantChildren:      1,
+			wantCurrentIndex:  0,
+			wantCurrent:       first,
+			wantRestoredIndex: 0,
+		},
+		{
+			// The current dockable is the second of the two that get saved, so the one-based index is 2, not the 3
+			// its position in the unfiltered list would produce.
+			name:              "unkeyed dockable ahead of the current is skipped",
+			titles:            []string{unkeyed, first, "current"},
+			wantChildren:      2,
+			wantCurrentIndex:  2,
+			wantCurrent:       "current",
+			wantRestoredIndex: 1,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			dockables := make([]Dockable, len(test.titles))
+			for i, title := range test.titles {
+				dockables[i] = newTestDockable(title)
+			}
+			dock, dc := newTestDockContainer(dockables...)
+			dock.SetFrameRect(geom.NewRect(0, 0, 400, 300))
+			c.Equal(len(dockables)-1, dc.CurrentDockableIndex(),
+				"newTestDockContainer leaves the last dockable current")
 
-	keyOf := func(d Dockable) string {
-		if d == Dockable(unkeyed) {
-			return ""
-		}
-		return d.Title()
+			keyOf := func(d Dockable) string {
+				if d.Title() == unkeyed {
+					return ""
+				}
+				return d.Title()
+			}
+			containerState := collectDockState(dc, keyOf)
+			c.Equal(ContainerType, containerState.Type)
+			c.Equal(test.wantChildren, len(containerState.Children))
+			c.Equal(test.wantCurrentIndex, containerState.CurrentIndex,
+				"the one-based index within Children, or 0 for an unkeyed current dockable")
+
+			restored := make(map[string]Dockable)
+			for _, title := range test.titles {
+				if title != unkeyed {
+					restored[title] = newTestDockable(title)
+				}
+			}
+			target := NewDock()
+			target.SetFrameRect(geom.NewRect(0, 0, 400, 300))
+			NewDockState(dock, keyOf).Apply(target, func(key string) Dockable { return restored[key] })
+
+			restoredContainer := Ancestor[*DockContainer](restored[test.wantCurrent])
+			c.NotNil(restoredContainer)
+			c.Equal(restored[test.wantCurrent], restoredContainer.CurrentDockable())
+			c.Equal(test.wantRestoredIndex, restoredContainer.CurrentDockableIndex())
+		})
 	}
-	containerState := collectDockState(dc, keyOf)
-	c.Equal(1, len(containerState.Children))
-	c.Equal(0, containerState.CurrentIndex, "an unkeyed current dockable records no index")
-
-	restoredFirst := newTestDockable("first")
-	target := NewDock()
-	target.SetFrameRect(geom.NewRect(0, 0, 400, 300))
-	NewDockState(dock, keyOf).Apply(target, func(string) Dockable { return restoredFirst })
-
-	restoredContainer := Ancestor[*DockContainer](restoredFirst)
-	c.NotNil(restoredContainer)
-	c.Equal(Dockable(restoredFirst), restoredContainer.CurrentDockable())
 }

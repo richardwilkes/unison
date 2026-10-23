@@ -359,27 +359,6 @@ func TestFocusMovingWithinAWindow(t *testing.T) {
 	}, ta.peer.nextSignals(3))
 }
 
-func TestFocusInAWindowThatIsNotActiveSaysNothing(t *testing.T) {
-	t.Parallel()
-	ta := newEventAdapter(t)
-	c := ta.c
-	// AT-SPI's focused state belongs to the active window alone, so a focus move anywhere else is not reported.
-	inactive := mainTree()
-	inactive.Node(1).Focused = false
-	ta.Publish(mainWindow, inactive, accessibility.Diff(mainTree(), inactive), sampleGeometry())
-	ta.peer.nextSignals(3) // The window is no longer the active one, and its focus is no longer the focus
-
-	moved := mainTree()
-	moved.Node(1).Focused = false
-	moved.Node(4).Focused = false
-	moved.Node(8).Focused = true
-	moved.Focus = 8
-	ta.Publish(mainWindow, moved, []accessibility.Event{{Kind: accessibility.FocusChanged, Node: 8}}, sampleGeometry())
-
-	ta.Announce("Still nothing")
-	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
-}
-
 func TestWindowActivationAndDeactivation(t *testing.T) {
 	t.Parallel()
 	ta := newEventAdapter(t)
@@ -467,10 +446,10 @@ func TestPublishingAWindowAgainAfterRemovingIt(t *testing.T) {
 	c.Equal([]dbus.ObjectRef{nodeRef(1)}, ta.one(RootPath, InterfaceAccessible, "GetChildren", ""))
 }
 
-// TestANodeThatMovedToAnotherWindowIsNotBuried covers the cache signals of a panel that has been reparented from one
-// window into another. The window it left says it is gone, which is true of that window's hierarchy, but the object
-// itself goes on answering for the window that holds it now — and nothing would ever put it back into a client's cache,
-// since that window sees no change of its own.
+// TestANodeThatMovedToAnotherWindowIsNotBuried covers a panel that has been reparented from one window into another,
+// the window it joined publishing first. The window it left says it is gone, which is true of that window's hierarchy,
+// but the object itself goes on answering for the window that holds it now, and no cache signal may say otherwise:
+// nothing would ever put it back into a client's cache, since that window sees no change of its own.
 func TestANodeThatMovedToAnotherWindowIsNotBuried(t *testing.T) {
 	t.Parallel()
 	ta := newEventAdapter(t)
@@ -478,6 +457,8 @@ func TestANodeThatMovedToAnotherWindowIsNotBuried(t *testing.T) {
 	geometry := Geometry{Scale: geom.NewPoint(1, 1)}
 	ta.Publish(otherWindow, windowThatTookTheSlider(), nil, geometry)
 	ta.peer.nextSignals(6) // A cache item for each of its four nodes, the window's Create, and its place
+	c.Equal(nodeRef(21), ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Parent"),
+		"the slider belongs to the window that took it, whatever the window it left last said")
 
 	// The window the slider came from publishes without it, which to that window is a removal.
 	without := mainWindowWithoutTheSlider()
@@ -485,6 +466,9 @@ func TestANodeThatMovedToAnotherWindowIsNotBuried(t *testing.T) {
 	c.Equal([]signalRecord{
 		objectEvent(1, signalChildrenChanged, detailRemove, 3, 0, variantRef(nodeRef(8))),
 	}, ta.peer.nextSignals(1), "the window it left no longer lists it, and nothing says the object has gone")
+	c.Equal("Volume", ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Name"),
+		"the node goes on answering for the window that holds it now")
+	c.Equal(nodeRef(21), ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Parent"))
 
 	// Closing that window says nothing about it either.
 	ta.RemoveWindow(mainWindow)
@@ -500,73 +484,94 @@ func TestANodeThatMovedToAnotherWindowIsNotBuried(t *testing.T) {
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
 }
 
+// TestNodesComingAndGoing covers rows leaving and joining the list. What has gone is reported from where it used to be,
+// since the new snapshot no longer holds it, and what has arrived is described before it is placed. A client applies
+// each signal as it arrives, so each of a run of removals from one parent is numbered against the list the ones before
+// it left rather than against the snapshot.
 func TestNodesComingAndGoing(t *testing.T) {
 	t.Parallel()
-	ta := newEventAdapter(t)
-	c := ta.c
-	changed := activeMainTree(func(tree *accessibility.Tree) {
-		list := tree.Node(5)
-		list.Children = []accessibility.NodeID{6, 10}
-		delete(tree.Nodes, 7)
-		tree.Nodes[10] = &accessibility.Node{
-			ID: 10, Parent: 5, Role: role.ListItem, Name: "Three", Selectable: true,
-			Bounds: geom.NewRect(0, 80, 200, 20),
+	for _, one := range []struct {
+		// prior is the snapshot published ahead of the one under test, or nil when that is the main tree, and
+		// priorSignals is how many signals publishing it sends.
+		prior        *accessibility.Tree
+		next         *accessibility.Tree
+		name         string
+		events       []accessibility.Event
+		expected     []signalRecord
+		priorSignals int
+	}{
+		{
+			name: "a row taking the place of another",
+			next: activeMainTree(func(tree *accessibility.Tree) {
+				list := tree.Node(5)
+				list.Children = []accessibility.NodeID{6, 10}
+				delete(tree.Nodes, 7)
+				tree.Nodes[10] = &accessibility.Node{
+					ID: 10, Parent: 5, Role: role.ListItem, Name: "Three", Selectable: true,
+					Bounds: geom.NewRect(0, 80, 200, 20),
+				}
+			}),
+			events: []accessibility.Event{
+				{Kind: accessibility.NodeRemoved, Node: 7},
+				{Kind: accessibility.ChildrenChanged, Node: 5},
+				{Kind: accessibility.NodeAdded, Node: 10},
+			},
+			expected: []signalRecord{
+				objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(7))),
+				cacheRemoval(7),
+				{path: CachePath, iface: InterfaceCache, member: signalAddAccessible, args: []any{nodeRef(10)}},
+				objectEvent(5, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(10))),
+			},
+		},
+		{
+			name: "two of three rows leaving at once",
+			prior: activeMainTree(func(tree *accessibility.Tree) {
+				tree.Node(5).Children = []accessibility.NodeID{6, 7, 10}
+				tree.Nodes[10] = &accessibility.Node{
+					ID: 10, Parent: 5, Role: role.ListItem, Name: "Three", Selectable: true,
+					Bounds: geom.NewRect(0, 100, 200, 20),
+				}
+			}),
+			priorSignals: 2, // The cache item for the new row and where it went
+			next: activeMainTree(func(tree *accessibility.Tree) {
+				tree.Node(5).Children = []accessibility.NodeID{6}
+				delete(tree.Nodes, 7)
+			}),
+			events: []accessibility.Event{
+				{Kind: accessibility.NodeRemoved, Node: 7},
+				{Kind: accessibility.NodeRemoved, Node: 10},
+				{Kind: accessibility.ChildrenChanged, Node: 5},
+			},
+			// The second row to go was at index 2 of the list the snapshots hold, but the first removal has already
+			// taken index 1 away, so index 1 is where it is by the time the client hears about it.
+			expected: []signalRecord{
+				objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(7))),
+				cacheRemoval(7),
+				objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(10))),
+				cacheRemoval(10),
+			},
+		},
+	} {
+		ta := newEventAdapter(t)
+		c := ta.c
+		prior := mainTree()
+		if one.prior != nil {
+			prior = one.prior
+			ta.Publish(mainWindow, prior, accessibility.Diff(mainTree(), prior), sampleGeometry())
+			ta.peer.nextSignals(one.priorSignals)
 		}
-	})
-	events := accessibility.Diff(mainTree(), changed)
-	c.Equal([]accessibility.Event{
-		{Kind: accessibility.NodeRemoved, Node: 7},
-		{Kind: accessibility.ChildrenChanged, Node: 5},
-		{Kind: accessibility.NodeAdded, Node: 10},
-	}, events)
-	ta.Publish(mainWindow, changed, events, sampleGeometry())
-
-	signals := ta.peer.nextSignals(4)
-	// What has gone is reported from where it used to be, since the new snapshot no longer holds it.
-	c.Equal(objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(7))), signals[0])
-	c.Equal(cacheRemoval(7), signals[1])
-	// What has arrived is described before it is placed.
-	c.Equal(nodeRef(10), ta.cachedID(signals[2]))
-	c.Equal(objectEvent(5, signalChildrenChanged, detailAdd, 1, 0, variantRef(nodeRef(10))), signals[3])
-}
-
-// TestSeveralChildrenOfOneParentLeavingAtOnce covers the numbering of children-changed:remove. A client applies each
-// signal as it arrives, so the indexes of a run of removals from the same parent cannot all be read from the snapshot
-// they came from: by the time the second is sent, the list it is numbered against is one shorter.
-func TestSeveralChildrenOfOneParentLeavingAtOnce(t *testing.T) {
-	t.Parallel()
-	ta := newEventAdapter(t)
-	c := ta.c
-	// The list gains a third row, so that there are three to take two away from.
-	three := activeMainTree(func(tree *accessibility.Tree) {
-		tree.Node(5).Children = []accessibility.NodeID{6, 7, 10}
-		tree.Nodes[10] = &accessibility.Node{
-			ID: 10, Parent: 5, Role: role.ListItem, Name: "Three", Selectable: true,
-			Bounds: geom.NewRect(0, 100, 200, 20),
+		events := accessibility.Diff(prior, one.next)
+		c.Equal(one.events, events, one.name)
+		ta.Publish(mainWindow, one.next, events, sampleGeometry())
+		signals := ta.peer.nextSignals(len(one.expected))
+		for i, record := range signals {
+			if record.member == signalAddAccessible {
+				// A cache item is checked only for the node it describes.
+				signals[i].args = []any{ta.cachedID(record)}
+			}
 		}
-	})
-	ta.Publish(mainWindow, three, accessibility.Diff(mainTree(), three), sampleGeometry())
-	ta.peer.nextSignals(2) // The cache item for the new row and where it went
-
-	one := activeMainTree(func(tree *accessibility.Tree) {
-		tree.Node(5).Children = []accessibility.NodeID{6}
-		delete(tree.Nodes, 7)
-	})
-	events := accessibility.Diff(three, one)
-	c.Equal([]accessibility.Event{
-		{Kind: accessibility.NodeRemoved, Node: 7},
-		{Kind: accessibility.NodeRemoved, Node: 10},
-		{Kind: accessibility.ChildrenChanged, Node: 5},
-	}, events)
-	ta.Publish(mainWindow, one, events, sampleGeometry())
-	// The second row to go was at index 2 of the list the snapshots hold, but the first removal has already taken
-	// index 1 away, so index 1 is where it is by the time the client hears about it.
-	c.Equal([]signalRecord{
-		objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(7))),
-		cacheRemoval(7),
-		objectEvent(5, signalChildrenChanged, detailRemove, 1, 0, variantRef(nodeRef(10))),
-		cacheRemoval(10),
-	}, ta.peer.nextSignals(4))
+		c.Equal(one.expected, signals, one.name)
+	}
 }
 
 // TestANodeThatStopsBeingIgnored covers a node joining the reported hierarchy without being added to the tree, which is
@@ -1096,6 +1101,8 @@ func TestActivationAndAFocusMoveInOneSnapshot(t *testing.T) {
 
 // TestDeactivationAndAFocusMoveInOneSnapshot covers the mirror image: the node that has to be told it no longer holds
 // the focus is the one that held it while the window was still active, not whichever node the new snapshot points at.
+// A later focus move in the inactive window says nothing, since AT-SPI's focused state belongs to the active window
+// alone.
 func TestDeactivationAndAFocusMoveInOneSnapshot(t *testing.T) {
 	t.Parallel()
 	ta := newEventAdapter(t)
@@ -1118,6 +1125,12 @@ func TestDeactivationAndAFocusMoveInOneSnapshot(t *testing.T) {
 	}, ta.peer.nextSignals(3), "the field that held the focus is the one that loses it")
 	ta.Announce("Nothing about the slider")
 	c.Equal(signalAnnouncement, ta.peer.nextSignal().member)
+
+	back := mainTree()
+	back.Node(1).Focused = false
+	ta.Publish(mainWindow, back, []accessibility.Event{{Kind: accessibility.FocusChanged, Node: 4}}, sampleGeometry())
+	ta.Announce("Still nothing")
+	c.Equal(signalAnnouncement, ta.peer.nextSignal().member, "a window that is not the active one reports no focus")
 }
 
 // TestARowThatStopsBeingExpandable covers the pair of states AT-SPI has for a thing that can be opened. [States] gives
@@ -2883,52 +2896,54 @@ func listWithCurrentRow(generation uint64, row accessibility.NodeID) *accessibil
 // TestTheFocusMovingOntoAListsCurrentRow covers the arrangement every native list uses and every screen reader follows:
 // the list that holds the keyboard focus reports it on the row the person is on rather than on itself. The container
 // loses the state and the row gains it, along with the legacy focus event, which is what has Orca's
-// _on_focused_changed move its locus of focus to the row and present it.
+// _on_focused_changed move its locus of focus to the row and present it. Every arrow key after the first moves the pair
+// from one row to the next in the same way, the selection moving with it and the container still told that its
+// selection changed.
 func TestTheFocusMovingOntoAListsCurrentRow(t *testing.T) {
 	t.Parallel()
-	ta := newEventAdapter(t)
-	c := ta.c
-	empty := focusableListTree()
-	ta.Publish(rowFocusWindow, empty, nil, sampleGeometry())
-	// Four cache items, the window's Create and place, the two that say it is active, and the two that say where its
-	// focus is.
-	ta.peer.nextSignals(10)
-	c.Equal(RoleListBox, MapRole(empty.Node(71)), "a list that can be used is a list box, not a list of items to read")
-
-	current := listWithCurrentRow(1, 72)
-	events := accessibility.Diff(empty, current)
-	ta.Publish(rowFocusWindow, current, events, sampleGeometry())
-	c.Equal([]signalRecord{
-		stateEvent(72, stateNameSelected, true),
-		stateEvent(71, stateNameFocused, false),
-		stateEvent(72, stateNameFocused, true),
-		focusEvent(72),
-		objectEvent(71, signalSelectionChanged, "", 0, 0, variantInt32(0)),
-	}, ta.peer.nextSignals(5))
-}
-
-// TestTheFocusMovingFromOneRowToTheNext covers every arrow key after the first: the row the person was on loses the
-// focused state and the one they are on now gains it, which is the pair an assistive technology follows. The selection
-// moves with it, and the container is still told that its selection changed.
-func TestTheFocusMovingFromOneRowToTheNext(t *testing.T) {
-	t.Parallel()
-	ta := newEventAdapter(t)
-	c := ta.c
-	first := listWithCurrentRow(0, 72)
-	ta.Publish(rowFocusWindow, first, nil, sampleGeometry())
-	ta.peer.nextSignals(10)
-
-	second := listWithCurrentRow(1, 73)
-	events := accessibility.Diff(first, second)
-	ta.Publish(rowFocusWindow, second, events, sampleGeometry())
-	c.Equal([]signalRecord{
-		stateEvent(72, stateNameSelected, false),
-		stateEvent(73, stateNameSelected, true),
-		stateEvent(72, stateNameFocused, false),
-		stateEvent(73, stateNameFocused, true),
-		focusEvent(73),
-		objectEvent(71, signalSelectionChanged, "", 0, 0, variantInt32(0)),
-	}, ta.peer.nextSignals(6))
+	c := check.New(t)
+	c.Equal(RoleListBox, MapRole(focusableListTree().Node(71)),
+		"a list that can be used is a list box, not a list of items to read")
+	for _, one := range []struct {
+		prior    *accessibility.Tree
+		next     *accessibility.Tree
+		name     string
+		expected []signalRecord
+	}{
+		{
+			name:  "the list handing the focus to its current row",
+			prior: focusableListTree(),
+			next:  listWithCurrentRow(1, 72),
+			expected: []signalRecord{
+				stateEvent(72, stateNameSelected, true),
+				stateEvent(71, stateNameFocused, false),
+				stateEvent(72, stateNameFocused, true),
+				focusEvent(72),
+				objectEvent(71, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+			},
+		},
+		{
+			name:  "the focus moving from one row to the next",
+			prior: listWithCurrentRow(0, 72),
+			next:  listWithCurrentRow(1, 73),
+			expected: []signalRecord{
+				stateEvent(72, stateNameSelected, false),
+				stateEvent(73, stateNameSelected, true),
+				stateEvent(72, stateNameFocused, false),
+				stateEvent(73, stateNameFocused, true),
+				focusEvent(73),
+				objectEvent(71, signalSelectionChanged, "", 0, 0, variantInt32(0)),
+			},
+		},
+	} {
+		ta := newEventAdapter(t)
+		ta.Publish(rowFocusWindow, one.prior, nil, sampleGeometry())
+		// Four cache items, the window's Create and place, the two that say it is active, and the two that say where
+		// its focus is.
+		ta.peer.nextSignals(10)
+		ta.Publish(rowFocusWindow, one.next, accessibility.Diff(one.prior, one.next), sampleGeometry())
+		c.Equal(one.expected, ta.peer.nextSignals(len(one.expected)), one.name)
+	}
 }
 
 // TestRowsCarryTheStatesThatSayTheFocusCanBeThere covers what the objects themselves answer, which is what a client

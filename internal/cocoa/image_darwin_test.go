@@ -18,40 +18,62 @@ import (
 	"github.com/ebitengine/purego/objc"
 )
 
+// TestNewNSImage checks what newNSImage, and newNSImageWithFormat given format 0, build: the logical size, a single
+// representation of the actual pixel size, the non-premultiplied alpha bit for newNSImage only, and the source bytes.
 func TestNewNSImage(t *testing.T) {
-	WithPool(func() {
-		const actualWidth, actualHeight = 4, 3
-		pixels := make([]byte, actualWidth*actualHeight*4)
-		for i := range pixels {
-			pixels[i] = byte(i * 7)
-		}
-		img := newNSImage(pixels, 8, 6, actualWidth, actualHeight)
-		if img == 0 {
-			t.Fatal("newNSImage returned 0")
-		}
-		defer Release(img)
-		if size := objc.Send[NSSize](img, Sel("size")); size.Width != 8 || size.Height != 6 {
-			t.Errorf("image size = %v, want {8 6}", size)
-		}
-		reps := img.Send(Sel("representations"))
-		if count := NSArrayCount(reps); count != 1 {
-			t.Fatalf("image has %d representations, want 1", count)
-		}
-		rep := NSArrayObjectAt(reps, 0)
-		if w := objc.Send[int64](rep, Sel("pixelsWide")); w != actualWidth {
-			t.Errorf("pixelsWide = %d, want %d", w, actualWidth)
-		}
-		if h := objc.Send[int64](rep, Sel("pixelsHigh")); h != actualHeight {
-			t.Errorf("pixelsHigh = %d, want %d", h, actualHeight)
-		}
-		if format := objc.Send[uint64](rep, Sel("bitmapFormat")); format&nsBitmapFormatAlphaNonpremultiplied == 0 {
-			t.Errorf("bitmapFormat %#x lacks the non-premultiplied alpha bit", format)
-		}
-		bitmap := objc.Send[*byte](rep, Sel("bitmapData"))
-		if got := unsafe.Slice(bitmap, len(pixels)); !bytes.Equal(got, pixels) {
-			t.Error("bitmap data does not match the source pixels")
-		}
-	})
+	const actualWidth, actualHeight = 4, 3
+	pixels := make([]byte, actualWidth*actualHeight*4)
+	for i := range pixels {
+		pixels[i] = byte(i * 7)
+	}
+	for _, c := range []struct {
+		build         func() objc.ID
+		name          string
+		premultiplied bool
+	}{
+		{
+			name:  "newNSImage",
+			build: func() objc.ID { return newNSImage(pixels, 8, 6, actualWidth, actualHeight) },
+		},
+		{
+			name:          "newNSImageWithFormat premultiplied",
+			build:         func() objc.ID { return newNSImageWithFormat(pixels, 8, 6, actualWidth, actualHeight, 0) },
+			premultiplied: true,
+		},
+	} {
+		WithPool(func() {
+			img := c.build()
+			if img == 0 {
+				t.Errorf("%s returned 0", c.name)
+				return
+			}
+			defer Release(img)
+			if size := objc.Send[NSSize](img, Sel("size")); size.Width != 8 || size.Height != 6 {
+				t.Errorf("%s: image size = %v, want {8 6}", c.name, size)
+			}
+			reps := img.Send(Sel("representations"))
+			if count := NSArrayCount(reps); count != 1 {
+				t.Errorf("%s: image has %d representations, want 1", c.name, count)
+				return
+			}
+			rep := NSArrayObjectAt(reps, 0)
+			if w := objc.Send[int64](rep, Sel("pixelsWide")); w != actualWidth {
+				t.Errorf("%s: pixelsWide = %d, want %d", c.name, w, actualWidth)
+			}
+			if h := objc.Send[int64](rep, Sel("pixelsHigh")); h != actualHeight {
+				t.Errorf("%s: pixelsHigh = %d, want %d", c.name, h, actualHeight)
+			}
+			format := objc.Send[uint64](rep, Sel("bitmapFormat"))
+			if (format&nsBitmapFormatAlphaNonpremultiplied != 0) == c.premultiplied {
+				t.Errorf("%s: bitmapFormat %#x has the non-premultiplied alpha bit set = %v, want %v", c.name,
+					format, c.premultiplied, !c.premultiplied)
+			}
+			bitmap := objc.Send[*byte](rep, Sel("bitmapData"))
+			if got := unsafe.Slice(bitmap, len(pixels)); !bytes.Equal(got, pixels) {
+				t.Errorf("%s: bitmap data does not match the source pixels", c.name)
+			}
+		})
+	}
 }
 
 // repBitmapData returns the bitmap bytes of img's single representation, or nil (with an error reported) if the
@@ -67,57 +89,50 @@ func repBitmapData(t *testing.T, img objc.ID, size int) []byte {
 	return unsafe.Slice(bitmap, size)
 }
 
-// TestNewNSImageFromNRGBATight covers the fast path: a whole image with a tight stride must be passed through
-// unchanged.
-func TestNewNSImageFromNRGBATight(t *testing.T) {
-	WithPool(func() {
-		src := image.NewNRGBA(image.Rect(0, 0, 4, 3))
-		for i := range src.Pix {
-			src.Pix[i] = byte(i * 5)
-		}
-		img := newNSImageFromNRGBA(src, 8, 6)
-		if img == 0 {
-			t.Fatal("newNSImageFromNRGBA returned 0")
-		}
-		defer Release(img)
-		if size := objc.Send[NSSize](img, Sel("size")); size.Width != 8 || size.Height != 6 {
-			t.Errorf("image size = %v, want {8 6}", size)
-		}
-		if got := repBitmapData(t, img, len(src.Pix)); got != nil && !bytes.Equal(got, src.Pix) {
-			t.Error("bitmap data does not match the source pixels")
-		}
-	})
-}
-
 // TestNewNSImageFromNRGBASubImage is the regression test for the stride/origin bug: NewCursor and
 // BeginDraggingSession used to pass img.Pix with dimensions taken from img.Rect, so a sub-image (non-zero Rect.Min,
 // stride wider than the visible width) garbled every row after the first. The rows must be repacked from the
-// sub-image's origin, honoring the parent stride.
+// sub-image's origin, honoring the parent stride, while a whole image with a tight stride is passed through unchanged.
 func TestNewNSImageFromNRGBASubImage(t *testing.T) {
-	WithPool(func() {
-		base := image.NewNRGBA(image.Rect(0, 0, 7, 6))
-		for i := range base.Pix {
-			base.Pix[i] = byte(i)
-		}
-		sub, ok := base.SubImage(image.Rect(2, 1, 6, 5)).(*image.NRGBA)
-		if !ok {
-			t.Fatal("SubImage did not return *image.NRGBA")
-		}
-		const width, height = 4, 4
-		img := newNSImageFromNRGBA(sub, width, height)
-		if img == 0 {
-			t.Fatal("newNSImageFromNRGBA returned 0")
-		}
-		defer Release(img)
-		want := make([]byte, 0, width*height*4)
-		for y := 1; y < 1+height; y++ {
-			off := base.PixOffset(2, y)
-			want = append(want, base.Pix[off:off+width*4]...)
-		}
-		if got := repBitmapData(t, img, len(want)); got != nil && !bytes.Equal(got, want) {
-			t.Error("bitmap data does not match the sub-image's visible rows")
-		}
-	})
+	base := image.NewNRGBA(image.Rect(0, 0, 7, 6))
+	for i := range base.Pix {
+		base.Pix[i] = byte(i)
+	}
+	sub, ok := base.SubImage(image.Rect(2, 1, 6, 5)).(*image.NRGBA)
+	if !ok {
+		t.Fatal("SubImage did not return *image.NRGBA")
+	}
+	subRows := make([]byte, 0, sub.Rect.Dx()*sub.Rect.Dy()*4)
+	for y := sub.Rect.Min.Y; y < sub.Rect.Max.Y; y++ {
+		off := base.PixOffset(sub.Rect.Min.X, y)
+		subRows = append(subRows, base.Pix[off:off+sub.Rect.Dx()*4]...)
+	}
+	for _, c := range []struct {
+		src           *image.NRGBA
+		name          string
+		want          []byte
+		logicalWidth  int
+		logicalHeight int
+	}{
+		{name: "sub-image", src: sub, logicalWidth: 4, logicalHeight: 4, want: subRows},
+		{name: "whole image", src: base, logicalWidth: 14, logicalHeight: 12, want: base.Pix},
+	} {
+		WithPool(func() {
+			img := newNSImageFromNRGBA(c.src, c.logicalWidth, c.logicalHeight)
+			if img == 0 {
+				t.Errorf("%s: newNSImageFromNRGBA returned 0", c.name)
+				return
+			}
+			defer Release(img)
+			if size := objc.Send[NSSize](img, Sel("size")); size.Width != float64(c.logicalWidth) ||
+				size.Height != float64(c.logicalHeight) {
+				t.Errorf("%s: image size = %v, want {%d %d}", c.name, size, c.logicalWidth, c.logicalHeight)
+			}
+			if got := repBitmapData(t, img, len(c.want)); got != nil && !bytes.Equal(got, c.want) {
+				t.Errorf("%s: bitmap data does not match the source's visible rows", c.name)
+			}
+		})
+	}
 }
 
 // TestCopyPixelsToRepNilBitmapData proves the bitmapData nil check: the buffer is allocated lazily and bitmapData
@@ -141,31 +156,4 @@ func TestCopyPixelsToRepNilBitmapData(t *testing.T) {
 	if copyPixelsToRep(rep, []byte{1, 2, 3, 4}, 4) {
 		t.Error("copyPixelsToRep = true for a rep whose bitmapData is nil, want false")
 	}
-}
-
-func TestNewNSImageWithFormatPremultiplied(t *testing.T) {
-	WithPool(func() {
-		const actualWidth, actualHeight = 3, 2
-		pixels := make([]byte, actualWidth*actualHeight*4)
-		for i := range pixels {
-			pixels[i] = byte(i * 11)
-		}
-		img := newNSImageWithFormat(pixels, 3, 2, actualWidth, actualHeight, 0)
-		if img == 0 {
-			t.Fatal("newNSImageWithFormat returned 0")
-		}
-		defer Release(img)
-		reps := img.Send(Sel("representations"))
-		if count := NSArrayCount(reps); count != 1 {
-			t.Fatalf("image has %d representations, want 1", count)
-		}
-		rep := NSArrayObjectAt(reps, 0)
-		if format := objc.Send[uint64](rep, Sel("bitmapFormat")); format&nsBitmapFormatAlphaNonpremultiplied != 0 {
-			t.Errorf("bitmapFormat %#x has the non-premultiplied alpha bit, want premultiplied", format)
-		}
-		bitmap := objc.Send[*byte](rep, Sel("bitmapData"))
-		if got := unsafe.Slice(bitmap, len(pixels)); !bytes.Equal(got, pixels) {
-			t.Error("bitmap data does not match the source pixels")
-		}
-	})
 }

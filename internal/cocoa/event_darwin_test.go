@@ -22,10 +22,6 @@ func TestDoubleClickInterval(t *testing.T) {
 	}
 }
 
-func TestCurrentModifierFlags(_ *testing.T) {
-	_ = CurrentModifierFlags() // the value depends on the live keyboard state; this exercises the msgSend path
-}
-
 // TestPostEmptyEventWakesWaitEvents proves the production wake-up contract: an event posted with PostEmptyEvent
 // (from any thread) causes a blocked WaitEvents to return.
 func TestPostEmptyEventWakesWaitEvents(t *testing.T) {

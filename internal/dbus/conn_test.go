@@ -405,23 +405,6 @@ func TestConnCallReturnsAnError(t *testing.T) {
 	c.Equal("not today", dbusErr.Message)
 }
 
-func TestConnCallTimesOut(t *testing.T) {
-	testenv.SkipTimingSensitive(t)
-	t.Parallel()
-	c := check.New(t)
-	b := newFakeBus(t)
-	b.client.timeout = 50 * time.Millisecond
-	wait := callAsync(t, b.client, greet(c, "hello"))
-	b.nextCall() // Received, but deliberately left unanswered
-	reply, err := wait()
-	c.Nil(reply)
-	c.HasError(err)
-	// The same timeout bounds the write, and a machine slow enough to take 50 ms handing the message to the pipe fails
-	// the call with "timed out ... writing a message" instead, which is not the wait this test is about: the fuller
-	// text is what says the reply was waited for.
-	c.Contains(err.Error(), "waiting for a reply to")
-}
-
 func TestConnCallWithTimeout(t *testing.T) {
 	testenv.SkipTimingSensitive(t)
 	t.Parallel()
@@ -454,6 +437,19 @@ func TestConnCallWithTimeout(t *testing.T) {
 	c.Nil(reply)
 	c.HasError(err)
 	c.Contains(err.Error(), "timed out after 50ms waiting for a reply to")
+
+	// Call, which takes no bound of its own, uses the usual one.
+	b = newFakeBus(t)
+	b.client.timeout = 50 * time.Millisecond
+	wait := callAsync(t, b.client, greet(c, "hello"))
+	b.nextCall() // Received, but deliberately left unanswered
+	reply, err = wait()
+	c.Nil(reply)
+	c.HasError(err)
+	// The same timeout bounds the write, and a machine slow enough to take 50 ms handing the message to the pipe fails
+	// the call with "timed out ... writing a message" instead, which is not the wait checked here: the fuller text is
+	// what says the reply was waited for.
+	c.Contains(err.Error(), "waiting for a reply to")
 }
 
 func TestConnCallWithNoReplyExpected(t *testing.T) {
@@ -994,12 +990,13 @@ func TestConnCarriesOnAfterAMessageThatIsNotValid(t *testing.T) {
 // guesses its serial first. Serials start at one and count up, so a peer that can reach this connection's unique name
 // could otherwise address a METHOD_RETURN to it with a guessed REPLY_SERIAL and hand a caller forged values, the
 // genuine reply arriving afterwards to be discarded as unmatched. A rejected reply must leave the call pending rather
-// than failing it, which is what makes the genuine reply that follows the one that completes it.
+// than failing it, which is what makes the genuine reply that follows the one that completes it. A reply with no sender
+// at all, the only kind a peer to peer connection gets, is accepted.
 func TestAReplyIsMatchedOnItsSenderAsWellAsItsSerial(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	b := newFakeBus(t)
-	// Every case below waits for a reply that only arrives after a rejected one has been ignored, so the connection's
+	// Several cases below wait for a reply that only arrives after a rejected one has been ignored, so the connection's
 	// own five second deadline would be the thing under test rather than the check.
 	b.client.timeout = time.Hour
 
@@ -1016,6 +1013,21 @@ func TestAReplyIsMatchedOnItsSenderAsWellAsItsSerial(t *testing.T) {
 	args, err := reply.Args()
 	c.NoError(err)
 	c.Equal([]any{"genuine"}, args)
+
+	// A connection with no bus on the other end has nobody to fill the SENDER field in, so a reply that carries none
+	// completes even a call addressed to a unique name. Rejecting those would break every connection made with
+	// [Connect], which here is the tests and nothing else: a connection that reaches a bus is dialed, and [Dial]
+	// performs the Hello that gives it the unique name every reply to it is then stamped with.
+	msg = NewMethodCall(":1.99", testPath, testInterface, "Greet")
+	c.NoError(msg.SetBody("hello"))
+	wait = callAsync(t, b.client, msg)
+	call = b.nextCall()
+	b.replyTo(call, "s", "unstamped")
+	reply, err = wait()
+	c.NoError(err)
+	args, err = reply.Args()
+	c.NoError(err)
+	c.Equal([]any{"unstamped"}, args)
 
 	// The bus answers for a unique name that has gone away, and for a message it refuses to deliver, so its own name is
 	// accepted for such a call as well: rejecting it would leave the call waiting for a reply that is never coming.
@@ -1056,27 +1068,6 @@ func TestAReplyIsMatchedOnItsSenderAsWellAsItsSerial(t *testing.T) {
 	args, err = reply.Args()
 	c.NoError(err)
 	c.Equal([]any{"the owner of the name"}, args)
-}
-
-// TestAReplyWithNoSenderCompletesACall covers the peer to peer case: a connection with no bus on the other end has
-// nobody to fill the SENDER field in, so a reply that carries none is the only kind there is. Rejecting those would
-// break every connection made with [Connect], which here is the tests and nothing else: a connection that reaches a
-// bus is dialed, and [Dial] performs the Hello that gives it the unique name every reply to it is then stamped with.
-func TestAReplyWithNoSenderCompletesACall(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	b := newFakeBus(t)
-	b.client.timeout = time.Hour
-	msg := NewMethodCall(":1.99", testPath, testInterface, "Greet")
-	c.NoError(msg.SetBody("hello"))
-	wait := callAsync(t, b.client, msg)
-	call := b.nextCall()
-	b.replyTo(call, "s", "unstamped")
-	reply, err := wait()
-	c.NoError(err)
-	args, err := reply.Args()
-	c.NoError(err)
-	c.Equal([]any{"unstamped"}, args)
 }
 
 func TestCallRemovesTheSerialItRegistered(t *testing.T) {
@@ -1193,29 +1184,57 @@ func TestQueueIsBoundedByItemsAndBytes(t *testing.T) {
 
 func TestIncomingQueueIsBoundedByBytes(t *testing.T) {
 	t.Parallel()
-	c := check.New(t)
-	b := newFakeBus(t)
-	entered := make(chan struct{}, 1)
-	release := make(chan struct{})
-	defer close(release)
-	b.client.Subscribe(SignalFilter{Member: "Flood"}, func(_ *Message) {
-		select {
-		case entered <- struct{}{}:
-		default:
-		}
-		<-release
-	})
-	payload := make([]byte, 1<<20)
-	b.emit(testPath, eventInterface, "Flood", "ay", payload)
-	if _, ok := awaitOne(entered); !ok {
-		t.Fatal("timed out waiting for the handler to be called")
+	const size = 1 << 20
+	payload := make([]byte, size)
+	for _, one := range []struct {
+		send   func(t *testing.T, b *fakeBus, serial uint32) // Sends a signal that holds size bytes
+		name   string
+		member string
+	}{
+		{
+			name:   "large bodies",
+			member: "Flood",
+			send: func(_ *testing.T, b *fakeBus, _ uint32) {
+				b.emit(testPath, eventInterface, "Flood", "ay", payload)
+			},
+		},
+		{
+			// Each of these messages decodes to a few dozen bytes of parts and a body of six, yet holds a megabyte:
+			// charging the queue only what the parts add up to let far more than the byte bound in, which is the whole
+			// of what keeps a peer that floods while a handler is blocked costing messages rather than memory.
+			name:   "padded header fields",
+			member: paddedMember,
+			send: func(t *testing.T, b *fakeBus, serial uint32) {
+				b.writeRaw(paddedSignal(t, serial, size))
+			},
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+			c := check.New(t)
+			b := newFakeBus(t)
+			entered := make(chan struct{}, 1)
+			release := make(chan struct{})
+			defer close(release)
+			b.client.Subscribe(SignalFilter{Member: one.member}, func(_ *Message) {
+				select {
+				case entered <- struct{}{}:
+				default:
+				}
+				<-release
+			})
+			one.send(t, b, 1)
+			if _, ok := awaitOne(entered); !ok {
+				t.Fatal("timed out waiting for the handler to be called")
+			}
+			// The dispatcher is now wedged in the handler, so everything that follows piles up behind it. Far fewer
+			// than maxQueued messages arrive, so only the bound on their total size can stop the backlog from growing.
+			for i := range 2 + maxQueuedBytes/size {
+				one.send(t, b, uint32(2+i))
+			}
+			c.True(b.client.Dropped() > 0, "expected some messages to have been dropped")
+		})
 	}
-	// The dispatcher is now wedged in the handler, so everything that follows piles up behind it. Far fewer than
-	// maxQueued messages arrive, so only the bound on their total size can stop the backlog from growing.
-	for range 2 + maxQueuedBytes/len(payload) {
-		b.emit(testPath, eventInterface, "Flood", "ay", payload)
-	}
-	c.True(b.client.Dropped() > 0, "expected some messages to have been dropped")
 }
 
 func TestConnEndsWhenAMessageCannotBeDecoded(t *testing.T) {
@@ -1246,35 +1265,6 @@ func TestConnEndsWhenAMessageCannotBeDecoded(t *testing.T) {
 	c.HasError(callErr)
 	// Everything afterwards reports the failure too.
 	c.HasError(b.client.Send(greet(c, "hello")))
-}
-
-func TestIncomingQueueIsBoundedByWhatAMessageKeepsAlive(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	b := newFakeBus(t)
-	entered := make(chan struct{}, 1)
-	release := make(chan struct{})
-	defer close(release)
-	b.client.Subscribe(SignalFilter{Member: paddedMember}, func(_ *Message) {
-		select {
-		case entered <- struct{}{}:
-		default:
-		}
-		<-release
-	})
-	const padding = 1 << 20
-	b.writeRaw(paddedSignal(t, 1, padding))
-	if _, ok := awaitOne(entered); !ok {
-		t.Fatal("timed out waiting for the handler to be called")
-	}
-	// The dispatcher is now wedged in the handler, so everything that follows piles up behind it. Each of these
-	// messages decodes to a few dozen bytes of parts and a body of six, yet holds a megabyte: charging the queue only
-	// what the parts add up to let far more than the byte bound in, which is the whole of what keeps a peer that
-	// floods while a handler is blocked costing messages rather than memory.
-	for i := range 2 + maxQueuedBytes/padding {
-		b.writeRaw(paddedSignal(t, uint32(2+i), padding))
-	}
-	c.True(b.client.Dropped() > 0, "expected some messages to have been dropped")
 }
 
 // reentrantRule is the match rule that a [reentrantObject] asks the bus for while it is answering a call.

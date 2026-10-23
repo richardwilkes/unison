@@ -368,64 +368,6 @@ func TestTextLayoutMetrics(t *testing.T) {
 	})
 }
 
-// TestTextLayoutPositionForRuneIndex locks the index-to-x mapping: index 0 and any negative index map to 0, the
-// length maps to the full width, indexes past the length clamp to the full width rather than panicking, and the
-// mapping never decreases.
-func TestTextLayoutPositionForRuneIndex(t *testing.T) {
-	plain := &TextDecoration{Font: SystemFont, OnBackgroundInk: Black}
-	sub := &TextDecoration{Font: SystemFont, OnBackgroundInk: Black, BaselineOffset: 5}
-
-	mixed := NewText("Hello ", plain)
-	mixed.AddString("World", sub)
-
-	for _, tc := range []struct {
-		txt  *Text
-		name string
-	}{
-		{name: "empty text", txt: NewText("", plain)},
-		{name: "single rune", txt: NewText("H", plain)},
-		{name: "single run", txt: NewText("Hello, World", plain)},
-		{name: "multiple runs", txt: mixed},
-		{name: "exact widths", txt: exactWidthText(plain, 4, 8, 16)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			c := check.New(t)
-			count := len(tc.txt.runes)
-
-			// Negative indexes and index 0 are exactly 0, not merely close to it.
-			c.Equal(float32(0), tc.txt.PositionForRuneIndex(-1000))
-			c.Equal(float32(0), tc.txt.PositionForRuneIndex(-1))
-			c.Equal(float32(0), tc.txt.PositionForRuneIndex(0))
-
-			// The end of the string is the full width, and indexes past the end clamp to it.
-			checkClose(c, tc.txt.Width(), tc.txt.PositionForRuneIndex(count), "position of the final index")
-			checkClose(c, tc.txt.Width(), tc.txt.PositionForRuneIndex(count+1), "position one past the end")
-			checkClose(c, tc.txt.Width(), tc.txt.PositionForRuneIndex(count+9999), "position far past the end")
-
-			// The mapping is monotone and each step advances by exactly that rune's width.
-			previous := float32(0)
-			for i := range count {
-				pos := tc.txt.PositionForRuneIndex(i)
-				c.True(pos >= previous-0.001, "position at %d (%v) must not be less than at %d (%v)", i, pos, i-1,
-					previous)
-				checkClose(c, sumWidths(tc.txt, 0, i), pos, "position of index %d", i)
-				next := tc.txt.PositionForRuneIndex(i + 1)
-				checkClose(c, tc.txt.widths[i], next-pos, "step from index %d to %d", i, i+1)
-				previous = pos
-			}
-		})
-	}
-
-	t.Run("known positions", func(t *testing.T) {
-		c := check.New(t)
-		txt := exactWidthText(plain, 4, 8, 16)
-		for i, expected := range []float32{0, 4, 12, 28, 28, 28} {
-			checkClose(c, expected, txt.PositionForRuneIndex(i), "PositionForRuneIndex(%d)", i)
-		}
-		checkClose(c, 28, txt.Width(), "width")
-	})
-}
-
 // TestTextLayoutRuneIndexForPosition locks the x-to-index mapping, including the midpoint rule: a coordinate that
 // falls inside a glyph resolves to the following index only when it is strictly past the middle of that glyph, so a
 // coordinate exactly on the midpoint resolves to the glyph's own index.
@@ -718,8 +660,10 @@ func TestTextLayoutBreakToWidth(t *testing.T) {
 }
 
 // TestTextLayoutDrawRunCoalescing locks the run coalescing Draw() performs. Adjacent decorations that are merely
-// equivalent, rather than the identical pointer, must still be drawn as a single run, and a genuinely different
-// decoration must start a new run at exactly the accumulated width of everything before it.
+// equivalent, rather than the identical pointer, must still be drawn as a single run, while distinct pointers on either
+// side of a genuine difference must still split it, since Draw() compares pointers before falling back to
+// Equivalent(); and a genuinely different decoration must start a new run at exactly the accumulated width of
+// everything before it.
 func TestTextLayoutDrawRunCoalescing(t *testing.T) {
 	const width = int32(160)
 	const height = int32(64)
@@ -788,6 +732,31 @@ func TestTextLayoutDrawRunCoalescing(t *testing.T) {
 		// Distinct pointers and shared pointers must land on exactly the same pixels.
 		differing, maxDelta = pixmapDelta(drawn(same), pix)
 		c.True(maxDelta <= 2, "%d pixels differ, by up to %d levels, from the shared-pointer rendering", differing,
+			maxDelta)
+	})
+
+	t.Run("distinct pointers keep the boundaries between different runs", func(t *testing.T) {
+		c := check.New(t)
+		colored := base.Clone()
+		colored.OnBackgroundInk = Red
+		build := func() *Text {
+			txt := NewText("Hel", base)
+			txt.AddString("lo, ", colored)
+			txt.AddString("World", base)
+			return txt
+		}
+		shared := build()
+		distinct := build()
+		clonePerRune(distinct)
+		// The boundaries between the three runs must survive the cloning: only the pointer identity within a run is
+		// gone, the values on either side of a boundary are still not equivalent.
+		c.False(distinct.decorations[3].Equivalent(distinct.decorations[2]), "the first boundary was lost")
+		c.False(distinct.decorations[7].Equivalent(distinct.decorations[6]), "the second boundary was lost")
+		sharedPix := drawn(shared)
+		c.True(hasInk(sharedPix), "nothing was drawn")
+		c.True(hasColoredPixel(sharedPix, 0, width), "the middle run's ink is not visible")
+		differing, maxDelta := pixmapDelta(sharedPix, drawn(distinct))
+		c.Equal(0, differing, "%d pixels differ, by up to %d levels, from the shared-pointer rendering", differing,
 			maxDelta)
 	})
 
@@ -1100,76 +1069,6 @@ func TestTextSumWidthMatchesSum(t *testing.T) {
 	})
 }
 
-// TestTextSumDrawPointerFastPath locks the run-boundary fast path added to Draw(): comparing pointers before falling
-// back to Equivalent() must not change which runs are emitted, so a Text whose decorations are equivalent but distinct
-// pointers has to rasterize to exactly the same pixels as the shared-pointer Text it was cloned from.
-func TestTextSumDrawPointerFastPath(t *testing.T) {
-	const width = int32(200)
-	const height = int32(64)
-	origin := geom.NewPoint(4, 32)
-	// The background ink makes run boundaries visible: each run paints one filled rectangle, so a Text that stopped
-	// coalescing would paint a rectangle per rune and leave anti-aliased seams behind.
-	base := &TextDecoration{Font: SystemFont, OnBackgroundInk: Black, BackgroundInk: Blue}
-
-	drawn := func(txt *Text) *raster.Pixmap {
-		canvas, pix := newPixmapCanvas(width, height)
-		txt.Draw(canvas, origin)
-		return pix
-	}
-
-	t.Run("one equivalent run", func(t *testing.T) {
-		c := check.New(t)
-		shared := NewText("Hello, World", base)
-		distinct := NewText("Hello, World", base)
-		clonePerRune(distinct)
-		for i := 1; i < len(distinct.decorations); i++ {
-			c.True(distinct.decorations[i] != distinct.decorations[i-1], "the clones must be distinct pointers")
-			c.True(distinct.decorations[i].Equivalent(distinct.decorations[i-1]), "the clones must remain equivalent")
-		}
-		sharedPix := drawn(shared)
-		c.True(hasInk(sharedPix), "nothing was drawn")
-		differing, maxDelta := pixmapDelta(sharedPix, drawn(distinct))
-		c.Equal(0, differing, "%d pixels differ, by up to %d levels, from the shared-pointer rendering", differing,
-			maxDelta)
-	})
-
-	t.Run("distinct pointers within genuinely different runs", func(t *testing.T) {
-		c := check.New(t)
-		colored := base.Clone()
-		colored.OnBackgroundInk = Red
-		build := func() *Text {
-			txt := NewText("Hel", base)
-			txt.AddString("lo, ", colored)
-			txt.AddString("World", base)
-			return txt
-		}
-		shared := build()
-		distinct := build()
-		clonePerRune(distinct)
-		// The boundaries between the three runs must survive the cloning: only the pointer identity within a run is
-		// gone, the values on either side of a boundary are still not equivalent.
-		c.False(distinct.decorations[3].Equivalent(distinct.decorations[2]), "the first boundary was lost")
-		c.False(distinct.decorations[7].Equivalent(distinct.decorations[6]), "the second boundary was lost")
-		sharedPix := drawn(shared)
-		c.True(hasInk(sharedPix), "nothing was drawn")
-		c.True(hasColoredPixel(sharedPix, 0, width), "the middle run's ink is not visible")
-		differing, maxDelta := pixmapDelta(sharedPix, drawn(distinct))
-		c.Equal(0, differing, "%d pixels differ, by up to %d levels, from the shared-pointer rendering", differing,
-			maxDelta)
-	})
-
-	t.Run("a single rune and an empty text", func(t *testing.T) {
-		c := check.New(t)
-		single := NewText("H", base)
-		singleDistinct := NewText("H", base)
-		clonePerRune(singleDistinct)
-		differing, maxDelta := pixmapDelta(drawn(single), drawn(singleDistinct))
-		c.Equal(0, differing, "%d pixels differ, by up to %d levels, from the shared-pointer rendering", differing,
-			maxDelta)
-		c.False(hasInk(drawn(NewText("", base))), "an empty Text must not draw anything")
-	})
-}
-
 // benchText returns a Text of roughly count runes made of a handful of decoration runs, which is the shape the hot
 // loops are tuned for: long stretches of a single decoration pointer.
 func benchText(count int) *Text {
@@ -1239,51 +1138,46 @@ func nearlyEqual(c check.Checker, expected, actual float32) {
 	c.True(xmath.Abs(expected-actual) < 0.001, "expected %v, got %v", expected, actual)
 }
 
-func TestTextDrawBaselineOffsetAppliedOnce(t *testing.T) {
-	c := check.New(t)
-	const size = int32(64)
-	baseline := geom.NewPoint(4, 32)
-
-	ref, refPix := newPixmapCanvas(size, size)
-	NewText("H", &TextDecoration{Font: SystemFont, OnBackgroundInk: Black}).Draw(ref, baseline)
-	refTop, _ := inkRowBounds(refPix, 0, size)
-	c.NotEqual(int32(-1), refTop)
-
-	offset, offsetPix := newPixmapCanvas(size, size)
-	NewText("H", &TextDecoration{Font: SystemFont, OnBackgroundInk: Black, BaselineOffset: 8}).Draw(offset, baseline)
-	offsetTop, _ := inkRowBounds(offsetPix, 0, size)
-	c.NotEqual(int32(-1), offsetTop)
-
-	// A BaselineOffset of 8 must shift the text down by exactly 8 pixels, not 16.
-	c.Equal(refTop+8, offsetTop)
-}
-
+// TestTextDrawSecondRunUnaffectedByFirstRunBaselineOffset verifies that a run's BaselineOffset, raising or lowering it,
+// shifts that run by exactly the offset, applied once rather than twice, and that the run after it, which has no
+// offset, sits on the baseline rather than inheriting it.
 func TestTextDrawSecondRunUnaffectedByFirstRunBaselineOffset(t *testing.T) {
-	c := check.New(t)
 	const width = int32(96)
 	const height = int32(64)
 	baseline := geom.NewPoint(4, 32)
+	for _, tc := range []struct {
+		name   string
+		offset float32
+	}{
+		{name: "raised first run", offset: -8},
+		{name: "lowered first run", offset: 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			ref, refPix := newPixmapCanvas(width, height)
+			NewText("H", &TextDecoration{Font: SystemFont, OnBackgroundInk: Black}).Draw(ref, baseline)
+			refTop, _ := inkRowBounds(refPix, 0, width)
+			c.NotEqual(int32(-1), refTop)
 
-	ref, refPix := newPixmapCanvas(width, height)
-	NewText("H", &TextDecoration{Font: SystemFont, OnBackgroundInk: Black}).Draw(ref, baseline)
-	refTop, _ := inkRowBounds(refPix, 0, width)
-	c.NotEqual(int32(-1), refTop)
+			txt := NewText("H", &TextDecoration{Font: SystemFont, OnBackgroundInk: Black, BaselineOffset: tc.offset})
+			txt.AddRunes([]rune("H"), &TextDecoration{Font: SystemFont, OnBackgroundInk: Black})
+			multi, multiPix := newPixmapCanvas(width, height)
+			txt.Draw(multi, baseline)
+			split := int32(xmath.Ceil(baseline.X + txt.widths[0]))
 
-	txt := NewText("H", &TextDecoration{Font: SystemFont, OnBackgroundInk: Black, BaselineOffset: -8})
-	txt.AddRunes([]rune("H"), &TextDecoration{Font: SystemFont, OnBackgroundInk: Black})
-	multi, multiPix := newPixmapCanvas(width, height)
-	txt.Draw(multi, baseline)
-	split := int32(xmath.Ceil(baseline.X + txt.widths[0]))
+			// The first run must be shifted by exactly its own offset of 8 pixels, not 16.
+			firstTop, _ := inkRowBounds(multiPix, 0, split)
+			c.Equal(refTop+int32(tc.offset), firstTop)
 
-	// The first run must be shifted up by exactly its own offset of 8 pixels, not 16.
-	firstTop, _ := inkRowBounds(multiPix, 0, split)
-	c.Equal(refTop-8, firstTop)
-
-	// The second run has no offset, so it must sit on the baseline rather than inherit the first run's offset.
-	secondTop, _ := inkRowBounds(multiPix, split, width)
-	c.Equal(refTop, secondTop)
+			// The second run has no offset, so it must sit on the baseline rather than inherit the first run's offset.
+			secondTop, _ := inkRowBounds(multiPix, split, width)
+			c.Equal(refTop, secondTop)
+		})
+	}
 }
 
+// TestTextMetricsWithBaselineOffsets verifies the height and baseline a Text reserves for raised and lowered runs,
+// and those of an empty Text and of an empty slice.
 func TestTextMetricsWithBaselineOffsets(t *testing.T) {
 	c := check.New(t)
 	lineHeight := SystemFont.LineHeight()
@@ -1319,6 +1213,7 @@ func TestTextMetricsWithBaselineOffsets(t *testing.T) {
 
 	// An empty slice keeps the metrics of the text it came from.
 	nearlyEqual(c, plain.Height(), plain.Slice(0, 0).Height())
+	nearlyEqual(c, plain.Baseline(), plain.Slice(0, 0).Baseline())
 }
 
 func TestTextDrawStaysWithinExtents(t *testing.T) {

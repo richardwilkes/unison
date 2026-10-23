@@ -809,27 +809,9 @@ func mainWindowWithoutTheSlider() *accessibility.Tree {
 	return tree
 }
 
-// TestPublishingAfterANodeHasMovedToAnotherWindow covers a panel being reparented. The window it joined publishes first
-// — it is the one whose layout changed — and the window it left publishes a snapshot without it afterwards. Dropping
-// the node from the index then would leave its object answering UnknownObject until the window that actually holds it
-// published again, which for a window nothing is happening in may be never.
-func TestPublishingAfterANodeHasMovedToAnotherWindow(t *testing.T) {
-	t.Parallel()
-	ta := newTestAdapter(t)
-	c := ta.c
-	ta.Publish(otherWindow, windowThatTookTheSlider(), nil, Geometry{Scale: geom.NewPoint(1, 1)})
-	c.Equal(nodeRef(21), ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Parent"),
-		"the slider belongs to the window that took it")
-
-	without := mainWindowWithoutTheSlider()
-	ta.Publish(mainWindow, without, accessibility.Diff(mainTree(), without), sampleGeometry())
-	c.Equal("Volume", ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Name"),
-		"the node goes on answering for the window that holds it now")
-	c.Equal(nodeRef(21), ta.peer.getProperty(NodePath(8), InterfaceAccessible, "Parent"))
-}
-
-// TestRemovingAWindowANodeHasLeftKeepsTheNode covers the same reparenting the other way round: the window the node came
-// from is closed rather than republished, and the node has to go on answering for the window that took it.
+// TestRemovingAWindowANodeHasLeftKeepsTheNode covers the reparenting of [TestANodeThatMovedToAnotherWindowIsNotBuried]
+// the other way round: the window the node came from is closed rather than republished, and the node has to go on
+// answering for the window that took it.
 func TestRemovingAWindowANodeHasLeftKeepsTheNode(t *testing.T) {
 	t.Parallel()
 	ta := newTestAdapter(t)
@@ -1026,24 +1008,6 @@ func TestConcurrentRegistryRestartsRejoinOneAtATime(t *testing.T) {
 	a.Stop()
 }
 
-func TestAnnounceAndStop(t *testing.T) {
-	t.Parallel()
-	ta := newTestAdapter(t)
-	c := ta.c
-	// An announcement is a signal, which TestAnnouncementsComeFromTheApplication looks at; here it only has to be
-	// harmless, as does one with nothing to say.
-	ta.Announce("Saved")
-	ta.Announce("")
-
-	ta.Stop()
-	msg := ta.peer.nextCall()
-	c.Equal("Unembed", msg.Member)
-	c.Equal(InterfaceSocket, msg.Interface)
-	args, err := msg.Args()
-	c.NoError(err)
-	c.Equal([]any{rootRef()}, args)
-}
-
 func TestStartWithoutAnAddress(t *testing.T) {
 	clearAccessibilityEnvironment(t)
 	c := check.New(t)
@@ -1134,8 +1098,9 @@ func TestStartRefusesAConnectionThatHasAlreadyGone(t *testing.T) {
 	}
 }
 
-// TestStopIsNotReportedAsALoss verifies that the adapter's own shutdown does not look like the bus dying: the root
-// package would otherwise tear down and rebuild an adapter every time a screen reader was switched off.
+// TestStopIsNotReportedAsALoss verifies that Stop unembeds the application root and that the adapter's own shutdown
+// does not look like the bus dying: the root package would otherwise tear down and rebuild an adapter every time a
+// screen reader was switched off.
 func TestStopIsNotReportedAsALoss(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -1157,7 +1122,12 @@ func TestStopIsNotReportedAsALoss(t *testing.T) {
 	a.conn.OnDisconnect(func(_ error) { close(handled) })
 
 	a.Stop()
-	c.Equal("Unembed", p.nextCall().Member, "the registry is told the application is leaving before it goes")
+	msg := p.nextCall()
+	c.Equal("Unembed", msg.Member, "the registry is told the application is leaving before it goes")
+	c.Equal(InterfaceSocket, msg.Interface)
+	args, err := msg.Args()
+	c.NoError(err)
+	c.Equal([]any{rootRef()}, args, "and which object is leaving")
 	select {
 	case <-handled:
 	case <-time.After(testTimeout):

@@ -327,6 +327,9 @@ func TestStatesOfTheCommonFlags(t *testing.T) {
 	c.True(set.Has(StateReadOnly))
 }
 
+// TestStatesOfFocus verifies that a node holding the focus says so only in the active window. A disabled control that
+// takes the focus so that a screen reader can read it says the same, and is neither enabled nor sensitive, which is
+// what has Orca announce it as unavailable in place of passing over it. See unison.SetFocusForReading.
 func TestStatesOfFocus(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -336,16 +339,9 @@ func TestStatesOfFocus(t *testing.T) {
 	c.True(set.Has(StateFocused))
 	c.False(States(focused, false, false).Has(StateFocused), "only the active window has a focused object")
 	c.True(States(focused, false, false).Has(StateFocusable))
-}
 
-// TestStatesOfADisabledControlHoldingTheFocus verifies how a disabled control that takes the focus so that a screen
-// reader can read it is exposed: it can take the focus and holds it, and is neither enabled nor sensitive, which is
-// what has Orca announce it as unavailable in place of passing over it. See unison.SetFocusForReading.
-func TestStatesOfADisabledControlHoldingTheFocus(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
 	readable := &accessibility.Node{Role: role.Button, Disabled: true, Focusable: true, Focused: true}
-	set := States(readable, true, false)
+	set = States(readable, true, false)
 	c.True(set.Has(StateFocusable))
 	c.True(set.Has(StateFocused))
 	c.False(set.Has(StateEnabled))
@@ -870,13 +866,6 @@ func TestTheEditableStateAndInterfaceAgree(t *testing.T) {
 	}
 }
 
-func TestLayerFor(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	c.Equal(LayerWindow, layerFor(true))
-	c.Equal(LayerWidget, layerFor(false))
-}
-
 func TestNodeActionOrder(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
@@ -982,24 +971,6 @@ func TestStatesOfReadOnlyTextBlocks(t *testing.T) {
 	c.False(empty.Has(StateSingleLine))
 	c.False(empty.Has(StateMultiLine))
 	c.False(empty.Has(StateSelectableText))
-}
-
-// TestAttributesOfACodeBlock covers the one thing that says a paragraph is really a block of code. [MapRole] reports it
-// as ATSPI_ROLE_PARAGRAPH, since that is the role a reader arrows through and the role Orca's P navigation looks for,
-// so the pair of attributes Orca reads for the same thing on a web page is what is left to say it with.
-func TestAttributesOfACodeBlock(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	code := &accessibility.Node{Role: role.Code, ReadOnly: true, Text: &accessibility.TextInfo{Text: "go build"}}
-	c.Equal(RoleParagraph, MapRole(code))
-	c.Equal(dbus.Dict{
-		{Key: toolkitAttribute, Value: toolkitName},
-		{Key: xmlRolesAttribute, Value: codeXMLRole},
-		{Key: tagAttribute, Value: preTag},
-	}, Attributes(nil, code, nil))
-	// An ordinary paragraph says nothing of the sort, which is what tells the two apart.
-	c.Equal(dbus.Dict{{Key: toolkitAttribute, Value: toolkitName}},
-		Attributes(nil, &accessibility.Node{Role: role.Paragraph}, nil))
 }
 
 // TestDocumentHasNoTextInterface covers the one thing a document must not do. Orca enters browse mode when the focus

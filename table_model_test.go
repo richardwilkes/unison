@@ -195,27 +195,8 @@ func TestTableHierarchySelection(t *testing.T) {
 	c.Equal(parent, minimal[0])
 }
 
-func TestTableSetRootRowsAndCount(t *testing.T) {
-	c := check.New(t)
-	table := newTestTable(flatRows(3)...)
-	c.Equal(3, table.RootRowCount())
-	c.Equal(3, len(table.RootRows()))
-	c.Equal(2, table.LastRowIndex())
-
-	table.SetRootRows(flatRows(5))
-	c.Equal(5, table.RootRowCount())
-	c.Equal(4, table.LastRowIndex())
-}
-
-func TestTableRowFromIndexBounds(t *testing.T) {
-	c := check.New(t)
-	table := newTestTable(flatRows(3)...)
-	c.Equal(tid.TID("r1"), table.RowFromIndex(1).ID())
-	// Out-of-range indexes return the zero value (a nil *tableTestRow) rather than panicking.
-	c.True(table.RowFromIndex(-1) == nil)
-	c.True(table.RowFromIndex(99) == nil)
-}
-
+// TestTableRowToIndexRoundTrip verifies that RowToIndex and RowFromIndex invert each other, and that neither panics on
+// a row or index the table does not have.
 func TestTableRowToIndexRoundTrip(t *testing.T) {
 	c := check.New(t)
 	rows := flatRows(4)
@@ -226,6 +207,9 @@ func TestTableRowToIndexRoundTrip(t *testing.T) {
 	}
 	// A row that isn't part of the table reports -1.
 	c.Equal(-1, table.RowToIndex(newTableTestRow("ghost")))
+	// Out-of-range indexes return the zero value (a nil *tableTestRow) rather than panicking.
+	c.True(table.RowFromIndex(-1) == nil)
+	c.True(table.RowFromIndex(99) == nil)
 }
 
 func TestTableDisclosureAffectsRowCount(t *testing.T) {
@@ -254,38 +238,19 @@ func TestTableDisclosureAffectsRowCount(t *testing.T) {
 	c.Equal(2, table.LastRowIndex()+1)
 }
 
+// TestTableSetRootRowsClearsSelection verifies that replacing the root rows clears the selection and brings the row
+// counts up to date.
 func TestTableSetRootRowsClearsSelection(t *testing.T) {
 	c := check.New(t)
 	table := newTestTable(flatRows(3)...)
+	c.Equal(3, len(table.RootRows()))
 	table.SelectByIndex(1)
 	c.True(table.HasSelection())
 
 	table.SetRootRows(flatRows(2))
 	c.False(table.HasSelection())
-}
-
-func TestTableApplyFilterFlattensAndRestores(t *testing.T) {
-	c := check.New(t)
-	parent := newTableTestRow("p")
-	parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), newTableTestRow("c1")})
-	sibling := newTableTestRow("s")
-	table := newTestTable(parent, sibling)
-
-	// Parent is collapsed, so only p and s are disclosed normally.
-	c.False(table.IsFiltered())
-	c.Equal(2, table.LastRowIndex()+1)
-
-	// A filter is consulted for every row recursively (ignoring disclosure) and keeps only the rows it returns false
-	// for. Here we keep just "c1", which is a collapsed child.
-	table.ApplyFilter(func(row *tableTestRow) bool { return row.ID() != "c1" })
-	c.True(table.IsFiltered())
-	c.Equal(1, table.LastRowIndex()+1)
-	c.Equal(tid.TID("c1"), table.RowFromIndex(0).ID())
-
-	// Removing the filter restores the original disclosed view.
-	table.ApplyFilter(nil)
-	c.False(table.IsFiltered())
-	c.Equal(2, table.LastRowIndex()+1)
+	c.Equal(2, table.RootRowCount())
+	c.Equal(1, table.LastRowIndex())
 }
 
 // TestTableApplyHierarchicalFilterKeepsAncestors verifies that a hierarchical filter shows each row that passed

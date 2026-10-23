@@ -55,44 +55,51 @@ func authStart() string {
 func TestAuthenticateOK(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
-	peer := newAuthPeer("OK 1234567890abcdef1234567890abcdef\r\n")
-	c.NoError(authenticate(peer, bufio.NewReader(peer)))
-	c.Equal(authStart()+"BEGIN\r\n", peer.written.String())
-}
-
-func TestAuthenticateOKWithoutCarriageReturn(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	peer := newAuthPeer("OK abc\n")
-	c.NoError(authenticate(peer, bufio.NewReader(peer)))
-	c.Equal(authStart()+"BEGIN\r\n", peer.written.String())
-}
-
-func TestAuthenticateWithDataChallenge(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	peer := newAuthPeer("DATA\r\nOK abc\r\n")
-	c.NoError(authenticate(peer, bufio.NewReader(peer)))
-	c.Equal(authStart()+"DATA\r\nBEGIN\r\n", peer.written.String())
-}
-
-func TestAuthenticateLeavesTheMessageStreamAlone(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	peer := newAuthPeer("OK abc\r\nMESSAGES")
-	in := bufio.NewReader(peer)
-	c.NoError(authenticate(peer, in))
-	rest, err := io.ReadAll(in)
-	c.NoError(err)
-	c.Equal("MESSAGES", string(rest))
+	for _, one := range []struct {
+		name    string
+		script  string
+		written string
+		rest    string
+	}{
+		{
+			name:    "OK with a GUID",
+			script:  "OK 1234567890abcdef1234567890abcdef\r\n",
+			written: authStart() + "BEGIN\r\n",
+		},
+		{
+			name:    "OK without a carriage return",
+			script:  "OK abc\n",
+			written: authStart() + "BEGIN\r\n",
+		},
+		{
+			name:    "DATA challenge answered before BEGIN",
+			script:  "DATA\r\nOK abc\r\n",
+			written: authStart() + "DATA\r\nBEGIN\r\n",
+		},
+		{
+			name:    "message stream left in the reader",
+			script:  "OK abc\r\nMESSAGES",
+			written: authStart() + "BEGIN\r\n",
+			rest:    "MESSAGES",
+		},
+	} {
+		peer := newAuthPeer(one.script)
+		in := bufio.NewReader(peer)
+		c.NoError(authenticate(peer, in), one.name)
+		c.Equal(one.written, peer.written.String(), one.name)
+		rest, err := io.ReadAll(in)
+		c.NoError(err, one.name)
+		c.Equal(one.rest, string(rest), one.name)
+	}
 }
 
 func TestAuthenticateFailures(t *testing.T) {
 	t.Parallel()
 	c := check.New(t)
 	for i, one := range []struct {
-		script  string
-		message string
+		script   string
+		writeErr error
+		message  string
 	}{
 		{script: "REJECTED EXTERNAL DBUS_COOKIE_SHA1\r\n", message: `rejected; the server offers "EXTERNAL`},
 		{script: "ERROR not right now\r\n", message: "authentication failed: not right now"},
@@ -101,20 +108,12 @@ func TestAuthenticateFailures(t *testing.T) {
 		{script: "OK abc", message: "closed the connection during authentication"},
 		{script: strings.Repeat("x", maxAuthLineLength+1), message: "response is too long"},
 		{script: strings.Repeat("DATA\r\n", maxAuthLines+1), message: "did not complete"},
+		{script: "OK abc\r\n", writeErr: errors.New("no"), message: "unable to start authentication"},
 	} {
 		peer := newAuthPeer(one.script)
+		peer.writeErr = one.writeErr
 		err := authenticate(peer, bufio.NewReader(peer))
 		c.HasError(err, "case %d", i)
 		c.Contains(err.Error(), one.message, "case %d", i)
 	}
-}
-
-func TestAuthenticateWriteFailure(t *testing.T) {
-	t.Parallel()
-	c := check.New(t)
-	peer := newAuthPeer("OK abc\r\n")
-	peer.writeErr = errors.New("no")
-	err := authenticate(peer, bufio.NewReader(peer))
-	c.HasError(err)
-	c.Contains(err.Error(), "unable to start authentication")
 }

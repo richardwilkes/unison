@@ -28,34 +28,30 @@ func newFlowParent(layout *unison.FlowLayout, children ...*unison.Panel) *unison
 	return parent
 }
 
-func TestFlowLayoutEmpty(t *testing.T) {
-	c := check.New(t)
-	parent := newFlowParent(&unison.FlowLayout{})
-	minSize, prefSize, maxSize := parent.Sizes(geom.Size{})
-	c.Equal(geom.Size{}, minSize)
-	c.Equal(geom.Size{}, prefSize)
-	c.Equal(unison.MaxSize(geom.Size{}), maxSize)
-}
-
+// TestFlowLayoutSingleRow checks the sizes of children that fit on one row: the preferred width sums them plus the
+// spacing between them, and the height is the tallest.
 func TestFlowLayoutSingleRow(t *testing.T) {
-	c := check.New(t)
-	// With no hint, the available width is effectively infinite, so everything stays on one row.
-	parent := newFlowParent(&unison.FlowLayout{}, fixedPanel(100, 20), fixedPanel(50, 30))
-	minSize, prefSize, maxSize := parent.Sizes(geom.Size{})
-	// Preferred width is the sum of the children; height is the tallest child.
-	c.Equal(geom.NewSize(150, 30), prefSize)
-	// The minimum size reports the largest child's minimum in each dimension.
-	c.Equal(geom.NewSize(100, 30), minSize)
-	c.True(maxSize.Width >= unison.DefaultMaxSize)
-	c.True(maxSize.Height >= unison.DefaultMaxSize)
-}
-
-func TestFlowLayoutSpacing(t *testing.T) {
-	c := check.New(t)
-	parent := newFlowParent(&unison.FlowLayout{HSpacing: 4}, fixedPanel(100, 20), fixedPanel(50, 30))
-	_, prefSize, _ := parent.Sizes(geom.Size{})
-	// One 4px horizontal gap between the two children: 100 + 4 + 50 = 154.
-	c.Equal(geom.NewSize(154, 30), prefSize)
+	for _, tc := range []struct {
+		name     string
+		want     geom.Size
+		hSpacing float32
+	}{
+		{name: "no spacing", want: geom.NewSize(150, 30)},
+		// One 4px horizontal gap between the two children: 100 + 4 + 50 = 154.
+		{name: "spacing", want: geom.NewSize(154, 30), hSpacing: 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			// With no hint, the available width is effectively infinite, so everything stays on one row.
+			parent := newFlowParent(&unison.FlowLayout{HSpacing: tc.hSpacing}, fixedPanel(100, 20), fixedPanel(50, 30))
+			minSize, prefSize, maxSize := parent.Sizes(geom.Size{})
+			c.Equal(tc.want, prefSize)
+			// The minimum size reports the largest child's minimum in each dimension.
+			c.Equal(geom.NewSize(100, 30), minSize)
+			c.True(maxSize.Width >= unison.DefaultMaxSize)
+			c.True(maxSize.Height >= unison.DefaultMaxSize)
+		})
+	}
 }
 
 func TestFlowLayoutNegativeSpacingApplied(t *testing.T) {
@@ -82,46 +78,67 @@ func TestFlowLayoutWraps(t *testing.T) {
 	c.Equal(geom.NewSize(100, 30), minSize)
 }
 
+// TestFlowLayoutClampsToAvailableWidth checks that a child whose preferred width exceeds a 60px hint is clamped to the
+// hint, or to its own minimum width when that is wider still.
 func TestFlowLayoutClampsToAvailableWidth(t *testing.T) {
-	c := check.New(t)
-	// The preferred width exceeds the hint, but the minimum width fits, so the child is clamped to the hint.
-	child := sizedPanel(geom.NewSize(40, 10), geom.NewSize(100, 20))
-	parent := newFlowParent(&unison.FlowLayout{}, child)
-	minSize, prefSize, _ := parent.Sizes(geom.NewSize(60, 0))
-	c.Equal(geom.NewSize(60, 20), prefSize)
-	c.Equal(geom.NewSize(40, 10), minSize)
+	for _, tc := range []struct {
+		name      string
+		minWidth  float32
+		wantWidth float32
+	}{
+		// The minimum width fits, so the child is clamped to the hint.
+		{name: "minimum fits the hint", minWidth: 40, wantWidth: 60},
+		// The minimum width doesn't fit either, and the child is first on its row, so its minimum width wins even
+		// though it overflows the hint.
+		{name: "minimum overflows the hint", minWidth: 80, wantWidth: 80},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			child := sizedPanel(geom.NewSize(tc.minWidth, 10), geom.NewSize(100, 20))
+			parent := newFlowParent(&unison.FlowLayout{}, child)
+			minSize, prefSize, _ := parent.Sizes(geom.NewSize(60, 0))
+			c.Equal(geom.NewSize(tc.wantWidth, 20), prefSize)
+			c.Equal(geom.NewSize(tc.minWidth, 10), minSize)
+		})
+	}
 }
 
-func TestFlowLayoutClampsToChildMinimum(t *testing.T) {
-	c := check.New(t)
-	// Neither the preferred nor the minimum width fits the hint, and the child is first on its row, so its
-	// minimum width wins even though it overflows the hint.
-	child := sizedPanel(geom.NewSize(80, 10), geom.NewSize(100, 20))
-	parent := newFlowParent(&unison.FlowLayout{}, child)
-	_, prefSize, _ := parent.Sizes(geom.NewSize(60, 0))
-	c.Equal(geom.NewSize(80, 20), prefSize)
-}
-
+// TestFlowLayoutBorderInsets checks that the minimum and preferred sizes add the border's insets to the content, which
+// leaves a panel with neither children nor a border at zero.
 func TestFlowLayoutBorderInsets(t *testing.T) {
-	c := check.New(t)
-	parent := newFlowParent(&unison.FlowLayout{}, fixedPanel(100, 20))
-	parent.SetBorder(unison.NewEmptyBorder(geom.NewUniformInsets(5)))
-	minSize, prefSize, _ := parent.Sizes(geom.Size{})
-	// 5px on every side adds 10 to each dimension.
-	c.Equal(geom.NewSize(110, 30), prefSize)
-	c.Equal(geom.NewSize(110, 30), minSize)
-}
-
-func TestFlowLayoutAsymmetricBorderInsets(t *testing.T) {
-	c := check.New(t)
-	// An empty panel's preferred size is just its insets, so nothing masks the accumulator's seed values: the
-	// width must be Left+Right (3+5) and the height Top+Bottom (7+11). Seeding the width from the top inset
-	// instead of the left one reported Top+Right (12) here.
-	parent := newFlowParent(&unison.FlowLayout{})
-	parent.SetBorder(unison.NewEmptyBorder(geom.NewInsets(7, 3, 11, 5)))
-	minSize, prefSize, _ := parent.Sizes(geom.Size{})
-	c.Equal(geom.NewSize(8, 18), prefSize)
-	c.Equal(geom.NewSize(8, 18), minSize)
+	for _, tc := range []struct {
+		border   unison.Border
+		name     string
+		children []*unison.Panel
+		want     geom.Size
+	}{
+		{name: "no children and no border"},
+		// 5px on every side adds 10 to each dimension.
+		{
+			border:   unison.NewEmptyBorder(geom.NewUniformInsets(5)),
+			name:     "uniform insets around a child",
+			children: []*unison.Panel{fixedPanel(100, 20)},
+			want:     geom.NewSize(110, 30),
+		},
+		// An empty panel's preferred size is just its insets, so nothing masks the accumulator's seed values: the
+		// width must be Left+Right (3+5) and the height Top+Bottom (7+11). Seeding the width from the top inset
+		// instead of the left one reported Top+Right (12) here.
+		{
+			border: unison.NewEmptyBorder(geom.NewInsets(7, 3, 11, 5)),
+			name:   "asymmetric insets with no children",
+			want:   geom.NewSize(8, 18),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			parent := newFlowParent(&unison.FlowLayout{}, tc.children...)
+			parent.SetBorder(tc.border)
+			minSize, prefSize, maxSize := parent.Sizes(geom.Size{})
+			c.Equal(tc.want, prefSize)
+			c.Equal(tc.want, minSize)
+			c.Equal(unison.MaxSize(tc.want), maxSize)
+		})
+	}
 }
 
 func TestFlowLayoutVerticalAlignment(t *testing.T) {

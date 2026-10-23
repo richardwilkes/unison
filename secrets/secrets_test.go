@@ -179,6 +179,8 @@ func TestInvalidArgumentsNeverReachTheStore(t *testing.T) {
 	c.Equal(1, len(store.calls))
 }
 
+// TestUseStoreRestoresWhatWasInstalledBefore verifies that each restore function removes only the store it installed,
+// so restores that run again or out of order neither put back a covered store nor take away the newest one.
 func TestUseStoreRestoresWhatWasInstalledBefore(t *testing.T) {
 	c := check.New(t)
 	first := &recordingStore{}
@@ -212,28 +214,10 @@ func TestUseStoreRestoresWhatWasInstalledBefore(t *testing.T) {
 	restoreNil := secrets.UseStore(nil)
 	restoreNil()
 	reach(first)
-	c.Equal(4, len(first.calls))
-	c.Equal(1, len(second.calls))
-	c.Equal(1, len(third.calls))
-}
 
-// TestUseStoreRestoresInAnyOrder verifies that each restore function removes only the store it installed, so restores
-// that run out of order neither put back a covered store nor take away the newest one.
-func TestUseStoreRestoresInAnyOrder(t *testing.T) {
-	c := check.New(t)
-	base := &recordingStore{}
+	// Restoring x while y covers it leaves y in place, and restoring y then brings back the store below x, not x.
 	x := &recordingStore{}
 	y := &recordingStore{}
-	reach := func(want *recordingStore) {
-		t.Helper()
-		before := len(want.calls)
-		_, err := secrets.Accounts(testService)
-		c.NoError(err)
-		c.Equal(before+1, len(want.calls))
-	}
-
-	restoreBase := secrets.UseStore(base)
-	defer restoreBase()
 	restoreX := secrets.UseStore(x)
 	restoreY := secrets.UseStore(y)
 	restoreX()
@@ -241,8 +225,10 @@ func TestUseStoreRestoresInAnyOrder(t *testing.T) {
 	restoreX()
 	reach(y)
 	restoreY()
-	reach(base)
+	reach(first)
+	c.Equal(5, len(first.calls))
+	c.Equal(1, len(second.calls))
+	c.Equal(1, len(third.calls))
 	c.Equal(0, len(x.calls))
 	c.Equal(2, len(y.calls))
-	c.Equal(1, len(base.calls))
 }
