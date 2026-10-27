@@ -73,48 +73,52 @@ var dragTableData any
 // DefaultTableTheme holds the default TableTheme values for Tables. Modifying this data will not alter existing Tables,
 // but will alter any Tables created in the future.
 var DefaultTableTheme = TableTheme{
-	BackgroundInk:          ThemeBelowSurface,
-	OnBackgroundInk:        ThemeOnBelowSurface,
-	BandingInk:             ThemeBanding,
-	OnBandingInk:           ThemeOnBanding,
-	InteriorDividerInk:     ThemeAboveSurface,
-	SelectionInk:           ThemeFocus,
-	OnSelectionInk:         ThemeOnFocus,
-	InactiveSelectionInk:   ThemeDeepFocus,
-	OnInactiveSelectionInk: ThemeOnDeepFocus,
-	IndirectSelectionInk:   ThemeDeeperFocus,
-	OnIndirectSelectionInk: ThemeOnDeeperFocus,
-	Padding:                geom.NewUniformInsets(4),
-	HierarchyIndent:        16,
-	MinimumRowHeight:       16,
-	ColumnResizeSlop:       4,
-	ShowColumnDivider:      true,
-	ShowFirstColumnDivider: true,
-	ShowLastColumnDivider:  true,
+	BackgroundInk:                  ThemeBelowSurface,
+	OnBackgroundInk:                ThemeOnBelowSurface,
+	BandingInk:                     ThemeBanding,
+	OnBandingInk:                   ThemeOnBanding,
+	InteriorDividerInk:             ThemeAboveSurface,
+	SelectionInk:                   ThemeFocus,
+	OnSelectionInk:                 ThemeOnFocus,
+	InactiveSelectionInk:           ThemeMutedFocus,
+	OnInactiveSelectionInk:         ThemeOnMutedFocus,
+	IndirectSelectionInk:           ThemeDeeperFocus,
+	OnIndirectSelectionInk:         ThemeOnDeeperFocus,
+	InactiveIndirectSelectionInk:   ThemeDeepMutedFocus,
+	OnInactiveIndirectSelectionInk: ThemeOnDeepMutedFocus,
+	Padding:                        geom.NewUniformInsets(4),
+	HierarchyIndent:                16,
+	MinimumRowHeight:               16,
+	ColumnResizeSlop:               4,
+	ShowColumnDivider:              true,
+	ShowFirstColumnDivider:         true,
+	ShowLastColumnDivider:          true,
 }
 
 // TableTheme holds theming data for a Table.
 type TableTheme struct {
-	BackgroundInk          Ink
-	OnBackgroundInk        Ink
-	BandingInk             Ink
-	OnBandingInk           Ink
-	InteriorDividerInk     Ink
-	SelectionInk           Ink
-	OnSelectionInk         Ink
-	InactiveSelectionInk   Ink
-	OnInactiveSelectionInk Ink
-	IndirectSelectionInk   Ink
-	OnIndirectSelectionInk Ink
-	Padding                geom.Insets
-	HierarchyColumnID      int
-	HierarchyIndent        float32
-	MinimumRowHeight       float32
-	ColumnResizeSlop       float32
-	ShowRowDivider         bool
-	ShowColumnDivider      bool
-	ShowFirstColumnDivider bool
-	ShowLastColumnDivider  bool
+	BackgroundInk                  Ink
+	OnBackgroundInk                Ink
+	BandingInk                     Ink
+	OnBandingInk                   Ink
+	InteriorDividerInk             Ink
+	SelectionInk                   Ink
+	OnSelectionInk                 Ink
+	InactiveSelectionInk           Ink
+	OnInactiveSelectionInk         Ink
+	IndirectSelectionInk           Ink
+	OnIndirectSelectionInk         Ink
+	InactiveIndirectSelectionInk   Ink
+	OnInactiveIndirectSelectionInk Ink
+	Padding                        geom.Insets
+	HierarchyColumnID              int
+	HierarchyIndent                float32
+	MinimumRowHeight               float32
+	ColumnResizeSlop               float32
+	ShowRowDivider                 bool
+	ShowColumnDivider              bool
+	ShowFirstColumnDivider         bool
+	ShowLastColumnDivider          bool
 }
 
 // Table provides a control that can display data in columns and rows.
@@ -284,8 +288,10 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	t.validateFocusedCell()
 	focused := t.hasFocus()
 	selectionInk := t.SelectionInk
+	indirectSelectionInk := t.IndirectSelectionInk
 	if !focused {
 		selectionInk = t.InactiveSelectionInk
+		indirectSelectionInk = t.InactiveIndirectSelectionInk
 	}
 
 	backgroundPaint := t.BackgroundInk.Paint(canvas, dirty, paintstyle.Fill)
@@ -334,7 +340,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			if t.IsRowSelected(r) {
 				rowInk = selectionInk
 			} else {
-				rowInk = t.IndirectSelectionInk
+				rowInk = indirectSelectionInk
 			}
 			paint := rowInk.Paint(canvas, rect, paintstyle.Fill)
 			canvas.DrawRect(rect, paint)
@@ -498,9 +504,12 @@ func (t *Table[T]) cellParams(row, col int) (fg, bg Ink, selected, indirectlySel
 	case !editing && selected:
 		fg = t.OnInactiveSelectionInk
 		bg = t.InactiveSelectionInk
-	case !editing && indirectlySelected:
+	case !editing && indirectlySelected && focused:
 		fg = t.OnIndirectSelectionInk
 		bg = t.IndirectSelectionInk
+	case !editing && indirectlySelected:
+		fg = t.OnInactiveIndirectSelectionInk
+		bg = t.InactiveIndirectSelectionInk
 	case row%2 == 1:
 		fg = t.OnBandingInk
 		bg = t.BandingInk

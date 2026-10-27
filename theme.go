@@ -43,6 +43,10 @@ var (
 	ThemeDeepestFocus     = ThemeFocus.DeriveLightness(-0.15, -0.15)
 	ThemeTooltipEdge      = ThemeTooltip.DeriveLightness(-0.2, -0.2)
 	ThemeDragHandle       = ThemeSurface.DeriveLightness(-0.1, 0.15)
+	// ThemeMutedFocus is the focus color blended toward the surface, for what is selected or current in a control that
+	// does not have the focus, where the focus color itself would stand out as much as the real focus does.
+	ThemeMutedFocus     = ThemeSurface.DeriveBlend(ThemeFocus, 0.3, 0.4)
+	ThemeDeepMutedFocus = ThemeMutedFocus.DeriveLightness(-0.05, -0.05)
 
 	ThemeOnSurface          = ThemeSurface.DeriveOn()
 	ThemeOnAboveSurface     = ThemeAboveSurface.DeriveOn()
@@ -53,6 +57,8 @@ var (
 	ThemeOnDeepFocus        = ThemeDeepFocus.DeriveOn()
 	ThemeOnDeeperFocus      = ThemeDeeperFocus.DeriveOn()
 	ThemeOnDeepestFocus     = ThemeDeepestFocus.DeriveOn()
+	ThemeOnMutedFocus       = ThemeMutedFocus.DeriveOn()
+	ThemeOnDeepMutedFocus   = ThemeDeepMutedFocus.DeriveOn()
 	ThemeOnTooltip          = ThemeTooltip.DeriveOn()
 	ThemeOnError            = ThemeError.DeriveOn()
 	ThemeOnWarning          = ThemeWarning.DeriveOn()
@@ -152,6 +158,25 @@ func DeriveOn(basedOn ThemeColor) ThemeColor {
 // DeriveLightness returns a new DerivedThemeColor that has its lightness adjusted by the given amount.
 func (t *ThemeColor) DeriveLightness(light, dark float32) *DerivedThemeColor {
 	return t.Derive(CreateDeriveLightnessFunc(light, dark))
+}
+
+// DeriveBlend returns a new DerivedThemeColor that blends this ThemeColor toward other, by the given amount of other in
+// light mode and in dark mode. It follows changes to both colors.
+func (t *ThemeColor) DeriveBlend(other *ThemeColor, light, dark float32) *DerivedThemeColor {
+	// The blend is what is followed, so that a change to either color is seen, and nothing remains to derive from it.
+	blend := func() ThemeColor {
+		return ThemeColor{
+			Light: t.Light.Blend(other.Light, light),
+			Dark:  t.Dark.Blend(other.Dark, dark),
+		}
+	}
+	current := blend()
+	return &DerivedThemeColor{
+		derived:      current,
+		deriveFunc:   func(basedOn ThemeColor) ThemeColor { return basedOn },
+		lastSeen:     current,
+		lastSeenFunc: blend,
+	}
 }
 
 // CreateDeriveLightnessFunc returns a function that will adjust the lightness of a ThemeColor by the given amount.

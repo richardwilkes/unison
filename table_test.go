@@ -11,6 +11,7 @@ package unison_test
 
 import (
 	"image"
+	"image/color"
 	"slices"
 	"strconv"
 	"testing"
@@ -3257,4 +3258,78 @@ func TestTableCellFieldCommitRemovingItsRowLetsTheFocusLeave(t *testing.T) {
 	c.Equal(-1, s.focusCol)
 	c.True(s.detached)
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableUnfocusedSelectionUsesInactiveInks verifies that a table without the focus hands its selected rows the
+// inactive selection inks and the rows a selected ancestor carries along the inactive indirect selection inks, paints
+// their backgrounds with those inks, and that both get the active inks back when the table takes the focus.
+func TestTableUnfocusedSelectionUsesInactiveInks(t *testing.T) {
+	c := check.New(t)
+	type cellInks struct {
+		fg, bg unison.Ink
+	}
+	var e *editTable
+	var button *unison.Button
+	seen := make(map[int]cellInks)
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(2, 1, "alpha", false)
+			child := newTableTestRow("child")
+			e.rows[0].SetChildren([]*tableTestRow{child})
+			e.rows[0].open = true
+			for _, row := range []*tableTestRow{e.rows[0], child, e.rows[1]} {
+				row.cellParams = func(row, _ int, fg, bg unison.Ink, _, _, _ bool) {
+					seen[row] = cellInks{fg: fg, bg: bg}
+				}
+			}
+			e.table.SyncToModel()
+			_, button = newEditWindow(t, e, true)
+			button.RequestFocus()
+			e.table.SelectByIndex(0)
+		}))
+	c.NotNil(e)
+	// inks reads what the rows were last told about their first cell, after a redraw: the selected row, the child it
+	// carries along, and the table's inks for the two in each of its focus states.
+	inks := func() (selected, indirect, active, inactive, indirectActive, indirectInactive cellInks) {
+		c.True(screen.Do(func() { e.table.MarkForRedraw() }))
+		screen.Sync()
+		c.True(screen.Do(func() {
+			selected = seen[0]
+			indirect = seen[1]
+			active = cellInks{fg: e.table.OnSelectionInk, bg: e.table.SelectionInk}
+			inactive = cellInks{fg: e.table.OnInactiveSelectionInk, bg: e.table.InactiveSelectionInk}
+			indirectActive = cellInks{fg: e.table.OnIndirectSelectionInk, bg: e.table.IndirectSelectionInk}
+			indirectInactive = cellInks{fg: e.table.OnInactiveIndirectSelectionInk, bg: e.table.InactiveIndirectSelectionInk}
+		}))
+		return selected, indirect, active, inactive, indirectActive, indirectInactive
+	}
+	// painted reads the color the table painted a row's background with, as seen through the empty panel in its last
+	// column, after inks has redrawn the table.
+	painted := func(row int) color.NRGBA {
+		pt := cellCenter(screen, e.table, row, 1)
+		return screen.Capture().NRGBAAt(int(pt.X), int(pt.Y))
+	}
+	// colorOf is the color an ink of the table's theme paints with.
+	colorOf := func(ink unison.Ink) color.NRGBA {
+		var clr unison.Color
+		c.True(screen.Do(func() {
+			provider, ok := ink.(unison.ColorProvider)
+			c.True(ok, "the table's inks should be color providers")
+			clr = provider.GetColor()
+		}))
+		return toNRGBAColor(clr)
+	}
+
+	selected, indirect, _, inactive, _, indirectInactive := inks()
+	c.Equal(inactive, selected, "a selected row of a table without the focus should get the inactive selection inks")
+	c.Equal(indirectInactive, indirect, "the child of a selected row of a table without the focus should get the inactive indirect selection inks")
+	c.Equal(colorOf(inactive.bg), painted(0), "a selected row of a table without the focus should be painted with the inactive selection ink")
+	c.Equal(colorOf(indirectInactive.bg), painted(1), "the child of a selected row of a table without the focus should be painted with the inactive indirect selection ink")
+
+	c.True(screen.Do(func() { e.table.RequestFocus() }))
+	selected, indirect, active, _, indirectActive, _ := inks()
+	c.Equal(active, selected, "a selected row of the focused table should get the selection inks")
+	c.Equal(indirectActive, indirect, "the child of a selected row of the focused table should get the indirect selection inks")
+	c.Equal(colorOf(active.bg), painted(0), "a selected row of the focused table should be painted with the selection ink")
+	c.Equal(colorOf(indirectActive.bg), painted(1), "the child of a selected row of the focused table should be painted with the indirect selection ink")
 }

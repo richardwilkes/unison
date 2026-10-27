@@ -31,8 +31,8 @@ var DefaultListTheme = ListTheme{
 	OnBandingInk:           ThemeOnBanding,
 	SelectionInk:           ThemeFocus,
 	OnSelectionInk:         ThemeOnFocus,
-	InactiveSelectionInk:   ThemeDeepFocus,
-	OnInactiveSelectionInk: ThemeOnDeepFocus,
+	InactiveSelectionInk:   ThemeMutedFocus,
+	OnInactiveSelectionInk: ThemeOnMutedFocus,
 	FlashAnimationTime:     100 * time.Millisecond,
 }
 
