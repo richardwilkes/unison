@@ -32,7 +32,7 @@ import (
 
 // TableDragData holds the data from a table row drag.
 type TableDragData[T TableRowConstraint[T]] struct {
-	Table *Table[T]
+	Table *Table[T] // The view the drag started in; use SameTable to compare it with another
 	Rows  []T
 }
 
@@ -146,7 +146,46 @@ type TableTheme struct {
 // focus back to the table. FocusCell() starts the same thing programmatically and FocusedCell() reports which cell, if
 // any, currently holds the focus. A row that supplies such a widget must hand back the same instance from every
 // ColumnCell() call, since a freshly created one would have neither the focus nor the state the user put into it.
+//
+// One table can be shown by several views, such as the pages of a document, each a *Table made by NewView and showing
+// its own range of the rows (see SetDrawRowRange). The views share the model, the rows, the columns, the selection, the
+// cell holding the focus, the theme and the callbacks, while each sizes, draws, hit-tests, scrolls and describes its
+// own rows. The keyboard focus follows the person from view to view, and the views in a window are a single tab stop
+// between them.
+//
+// The exported fields every view shares are promoted from an unexported struct, so the struct below does not show them:
+// SelectionChangedCallback and DoubleClickCallback; DragRemovedRowsCallback, called whenever a drag removes one or more
+// rows from a model, but only if the source and destination tables were different; DropOccurredCallback, called
+// whenever a drop occurs that modifies the model; Columns; Model; PreventUserColumnResize; and the embedded TableTheme.
 type Table[T TableRowConstraint[T]] struct {
+	*tableState[T]
+	header                  *TableHeader[T]
+	lastSel                 tid.TID
+	interactionRowID        tid.TID // The ID of the row at interactionRow when the press set it
+	lastMouseMotionRowID    tid.TID // The ID of the row at lastMouseMotionRow when the pointer came to it
+	hitRects                []tableHitRect
+	lastMouseEnterCellPanel *Panel
+	lastMouseDownCellPanel  *Panel
+	Panel
+	pressedHitRect        geom.Rect
+	interactionRow        int
+	interactionColumn     int
+	lastMouseMotionRow    int
+	lastMouseMotionColumn int
+	startRow              int
+	endBeforeRow          int
+	columnResizeStart     float32
+	columnResizeBase      float32
+	columnResizeOverhead  float32
+	wasDragged            bool
+	dividerDrag           bool
+	noScrollOnFocus       bool
+	hasRange              bool
+}
+
+// tableState holds what every view of a table shares. It has no methods, since one would be ambiguous with Panel's
+// through Table.
+type tableState[T TableRowConstraint[T]] struct {
 	SelectionChangedCallback func()
 	DoubleClickCallback      func()
 	DragRemovedRowsCallback  func() // Called whenever a drag removes one or more rows from a model, but only if the source and destination tables were different.
@@ -157,15 +196,11 @@ type Table[T TableRowConstraint[T]] struct {
 	filterMatches            map[tid.TID]bool // The rows that passed a hierarchical filter, by ID
 	filterChildren           map[tid.TID][]T  // The children a hierarchical filter kept, by the ID of their parent
 	filterRoots              []T              // The root rows a hierarchical filter kept
-	header                   *TableHeader[T]
 	selMap                   map[tid.TID]bool
 	selAnchor                tid.TID
 	lead                     tid.TID
-	lastSel                  tid.TID
-	hitRects                 []tableHitRect
 	rowCache                 []tableCache[T]
-	lastMouseEnterCellPanel  *Panel
-	lastMouseDownCellPanel   *Panel
+	views                    []*Table[T] // The primary view first
 	// Cells are normally ephemeral: the table points a cell's parent at itself just long enough to draw it or forward
 	// one event to it, then detaches it again. That can't work for a cell whose widget takes the keyboard focus, since
 	// the window dispatches keys, redraws and scrolling by walking up the parent chain from Window.focus, and
@@ -178,45 +213,40 @@ type Table[T TableRowConstraint[T]] struct {
 	focusedCell    *Panel
 	focusedCellRow T
 	TableTheme
-	Panel
-	pressedHitRect           geom.Rect
-	interactionRow           int
-	interactionColumn        int
 	focusedCellRowIndex      int
 	focusedCellColumn        int
 	leadColumn               int
-	lastMouseMotionRow       int
-	lastMouseMotionColumn    int
-	startRow                 int
-	endBeforeRow             int
-	columnResizeStart        float32
-	columnResizeBase         float32
-	columnResizeOverhead     float32
 	PreventUserColumnResize  bool
 	awaitingSizeColumnsToFit bool
 	awaitingSyncToModel      bool
 	selNeedsPrune            bool
-	wasDragged               bool
-	dividerDrag              bool
 	hasHierarchy             bool
 	hierarchicalFilter       bool // Set while the filter in force keeps the hierarchy (see ApplyHierarchicalFilter)
-	noScrollOnFocus          bool
 }
 
 // NewTable creates a new Table control.
 func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	t := &Table[T]{
-		TableTheme:            DefaultTableTheme,
-		Model:                 model,
-		selMap:                make(map[tid.TID]bool),
-		interactionRow:        -1,
-		interactionColumn:     -1,
-		lastMouseMotionRow:    -1,
-		lastMouseMotionColumn: -1,
-		focusedCellRowIndex:   -1,
-		focusedCellColumn:     -1,
-		leadColumn:            -1,
+		tableState: &tableState[T]{
+			TableTheme:          DefaultTableTheme,
+			Model:               model,
+			selMap:              make(map[tid.TID]bool),
+			focusedCellRowIndex: -1,
+			focusedCellColumn:   -1,
+			leadColumn:          -1,
+		},
 	}
+	t.views = []*Table[T]{t}
+	t.initView()
+	return t
+}
+
+// initView sets up what a view holds for itself. NewTable and NewView both use it, so that the two cannot drift.
+func (t *Table[T]) initView() {
+	t.interactionRow = -1
+	t.interactionColumn = -1
+	t.lastMouseMotionRow = -1
+	t.lastMouseMotionColumn = -1
 	t.Self = t
 	t.SetFocusable(true)
 	t.SetSizer(t.DefaultSizes)
@@ -232,8 +262,332 @@ func NewTable[T TableRowConstraint[T]](model TableModel[T]) *Table[T] {
 	t.MouseExitCallback = t.DefaultMouseExit
 	t.KeyDownCallback = t.DefaultKeyDown
 	t.InstallCmdHandlers(SelectAllItemID, AlwaysEnabled, func(_ any) { t.SelectAll() })
-	t.wasDragged = false
-	return t
+}
+
+// NewView creates another view of this table: a panel that shares the table's model, rows, columns, selection, focused
+// cell, theme, callbacks and ClientData, but is laid out, drawn and interacted with on its own, showing the rows from
+// start up to, but not including, endBefore, and none when that range is empty (see SetDrawRowRange). It starts with
+// this view's RefKey, border, enabled state and accessibility name, description and role. Headers, drag support and
+// drop support are per view, so install them on each view that needs them.
+func (t *Table[T]) NewView(start, endBefore int) *Table[T] {
+	v := &Table[T]{tableState: t.tableState}
+	v.data = t.ClientData()
+	v.RefKey = t.RefKey
+	v.border = t.border
+	v.disabled = t.disabled
+	v.Accessibility.Name = t.Accessibility.Name
+	v.Accessibility.Description = t.Accessibility.Description
+	v.Accessibility.Role = t.Accessibility.Role
+	v.initView()
+	v.SetDrawRowRange(start, endBefore)
+	t.views = append(t.views, v)
+	return v
+}
+
+// Primary returns the view NewTable created.
+func (t *Table[T]) Primary() *Table[T] {
+	return t.views[0]
+}
+
+// Views returns the views of this table, the primary first.
+func (t *Table[T]) Views() []*Table[T] {
+	return slices.Clone(t.views)
+}
+
+// RemoveView removes v from this table's views, reporting false if v is the primary view or not one of them. A cell
+// holding the keyboard focus that v was showing moves to a view left in the window whose focus it holds, preferring
+// one showing its row, and is let go of when there is none; the keyboard focus, when v holds it, moves to the view that
+// holds the table's tab stop (see TabStopPanel). Take v out of its parent as well, before or after; it must not be used
+// afterwards.
+func (t *Table[T]) RemoveView(v *Table[T]) bool {
+	i := slices.Index(t.views, v)
+	if i < 1 {
+		return false
+	}
+	// v may already have been taken out of its parent, which leaves its window's focus pointing at it.
+	wnd := v.Window()
+	if wnd == nil {
+		wnd = t.anyWindow()
+	}
+	hadFocus := wnd != nil && wnd.focus == v.AsPanel()
+	t.views = slices.Delete(t.views, i, i+1)
+	if cell := t.focusedCell; cell != nil && cell.parent == v.AsPanel() {
+		if row := t.RowToIndex(t.focusedCellRow); row != -1 {
+			cell.parent = nil
+			if cellWnd := t.focusWindowWithin(cell); cellWnd != nil {
+				if host := t.views[0].cellHostIn(row, cellWnd); host != nil {
+					cell.parent = host.AsPanel()
+				}
+			}
+		}
+	}
+	t.validateFocusedCell()
+	if hadFocus {
+		if other := t.tabStopViewWithin(wnd.Content()); other != nil {
+			other.RequestFocusWithoutScroll()
+		}
+	}
+	return true
+}
+
+// FocusedView returns the view holding the keyboard focus, or showing the cell that holds it, or nil if there is none.
+func (t *Table[T]) FocusedView() *Table[T] {
+	for _, v := range t.views {
+		if v.holdsFocus() {
+			return v
+		}
+	}
+	return nil
+}
+
+// holdsFocus returns true if this view holds its window's keyboard focus, or shows the cell that holds it.
+func (t *Table[T]) holdsFocus() bool {
+	wnd := t.Window()
+	if wnd == nil {
+		return false
+	}
+	focus := wnd.CurrentFocus()
+	return focus != nil && (focus == t.AsPanel() ||
+		(t.focusedCell != nil && t.focusedCell.parent == t.AsPanel() && panelContains(t.focusedCell, focus)))
+}
+
+// ViewForRow returns the view showing the row at the given index, or the primary view when none does. While there is
+// more than one view, a row is shown by the first view whose range holds it (see SetDrawRowRange) that is in a window,
+// with neither it nor any of its ancestors hidden.
+func (t *Table[T]) ViewForRow(row int) *Table[T] {
+	if v := t.claimingView(row); v != nil {
+		return v
+	}
+	return t.views[0]
+}
+
+// claimingView returns the view showing the row at the given index: the only view, when there is just one, and
+// otherwise the first view shown in a window (see shown) whose range holds the row, or nil.
+func (t *Table[T]) claimingView(row int) *Table[T] {
+	if len(t.views) == 1 {
+		return t.views[0]
+	}
+	for _, v := range t.views {
+		if v.claims(row) {
+			return v
+		}
+	}
+	return nil
+}
+
+// claimingViewIn returns the first view in wnd that shows the row at the given index (see claims) and, when focusable
+// is true, can take the keyboard focus, or nil.
+func (t *Table[T]) claimingViewIn(row int, wnd *Window, focusable bool) *Table[T] {
+	for _, v := range t.views {
+		if v.Window() == wnd && (!focusable || v.Focusable()) && v.claims(row) {
+			return v
+		}
+	}
+	return nil
+}
+
+// rowViewIn returns the first view in wnd that shows the row at the given index (see claims), or nil. Unlike
+// claimingViewIn, it also requires the row to lie within the view's range, which a lone view's claim does not.
+func (t *Table[T]) rowViewIn(row int, wnd *Window) *Table[T] {
+	if v := t.claimingViewIn(row, wnd, false); v != nil {
+		if _, ok := v.rowTop(row); ok {
+			return v
+		}
+	}
+	return nil
+}
+
+// claims returns true if this view shows the row at the given index, as claimingView decides it.
+func (t *Table[T]) claims(row int) bool {
+	if len(t.views) == 1 {
+		return t.views[0] == t
+	}
+	if !t.shown() {
+		return false
+	}
+	start, end := t.CurrentDrawRowRange()
+	return row >= start && row < end
+}
+
+// shown returns true if this view is in a window and neither it nor any of its ancestors is hidden.
+func (t *Table[T]) shown() bool {
+	for p := t.AsPanel(); p != nil; p = p.parent {
+		if p.Hidden {
+			return false
+		}
+	}
+	return t.Window() != nil
+}
+
+// reachableWithin returns true if this view is scope or lies beneath it, with neither it nor any panel between them
+// hidden, which is what a traversal of scope's subtree requires to reach it.
+func (t *Table[T]) reachableWithin(scope *Panel) bool {
+	for p := t.AsPanel(); p != nil; p = p.parent {
+		if p == scope {
+			return true
+		}
+		if p.Hidden {
+			return false
+		}
+	}
+	return false
+}
+
+// anyWindow returns the window of this view, or else of the first view of the table that is in one.
+func (t *Table[T]) anyWindow() *Window {
+	if wnd := t.Window(); wnd != nil {
+		return wnd
+	}
+	for _, v := range t.views {
+		if wnd := v.Window(); wnd != nil {
+			return wnd
+		}
+	}
+	return nil
+}
+
+// focusWindowWithin returns the window of this view, or else of another view of this table, whose raw focus pointer
+// lies within p, or nil. The raw pointer is what says so for a cell that is cut off from its window; see
+// adoptCellIfFocused.
+func (t *Table[T]) focusWindowWithin(p *Panel) *Window {
+	if wnd := t.Window(); wnd != nil && wnd.focus != nil && panelContains(p, wnd.focus) {
+		return wnd
+	}
+	for _, v := range t.views {
+		if v != t {
+			if wnd := v.Window(); wnd != nil && wnd.focus != nil && panelContains(p, wnd.focus) {
+				return wnd
+			}
+		}
+	}
+	return nil
+}
+
+// cellHostIn returns the view a cell holding wnd's keyboard focus on the row at the given index is attached to, which
+// keeps it in wnd: this view when it is in wnd and shows the row, else the first view of wnd showing the row, else this
+// view when it is in wnd, else the first view in wnd, or nil if there is none.
+func (t *Table[T]) cellHostIn(row int, wnd *Window) *Table[T] {
+	inWnd := t.Window() == wnd
+	if inWnd && t.claims(row) {
+		return t
+	}
+	if v := t.claimingViewIn(row, wnd, false); v != nil {
+		return v
+	}
+	if inWnd {
+		return t
+	}
+	for _, v := range t.views {
+		if v.Window() == wnd {
+			return v
+		}
+	}
+	return nil
+}
+
+// focusedCellHost returns the view the focused cell is attached to, or nil.
+func (t *Table[T]) focusedCellHost() *Table[T] {
+	if t.focusedCell == nil {
+		return nil
+	}
+	for _, v := range t.views {
+		if v.AsPanel() == t.focusedCell.parent {
+			return v
+		}
+	}
+	return nil
+}
+
+// yieldsTabStop implements sharedTabStop: the views of a table share one tab stop, held within scope by
+// tabStopViewWithin.
+func (t *Table[T]) yieldsTabStop(scope *Panel) bool {
+	return len(t.views) > 1 && t.tabStopViewWithin(scope) != t
+}
+
+// TabStopPanel implements TabStopHolder, returning the view holding the table's tab stop in this view's window or, when
+// this view is in none, in the window of the first view that is in one (see tabStopViewWithin). It returns nil if no
+// view is in a window or none in that window can take the focus.
+func (t *Table[T]) TabStopPanel() *Panel {
+	if wnd := t.anyWindow(); wnd != nil {
+		if v := t.tabStopViewWithin(wnd.Content()); v != nil {
+			return v.AsPanel()
+		}
+	}
+	return nil
+}
+
+// tabStopViewWithin returns the view holding the table's tab stop within scope, chosen from the views a traversal of
+// scope reaches that can take the focus: the focused view, else the view showing the row the person is on, else the
+// view showing the first row, else the first of them, or nil if there are none.
+func (t *Table[T]) tabStopViewWithin(scope *Panel) *Table[T] {
+	row := t.axCurrentRow()
+	var onRow, onFirstRow, first *Table[T]
+	for _, v := range t.views {
+		if !v.Focusable() || !v.reachableWithin(scope) {
+			continue
+		}
+		if v.holdsFocus() {
+			return v
+		}
+		if first == nil {
+			first = v
+		}
+		if onRow == nil && v.claims(row) {
+			onRow = v
+		}
+		if onFirstRow == nil && v.claims(0) {
+			onFirstRow = v
+		}
+	}
+	switch {
+	case onRow != nil:
+		return onRow
+	case onFirstRow != nil:
+		return onFirstRow
+	default:
+		return first
+	}
+}
+
+// isView returns true if p is one of this table's views.
+func (t *Table[T]) isView(p *Panel) bool {
+	if p == nil {
+		return false
+	}
+	for _, v := range t.views {
+		if v.AsPanel() == p {
+			return true
+		}
+	}
+	return false
+}
+
+// SameTable returns true if a and b are views of the same table, or are both nil.
+func SameTable[T TableRowConstraint[T]](a, b *Table[T]) bool {
+	return a == b || (a != nil && b != nil && a.tableState == b.tableState)
+}
+
+// MarkForRedraw marks this view and every other view of the table for redraw.
+func (t *Table[T]) MarkForRedraw() {
+	t.Panel.MarkForRedraw()
+	for _, v := range t.views {
+		if v != t {
+			v.Panel.MarkForRedraw()
+		}
+	}
+}
+
+// fitViewFrames sets the size of each view's frame to its preferred size and marks each for layout, so that whatever
+// holds the views lays them out again around their new sizes. The views are walked over a copy, since a
+// FrameChangeCallback may change them.
+func (t *Table[T]) fitViewFrames() {
+	for _, v := range slices.Clone(t.views) {
+		_, pref, _ := v.DefaultSizes(geom.Size{})
+		rect := v.FrameRect()
+		rect.Size = pref
+		v.SetFrameRect(rect)
+		v.MarkForLayoutRecursivelyUpward()
+	}
 }
 
 // ColumnIndexForID returns the column index with the given ID, or -1 if not found.
@@ -246,26 +600,51 @@ func (t *Table[T]) ColumnIndexForID(id int) int {
 	return -1
 }
 
-// SetDrawRowRange sets a restricted range for sizing and drawing the table. This is intended primarily to be able to
-// draw different sections of the table on separate pages of a display and should not be used for anything requiring
-// interactivity.
+// SetDrawRowRange restricts this view to the rows from start up to, but not including, endBefore. The view sizes,
+// draws, hit-tests and describes those rows alone, measuring from the first of them, and stays fully interactive, so a
+// table can be split across several views, such as the pages of a document; see NewView. The view shows only the part
+// of the range the table has rows for, so an empty range, or one that rows removed later leave empty, shows no rows;
+// ClearDrawRowRange is what lets the view show every row again.
 func (t *Table[T]) SetDrawRowRange(start, endBefore int) {
 	t.startRow = start
 	t.endBeforeRow = endBefore
+	t.hasRange = true
 }
 
-// ClearDrawRowRange clears any restricted range for sizing and drawing the table.
+// ClearDrawRowRange clears any restricted range for this view, so that it shows every row.
 func (t *Table[T]) ClearDrawRowRange() {
 	t.startRow = 0
 	t.endBeforeRow = 0
+	t.hasRange = false
 }
 
-// CurrentDrawRowRange returns the range of rows that are considered for sizing and drawing.
+// CurrentDrawRowRange returns the range of rows this view sizes, draws and interacts with: the range set by
+// SetDrawRowRange, cut back to the rows the table has, or every row when no range is set.
 func (t *Table[T]) CurrentDrawRowRange() (start, endBefore int) {
-	if t.startRow < t.endBeforeRow && t.startRow >= 0 && t.endBeforeRow <= len(t.rowCache) {
-		return t.startRow, t.endBeforeRow
+	n := len(t.rowCache)
+	if t.hasRange {
+		start = min(max(t.startRow, 0), n)
+		return start, min(max(t.endBeforeRow, start), n)
 	}
-	return 0, len(t.rowCache)
+	return 0, n
+}
+
+// rowTop returns the y coordinate of the top of the row in this view, or false if the view does not show the row.
+func (t *Table[T]) rowTop(row int) (y float32, ok bool) {
+	start, end := t.CurrentDrawRowRange()
+	if row < start || row >= end {
+		return 0, false
+	}
+	if border := t.Border(); border != nil {
+		y = border.Insets().Top
+	}
+	for r := start; r < row; r++ {
+		y += t.rowCache[r].height
+		if t.ShowRowDivider {
+			y++
+		}
+	}
+	return y, true
 }
 
 // CurrentHierarchyIndent returns the current hierarchy indent, which will be 0 if the table has no containers.
@@ -464,7 +843,7 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	// drawn in the ink that row's content is drawn in: the selection ink itself would be the ring's own background
 	// and would not be seen at all.
 	if cursorRow, cursorCol := t.leadCell(); cursorCol >= 0 {
-		if ring := t.cellCursorRing(cursorRow, cursorCol); ring.Intersects(dirty) {
+		if ring, ok := t.cellCursorRing(cursorRow, cursorCol); ok && ring.Intersects(dirty) {
 			ink := t.OnSelectionInk
 			if !focused {
 				ink = t.OnInactiveSelectionInk
@@ -481,10 +860,15 @@ const cellCursorRingWidth = 2
 
 // cellCursorRing returns the rect the cell cursor's ring is stroked along: the cell's full extent between its
 // dividers, pulled in by half the stroke so the whole of the stroke lands inside the cell, rather than CellFrame's
-// padded content area, which the cell's own content would cover. The row and column must be in range.
-func (t *Table[T]) cellCursorRing(row, col int) geom.Rect {
-	return geom.NewRect(t.columnLeft(col), t.RowFrame(row).Y, t.Columns[col].Current, t.rowCache[row].height).
-		Inset(geom.NewUniformInsets(cellCursorRingWidth / 2))
+// padded content area, which the cell's own content would cover. Reports false if this view does not show the row. The
+// column must be in range.
+func (t *Table[T]) cellCursorRing(row, col int) (geom.Rect, bool) {
+	y, ok := t.rowTop(row)
+	if !ok {
+		return geom.Rect{}, false
+	}
+	return geom.NewRect(t.columnLeft(col), y, t.Columns[col].Current, t.rowCache[row].height).
+		Inset(geom.NewUniformInsets(cellCursorRingWidth / 2)), true
 }
 
 // cellParams returns what a row is told about the cell at the given position: the inks to draw it with and the state
@@ -536,14 +920,14 @@ func panelContains(ancestor, p *Panel) bool {
 	return false
 }
 
-// hasFocus returns true if the table itself or the cell that is currently holding the keyboard focus has it.
+// hasFocus returns true if one of the table's views or the cell that is currently holding the keyboard focus has it.
 func (t *Table[T]) hasFocus() bool {
-	wnd := t.Window()
+	wnd := t.anyWindow()
 	if wnd == nil || !wnd.Focused() {
 		return false
 	}
 	focus := wnd.CurrentFocus()
-	return focus == t.AsPanel() || (t.focusedCell != nil && panelContains(t.focusedCell, focus))
+	return focus == t.AsPanel() || t.isView(focus) || (t.focusedCell != nil && panelContains(t.focusedCell, focus))
 }
 
 // adoptCellIfFocused makes cell the table's focused cell if the window's keyboard focus currently lies within it. Cells
@@ -557,23 +941,41 @@ func (t *Table[T]) hasFocus() bool {
 // reports nil whenever the focused panel can't find its window, and that is precisely the state a focused editor is in
 // at this point when its row has just moved it into a wrapper that hasn't been attached to the table yet. Adopting the
 // wrapper is what reattaches it, so asking CurrentFocus() first would refuse the adoption in the one case it exists
-// for.
+// for. For the same reason the window is whichever window of a view has its focus within the cell, since this view may
+// be in another window or in none, and the cell is attached to a view of that window (see cellHostIn).
+//
+// A focused cell holding another window's focus is released first, its view taking that focus back unless it is already
+// on its way elsewhere (see Window.loseFocus), since detaching the cell would leave that focus on a panel cut off from
+// its window.
 func (t *Table[T]) adoptCellIfFocused(cell *Panel, rowData T, row, col int) {
 	if cell == t.focusedCell {
 		return
 	}
-	wnd := t.Window()
-	if wnd == nil || wnd.focus == nil || !panelContains(cell, wnd.focus) {
+	wnd := t.focusWindowWithin(cell)
+	if wnd == nil {
 		return
 	}
-	if t.focusedCell != nil && t.focusedCell.parent == t.AsPanel() {
+	if t.focusedCell != nil {
+		if other := t.focusWindowWithin(t.focusedCell); other != nil && other != wnd {
+			t.releaseFocusedCell(other.focus != other.focusLeaving)
+			// The LostFocusCallback this runs may have adopted a cell or moved the focus out of this one.
+			if t.focusedCell != nil {
+				return
+			}
+			if wnd = t.focusWindowWithin(cell); wnd == nil {
+				return
+			}
+		}
+	}
+	host := t.cellHostIn(row, wnd)
+	if t.focusedCell != nil && t.isView(t.focusedCell.parent) {
 		t.focusedCell.parent = nil
 	}
 	t.focusedCell = cell
 	t.focusedCellRow = rowData
 	t.focusedCellRowIndex = row
 	t.focusedCellColumn = col
-	cell.parent = t.AsPanel()
+	cell.parent = host.AsPanel()
 	// The cell cursor follows the editing session, however it was started — a click into a Field, FocusCell, a Tab from
 	// the cell before it — so that Return or Escape from the editor hands the focus back to the table with the person
 	// standing on the cell they were just working in, one Escape away from the row. A cursor cannot exist without a
@@ -600,52 +1002,88 @@ func (t *Table[T]) cellFor(rowData T, row, col int) *Panel {
 	return cell
 }
 
-// releaseFocusedCell stops tracking the focused cell. If 'refocus' is true, the table takes the keyboard focus back,
-// which is what triggers the cell widget's LostFocusCallback; that is also the right thing to do when the table isn't
-// focusable or is disabled, since the focus is then simply removed, which fires the callback just the same. The order
-// here matters. The tracking fields are cleared first so that a LostFocusCallback which turns around and calls back
-// into the table (committing an edit with a SyncToModel(), for example) doesn't re-enter this with a half-cleared
-// state. The cell is detached last so that a MarkForRedraw() from that same callback can still find the window by
-// walking up the parent chain. The guard covers an application that re-parented the panel elsewhere in the meantime.
+// releaseFocusedCell stops tracking the focused cell. If 'refocus' is true, the view hosting the cell takes the
+// keyboard focus back, or, when the host is not in a window, the view cellHostIn picks in the window whose focus the
+// cell holds, if there is one, which is what triggers the cell widget's LostFocusCallback; that is also the right thing
+// to do when the view isn't focusable or is disabled, since the focus is then simply removed, which fires the callback
+// just the same. The order here matters. The tracking fields are cleared first so that a LostFocusCallback which turns
+// around and calls back into the table (committing an edit with a SyncToModel(), for example) doesn't re-enter this
+// with a half-cleared state. The cell is detached last so that a MarkForRedraw() from that same callback can still
+// find the window by walking up the parent chain. The guard covers an application that re-parented the panel elsewhere
+// in the meantime.
 func (t *Table[T]) releaseFocusedCell(refocus bool) {
 	cell := t.focusedCell
 	if cell == nil {
 		return
 	}
+	host := t.focusedCellHost()
+	row := t.focusedCellRowIndex
 	var zero T
 	t.focusedCell = nil
 	t.focusedCellRow = zero
 	t.focusedCellRowIndex = -1
 	t.focusedCellColumn = -1
 	if refocus {
-		t.RequestFocusWithoutScroll()
+		if host == nil || host.Window() == nil {
+			host = nil
+			if wnd := t.focusWindowWithin(cell); wnd != nil {
+				host = t.cellHostIn(row, wnd)
+			}
+		}
+		if host != nil {
+			host.RequestFocusWithoutScroll()
+		}
 	}
-	if cell.parent == t.AsPanel() {
+	if t.isView(cell.parent) {
 		cell.parent = nil
 	}
 }
 
 // validateFocusedCell checks that the focused cell still holds the keyboard focus and still has a row and column to
-// live in, releasing it if not and bringing its frame up to date if so. Rather than consuming the table's public
-// FocusChangeInHierarchyCallback, which belongs to the application, the state is validated lazily like this from the
-// paths that are about to rely on it: drawing, mouse handling and the model syncs.
+// live in, releasing it if not, and otherwise moving it to the view showing its row in the window whose focus it holds
+// and bringing its frame up to date there; while no view of that window shows the row, it is left as it is. Rather than
+// consuming the table's public FocusChangeInHierarchyCallback, which belongs to the application, the state is validated
+// lazily like this from the paths that are about to rely on it: drawing, mouse handling and the model syncs.
 func (t *Table[T]) validateFocusedCell() {
-	if t.focusedCell == nil {
+	cell := t.focusedCell
+	if cell == nil {
 		return
 	}
-	wnd := t.Window()
-	if wnd == nil {
-		return
-	}
-	// A cell whose LostFocusCallback is running still holds the focus, but the focus is on its way to wherever the move
-	// that runs the callback is taking it, so it is not the table's to take back: see Window.loseFocus.
-	focus := wnd.CurrentFocus()
-	inside := panelContains(t.focusedCell, focus) && focus != wnd.focusLeaving
 	row := t.focusedCellRowIndex
 	if row < 0 || row >= len(t.rowCache) || t.rowCache[row].row.ID() != t.focusedCellRow.ID() {
 		// The row cache was rebuilt underneath us, so fall back to locating the row by its ID.
 		row = t.RowToIndex(t.focusedCellRow)
 	}
+	// The cell moves to the view of its window now showing its row before the window is asked where the focus is,
+	// since a cell left in a view that has been taken out of the window cannot reach it. A view of another window is
+	// passed over, since the cell would then be cut off from the window whose focus it holds.
+	host := t.focusedCellHost()
+	wnd := t.focusWindowWithin(cell)
+	if wnd == nil && host != nil {
+		wnd = host.Window()
+	}
+	if wnd == nil {
+		if wnd = t.anyWindow(); wnd == nil {
+			return
+		}
+	}
+	var claimant *Table[T]
+	if row != -1 {
+		if claimant = t.claimingViewIn(row, wnd, false); claimant != nil && host != nil && claimant != host {
+			cell.parent = claimant.AsPanel()
+			host = claimant
+		}
+	}
+	// A cell whose LostFocusCallback is running still holds the focus, but the focus is on its way to wherever the move
+	// that runs the callback is taking it, so it is not the table's to take back: see Window.loseFocus.
+	focus := wnd.CurrentFocus()
+	if claimant == nil && row != -1 {
+		// No view of the window shows the row, for now while the views are given their new ranges or for as long as
+		// only another window does, and the view the cell is in may have been taken out of the window, so the raw focus
+		// pointer says whether it still holds the focus.
+		focus = wnd.focus
+	}
+	inside := panelContains(cell, focus) && focus != wnd.focusLeaving
 	col := t.focusedCellColumn
 	if !inside || row == -1 || col < 0 || col >= len(t.Columns) {
 		// Only ask for the focus back if it is still ours to give away; if it has already moved on to another panel,
@@ -654,7 +1092,9 @@ func (t *Table[T]) validateFocusedCell() {
 		return
 	}
 	t.focusedCellRowIndex = row
-	t.setCellFrame(t.focusedCell, t.CellFrame(row, col))
+	if claimant != nil {
+		t.setCellFrame(cell, claimant.CellFrame(row, col))
+	}
 }
 
 // setCellFrame positions a cell and brings its layout up to date without letting either step propagate up into the
@@ -684,13 +1124,21 @@ func (t *Table[T]) axHoldsCells() {}
 
 // uninstallCell detaches a cell that installCell() attached, with one exception. The cell is first offered the chance
 // to become the focused cell, since a widget inside it may have taken the keyboard focus while handling the event that
-// was just forwarded to it, and the cell that ends up holding the focus is then left attached to the table.
+// was just forwarded to it, and the cell that ends up holding the focus is then left attached to the table, in a view
+// of the window whose focus it holds: a view of another window that drew it or passed it an event hands it back, at its
+// frame there (see cellHostIn).
 func (t *Table[T]) uninstallCell(cell *Panel, row, col int) {
 	if row >= 0 && row < len(t.rowCache) && col >= 0 && col < len(t.Columns) {
 		t.adoptCellIfFocused(cell, t.rowCache[row].row, row, col)
 	}
 	if cell != t.focusedCell {
 		cell.parent = nil
+	} else if wnd := t.focusWindowWithin(cell); wnd != nil && cell.Window() != wnd {
+		host := t.cellHostIn(row, wnd)
+		cell.parent = host.AsPanel()
+		if frame := host.CellFrame(row, col); !frame.Empty() {
+			t.setCellFrame(cell, frame)
+		}
 	}
 }
 
@@ -703,14 +1151,15 @@ func (t *Table[T]) RowHeights() []float32 {
 	return heights
 }
 
-// OverRow returns the row index that the y coordinate is over, or -1 if it isn't over any row.
+// OverRow returns the index of the row that the y coordinate is over, or -1 if it isn't over any row this view shows.
 func (t *Table[T]) OverRow(y float32) int {
 	var insets geom.Insets
 	if border := t.Border(); border != nil {
 		insets = border.Insets()
 	}
+	first, last := t.CurrentDrawRowRange()
 	end := insets.Top
-	for i := range t.rowCache {
+	for i := first; i < last; i++ {
 		start := end
 		end += t.rowCache[i].height
 		if t.ShowRowDivider {
@@ -810,21 +1259,14 @@ func (t *Table[T]) ColumnEdges(col int) (left, right float32) {
 	return left, right
 }
 
-// CellFrame returns the frame of the given cell.
+// CellFrame returns the frame of the given cell, or an empty rect if this view does not show its row.
 func (t *Table[T]) CellFrame(row, col int) geom.Rect {
-	if row < 0 || col < 0 || row >= len(t.rowCache) || col >= len(t.Columns) {
+	if col < 0 || col >= len(t.Columns) {
 		return geom.Rect{}
 	}
-	var insets geom.Insets
-	if border := t.Border(); border != nil {
-		insets = border.Insets()
-	}
-	y := insets.Top
-	for r := range row {
-		y += t.rowCache[r].height
-		if t.ShowRowDivider {
-			y++
-		}
+	y, ok := t.rowTop(row)
+	if !ok {
+		return geom.Rect{}
 	}
 	return t.cellFrameAtY(row, col, y)
 }
@@ -848,18 +1290,14 @@ func (t *Table[T]) cellFrameAtY(row, col int, y float32) geom.Rect {
 	return rect
 }
 
-// RowFrame returns the frame of the row.
+// RowFrame returns the frame of the row, or an empty rect if this view does not show it.
 func (t *Table[T]) RowFrame(row int) geom.Rect {
-	if row < 0 || row >= len(t.rowCache) {
+	y, ok := t.rowTop(row)
+	if !ok {
 		return geom.Rect{}
 	}
 	rect := t.ContentRect(false)
-	for i := range row {
-		rect.Y += t.rowCache[i].height
-		if t.ShowRowDivider {
-			rect.Y++
-		}
-	}
+	rect.Y = y
 	rect.Height = t.rowCache[row].height
 	return rect
 }
@@ -883,9 +1321,9 @@ func (t *Table[T]) DefaultFocusGained() {
 	if !t.noScrollOnFocus {
 		switch {
 		case t.interactionRow != -1:
-			t.ScrollRowIntoView(t.interactionRow)
+			t.ScrollRowIntoView(t.rowIndexSince(t.interactionRowID, t.interactionRow))
 		case t.lastMouseMotionRow != -1:
-			t.ScrollRowIntoView(t.lastMouseMotionRow)
+			t.ScrollRowIntoView(t.rowIndexSince(t.lastMouseMotionRowID, t.lastMouseMotionRow))
 		default:
 			t.ScrollIntoView()
 		}
@@ -904,6 +1342,7 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 	}
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
+			id := t.rowCache[row].row.ID()
 			cell := t.cell(row, col)
 			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.UpdateCursorCallback != nil }) {
 				var cursor *Cursor
@@ -919,7 +1358,7 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 						break
 					}
 				}
-				t.uninstallCell(cell, row, col)
+				t.uninstallCellForRow(cell, id, col)
 				return cursor
 			}
 		}
@@ -934,15 +1373,21 @@ func (t *Table[T]) DefaultUpdateCursorCallback(where geom.Point) *Cursor {
 func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rect) geom.Rect {
 	if row := t.OverRow(where.Y); row != -1 {
 		if col := t.OverColumn(where.X); col != -1 {
+			id := t.rowCache[row].row.ID()
 			cell := t.cell(row, col)
 			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.UpdateTooltipCallback != nil || p.Tooltip != nil }) {
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
 				where = where.Sub(rect.Point)
-				target := cell.PanelAt(where)
 				t.borrowedTooltip = nil
 				t.TooltipImmediate = false
-				for target != t.AsPanel() {
+				// The panels from the one under the pointer up to the cell are gathered before any callback runs, since
+				// a callback may move them, even the cell into another view of the table; see adoptCellIfFocused.
+				var targets []*Panel
+				for p := cell.PanelAt(where); p != t.AsPanel(); p = p.parent {
+					targets = append(targets, p)
+				}
+				for _, target := range targets {
 					avoid = target.RectToRoot(target.ContentRect(true)).Align()
 					if target.UpdateTooltipCallback != nil {
 						SafeCall(func() { avoid = target.UpdateTooltipCallback(cell.PointTo(where, target), avoid) })
@@ -952,15 +1397,9 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 						t.TooltipImmediate = target.TooltipImmediate
 						break
 					}
-					target = target.parent
 				}
-				t.uninstallCell(cell, row, col)
+				t.uninstallCellForRow(cell, id, col)
 				return avoid
-			}
-			if cell.Tooltip != nil {
-				t.borrowedTooltip = cell.Tooltip
-				t.TooltipImmediate = cell.TooltipImmediate
-				return t.RectToRoot(t.CellFrame(row, col)).Align()
 			}
 		}
 	}
@@ -972,37 +1411,59 @@ func (t *Table[T]) DefaultUpdateTooltipCallback(where geom.Point, avoid geom.Rec
 func (t *Table[T]) DefaultMouseEnter(where geom.Point, mods mod.Modifiers) bool {
 	row := t.OverRow(where.Y)
 	col := t.OverColumn(where.X)
-	if t.lastMouseMotionRow != row || t.lastMouseMotionColumn != col {
-		t.DefaultMouseExit()
-		t.lastMouseMotionRow = row
-		t.lastMouseMotionColumn = col
+	var id tid.TID
+	if row != -1 {
+		id = t.rowCache[row].row.ID()
 	}
+	// The rows may have changed since the pointer came to the cell it was over, so that cell is told apart by its row's
+	// ID rather than by its index.
+	if t.lastMouseMotionRowID != id || t.lastMouseMotionColumn != col {
+		t.DefaultMouseExit()
+		// The exit may have changed the rows or the columns, so what the pointer is over is looked up again.
+		if row, col = t.OverRow(where.Y), t.OverColumn(where.X); row != -1 {
+			id = t.rowCache[row].row.ID()
+		} else {
+			id = ""
+		}
+	}
+	t.lastMouseMotionRow = row
+	t.lastMouseMotionRowID = id
+	t.lastMouseMotionColumn = col
 	if row != -1 && col != -1 {
 		cell := t.cell(row, col)
 		rect := t.CellFrame(row, col)
 		t.installCell(cell, rect)
 		where = where.Sub(rect.Point)
 		target := cell.PanelAt(where)
-		if target != t.lastMouseEnterCellPanel && t.lastMouseEnterCellPanel != nil {
-			t.DefaultMouseExit()
-			t.lastMouseMotionRow = row
-			t.lastMouseMotionColumn = col
+		if last := t.lastMouseEnterCellPanel; last != nil && target != last {
+			// The pointer has moved on to another panel within the cell it was over, which is installed already, so
+			// the exit is delivered here: DefaultMouseExit would install the cell itself and detach it again before
+			// the enter.
+			t.borrowedTooltip = nil
+			if last.MouseExitCallback != nil {
+				SafeCall(func() { last.MouseExitCallback() })
+			}
 		}
 		if target.MouseEnterCallback != nil {
 			SafeCall(func() { target.MouseEnterCallback(cell.PointTo(where, target), mods) })
 		}
-		t.uninstallCell(cell, row, col)
+		t.uninstallCellForRow(cell, id, col)
 		t.lastMouseEnterCellPanel = target
 	}
 	return true
 }
 
-// DefaultMouseMove provides the default mouse move handling.
+// DefaultMouseMove provides the default mouse move handling. The move goes to the cell the pointer entered, and to none
+// once a callback the enter ran has changed the rows or columns so that the pointer is no longer over that cell.
 func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 	t.DefaultMouseEnter(where, mods)
 	if t.lastMouseEnterCellPanel != nil {
 		row := t.OverRow(where.Y)
 		col := t.OverColumn(where.X)
+		id := t.lastMouseMotionRowID
+		if row == -1 || col != t.lastMouseMotionColumn || t.rowCache[row].row.ID() != id {
+			return true
+		}
 		cell := t.cell(row, col)
 		rect := t.CellFrame(row, col)
 		t.installCell(cell, rect)
@@ -1010,7 +1471,7 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 		if target := cell.PanelAt(where); target.MouseMoveCallback != nil {
 			SafeCall(func() { target.MouseMoveCallback(cell.PointTo(where, target), mods) })
 		}
-		t.uninstallCell(cell, row, col)
+		t.uninstallCellForRow(cell, id, col)
 	}
 	return true
 }
@@ -1022,16 +1483,28 @@ func (t *Table[T]) DefaultMouseMove(where geom.Point, mods mod.Modifiers) bool {
 func (t *Table[T]) DefaultMouseExit() bool {
 	t.borrowedTooltip = nil
 	if t.lastMouseEnterCellPanel != nil && t.lastMouseEnterCellPanel.MouseExitCallback != nil &&
-		t.lastMouseMotionRow >= 0 && t.lastMouseMotionRow < len(t.rowCache) &&
-		t.lastMouseMotionColumn >= 0 && t.lastMouseMotionColumn < len(t.Columns) {
-		cell := t.cell(t.lastMouseMotionRow, t.lastMouseMotionColumn)
-		rect := t.CellFrame(t.lastMouseMotionRow, t.lastMouseMotionColumn)
-		t.installCell(cell, rect)
-		SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() })
-		t.uninstallCell(cell, t.lastMouseMotionRow, t.lastMouseMotionColumn)
+		t.lastMouseMotionRow >= 0 && t.lastMouseMotionColumn >= 0 && t.lastMouseMotionColumn < len(t.Columns) {
+		// The rows may have changed since the pointer entered the cell, so its row is looked up again by its ID. Once
+		// the row is gone, the panel is told with no cell installed, as a window tells a panel taken out of it.
+		// Otherwise the cell is installed in the view of this window showing its row, which is another one when the row
+		// has left this view's range since the pointer entered it, or in this one when no view there shows the row now.
+		id, col := t.lastMouseMotionRowID, t.lastMouseMotionColumn
+		if row := t.rowIndexSince(id, t.lastMouseMotionRow); row < 0 {
+			SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() })
+		} else {
+			v := t.claimingViewIn(row, t.Window(), false)
+			if v == nil {
+				v = t
+			}
+			cell := t.cell(row, col)
+			v.installCell(cell, v.CellFrame(row, col))
+			SafeCall(func() { t.lastMouseEnterCellPanel.MouseExitCallback() })
+			v.uninstallCellForRow(cell, id, col)
+		}
 	}
 	t.lastMouseEnterCellPanel = nil
 	t.lastMouseMotionRow = -1
+	t.lastMouseMotionRowID = ""
 	t.lastMouseMotionColumn = -1
 	return true
 }
@@ -1041,7 +1514,14 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 	t.validateFocusedCell()
 	row := t.OverRow(where.Y)
 	col := t.OverColumn(where.X)
-	if t.focusedCell == nil || row != t.focusedCellRowIndex || col != t.focusedCellColumn {
+	inFocusedCell := t.focusedCell != nil && row == t.focusedCellRowIndex && col == t.focusedCellColumn
+	if inFocusedCell && t.focusedCell.Window() != t.Window() {
+		// The cell holds the focus of another window, which would go on pointing at it once it took this window's as
+		// well, so the editing there ends first, with the view it is in taking that window's focus back.
+		t.releaseFocusedCell(true)
+		inFocusedCell = false
+	}
+	if !inFocusedCell {
 		// Don't take the focus away from a cell that already has it when the press lands inside that same cell.
 		// Bouncing the focus out to the table and back again would make the cell's widget treat this as the click that
 		// first gave it the focus, so a Field would select all of its text instead of just moving the caret to the
@@ -1097,10 +1577,12 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 		}
 	}
 	if row != -1 {
+		id := t.rowCache[row].row.ID()
 		if col != -1 {
 			cell := t.cell(row, col)
 			if cell.HasInSelfOrDescendants(func(p *Panel) bool { return p.MouseDownCallback != nil }) {
 				t.interactionRow = row
+				t.interactionRowID = id
 				t.interactionColumn = col
 				rect := t.CellFrame(row, col)
 				t.installCell(cell, rect)
@@ -1112,14 +1594,17 @@ func (t *Table[T]) DefaultMouseDown(where geom.Point, button, clickCount int, mo
 						stop = target.MouseDownCallback(cell.PointTo(where, target), button, clickCount, mods)
 					})
 				}
-				t.uninstallCell(cell, row, col)
+				t.uninstallCellForRow(cell, id, col)
 				if stop {
 					return stop
 				}
 			}
 		}
-		rowData := t.rowCache[row].row
-		id := rowData.ID()
+		// The cell's MouseDownCallback, or a commit set off by the focus moving into the cell, may have changed the
+		// rows, so the pressed row is looked up again, and a press on a row that is gone leaves the selection alone.
+		if row = t.rowIndexSince(id, row); row < 0 {
+			return true
+		}
 		// Every branch below acts on the selection, including the one that only notes the row for the mouse up to
 		// settle, so the row the person is on is this one whichever way the press is modified.
 		t.setLead(id)
@@ -1210,19 +1695,47 @@ func (t *Table[T]) DefaultMouseDrag(where geom.Point, button int, mods mod.Modif
 				}
 				stop = true
 			}
-		} else if t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseDragCallback != nil &&
-			t.interactionRow < len(t.rowCache) && t.interactionColumn < len(t.Columns) {
-			cell := t.cell(t.interactionRow, t.interactionColumn)
-			rect := t.CellFrame(t.interactionRow, t.interactionColumn)
-			t.installCell(cell, rect)
-			where = where.Sub(rect.Point)
-			SafeCall(func() {
-				stop = t.lastMouseDownCellPanel.MouseDragCallback(cell.PointTo(where, t.lastMouseDownCellPanel),
-					button, mods)
+		} else if t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseDragCallback != nil {
+			stop = t.forwardToPressedCell(where, func(target *Panel, pt geom.Point) bool {
+				return target.MouseDragCallback(pt, button, mods)
 			})
-			t.uninstallCell(cell, t.interactionRow, t.interactionColumn)
 		}
 	}
+	return stop
+}
+
+// forwardToPressedCell hands an event of the gesture a press on a cell began to the panel the press went to, returning
+// what deliver returns. The rows may have changed since the press, so the cell's row is looked up by its ID, and the
+// cell is installed in this view or, once the row has left this view's range, in the view of this window now showing
+// it, with where converted from this view's coordinates into the panel's. Nothing is delivered once no view there shows
+// the row.
+func (t *Table[T]) forwardToPressedCell(where geom.Point, deliver func(target *Panel, where geom.Point) bool) bool {
+	target := t.lastMouseDownCellPanel
+	col := t.interactionColumn
+	if target == nil || t.interactionRow == -1 || col < 0 || col >= len(t.Columns) {
+		return false
+	}
+	row := t.rowIndexSince(t.interactionRowID, t.interactionRow)
+	if row < 0 {
+		return false
+	}
+	t.interactionRow = row
+	v := t
+	y, ok := t.rowTop(row)
+	if !ok {
+		if v = t.rowViewIn(row, t.Window()); v == nil {
+			return false
+		}
+		y, _ = v.rowTop(row)
+		where = t.PointTo(where, v.AsPanel())
+	}
+	cell := t.cell(row, col)
+	rect := v.cellFrameAtY(row, col, y)
+	v.installCell(cell, rect)
+	where = where.Sub(rect.Point)
+	stop := false
+	SafeCall(func() { stop = deliver(target, cell.PointTo(where, target)) })
+	v.uninstallCellForRow(cell, t.interactionRowID, col)
 	return stop
 }
 
@@ -1254,17 +1767,10 @@ func (t *Table[T]) DefaultMouseUp(where geom.Point, button int, mods mod.Modifie
 		t.notifyOfSelectionChange()
 	}
 
-	if !stop && t.interactionRow != -1 && t.interactionColumn != -1 && t.interactionRow < len(t.rowCache) &&
-		t.interactionColumn < len(t.Columns) && t.lastMouseDownCellPanel != nil &&
-		t.lastMouseDownCellPanel.MouseUpCallback != nil {
-		cell := t.cell(t.interactionRow, t.interactionColumn)
-		rect := t.CellFrame(t.interactionRow, t.interactionColumn)
-		t.installCell(cell, rect)
-		where = where.Sub(rect.Point)
-		SafeCall(func() {
-			stop = t.lastMouseDownCellPanel.MouseUpCallback(cell.PointTo(where, t.lastMouseDownCellPanel), button, mods)
+	if !stop && t.lastMouseDownCellPanel != nil && t.lastMouseDownCellPanel.MouseUpCallback != nil {
+		stop = t.forwardToPressedCell(where, func(target *Panel, pt geom.Point) bool {
+			return target.MouseUpCallback(pt, button, mods)
 		})
-		t.uninstallCell(cell, t.interactionRow, t.interactionColumn)
 	}
 	t.lastMouseDownCellPanel = nil
 	t.interactionRow = -1
@@ -1282,7 +1788,12 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 		// the focused cell's chain runs through the table. The widget didn't want the key, but that doesn't make it
 		// ours to act on -- running the row navigation or the Space-to-DoubleClickCallback shortcut below would move
 		// the selection out from under something the user is editing -- so only the keys that mean "leave this cell"
-		// are handled, and everything else is ignored.
+		// are handled, and everything else is ignored. The focus goes back to the view the cell is in, which is not
+		// this one when validateFocusedCell has just moved the cell to the view now showing its row.
+		host := t.focusedCellHost()
+		if host == nil {
+			host = t
+		}
 		switch keyCode {
 		case KeyTab:
 			if mods&(mod.NonSticky&^mod.Shift) == 0 {
@@ -1291,14 +1802,14 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 				}
 				// There is no cell left to move to in that direction, so take the focus back and report the key as
 				// unhandled. Window.keyPressed() then applies its own Tab fallback, which traverses from the window's
-				// focus -- the table, now -- and lands on the panel just after or just before it, which is exactly what
-				// a Tab from the table itself would have done.
-				t.RequestFocusWithoutScroll()
+				// focus -- the view, now -- and lands on the panel just after or just before it, which is exactly what
+				// a Tab from the view itself would have done.
+				host.RequestFocusWithoutScroll()
 			}
 			return false
 		case KeyReturn, KeyNumPadEnter, KeyEscape:
 			// Taking the focus back ends the editing; the widget's LostFocusCallback fires from within SetFocus().
-			t.RequestFocusWithoutScroll()
+			host.RequestFocusWithoutScroll()
 			return true
 		default:
 			return false
@@ -1456,6 +1967,26 @@ func (t *Table[T]) arriveAtRow(index, keepCol int) {
 	t.setLeadByIndex(index)
 	t.setLeadColumn(keepCol)
 	t.ScrollRowCellIntoView(index, max(keepCol, 0))
+	t.followLead()
+}
+
+// followLead hands the keyboard focus to the view showing the row the person is on when another view of the table
+// holds it, since only the view holding the focus can report it on one of its rows to an assistive technology. That is
+// done only within this view's window (see anyWindow), since the focus of another window is not the person's to move,
+// and only for a view that can take the focus, since asking one that cannot would take it away altogether.
+func (t *Table[T]) followLead() {
+	if len(t.views) < 2 || t.focusedCell != nil {
+		return
+	}
+	wnd := t.anyWindow()
+	if wnd == nil {
+		return
+	}
+	if focus := wnd.CurrentFocus(); t.isView(focus) {
+		if v := t.claimingViewIn(t.axCurrentRow(), wnd, true); v != nil && v.AsPanel() != focus {
+			v.RequestFocusWithoutScroll()
+		}
+	}
 }
 
 // cellCursorKeyDown handles the keys that mean something only while the cell cursor is on a cell, and reports whether
@@ -1567,9 +2098,15 @@ func (t *Table[T]) focusCellAt(row, col int, forward bool) bool {
 	if row < 0 || row >= len(t.rowCache) || col < 0 || col >= len(t.Columns) {
 		return false
 	}
-	wnd := t.Window()
+	// The cell is focused in the view showing its row in this view's window (see anyWindow), and in none while no view
+	// there shows it, since an editor nobody can see must not take the keys and the focus of another window is not the
+	// person's to move.
+	wnd := t.anyWindow()
 	if wnd == nil {
 		return false
+	}
+	if v := t.claimingViewIn(row, wnd, false); v != t {
+		return v != nil && v.focusCellAt(row, col, forward)
 	}
 	cell := t.cell(row, col)
 	if cell.Hidden {
@@ -1745,14 +2282,27 @@ func (t *Table[T]) SetLeadCell(row, col int) bool {
 	t.axSelectOnly(id)
 	t.setLead(id)
 	t.setLeadColumn(col)
-	if col < 0 {
-		// At row level there is no one cell to bring into view: the row is what the person is on, so the row is what is
-		// scrolled to, exactly as the keys that step back out of the cells do.
-		t.ScrollRowIntoView(row)
-	} else {
-		t.ScrollRowCellIntoView(row, col)
+	// The row is looked up again, since the SelectionChangedCallback axSelectOnly runs may have changed the rows.
+	if row = t.rowIndexSince(id, row); row >= 0 {
+		if col < 0 {
+			// At row level there is no one cell to bring into view: the row is what the person is on, so the row is
+			// what is scrolled to, exactly as the keys that step back out of the cells do.
+			t.ScrollRowIntoView(row)
+		} else {
+			t.ScrollRowCellIntoView(row, col)
+		}
 	}
+	t.followLead()
 	return true
+}
+
+// rowIndexSince returns the index of the row with the given id, which was at index was before something that may have
+// changed the rows ran, or -1 if the table no longer shows it. Only a row that has moved costs a walk of the rows.
+func (t *Table[T]) rowIndexSince(id tid.TID, was int) int {
+	if was >= 0 && was < len(t.rowCache) && t.rowCache[was].row.ID() == id {
+		return was
+	}
+	return t.axRowIndexForID(id)
 }
 
 // setLeadColumn moves the cell cursor to the given column, or to row level for -1. As with the lead row, a change to it
@@ -2122,12 +2672,8 @@ func (t *Table[T]) SyncToModel() {
 	// The row cache was just thrown away and rebuilt, so the row the person was on may no longer be among the rows the
 	// table shows — a row that was filtered out, or whose container was closed.
 	t.pruneLead()
-	_, pref, _ := t.DefaultSizes(geom.Size{})
-	rect := t.FrameRect()
-	rect.Size = pref
-	t.SetFrameRect(rect)
+	t.fitViewFrames()
 	t.MarkForRedraw()
-	t.MarkForLayoutRecursivelyUpward()
 	// The row cache was just thrown away and rebuilt, so a cell that holds the keyboard focus needs to have its row
 	// located again, or be released if its row is no longer being displayed at all.
 	t.validateFocusedCell()
@@ -2210,7 +2756,7 @@ func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32
 
 // SizeColumnsToFitWithExcessIn sizes each column to its preferred size, with the exception of the column with the given
 // ID, which gets set to any remaining width left over. If the provided column ID doesn't exist, the first column will
-// be used instead.
+// be used instead. The width filled is this view's, so the views of a table are expected to share a width.
 func (t *Table[T]) SizeColumnsToFitWithExcessIn(columnID int) {
 	excessColumnIndex := max(t.ColumnIndexForID(columnID), 0)
 	current := make([]float32, len(t.Columns))
@@ -2258,12 +2804,14 @@ func (t *Table[T]) SizeColumnsToFitWithExcessIn(columnID int) {
 		t.Columns[col].Current = current[col]
 		width -= current[col]
 	}
-	t.Columns[excessColumnIndex].Current = max(width, t.Columns[excessColumnIndex].Minimum)
+	if excessColumnIndex < len(t.Columns) {
+		t.Columns[excessColumnIndex].Current = max(width, t.Columns[excessColumnIndex].Minimum)
+	}
 	t.SyncRowHeights()
 }
 
-// SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the Table's FrameRect will be set to
-// its preferred size as well.
+// SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the FrameRect of each view will be set
+// to its preferred size as well, and the view marked for layout.
 func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 	current := make([]float32, len(t.Columns))
 	for col := range t.Columns {
@@ -2298,15 +2846,12 @@ func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 	}
 	t.SyncRowHeights()
 	if adjust {
-		_, pref, _ := t.DefaultSizes(geom.Size{})
-		rect := t.FrameRect()
-		rect.Size = pref
-		t.SetFrameRect(rect)
+		t.fitViewFrames()
 	}
 }
 
-// SizeColumnToFit sizes the specified column to its preferred size. If 'adjust' is true, the Table's FrameRect will be
-// set to its preferred size as well.
+// SizeColumnToFit sizes the specified column to its preferred size. If 'adjust' is true, the FrameRect of each view
+// will be set to its preferred size as well, and the view marked for layout.
 func (t *Table[T]) SizeColumnToFit(col int, adjust bool) {
 	if col < 0 || col >= len(t.Columns) {
 		return
@@ -2337,10 +2882,7 @@ func (t *Table[T]) SizeColumnToFit(col int, adjust bool) {
 	t.Columns[col].Current = current
 	t.SyncRowHeights()
 	if adjust {
-		_, pref, _ := t.DefaultSizes(geom.Size{})
-		rect := t.FrameRect()
-		rect.Size = pref
-		t.SetFrameRect(rect)
+		t.fitViewFrames()
 	}
 }
 
@@ -2356,14 +2898,16 @@ func (t *Table[T]) SyncRowHeights() {
 }
 
 // EventuallySizeColumnsToFit sizes each column to its preferred size after a short delay, allowing multiple
-// back-to-back calls to this function to only do work once. If 'adjust' is true, the Table's FrameRect will be set to
-// its preferred size as well.
+// back-to-back calls to this function to only do work once. If 'adjust' is true, the FrameRect of each view will be set
+// to its preferred size as well, and the view marked for layout.
 func (t *Table[T]) EventuallySizeColumnsToFit(adjust bool) {
 	if !t.awaitingSizeColumnsToFit {
 		t.awaitingSizeColumnsToFit = true
+		// The work is done through the primary view, since the view asking may have been removed by then.
+		state := t.tableState
 		InvokeTaskAfter(func() {
-			defer func() { t.awaitingSizeColumnsToFit = false }()
-			t.SizeColumnsToFit(adjust)
+			defer func() { state.awaitingSizeColumnsToFit = false }()
+			state.views[0].SizeColumnsToFit(adjust)
 		}, 20*time.Millisecond)
 	}
 }
@@ -2373,9 +2917,11 @@ func (t *Table[T]) EventuallySizeColumnsToFit(adjust bool) {
 func (t *Table[T]) EventuallySyncToModel() {
 	if !t.awaitingSyncToModel {
 		t.awaitingSyncToModel = true
+		// The work is done through the primary view, since the view asking may have been removed by then.
+		state := t.tableState
 		InvokeTaskAfter(func() {
-			defer func() { t.awaitingSyncToModel = false }()
-			t.SyncToModel()
+			defer func() { state.awaitingSyncToModel = false }()
+			state.views[0].SyncToModel()
 		}, 20*time.Millisecond)
 	}
 }
@@ -2430,17 +2976,24 @@ func (t *Table[T]) LastRowIndex() int {
 	return len(t.rowCache) - 1
 }
 
-// ScrollRowIntoView scrolls the row at the given index into view.
+// ScrollRowIntoView scrolls the row at the given index into view, within the view showing it in this view's window or,
+// when this view is in none, in the window of the first view that is in one. Nothing is scrolled while no view there
+// shows the row.
 func (t *Table[T]) ScrollRowIntoView(row int) {
-	if frame := t.RowFrame(row); !frame.Empty() {
-		t.ScrollRectIntoView(frame)
+	if v := t.claimingViewIn(row, t.anyWindow(), false); v != nil {
+		if frame := v.RowFrame(row); !frame.Empty() {
+			v.ScrollRectIntoView(frame)
+		}
 	}
 }
 
-// ScrollRowCellIntoView scrolls the cell from the row and column at the given indexes into view.
+// ScrollRowCellIntoView scrolls the cell from the row and column at the given indexes into view, within the view
+// showing its row in the window ScrollRowIntoView picks.
 func (t *Table[T]) ScrollRowCellIntoView(row, col int) {
-	if frame := t.CellFrame(row, col); !frame.Empty() {
-		t.ScrollRectIntoView(frame)
+	if v := t.claimingViewIn(row, t.anyWindow(), false); v != nil {
+		if frame := v.CellFrame(row, col); !frame.Empty() {
+			v.ScrollRectIntoView(frame)
+		}
 	}
 }
 
@@ -2523,9 +3076,23 @@ func (t *Table[T]) clearFilter() {
 // a sort in force.
 func (t *Table[T]) finishFilterChange() {
 	t.SyncToModel()
-	if t.header != nil && t.header.HasSort() {
-		t.header.ApplySort()
+	if h := t.sortHeader(); h != nil && h.HasSort() {
+		h.ApplySort()
 	}
+}
+
+// sortHeader returns the first header among the table's views, or nil if none has one. The headers of a table's views
+// share their column headers, and so their sort state.
+func (t *Table[T]) sortHeader() *TableHeader[T] {
+	if t.header != nil {
+		return t.header
+	}
+	for _, v := range t.views {
+		if v.header != nil {
+			return v.header
+		}
+	}
+	return nil
 }
 
 // rebuildFilterHierarchy derives the rows a hierarchical filter shows from those that passed it. The model is walked so
@@ -2588,8 +3155,9 @@ func (t *Table[T]) applyFilter(row T, filter func(row T) bool) {
 	}
 }
 
-// InstallDragSupport installs default drag support into a table. This will chain a function to any existing
-// MouseDragCallback.
+// InstallDragSupport installs default drag support into this view of a table, so each view that rows should be dragged
+// from needs its own call. This will chain a function to any existing MouseDragCallback. The TableDragData.Table of a
+// drag is the view it started in.
 func (t *Table[T]) InstallDragSupport(svg *SVG, dataType *uti.DataType, singularName, pluralName string) {
 	orig := t.MouseDragCallback
 	t.MouseDragCallback = func(where geom.Point, button int, mods mod.Modifiers) bool {
@@ -2622,13 +3190,14 @@ func (t *Table[T]) InstallDragSupport(svg *SVG, dataType *uti.DataType, singular
 	}
 }
 
-// InstallDropSupport installs default drop support into this table. This will replace any existing
-// CanAcceptDropCallback, DragEnteredCallback, DragUpdatedCallback, DragExitedCallback, and DropCallback functions. It
-// will also chain a function to any existing DrawOverCallback. The shouldMoveDataCallback is called when a drop is
-// about to occur to determine if the data should be moved (i.e. removed from the source) or copied to the destination.
-// The willDropCallback is called before the actual data changes are made, giving an opportunity to start an undo
-// event, which should be returned. The didDropCallback is called after data changes are made and is passed the undo
-// event (if any) returned by the willDropCallback, so that the undo event can be completed and posted.
+// InstallDropSupport installs default drop support into this view of a table, so each view that should accept drops
+// needs its own call. This will replace any existing CanAcceptDropCallback, DragEnteredCallback, DragUpdatedCallback,
+// DragExitedCallback, and DropCallback functions. It will also chain a function to any existing DrawOverCallback. The
+// shouldMoveDataCallback is called when a drop is about to occur to determine if the data should be moved (i.e. removed
+// from the source) or copied to the destination. The willDropCallback is called before the actual data changes are
+// made, giving an opportunity to start an undo event, which should be returned. The didDropCallback is called after
+// data changes are made and is passed the undo event (if any) returned by the willDropCallback, so that the undo event
+// can be completed and posted. The tables these callbacks are handed are views; use SameTable to compare them.
 func (t *Table[T]) InstallDropSupport[U any](dataType *uti.DataType, shouldMoveDataCallback func(from, to *Table[T]) bool, willDropCallback func(from, to *Table[T], move bool) *UndoEdit[U], didDropCallback func(undo *UndoEdit[U], from, to *Table[T], move bool)) *TableDrop[T, U] {
 	drop := &TableDrop[T, U]{
 		Table:                  t,
@@ -2682,11 +3251,12 @@ func (t *Table[T]) RequestFocusWithoutScroll() {
 }
 
 // FocusCell gives the keyboard focus to the widget in the cell at the given row and column (the cell itself if it is
-// focusable, otherwise its first focusable descendant), scrolling the cell into view. It returns false if the indexes
-// are out of range, the table is not in a window, or the cell has nothing that can take the focus. Taking the focus
-// puts the person on that cell: the row becomes the whole of the selection if it was not already and the cell cursor
-// lands on the column, so that Escape from the editor hands the focus back to the table on the cell that was being
-// edited. See adoptCellIfFocused.
+// focusable, otherwise its first focusable descendant), scrolling the cell into view. The cell is focused in the view
+// showing its row in this view's window, or in the window of the first view in one when this view is in none. It
+// returns false if the indexes are out of range, no view there shows the row, or the cell has nothing that can take the
+// focus. Taking the focus puts the person on that cell: the row becomes the whole of the selection if it was not
+// already and the cell cursor lands on the column, so that Escape from the editor hands the focus back to the table on
+// the cell that was being edited. See adoptCellIfFocused.
 func (t *Table[T]) FocusCell(row, col int) bool {
 	t.validateFocusedCell()
 	return t.focusCellAt(row, col, true)
@@ -2711,6 +3281,10 @@ func (t *Table[T]) FocusedCell() (row, col int) {
 // the keyboard focus. A table may hold far more rows than it shows; what an assistive technology asks about is what is
 // on the screen, what the selection is, and where the focus is.
 //
+// A view describes only the rows in its own range (see SetDrawRowRange), with their indexes in the whole table, which
+// is also what the row count reports. Its row ids belong to the view, so a row that moves to another view is described
+// under a new id.
+//
 // The keyboard focus the table holds is reported on the row the person is on, or, while the cell cursor is on one of
 // that row's cells, on the cell itself, so that a screen reader reads out the row as the person moves down it and the
 // cell as they move across it.
@@ -2726,19 +3300,21 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	node.Multiselectable = true
 	node.RowCount = len(t.rowCache)
 	node.ColumnCount = len(t.Columns)
-	if t.header != nil {
+	if h := t.sortHeader(); h != nil {
 		// A table and its header are separate panels — the header goes into the column-header slot of the scroll panel
 		// whose content is the table — so the header is nowhere within the table's own subtree and nothing else would
 		// say that the two belong together. All three platform adapters look here first and fall back to a proximity
 		// search that gives up when an ancestor holds more than one table, so a window that puts two tables under one
-		// common ancestor would otherwise report no column headers for either of them.
-		node.Controls = append(node.Controls, b.IDFor(t.header))
+		// common ancestor would otherwise report no column headers for either of them. A view without a header of its
+		// own names the header of another view of the table.
+		node.Controls = append(node.Controls, b.IDFor(h))
 	}
 	// Pressing the table is not activating it; the default behavior would synthesize a click at the center of the
 	// table's whole frame, which for a table in a scroll panel lands on a row somewhere near the middle of the model,
 	// far from anything that can be seen, and replaces the selection with it.
 	node.Actions = node.Actions.Without(accessibility.Press)
-	if len(t.rowCache) == 0 {
+	start, end := t.CurrentDrawRowRange()
+	if start == end {
 		return
 	}
 	focusedRow := -1
@@ -2782,7 +3358,7 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	var depthTops []float32
 	// The last row described, so that a row arriving without the one before it can bring its ancestors with it.
 	last := -1
-	for row := range t.rowCache {
+	for row := start; row < end; row++ {
 		entry := &t.rowCache[row]
 		rect.Height = entry.height
 		if t.hasHierarchy {
@@ -2807,9 +3383,9 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			}
 			last = row
 		case row == currentRow:
-			// The row the focus is to be reported on is described however far out of sight it is and whatever the cap
-			// on selected rows has reached: it is where the person is. It is not counted against that cap, so the rest
-			// of the selection is described exactly as much as it would have been without it.
+			// The row the focus is to be reported on is described however far out of sight it is within the view and
+			// whatever the cap on selected rows has reached: it is where the person is. It is not counted against that
+			// cap, so the rest of the selection is described exactly as much as it would have been without it.
 			if outOfSequence {
 				t.axAddRowAncestors(b, row, depthTops, titles)
 			}
@@ -2876,23 +3452,40 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 // whenever the two belong to different parts of the model. Bringing its ancestors along keeps the flat list honest;
 // they are described as the rows they are, with nothing in them, exactly as any other row that cannot be seen is.
 //
-// depthTops holds the top of the most recent row seen at each depth, which is where each of the ancestors sits, and
-// titles holds what each column is called, as axAddRow takes them.
+// depthTops holds the top of the most recent row seen at each depth, which is where each of the ancestors this view
+// shows sits, and titles holds what each column is called, as axAddRow takes them. An ancestor above this view's range
+// is placed where a view in this view's window shows it, or else stacked with any others like it just above this view's
+// first row, the outermost highest.
 func (t *Table[T]) axAddRowAncestors(b *AccessibilityBuilder, row int, depthTops []float32, titles []string) {
 	var chain []int
 	for parent := t.rowCache[row].parent; parent >= 0 && parent < len(t.rowCache); parent = t.rowCache[parent].parent {
 		chain = append(chain, parent)
 	}
+	start, _ := t.CurrentDrawRowRange()
+	above, _ := t.rowTop(start)
 	rect := t.ContentRect(false)
-	for i := len(chain) - 1; i >= 0; i-- {
-		ancestor := chain[i]
-		if depth := t.rowCache[ancestor].depth; depth < len(depthTops) {
+	frames := make([]geom.Rect, len(chain))
+	for i, ancestor := range chain {
+		rect.Height = t.rowCache[ancestor].height
+		if ancestor < start {
+			if v := t.claimingViewIn(ancestor, t.Window(), false); v != nil && v != t {
+				frames[i] = v.RectTo(v.RowFrame(ancestor), t.AsPanel())
+				continue
+			}
+			above -= rect.Height
+			if t.ShowRowDivider {
+				above--
+			}
+			rect.Y = above
+		} else if depth := t.rowCache[ancestor].depth; depth < len(depthTops) {
 			rect.Y = depthTops[depth]
 		}
-		rect.Height = t.rowCache[ancestor].height
+		frames[i] = rect
+	}
+	for i := len(chain) - 1; i >= 0; i-- {
 		// An ancestor that has already been described is left where it is: adding it again would list it among the
 		// table's children twice, which is what every position counted out of that list would then be wrong about.
-		t.axAddRow(b, ancestor, rect, true, titles)
+		t.axAddRow(b, chain[i], frames[i], true, titles)
 	}
 }
 
@@ -3150,13 +3743,14 @@ func (t *Table[T]) axColumnTitles() []string {
 }
 
 // axColumnTitle returns the title of a column, which is what the column header standing over it is called, or an empty
-// string when the table has no header attached or the header has no column header for that column. The columns
-// themselves carry no titles: a title is something a header shows, and a table without one shows none.
+// string when no view of the table has a header attached or the header has no column header for that column. The
+// columns themselves carry no titles: a title is something a header shows, and a table without one shows none.
 func (t *Table[T]) axColumnTitle(col int) string {
-	if t.header == nil || col < 0 || col >= len(t.header.ColumnHeaders) {
+	h := t.sortHeader()
+	if h == nil || col < 0 || col >= len(h.ColumnHeaders) {
 		return ""
 	}
-	panel := t.header.ColumnHeaders[col].AsPanel()
+	panel := h.ColumnHeaders[col].AsPanel()
 	return axColumnHeaderName(panel, axLabelOf(panel))
 }
 
@@ -3243,7 +3837,11 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		SafeCall(t.DoubleClickCallback)
 	case accessibility.Select:
 		t.axSelectOnly(id)
-		t.ScrollRowIntoView(row)
+		// The row is looked up again, since the SelectionChangedCallback axSelectOnly runs may have changed the rows.
+		if row = t.rowIndexSince(id, row); row >= 0 {
+			t.ScrollRowIntoView(row)
+		}
+		t.followLead()
 	case accessibility.AddToSelection:
 		if !t.IsRowSelected(row) {
 			// A row that is already in the selection has nothing to be added to it. SelectByIndex would tell the
@@ -3252,7 +3850,11 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 			// it does on a change to the selection over and over. The mouse path counts the same way.
 			t.SelectByIndex(row)
 		}
-		t.ScrollRowIntoView(row)
+		// The row is looked up again, since the SelectionChangedCallback SelectByIndex runs may have changed the rows.
+		if row = t.rowIndexSince(id, row); row >= 0 {
+			t.ScrollRowIntoView(row)
+		}
+		t.followLead()
 	case accessibility.RemoveFromSelection:
 		if t.IsRowSelected(row) {
 			// As above: a row that is not selected has nothing to be taken out of the selection, and the row is left
@@ -3266,11 +3868,25 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		if !t.SetLeadCell(row, col) {
 			return false
 		}
-		t.RequestFocusWithoutScroll()
-		if wnd := t.Window(); wnd == nil || !t.Is(wnd.CurrentFocus()) {
+		// The row is looked up again, since the SelectionChangedCallback SetLeadCell runs may have changed the rows.
+		if row = t.axRowIndexForID(id); row < 0 {
+			return false
+		}
+		// The focus goes to the view showing the row in this view's window (see anyWindow) that can take it, since the
+		// focus of another window is not the person's to move and asking a view that cannot take it would take it away
+		// altogether.
+		wnd := t.anyWindow()
+		if wnd == nil {
+			return false
+		}
+		v := t.claimingViewIn(row, wnd, true)
+		if v == nil {
+			return false
+		}
+		v.RequestFocusWithoutScroll()
+		if !v.Is(wnd.CurrentFocus()) {
 			// A focus request that did not leave the focus where it said it would must be reported as refused rather
-			// than as carried out, exactly as axDispatchAction checks for a real panel: the window may decline it, and
-			// a table with no window cannot take it at all.
+			// than as carried out, exactly as axDispatchAction checks for a real panel: the window may decline it.
 			return false
 		}
 	case accessibility.Expand:
@@ -3294,12 +3910,14 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 // axShowRowContextMenu opens the table's contextual menu for an assistive technology on behalf of the row with the
 // given id, or of a cell of it when col is not negative: the table takes the focus when it can hold it, since the
 // menu's commands act on whatever holds it, selectRowForContextMenu readies the row as a right-click would, and the
-// cell cursor goes to the cell, or to row level. The menu opens beneath the row or cell, scrolled into view. Refused,
-// with nothing changed, when axMayShowContextMenu says so. A mouse button still held is released first, since a native
-// menu's tracking loop would swallow its release, and before the row is readied, since the release may narrow the
-// selection or change the rows. The row is looked up only once the focus has moved, since a Field in the focused cell
-// may commit on losing it and rebuild the rows, and again after it is readied, since a SelectionChangedCallback may
-// change the rows too; whether the menu may still open is asked again after each step as well.
+// cell cursor goes to the cell, or to row level. The menu opens beneath the row or cell, scrolled into view, or at
+// DefaultContextMenuAnchor when no view in the table's window shows the row. Refused, with nothing changed, when
+// axMayShowContextMenu says so. A mouse button still held is released first, since a native menu's tracking loop would
+// swallow its release, and before the row is readied, since the release may narrow the selection or change the rows.
+// The row is looked up only once the focus has moved, since a Field in the focused cell may commit on losing it and
+// rebuild the rows, again after it is readied, since a SelectionChangedCallback may change the rows too, and again once
+// the view showing it has taken the focus, the menu then opening in whichever view shows it; whether the menu may still
+// open is asked again after each step as well.
 func (t *Table[T]) axShowRowContextMenu(id tid.TID, col int) bool {
 	if !axMayShowContextMenu(t.AsPanel()) {
 		return false
@@ -3328,15 +3946,39 @@ func (t *Table[T]) axShowRowContextMenu(id tid.TID, col int) bool {
 		col = -1
 	}
 	t.setLeadColumn(col)
+	// The menu opens over the row in the view showing it, which takes the focus as this one would have, or at this
+	// view's default anchor when no view in its window shows the row.
+	v := t.rowViewIn(row, t.Window())
+	if v == nil {
+		return t.ShowContextMenu(t.DefaultContextMenuAnchor())
+	}
+	if v != t {
+		if v.Focusable() {
+			v.RequestFocusWithoutScroll()
+		}
+		if row = t.axRowIndexForID(id); row < 0 {
+			return false
+		}
+		// Taking the focus may have moved the row to another view as well, which shows the menu without being handed
+		// the focus in turn.
+		if v = t.rowViewIn(row, t.Window()); v == nil {
+			return t.ShowContextMenu(t.DefaultContextMenuAnchor())
+		}
+		if !axMayShowContextMenu(v.AsPanel()) {
+			return false
+		}
+		// Taking the focus may also have cut the columns back, which leaves the cursor on the last one (see leadCell).
+		col = min(col, len(t.Columns)-1)
+	}
 	var frame geom.Rect
 	if col >= 0 {
 		t.ScrollRowCellIntoView(row, col)
-		frame = t.CellFrame(row, col)
+		frame = v.CellFrame(row, col)
 	} else {
 		t.ScrollRowIntoView(row)
-		frame = t.RowFrame(row)
+		frame = v.RowFrame(row)
 	}
-	return t.ShowContextMenu(geom.NewPoint(frame.X, frame.Bottom()))
+	return v.ShowContextMenu(geom.NewPoint(frame.X, frame.Bottom()))
 }
 
 // selectRowForContextMenu readies the row at the given index for the contextual menu about to open over it and makes it
@@ -3370,18 +4012,24 @@ func (t *Table[T]) ContextMenuPressed(where geom.Point, mods mod.Modifiers) bool
 // contextMenuOwnerWithin implements contextMenuOwnerResolver for a widget in the cell under the given point that offers
 // a contextual menu of its own; see findCellContextMenuOwner. The table takes the focus first, when it can hold it,
 // unless the press lies within the focused cell, as DefaultMouseDown does: the panel losing the focus may commit and
-// change the rows, and the cell to look in is the one under the pointer once it has. The widget, or its first
-// focusable child, is then given the focus, unless the focus is already within the widget, so that the cell stays
-// attached as the focused cell until the release opens the menu. Returns nil, leaving the press to the table, when
-// there is no such widget or the widget is not within the focused cell afterwards.
+// change the rows, and the cell to look in is the one under the pointer once it has. A focused cell holding another
+// window's focus is released first, as DefaultMouseDown releases it. The widget, or its first focusable child, is then
+// given the focus, unless the focus is already within the widget, so that the cell stays attached as the focused cell
+// until the release opens the menu. Returns nil, leaving the press to the table, when there is no such widget or the
+// widget is not within the focused cell afterwards.
 func (t *Table[T]) contextMenuOwnerWithin(where geom.Point) *Panel {
 	t.validateFocusedCell()
 	wnd := t.Window()
 	if wnd == nil {
 		return nil
 	}
-	if row, col := t.OverRow(where.Y), t.OverColumn(where.X); t.Focusable() && (t.focusedCell == nil ||
-		row != t.focusedCellRowIndex || col != t.focusedCellColumn) {
+	row, col := t.OverRow(where.Y), t.OverColumn(where.X)
+	inFocusedCell := t.focusedCell != nil && row == t.focusedCellRowIndex && col == t.focusedCellColumn
+	if inFocusedCell && t.focusedCell.Window() != wnd {
+		t.releaseFocusedCell(true)
+		inFocusedCell = false
+	}
+	if !inFocusedCell && t.Focusable() {
 		t.RequestFocusWithoutScroll()
 	}
 	var owner *Panel
@@ -3502,21 +4150,30 @@ func (t *Table[T]) uninstallCellForRow(cell *Panel, id tid.TID, col int) {
 }
 
 // ContextMenuAnchor implements ContextMenuAnchorer, returning the point beneath the row the person is on, or beneath
-// the cell the cell cursor is on, scrolled into view first. With nothing selected, it returns DefaultContextMenuAnchor.
+// the cell the cell cursor is on, scrolled into view first, in this view's coordinates whichever view shows the row.
+// With nothing selected, or with no view in this view's window showing the row, it returns DefaultContextMenuAnchor.
 func (t *Table[T]) ContextMenuAnchor() geom.Point {
 	row := t.axCurrentRow()
 	if row < 0 {
 		return t.DefaultContextMenuAnchor()
 	}
+	v := t.rowViewIn(row, t.Window())
+	if v == nil {
+		return t.DefaultContextMenuAnchor()
+	}
 	var frame geom.Rect
 	if leadRow, leadCol := t.leadCell(); leadRow == row && leadCol >= 0 {
 		t.ScrollRowCellIntoView(row, leadCol)
-		frame = t.CellFrame(row, leadCol)
+		frame = v.CellFrame(row, leadCol)
 	} else {
 		t.ScrollRowIntoView(row)
-		frame = t.RowFrame(row)
+		frame = v.RowFrame(row)
 	}
-	return geom.NewPoint(frame.X, frame.Bottom())
+	pt := geom.NewPoint(frame.X, frame.Bottom())
+	if v != t {
+		pt = v.AsPanel().PointTo(pt, t.AsPanel())
+	}
+	return pt
 }
 
 // axSelectOnly makes the row with the given id the whole of the selection, and the anchor a later shift-click extends
@@ -3559,6 +4216,10 @@ func (t *Table[T]) axPerformInCell(key axCellPanelKey, req accessibility.ActionR
 	col := cellKey.Col
 	if row < 0 || col < 0 || col >= len(t.Columns) {
 		return false
+	}
+	// The cell is built in the view showing the row in this view's window (see anyWindow), where the request came from.
+	if v := t.claimingViewIn(row, t.anyWindow(), false); v != t {
+		return v != nil && v.axPerformInCell(key, req)
 	}
 	// The key that brought the request here named one of the table's virtual children. What it is being handed to is a
 	// real panel, for which ActionRequest.Key is nil: an application's own action callback on a panel within a cell
@@ -3692,6 +4353,11 @@ func (t *Table[T]) axActOnDisclosure(key axDisclosureKey, req accessibility.Acti
 func (t *Table[T]) axActOnCellContent(row, col int, req accessibility.ActionRequest, synthesizeClick bool) bool {
 	if col >= len(t.Columns) {
 		return false
+	}
+	// What the cell was described as offering is known only to the view showing the row in this view's window (see
+	// anyWindow), which described it.
+	if v := t.claimingViewIn(row, t.anyWindow(), false); v != t {
+		return v != nil && v.axActOnCellContent(row, col, req, synthesizeClick)
 	}
 	cellKey := accessibility.CellKey{Row: t.rowCache[row].row.ID(), Col: col}
 	action := req.Action

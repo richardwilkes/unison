@@ -133,3 +133,26 @@ func TestTableHeaderPublishesShadowedText(t *testing.T) {
 	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
+
+// TestTableHeaderDividerDragDefersTheSync verifies that dragging a column divider in the header leaves the rows to be
+// rebuilt for the new width afterward, as a divider drag in the table does, rather than on every move. These tests
+// share the global task queue and therefore must not call t.Parallel.
+func TestTableHeaderDividerDragDefersTheSync(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	boom := false
+	cellCalls := 0
+	table := newPanicCellTable(&boom, &cellCalls)
+	table.SetFrameRect(geom.NewRect(0, 0, 300, 300))
+	header := NewTableHeader[*panicCellRow](table)
+	header.SetFrameRect(geom.NewRect(0, 0, 300, 20))
+	divider := geom.NewPoint(100, 10)
+	c.True(header.DefaultMouseDown(divider, ButtonLeft, 1, 0))
+	before := cellCalls
+	for _, dx := range []float32{10, 20, 30} {
+		c.True(header.DefaultMouseDrag(divider.Add(geom.NewPoint(dx, 0)), ButtonLeft, 0))
+	}
+	c.Equal(before, cellCalls, "the drag rebuilt no rows while it moved")
+	runTasksUntil(t, func() bool { return !table.awaitingSyncToModel })
+	c.True(cellCalls > before, "the rows were rebuilt for the new width afterward")
+}

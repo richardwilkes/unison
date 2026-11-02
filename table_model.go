@@ -26,9 +26,9 @@ type TableModel[T TableRowConstraint[T]] interface {
 
 // TableRowData provides information about a single row of data.
 type TableRowData[T any] interface {
-	// CloneForTarget creates a duplicate of this row with its parent set to 'newParent'. 'target' is the table that the
-	// row will be placed within. Limitations in the way generics work in Go prevent this from being declared as a
-	// *Table.
+	// CloneForTarget creates a duplicate of this row with its parent set to 'newParent'. 'target' is the table, or the
+	// view of it (see Table.NewView) that took the drop, that the row will be placed within. Limitations in the way
+	// generics work in Go prevent this from being declared as a *Table.
 	CloneForTarget(target Paneler, newParent T) T
 	// ID returns the ID of this data.
 	ID() tid.TID

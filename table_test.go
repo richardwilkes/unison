@@ -1909,6 +1909,14 @@ func TestEmptyTableWithRowDividerSizes(t *testing.T) {
 	c.True(prefSize.Height >= 0, "preferred height %v must not be negative", prefSize.Height)
 }
 
+// TestTableSizeColumnsToFitWithExcessInWithoutColumns verifies that sizing the columns of a table that has none, with
+// the excess going to any column, does nothing.
+func TestTableSizeColumnsToFitWithExcessInWithoutColumns(t *testing.T) {
+	c := check.New(t)
+	table := newTestTable(flatRows(2)...)
+	c.NotPanics(func() { table.SizeColumnsToFitWithExcessIn(0) })
+}
+
 // TestTableAccessibilityPressOpensRow verifies that pressing a row runs the double-click callback, which is the table's
 // "open this row" gesture and was unreachable from an assistive technology, and that the table itself offers no press
 // of its own: the default behavior would click the center of the table's whole frame, replacing the selection with
@@ -3332,4 +3340,351 @@ func TestTableUnfocusedSelectionUsesInactiveInks(t *testing.T) {
 	c.Equal(indirectActive, indirect, "the child of a selected row of the focused table should get the indirect selection inks")
 	c.Equal(colorOf(active.bg), painted(0), "a selected row of the focused table should be painted with the selection ink")
 	c.Equal(colorOf(indirectActive.bg), painted(1), "the child of a selected row of the focused table should be painted with the indirect selection ink")
+}
+
+// newViewsWindow splits the table into views, one per range, the primary showing the first, and shows them side by
+// side at their own preferred sizes in a window brought to the front, so that each view's first row sits at its top.
+func newViewsWindow(t *testing.T, table *unison.Table[*tableTestRow],
+	ranges ...[2]int,
+) (views []*unison.Table[*tableTestRow], wnd *unison.Window) {
+	t.Helper()
+	table.SetDrawRowRange(ranges[0][0], ranges[0][1])
+	views = make([]*unison.Table[*tableTestRow], 0, len(ranges))
+	views = append(views, table)
+	for _, r := range ranges[1:] {
+		views = append(views, table.NewView(r[0], r[1]))
+	}
+	container := unison.NewPanel()
+	container.SetLayout(&unison.FlexLayout{Columns: len(views), HSpacing: unison.StdHSpacing})
+	for _, v := range views {
+		v.SetLayoutData(&unison.FlexLayoutData{HAlign: align.Start, VAlign: align.Start})
+		container.AddChild(v)
+	}
+	table.SyncToModel()
+	if wnd = newHeadlessWindow(t, "table views", geom.NewRect(20, 20, 760, 300), container); wnd != nil {
+		wnd.ToFront()
+	}
+	return views, wnd
+}
+
+// TestTableViewShiftClickExtendsAcrossViews verifies that a click in a view selects the row under the pointer there,
+// and that a shift-click in another view extends the selection from it across the views.
+func TestTableViewShiftClickExtendsAcrossViews(t *testing.T) {
+	c := check.New(t)
+	var views []*unison.Table[*tableTestRow]
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			views, _ = newViewsWindow(t, axNewTable(flatRows(6)...), [2]int{0, 2}, [2]int{2, 4}, [2]int{4, 6})
+		}))
+	c.Equal(3, len(views))
+	if len(views) != 3 {
+		return
+	}
+	screen.Click(axTableRowPoint(screen, views[1], 3))
+	c.Equal([]int{3}, axTableSelectedIndexes(screen, views[0]), "the click selected the row under the pointer")
+	screen.ClickWith(axTableRowPoint(screen, views[2], 5), unison.ButtonLeft, mod.Shift)
+	c.Equal([]int{3, 4, 5}, axTableSelectedIndexes(screen, views[0]), "the shift-click extended it across the views")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableViewDisclosureToggleUsesViewLocalHitRects verifies that a click on the disclosure triangle of a row opens it
+// in whichever view shows the row, since each view keeps the triangles it drew for itself.
+func TestTableViewDisclosureToggleUsesViewLocalHitRects(t *testing.T) {
+	c := check.New(t)
+	var views []*unison.Table[*tableTestRow]
+	var containers []*tableTestRow
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			rows := flatRows(4)
+			containers = []*tableTestRow{rows[0], rows[2]}
+			for _, row := range containers {
+				row.SetChildren([]*tableTestRow{newTableTestRow("child of " + string(row.ID()))})
+			}
+			views, _ = newViewsWindow(t, axNewTable(rows...), [2]int{0, 2}, [2]int{2, 4})
+		}))
+	c.Equal(2, len(views))
+	if len(views) != 2 {
+		return
+	}
+	// The triangle sits at the start of the first column's padded content, and is MinimumRowHeight tall.
+	triangle := func(table *unison.Table[*tableTestRow], row int) geom.Point {
+		var offset geom.Point
+		screen.Do(func() {
+			size := min(table.HierarchyIndent, table.MinimumRowHeight) - 4
+			x := table.CellFrame(row, 0).X - table.HierarchyIndent - table.Padding.Left + 2 + size/2
+			offset = geom.NewPoint(x, table.RowFrame(row).Y+table.Padding.Top+table.MinimumRowHeight/2).
+				Sub(table.ContentRect(false).Point)
+		})
+		return screen.PanelPoint(table, offset)
+	}
+	for i := len(views) - 1; i >= 0; i-- {
+		screen.Sync()
+		screen.Click(triangle(views[i], i*2))
+		var open bool
+		screen.Do(func() { open = containers[i].IsOpen() })
+		c.True(open, "the triangle the view %d drew opened its row", i)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableViewFieldEditingAcrossViews verifies that a field in a cell is edited in place in the view showing its row,
+// that Tab carries the editing on into the next view, and that Return hands the focus to the view the editing ended
+// in.
+func TestTableViewFieldEditingAcrossViews(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	var views []*unison.Table[*tableTestRow]
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(6, 1, "", false)
+			views, _ = newViewsWindow(t, e.table, [2]int{0, 2}, [2]int{2, 4}, [2]int{4, 6})
+		}))
+	c.Equal(3, len(views))
+	if len(views) != 3 {
+		return
+	}
+	screen.Click(cellCenter(screen, views[1], 3, 0))
+	screen.Type("hi")
+	s := e.snapshot(c, screen, 3, 0)
+	c.True(s.fieldFocused, "the click gave the field the focus")
+	c.Equal("hi", s.text)
+
+	screen.KeyPress(unison.KeyTab, 0)
+	s = e.snapshot(c, screen, 4, 0)
+	c.True(s.fieldFocused, "Tab moved the editing on into the next view")
+	var parent *unison.Panel
+	screen.Do(func() { parent = e.fields[4][0].Parent() })
+	c.True(parent == views[2].AsPanel(), "the field is attached to the view showing its row")
+
+	screen.KeyPress(unison.KeyReturn, 0)
+	var focused bool
+	screen.Do(func() { focused = views[2].Focused() })
+	c.True(focused, "Return handed the focus to the view the editing ended in")
+	c.Equal("hi", e.snapshot(c, screen, 3, 0).text)
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableViewAccessibilityDescribesOnlyItsRangeWithAbsoluteRowIndexes verifies that each view describes the rows of
+// its own range, at their indexes in the whole table, which is also the row count each reports.
+func TestTableViewAccessibilityDescribesOnlyItsRangeWithAbsoluteRowIndexes(t *testing.T) {
+	c := check.New(t)
+	var views []*unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			views, wnd = newViewsWindow(t, axNewTable(flatRows(6)...), [2]int{0, 2}, [2]int{2, 4}, [2]int{4, 6})
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	tree := screen.AccessibilityTree(wnd)
+	for i, v := range views {
+		node := axMustNode(c, screen.AccessibilityNodeFor(v))
+		if node == nil {
+			return
+		}
+		c.Equal(6, node.RowCount, "view %d counts every row of the table", i)
+		rows := axTableRows(tree, tree.Node(node.ID))
+		c.Equal(2, len(rows), "view %d describes only its own rows", i)
+		for index := i * 2; index < i*2+2; index++ {
+			row := rows["r"+strconv.Itoa(index)]
+			c.True(row != nil, "view %d describes row %d", i, index)
+			if row != nil {
+				c.Equal(index, row.RowIndex)
+			}
+		}
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableViewAccessibilityFocusFollowsTheCurrentRowAcrossViews verifies that an assistive technology selecting a
+// row another view shows moves the keyboard focus to that view, which then reports the focus on the row.
+func TestTableViewAccessibilityFocusFollowsTheCurrentRowAcrossViews(t *testing.T) {
+	c := check.New(t)
+	var views []*unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			views, wnd = newViewsWindow(t, axNewTable(flatRows(4)...), [2]int{0, 2}, [2]int{2, 4})
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	screen.Do(func() {
+		views[0].SelectByIndex(0)
+		views[0].RequestFocus()
+	})
+	tree := screen.AccessibilityTree(wnd)
+	other := axMustNode(c, screen.AccessibilityNodeFor(views[1]))
+	if other == nil {
+		return
+	}
+	row := axTableRows(tree, tree.Node(other.ID))["r3"]
+	c.True(row != nil)
+	if row == nil {
+		return
+	}
+	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{Node: row.ID, Action: accessibility.Select}))
+	tree = screen.AccessibilityTree(wnd)
+	c.Equal(row.ID, tree.Focus, "the focus is reported on the row that was selected")
+	var focused bool
+	screen.Do(func() { focused = views[1].Focused() })
+	c.True(focused, "the view showing the selected row holds the focus")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableViewAccessibilityActionsActInTheRowsView verifies that a request about a row or cell made of a view that
+// does not show it is carried out in the view that does: the focus goes there, the contextual menu opens there, and a
+// press on a cell goes to what that view described the cell as holding. The menu for a row no view shows opens at the
+// default anchor of the view asked.
+func TestTableViewAccessibilityActionsActInTheRowsView(t *testing.T) {
+	c := check.New(t)
+	var views []*unison.Table[*tableTestRow]
+	var wnd *unison.Window
+	var field *unison.Field
+	asked := make(map[int]geom.Point)
+	clicks := 0
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			rows := flatRows(6)
+			field = unison.NewField()
+			button := unison.NewButton()
+			button.SetTitle("Go")
+			button.ClickAnimationTime = 0
+			button.ClickCallback = func() { clicks++ }
+			cell := unison.NewPanel()
+			cell.SetLayout(&unison.FlexLayout{Columns: 2, HSpacing: unison.StdHSpacing})
+			cell.AddChild(field)
+			cell.AddChild(button)
+			rows[3].cellFactory = func(_, col int) unison.Paneler {
+				if col == 1 {
+					return cell
+				}
+				return unison.NewPanel()
+			}
+			table := axNewTable(rows...)
+			table.Columns[1].Current = 200
+			views, wnd = newViewsWindow(t, table, [2]int{0, 2}, [2]int{2, 4})
+			for i, v := range views {
+				v.ContextMenuCallback = func(where geom.Point) unison.Menu {
+					asked[i] = where
+					return nil
+				}
+			}
+		}))
+	c.NotNil(wnd)
+	if wnd == nil {
+		return
+	}
+	screen.Do(func() { views[0].RequestFocus() })
+	screen.AccessibilityTree(wnd)
+	var handled, focused, fieldFocused bool
+	var where geom.Point
+	screen.Do(func() {
+		handled = views[0].PerformAccessibilityAction(accessibility.ActionRequest{
+			Key:    accessibility.CellKey{Row: "r3", Col: 1},
+			Action: accessibility.Press,
+		})
+		fieldFocused = field.Focused()
+	})
+	c.True(handled)
+	c.Equal(1, clicks, "the press went to the button the view showing the cell described as pressable")
+	c.False(fieldFocused, "the field that was described without the press was passed over")
+
+	screen.Do(func() {
+		handled = views[0].PerformAccessibilityAction(accessibility.ActionRequest{
+			Key:    tid.TID("r3"),
+			Action: accessibility.Focus,
+		})
+		focused = views[1].Focused()
+	})
+	c.True(handled)
+	c.True(focused, "the focus went to the view showing the row")
+
+	screen.Do(func() {
+		views[0].PerformAccessibilityAction(accessibility.ActionRequest{
+			Key:    tid.TID("r3"),
+			Action: accessibility.ShowContextMenu,
+		})
+		frame := views[1].RowFrame(3)
+		where = geom.NewPoint(frame.X, frame.Bottom())
+	})
+	_, primaryAsked := asked[0]
+	c.False(primaryAsked, "the view not showing the row was not asked for its menu")
+	c.Equal(where, asked[1], "the menu was asked for beneath the row in the view showing it")
+
+	screen.Do(func() {
+		views[0].PerformAccessibilityAction(accessibility.ActionRequest{
+			Key:    tid.TID("r5"),
+			Action: accessibility.ShowContextMenu,
+		})
+		where = views[0].DefaultContextMenuAnchor()
+	})
+	c.Equal(where, asked[0], "the menu for a row no view shows was asked for at the default anchor")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableViewAccessibilityPlacesAnAncestorWhereItsViewShowsIt verifies that a view whose first row hangs beneath a
+// row another view shows describes that row along with it, where the other view shows it, or just above its own first
+// row when no view in its window shows it.
+func TestTableViewAccessibilityPlacesAnAncestorWhereItsViewShowsIt(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		hidden bool // The view showing the ancestor is hidden
+	}{
+		{name: "where its view shows it"},
+		{name: "above the first row when no view shows it", hidden: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			var views []*unison.Table[*tableTestRow]
+			var wnd *unison.Window
+			screen := startHeadless(t, unison.HeadlessConfig{Width: 800, Height: 400},
+				unison.StartupFinishedCallback(func() {
+					parent := newTableTestRow("p")
+					parent.SetChildren([]*tableTestRow{
+						newTableTestRow("c0"), newTableTestRow("c1"),
+						newTableTestRow("c2"),
+					})
+					parent.SetOpen(true)
+					views, wnd = newViewsWindow(t, axNewTable(parent, newTableTestRow("r1")), [2]int{0, 2},
+						[2]int{2, 5})
+					if wnd != nil && test.hidden {
+						views[0].Hidden = true
+					}
+				}))
+			c.NotNil(wnd)
+			if wnd == nil {
+				return
+			}
+			tree := screen.AccessibilityTree(wnd)
+			second := axMustNode(c, screen.AccessibilityNodeFor(views[1]))
+			if second == nil {
+				return
+			}
+			rows := axTableRows(tree, tree.Node(second.ID))
+			brought := rows["p"]
+			c.True(brought != nil && rows["c1"] != nil, "the view describes the row and its own first row")
+			if brought == nil || rows["c1"] == nil {
+				return
+			}
+			if test.hidden {
+				c.True(brought.Bounds.Bottom() <= rows["c1"].Bounds.Y,
+					"the row %v sits above the first row %v", brought.Bounds, rows["c1"].Bounds)
+			} else {
+				first := axMustNode(c, screen.AccessibilityNodeFor(views[0]))
+				if first == nil {
+					return
+				}
+				shown := axTableRows(tree, tree.Node(first.ID))["p"]
+				c.NotNil(shown, "the first view describes the row")
+				if shown != nil {
+					c.Equal(shown.Bounds, brought.Bounds)
+				}
+			}
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
 }

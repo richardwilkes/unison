@@ -50,7 +50,8 @@ type TableHeader[T TableRowConstraint[T]] struct {
 	inHeader             bool
 }
 
-// NewTableHeader creates a new TableHeader.
+// NewTableHeader creates a new TableHeader for the given view of a table, which it becomes the header of. The header of
+// a view other than the primary should be given the primary header's ColumnHeaders, so that the views share one sort.
 func NewTableHeader[T TableRowConstraint[T]](table *Table[T], columnHeaders ...TableColumnHeader[T]) *TableHeader[T] {
 	h := &TableHeader[T]{
 		TableHeaderTheme: DefaultTableHeaderTheme,
@@ -364,7 +365,7 @@ func (h *TableHeader[T]) DefaultMouseDrag(where geom.Point, _ int, _ mod.Modifie
 		}
 		if h.table.Columns[h.interactionColumn].Current != width {
 			h.table.Columns[h.interactionColumn].Current = width
-			h.table.SyncToModel()
+			h.table.EventuallySyncToModel()
 			h.MarkForRedraw()
 		}
 		return true

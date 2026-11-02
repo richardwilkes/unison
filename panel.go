@@ -554,7 +554,8 @@ func (p *Panel) RequestFocus() {
 	}
 }
 
-// FirstFocusableChild returns the first focusable child or nil. Hidden subtrees are skipped.
+// FirstFocusableChild returns the first focusable child or nil. Hidden subtrees are skipped, and so is a panel that
+// yields a tab stop it shares to another panel in this subtree, such as all but one of the views of a Table.
 //
 // Three tiers are tried in turn, the same three seedFocus chooses a window's initial focus by. A panel that is a tab
 // stop in its own right comes first, since that is where the keyboard belongs. Next comes one that asked for the focus
@@ -566,7 +567,7 @@ func (p *Panel) RequestFocus() {
 // stop. Window.SetFocus comes through here for a container, and DockContainer.AcquireFocus takes that path on every
 // dock tab switch, so the subtree is walked once and the best match of each tier is recorded as it goes.
 func (p *Panel) FirstFocusableChild() *Panel {
-	tabStop, reader, other := p.firstFocusableChild()
+	tabStop, reader, other := p.firstFocusableChild(p)
 	switch {
 	case tabStop != nil:
 		return tabStop
@@ -579,13 +580,14 @@ func (p *Panel) FirstFocusableChild() *Panel {
 
 // firstFocusableChild walks the subtree in order, returning the first descendant of each tier FirstFocusableChild
 // chooses between: a real tab stop, one focusable only for an assistive technology, and any focusable panel at all.
-// The walk stops as soon as a tab stop is found, since nothing later can beat it.
-func (p *Panel) firstFocusableChild() (tabStop, reader, other *Panel) {
+// The walk stops as soon as a tab stop is found, since nothing later can beat it. scope is the panel the search began
+// at, within which a shared tab stop is held (see yieldsTabStop).
+func (p *Panel) firstFocusableChild(scope *Panel) (tabStop, reader, other *Panel) {
 	for _, child := range p.children {
 		if child.Hidden {
 			continue
 		}
-		if child.Focusable() {
+		if child.Focusable() && !yieldsTabStop(child, scope) {
 			if child.isTabStop() {
 				return child, reader, other
 			}
@@ -596,7 +598,7 @@ func (p *Panel) firstFocusableChild() (tabStop, reader, other *Panel) {
 				other = child
 			}
 		}
-		foundTabStop, foundReader, foundOther := child.firstFocusableChild()
+		foundTabStop, foundReader, foundOther := child.firstFocusableChild(scope)
 		if foundTabStop != nil {
 			return foundTabStop, reader, other
 		}
@@ -610,10 +612,10 @@ func (p *Panel) firstFocusableChild() (tabStop, reader, other *Panel) {
 	return nil, reader, other
 }
 
-// LastFocusableChild returns the last focusable child or nil. Hidden subtrees are skipped. The same three tiers
-// FirstFocusableChild chooses between are applied, scanned from the other end.
+// LastFocusableChild returns the last focusable child or nil. The panels FirstFocusableChild skips are skipped, and the
+// same three tiers it chooses between are applied, scanned from the other end.
 func (p *Panel) LastFocusableChild() *Panel {
-	tabStop, reader, other := p.lastFocusableChild()
+	tabStop, reader, other := p.lastFocusableChild(p)
 	switch {
 	case tabStop != nil:
 		return tabStop
@@ -625,13 +627,13 @@ func (p *Panel) LastFocusableChild() *Panel {
 }
 
 // lastFocusableChild is firstFocusableChild scanned from the other end.
-func (p *Panel) lastFocusableChild() (tabStop, reader, other *Panel) {
+func (p *Panel) lastFocusableChild(scope *Panel) (tabStop, reader, other *Panel) {
 	for i := len(p.children) - 1; i >= 0; i-- {
 		child := p.children[i]
 		if child.Hidden {
 			continue
 		}
-		if child.Focusable() {
+		if child.Focusable() && !yieldsTabStop(child, scope) {
 			if child.isTabStop() {
 				return child, reader, other
 			}
@@ -642,7 +644,7 @@ func (p *Panel) lastFocusableChild() (tabStop, reader, other *Panel) {
 				other = child
 			}
 		}
-		foundTabStop, foundReader, foundOther := child.lastFocusableChild()
+		foundTabStop, foundReader, foundOther := child.lastFocusableChild(scope)
 		if foundTabStop != nil {
 			return foundTabStop, reader, other
 		}

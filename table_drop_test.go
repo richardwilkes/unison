@@ -126,17 +126,19 @@ func TestTableDropIntoDraggedRowsIsRefusedAndLeavesModelUntouched(t *testing.T) 
 }
 
 // TestTableDropAboveEarlierRowStillAdjustsIndex verifies where a moved root row lands when dropped in the upper half of
-// a row: within one table the insertion index accounts for the moved row's removal, so a row dropped above a later row
-// lands just before it and one dropped directly above itself stays put, while a removal from another table must not
-// shift the insertion point.
+// a row: within one table, whichever of its views the row is dragged from and dropped on, the insertion index accounts
+// for the moved row's removal, so a row dropped above a later row lands just before it and one dropped directly above
+// itself stays put, while a removal from another table must not shift the insertion point and is the only one the
+// source table's DragRemovedRowsCallback hears of.
 func TestTableDropAboveEarlierRowStillAdjustsIndex(t *testing.T) {
 	for _, test := range []struct {
-		name       string
-		want       []tid.TID
-		wantSource []tid.TID
-		dragged    int
-		dropAbove  int
-		crossTable bool
+		name         string
+		want         []tid.TID
+		wantSource   []tid.TID
+		dragged      int
+		dropAbove    int
+		crossTable   bool
+		betweenViews bool
 	}{
 		{
 			name:      "above a later row lands between it and the one before",
@@ -151,6 +153,13 @@ func TestTableDropAboveEarlierRowStillAdjustsIndex(t *testing.T) {
 			want:      []tid.TID{"r0", "r1", "r2"},
 		},
 		{
+			name:         "from another view of the table lands between it and the one before",
+			betweenViews: true,
+			dragged:      0,
+			dropAbove:    2,
+			want:         []tid.TID{"r1", "r0", "r2"},
+		},
+		{
 			name:       "from another table keeps the target index",
 			crossTable: true,
 			dragged:    0,
@@ -162,13 +171,20 @@ func TestTableDropAboveEarlierRowStillAdjustsIndex(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			c := check.New(t)
 			var src, dst *unison.Table[*tableTestRow]
-			if test.crossTable {
+			switch {
+			case test.crossTable:
 				src = newTestTable(flatRows(2)...)
 				dst = newTestTable(newTableTestRow("d0"), newTableTestRow("d1"), newTableTestRow("d2"))
-			} else {
+			case test.betweenViews:
+				src = newTestTable(flatRows(3)...)
+				src.SetDrawRowRange(0, 1)
+				dst = src.NewView(1, 3)
+			default:
 				src = newTestTable(flatRows(3)...)
 				dst = src
 			}
+			removed := 0
+			src.DragRemovedRowsCallback = func() { removed++ }
 			installMoveDropSupport(t, dst, src, src.RootRows()[test.dragged])
 			di := &fakeDragInfo{dataType: tableDropDataType().UTI}
 			rootIDs := func(table *unison.Table[*tableTestRow]) []tid.TID {
@@ -182,9 +198,12 @@ func TestTableDropAboveEarlierRowStillAdjustsIndex(t *testing.T) {
 
 			c.True(dst.DropCallback(di, upperHalfOf(dst, test.dropAbove), 0))
 			c.Equal(test.want, rootIDs(dst))
+			wantRemoved := 0
 			if test.crossTable {
 				c.Equal(test.wantSource, rootIDs(src), "the source table lost the moved row")
+				wantRemoved = 1
 			}
+			c.Equal(wantRemoved, removed, "only a drag from another table removes rows from the source")
 		})
 	}
 }
@@ -275,4 +294,97 @@ func TestTableMoveOutOfHierarchicallyFilteredSource(t *testing.T) {
 	c.Equal(1, src.LastRowIndex()+1)
 	c.Equal(tid.TID("s"), src.RowFromIndex(0).ID())
 	c.Equal(1, src.RootRowCount())
+}
+
+// TestTableDropOutsideAViewsRows verifies where a drop outside the rows a view shows lands: above them, before its first
+// row; below them, after its last row when a later view shows more rows, and inside that row ahead of its children when
+// they follow it; before the row its range starts at when it shows none; and at the end of the top-level rows only
+// below the view showing the last row.
+func TestTableDropOutsideAViewsRows(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		wantRoots    []tid.TID
+		wantChildren []tid.TID // The container's children afterward, c0 and c1 when nil
+		view         int
+		dragged      int
+		edge         bool
+		empty        bool // The view's range is emptied where it starts
+		above        bool // The drop is in a top inset above the view's first row
+		early        bool // The container is the second root row, so the first view's last row
+		closed       bool // The container is closed
+	}{
+		{name: "bottom edge of a middle view", view: 1, edge: true, wantRoots: []tid.TID{"r1", "r2", "r3", "r0", "p"}},
+		{name: "beneath a middle view's last row", view: 1, wantRoots: []tid.TID{"r1", "r2", "r3", "r0", "p"}},
+		{name: "bottom edge of the last view", view: 2, edge: true, wantRoots: []tid.TID{"r1", "r2", "r3", "p", "r0"}},
+		{name: "above the last view's first row", view: 2, above: true, wantRoots: []tid.TID{"r1", "r2", "r3", "r0", "p"}},
+		{
+			name:      "bottom edge of an empty view before the first row",
+			view:      0,
+			dragged:   3,
+			edge:      true,
+			empty:     true,
+			wantRoots: []tid.TID{"r3", "r0", "r1", "r2", "p"},
+		},
+		{
+			name:      "bottom edge of a view ending with a closed container",
+			view:      0,
+			dragged:   3,
+			edge:      true,
+			early:     true,
+			closed:    true,
+			wantRoots: []tid.TID{"r0", "p", "r3", "r1", "r2"},
+		},
+		{
+			name:         "beneath a view ending with an open container",
+			view:         0,
+			dragged:      3,
+			early:        true,
+			wantRoots:    []tid.TID{"r0", "p", "r1", "r2"},
+			wantChildren: []tid.TID{"r3", "c0", "c1"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			rows := flatRows(4)
+			parent := newTableTestRow("p")
+			parent.SetChildren([]*tableTestRow{newTableTestRow("c0"), newTableTestRow("c1")})
+			parent.SetOpen(!test.closed)
+			roots := []*tableTestRow{rows[0], rows[1], rows[2], rows[3], parent}
+			if test.early {
+				roots = []*tableTestRow{rows[0], parent, rows[1], rows[2], rows[3]}
+			}
+			table := newTestTable(roots...)
+			table.SetDrawRowRange(0, 2)
+			views := []*unison.Table[*tableTestRow]{table, table.NewView(2, 4), table.NewView(4, 7)}
+			dst := views[test.view]
+			if test.empty {
+				start, _ := dst.CurrentDrawRowRange()
+				dst.SetDrawRowRange(start, start)
+			}
+			installMoveDropSupport(t, dst, table, rows[test.dragged])
+			where := geom.NewPoint(10, 299)
+			switch {
+			case test.above:
+				dst.SetBorder(unison.NewEmptyBorder(geom.Insets{Top: 10}))
+				where.Y = 5
+			case !test.edge:
+				_, end := dst.CurrentDrawRowRange()
+				where.Y = dst.RowFrame(end-1).Bottom() + 5
+			}
+			c.True(dst.DropCallback(&fakeDragInfo{dataType: tableDropDataType().UTI}, where, 0))
+			ids := func(rows []*tableTestRow) []tid.TID {
+				list := make([]tid.TID, len(rows))
+				for i, row := range rows {
+					list[i] = row.ID()
+				}
+				return list
+			}
+			c.Equal(test.wantRoots, ids(table.RootRows()))
+			wantChildren := test.wantChildren
+			if wantChildren == nil {
+				wantChildren = []tid.TID{"c0", "c1"}
+			}
+			c.Equal(wantChildren, ids(parent.Children()))
+		})
+	}
 }

@@ -946,7 +946,7 @@ func (w *Window) setFocus(target Paneler, exact bool) {
 				return
 			}
 		case !exact && newFocus.disabled:
-			if tabStop, _, _ := newFocus.firstFocusableChild(); tabStop != nil {
+			if tabStop, _, _ := newFocus.firstFocusableChild(newFocus); tabStop != nil {
 				newFocus = tabStop
 			}
 		}
@@ -1125,24 +1125,48 @@ func seedFocus(focusables []*Panel, backward bool) *Panel {
 	return focusables[0]
 }
 
-func collectFocusables(current, target *Panel, focusables []*Panel) (match int, result []*Panel) {
+// sharedTabStop is implemented by a panel that may share one tab stop with others, as the views of a Table do.
+type sharedTabStop interface {
+	// yieldsTabStop returns true if the panel shares its tab stop and another panel within scope holds it there.
+	yieldsTabStop(scope *Panel) bool
+}
+
+// TabStopHolder is implemented by a panel that shares one tab stop with others, as the views of a Table do, and can say
+// which of them holds it, so that code giving the focus to one of them, found by some other means, such as a reference
+// key, can give it to the one the person is on.
+type TabStopHolder interface {
+	// TabStopPanel returns the panel holding the shared tab stop in this panel's window, or, when this panel is in
+	// none, in the window of the first panel sharing it that is in one. It returns nil if no panel sharing it is in a
+	// window or none in that window can take the focus.
+	TabStopPanel() *Panel
+}
+
+// yieldsTabStop returns true if p shares its tab stop and another panel a traversal of scope reaches holds it there,
+// which leaves p out of that traversal. A holder outside scope, such as in another window, is not yielded to.
+func yieldsTabStop(p, scope *Panel) bool {
+	s, ok := p.Self.(sharedTabStop)
+	return ok && s.yieldsTabStop(scope)
+}
+
+// collectFocusables appends the focusable panels at or beneath scope to focusables, in tab order, and returns the index
+// of target among them, or -1. A panel that yields its tab stop within scope is left out unless it is the target.
+func collectFocusables(scope, target *Panel, focusables []*Panel) (match int, result []*Panel) {
 	match = -1
-	if current.Focusable() {
-		if current.Is(target) {
-			match = len(focusables)
+	var collect func(current *Panel)
+	collect = func(current *Panel) {
+		if current.Focusable() && (current.Is(target) || !yieldsTabStop(current, scope)) {
+			if match == -1 && current.Is(target) {
+				match = len(focusables)
+			}
+			focusables = append(focusables, current)
 		}
-		focusables = append(focusables, current)
-	}
-	for _, child := range current.Children() {
-		if child.Hidden {
-			continue
-		}
-		var m int
-		m, focusables = collectFocusables(child, target, focusables)
-		if match == -1 && m != -1 {
-			match = m
+		for _, child := range current.Children() {
+			if !child.Hidden {
+				collect(child)
+			}
 		}
 	}
+	collect(scope)
 	return match, focusables
 }
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/toolbox/v2/tid"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -1626,6 +1627,126 @@ func TestLastFocusableChildSkipsHiddenSubtrees(t *testing.T) {
 	c.True(root.LastFocusableChild().Is(visible))
 	hiddenContainer.Hidden = false
 	c.True(root.LastFocusableChild().Is(buried))
+}
+
+// TestFocusNextGivesATableWithViewsOneTabStop verifies that the views of a table are a single tab stop between them:
+// the keyboard enters the table, from either direction, at the view showing the row the person is on, and leaves it
+// from the view holding the focus without stopping at the others. The tab stop is held by a view the traversal reaches
+// and that can take the focus, so a view in another window, outside the container searched, disabled or beneath a
+// hidden panel does not take the table out of the tab order.
+func TestFocusNextGivesATableWithViewsOneTabStop(t *testing.T) {
+	const (
+		before = iota
+		primary
+		middle
+		last
+		after
+		// container asks the container of the views for its first or last focusable child, with the focus before it.
+		container
+	)
+	for _, test := range []struct {
+		// arrange, when set, changes the fixture before the focus moves: the three views start out in holder, with the
+		// row the middle one shows selected.
+		arrange  func(f *focusCellFixture, views []*Table[*focusCellRow], holder *Panel)
+		name     string
+		from     int
+		want     int
+		backward bool
+	}{
+		{name: "forward into the table", from: before, want: middle},
+		{name: "backward into the table", from: after, backward: true, want: middle},
+		{name: "forward out of the table", from: middle, want: after},
+		{name: "backward out of the table", from: middle, backward: true, want: before},
+		{name: "first focusable child", from: container, want: middle},
+		{name: "last focusable child", from: container, backward: true, want: middle},
+		{
+			name: "first focusable child without the holder",
+			from: container,
+			want: last,
+			arrange: func(f *focusCellFixture, views []*Table[*focusCellRow], _ *Panel) {
+				f.w.Content().AddChildAtIndex(views[0], 1)
+				f.w.Content().AddChildAtIndex(views[1], 2)
+			},
+		},
+		{
+			name:     "last focusable child without the holder",
+			from:     container,
+			backward: true,
+			want:     last,
+			arrange: func(f *focusCellFixture, views []*Table[*focusCellRow], _ *Panel) {
+				f.w.Content().AddChildAtIndex(views[0], 1)
+				f.w.Content().AddChildAtIndex(views[1], 2)
+			},
+		},
+		{
+			name: "holder in another window",
+			from: before,
+			want: primary,
+			arrange: func(_ *focusCellFixture, views []*Table[*focusCellRow], _ *Panel) {
+				newRedrawTestWindow().Content().AddChild(views[1])
+			},
+		},
+		{
+			name: "disabled holder",
+			from: before,
+			want: middle,
+			arrange: func(f *focusCellFixture, views []*Table[*focusCellRow], _ *Panel) {
+				views[0].SetEnabled(false)
+				f.table.SetSelectionMap(map[tid.TID]bool{"b": true})
+			},
+		},
+		{
+			name: "holder beneath a hidden panel",
+			from: before,
+			want: middle,
+			arrange: func(f *focusCellFixture, views []*Table[*focusCellRow], holder *Panel) {
+				hidden := NewPanel()
+				hidden.Hidden = true
+				holder.AddChildAtIndex(hidden, 0)
+				hidden.AddChild(views[0])
+				f.table.SetSelectionMap(map[tid.TID]bool{"b": true})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			f, views := newTableViewsFixture(t, sixTableViewIDs, 0, [2]int{0, 2}, [2]int{2, 4}, [2]int{4, 6})
+			holder := NewPanel()
+			for _, v := range views {
+				holder.AddChild(v)
+			}
+			panels := []*Panel{
+				newFocusablePanel(), views[0].AsPanel(), views[1].AsPanel(), views[2].AsPanel(),
+				newFocusablePanel(),
+			}
+			f.w.Content().AddChild(panels[before])
+			f.w.Content().AddChild(holder)
+			f.w.Content().AddChild(panels[after])
+			f.table.SetSelectionMap(map[tid.TID]bool{"d": true})
+			if test.arrange != nil {
+				test.arrange(f, views, holder)
+			}
+			var got *Panel
+			switch {
+			case test.from == container:
+				f.w.SetFocus(panels[before])
+				if test.backward {
+					got = holder.LastFocusableChild()
+				} else {
+					got = holder.FirstFocusableChild()
+				}
+			case test.backward:
+				f.w.SetFocus(panels[test.from])
+				f.w.FocusPrevious()
+				got = f.w.CurrentFocus()
+			default:
+				f.w.SetFocus(panels[test.from])
+				f.w.FocusNext()
+				got = f.w.CurrentFocus()
+			}
+			c.True(got == panels[test.want], "expected panel %d", test.want)
+		})
+	}
 }
 
 // startPopupTest starts a session holding an owner window, shown and focused, and a popup menu window it owns, shown
