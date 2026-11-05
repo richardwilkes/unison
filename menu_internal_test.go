@@ -201,7 +201,7 @@ func TestEnsureOnDisplayKeepsMenuBelowTop(t *testing.T) {
 			return
 		}
 		place := func(where geom.Rect, fit menuFit) {
-			m.ensureOnDisplay(where, fit, owner, -1)
+			m.ensureOnDisplay(where, fit, owner.Display(), -1)
 			rects = append(rects, m.popupPanel.Window().ContentRect())
 		}
 		bar := menuFit{bar: true, barTop: 10, barBottom: 30}
@@ -790,21 +790,53 @@ func TestCommandKeyLeavesTheOpenMenuAlone(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// TestPopupDisplayAmongPicksTheMostOverlapped verifies that a menu belongs on the display it overlaps most, rather than
-// on the one holding its top-left corner, so that one hanging off the bottom of a display above another is placed on
-// the lower one, where it fits, and one wholly within a display is placed there.
-func TestPopupDisplayAmongPicksTheMostOverlapped(t *testing.T) {
+// TestPopupsStayOnTheDisplayOfTheirControl verifies that a menu, a sub-menu, a tooltip and a field's suggestions are
+// each fitted onto the display holding what they open from, rather than opening on the display beside it when that is
+// where most of the popup would land.
+func TestPopupsStayOnTheDisplayOfTheirControl(t *testing.T) {
 	c := check.New(t)
-	upper := &Display{Usable: geom.NewRect(0, 0, 1920, 1080), headless: true}
-	lower := &Display{Usable: geom.NewRect(0, 1080, 1920, 1080), headless: true}
-	displays := []*Display{upper, lower}
-	c.True(popupDisplayAmong(displays, geom.NewRect(100, 1075, 300, 300)) == lower,
-		"a menu whose corner is on the upper display but which mostly hangs down onto the lower one belongs there")
-	c.True(popupDisplayAmong(displays, geom.NewRect(100, 1000, 300, 100)) == upper,
-		"one that overlaps the upper display more belongs there")
-	c.True(popupDisplayAmong(displays, geom.NewRect(100, 100, 300, 300)) == upper, "one wholly within a display")
-	c.True(popupDisplayAmong(displays, geom.NewRect(100, 1200, 300, 300)) == lower)
-	c.True(popupDisplayAmong(displays, geom.NewRect(2000, 100, 300, 300)) == nil, "one overlapping none")
+	primary := geom.NewRect(0, 0, 400, 300)
+	screen, owner := startMenuTest(t, primary.Size, primary)
+	// So close to the display's right edge that all but a sliver of whatever opens from it would land on the next one.
+	control := geom.NewRect(390, 20, 8, 20)
+	type popup struct {
+		name string
+		rect geom.Rect
+	}
+	var popups []popup
+	c.True(screen.Do(func() {
+		beside := geom.NewRect(primary.Right(), 0, 400, 300)
+		screen.extraDisplays = append(screen.extraDisplays,
+			&Display{Frame: beside, Usable: beside, Scale: geom.NewPoint(1, 1), headless: true})
+		const wide = "Wide enough to hang off the display"
+		f := &inWindowMenuFactory{}
+		var chosen []string
+		m := newTestMenu(f, UserBaseID, &chosen, wide)
+		sub := newTestMenu(f, UserBaseID+100, &chosen, wide)
+		m.InsertMenu(-1, sub)
+		m.Popup(control, -1)
+		if m.popupPanel != nil {
+			popups = append(popups, popup{name: "the menu", rect: m.popupPanel.Window().ContentRect()})
+			sub.titleItem.openSubMenu(-1)
+			if sub.popupPanel != nil {
+				popups = append(popups, popup{name: "its sub-menu", rect: sub.popupPanel.Window().ContentRect()})
+			}
+		}
+		m.closeMenuStack()
+		tip := NewTooltipWithText(wide)
+		popups = append(popups, popup{name: "a tooltip", rect: tooltipWindowRect(tip, control, owner)})
+		field := NewField()
+		owner.Content().AddChild(field)
+		s := NewFieldSuggestions[string](field)
+		s.SetRows([]string{wide})
+		s.anchor = control
+		popups = append(popups, popup{name: "the suggestions", rect: s.windowRect(owner)})
+	}))
+	c.Equal(4, len(popups))
+	for _, one := range popups {
+		c.True(primary.Contains(one.rect), "%s: %v is not within %v", one.name, one.rect, primary)
+	}
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // TestPopupHighlightsTheItemBeforeShowing verifies that a menu popped up on an item has that item highlighted, and
@@ -828,7 +860,7 @@ func TestPopupHighlightsTheItemBeforeShowing(t *testing.T) {
 		}
 		popup := m.popupPanel.Window()
 		last := len(m.items) - 1
-		m.ensureOnDisplay(geom.NewRect(10, 10, 100, 2000), menuFit{}, owner, last)
+		m.ensureOnDisplay(geom.NewRect(10, 10, 100, 2000), menuFit{}, owner.Display(), last)
 		highlightedWhenShown = m.items[last].over
 		visibleWhenShown = popup.IsVisible()
 		subMenuOpenWhenShown = sub.popupPanel != nil

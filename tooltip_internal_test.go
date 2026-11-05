@@ -44,22 +44,6 @@ func TestFitTooltipRect(t *testing.T) {
 		"one with room neither below nor above the panel is pinned to the top")
 }
 
-// TestTooltipDisplayAmongGoesByThePanel verifies that a tooltip belongs on the display it overlaps most, and that one
-// asked for just below a panel at the bottom of a display's usable area, where it overlaps none, belongs on the panel's
-// display rather than being left to the owner window's, which may be a screen away from the panel.
-func TestTooltipDisplayAmongGoesByThePanel(t *testing.T) {
-	c := check.New(t)
-	left := &Display{Usable: geom.NewRect(0, 0, 1920, 1040), headless: true}
-	right := &Display{Usable: geom.NewRect(1920, 0, 1920, 1040), headless: true}
-	displays := []*Display{left, right}
-	c.True(tooltipDisplayAmong(displays, geom.NewRect(1900, 500, 100, 20), geom.NewRect(1900, 480, 10, 20)) == right,
-		"one overlapping a display goes by that, whatever the panel's display")
-	c.True(tooltipDisplayAmong(displays, geom.NewRect(1550, 1041, 100, 20), geom.NewRect(1550, 1020, 40, 20)) == left,
-		"one overlapping none goes by the panel's display")
-	c.Nil(tooltipDisplayAmong(displays, geom.NewRect(1550, 1041, 100, 20), geom.NewRect(1550, 1041, 40, 20)),
-		"and is left to the caller when the panel overlaps none either")
-}
-
 // TestTooltipWindowRectWithoutADisplay verifies that a tooltip is fitted onto its display when it has one and left
 // where it was asked to go when it has none, as on macOS while every display is asleep, rather than crashing on the
 // display.

@@ -155,31 +155,17 @@ func (ts *tooltipSequencer) close() {
 
 // tooltipWindowRect returns the rect, in the space window rects use, of the window showing tip for a panel of owner
 // occupying avoid, in owner's root coordinates: just below the part of avoid within owner, or below avoid when none of
-// it is, fitted onto the display as tooltipWindowRectOn does.
+// it is, fitted onto that part's display (see popupDisplayFor) as tooltipWindowRectOn does.
 func tooltipWindowRect(tip *Panel, avoid geom.Rect, owner *Window) geom.Rect {
 	if visible := avoid.Intersect(owner.root.ContentRect(true)); !visible.Empty() {
 		avoid = visible
 	}
+	d := popupDisplayFor(owner, avoid)
 	var where geom.Rect
 	_, where.Size, _ = tip.Sizes(geom.Size{})
 	where.Point = owner.apiPointToScreen(geom.NewPoint(avoid.X, avoid.Bottom()+1))
 	avoid.Point = owner.apiPointToScreen(avoid.Point)
-	d := tooltipDisplayAmong(AllDisplays(), where, avoid)
-	if d == nil {
-		d = owner.Display()
-	}
 	return tooltipWindowRectOn(tip, where, avoid, d)
-}
-
-// tooltipDisplayAmong returns the one of displays a tooltip placed at where, below a panel occupying avoid, belongs on:
-// the one where overlaps most, as for a menu, or else the one avoid overlaps most, since a tooltip asked for just below
-// the bottom of a display's usable area lies on none and belongs with its panel rather than on whichever display holds
-// the owner window. Returns nil when neither overlaps any. The rects are in the space window rects use.
-func tooltipDisplayAmong(displays []*Display, where, avoid geom.Rect) *Display {
-	if d := popupDisplayAmong(displays, where); d != nil {
-		return d
-	}
-	return popupDisplayAmong(displays, avoid)
 }
 
 // tooltipWindowRectOn returns where, the rect of the window showing tip below avoid, fitted onto d as fitTooltipRect

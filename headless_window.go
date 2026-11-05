@@ -158,8 +158,11 @@ func (hw *headlessWindow) setTitleIcons(images []*image.NRGBA) {
 	hw.icons = images
 }
 
-// display returns the session's one and only display. Multi-display configurations are out of scope.
+// display returns the display the window is on, as BestDisplayForRect has it, or the primary one when it is on none.
 func (hw *headlessWindow) display() *Display {
+	if d := bestDisplayAmong(hw.hs.allDisplays(), hw.rect); d != nil {
+		return d
+	}
 	return hw.hs.display
 }
 

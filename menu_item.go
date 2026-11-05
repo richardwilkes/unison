@@ -403,7 +403,7 @@ func (mi *menuItem) openSubMenu(keyIndex int) {
 		} else {
 			fit = menuFit{sub: true, leftOf: wnd.apiPointToScreen(pr.Point).X}
 		}
-		mi.subMenu.ensureOnDisplay(fr, fit, wnd, keyIndex)
+		mi.subMenu.ensureOnDisplay(fr, fit, popupDisplayFor(wnd, pr), keyIndex)
 	}
 }
 

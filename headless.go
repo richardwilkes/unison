@@ -170,6 +170,9 @@ type HeadlessScreen struct {
 	drag    *headlessDragSession
 	buttons map[int]bool
 	input   []func()
+	// extraDisplays are the displays the session has besides the screen it was configured with. Nothing adds one but
+	// a test of what depends on which display something is on.
+	extraDisplays []*Display
 	// menuStackOwner is the window whose menu stack is open, or nil. See headlessWindow.menuStackChanged.
 	menuStackOwner *Window
 	// suggestionsOwner is the window whose field suggestions are showing, or nil. See

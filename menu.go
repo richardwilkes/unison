@@ -225,6 +225,7 @@ func (m *menu) Popup(where geom.Rect, itemIndex int) {
 		// menu for.
 		return
 	}
+	d := popupDisplayFor(owner, where)
 	if itemIndex >= 0 && itemIndex < len(m.popupPanel.items) {
 		if sp, ok := m.popupPanel.Children()[0].Self.(*ScrollPanel); ok {
 			where.Y -= sp.Content().AsPanel().Children()[itemIndex].FrameRect().Y
@@ -234,7 +235,7 @@ func (m *menu) Popup(where geom.Rect, itemIndex int) {
 	where.Height = fr.Height
 	where.Width = max(fr.Width, where.Width)
 	where.Point = owner.apiPointToScreen(where.Point)
-	m.ensureOnDisplay(where, menuFit{}, owner, itemIndex)
+	m.ensureOnDisplay(where, menuFit{}, d, itemIndex)
 	m.setKeyIndex(itemIndex)
 }
 
@@ -260,17 +261,17 @@ type menuFit struct {
 const menuMinVisibleItems = 3
 
 // ensureOnDisplay places the popup window at where, in the space window rects use, shifting it and, when that is not
-// enough, shrinking it so that it lies within the usable area of its display, placed as fit says, highlights the item
-// at keyIndex, if there is one, as the one the keys act on, and then shows the window. A menu opened from the menu bar
-// passes the bar's edges in fit so that it scrolls rather than covering the bar. The display is the one where overlaps
-// most, or anchor's when where overlaps none. The fitting is done in the display's own space, since the window-rect
-// space is not one its edges can be computed in on every platform; see Display.apiRectFromWindowUnits.
+// enough, shrinking it so that it lies within the usable area of d, the display of what the menu opens from (see
+// popupDisplayFor), placed as fit says, highlights the item at keyIndex, if there is one, as the one the keys act on,
+// and then shows the window. A menu opened from the menu bar passes the bar's edges in fit so that it scrolls rather
+// than covering the bar. The fitting is done in the display's own space, since the window-rect space is not one its
+// edges can be computed in on every platform; see Display.apiRectFromWindowUnits.
 //
 // The highlight comes before the show because on X11 the window is drawn as it is shown, and every draw of a popup
 // describes the owner's menus to assistive technologies (see Window.draw): a first draw with nothing highlighted would
 // report the focus on the menu, and the next one, once setKeyIndex had run, on the item, so a screen reader would
 // announce the menu only to be cut off by the item.
-func (m *menu) ensureOnDisplay(where geom.Rect, fit menuFit, anchor *Window, keyIndex int) {
+func (m *menu) ensureOnDisplay(where geom.Rect, fit menuFit, d *Display, keyIndex int) {
 	if m.popupPanel == nil {
 		return
 	}
@@ -278,7 +279,7 @@ func (m *menu) ensureOnDisplay(where geom.Rect, fit menuFit, anchor *Window, key
 	if !popup.IsValid() {
 		return
 	}
-	popup.SetContentRect(menuWindowRect(where, fit, popupDisplayFor(where, anchor)))
+	popup.SetContentRect(menuWindowRect(where, fit, d))
 	popup.ValidateLayout()
 	m.highlightKeyIndex(keyIndex)
 	popup.Show()
@@ -374,33 +375,16 @@ func fitMenuRect(where, usable geom.Rect, fit menuFit) geom.Rect {
 	return where
 }
 
-// popupDisplayFor returns the display a popup window, whatever it shows, placed at where, in the space window
-// rects use, belongs on: the one where overlaps most, or anchor's when where overlaps none.
-func popupDisplayFor(where geom.Rect, anchor *Window) *Display {
-	if best := popupDisplayAmong(AllDisplays(), where); best != nil {
-		return best
+// popupDisplayFor returns the display a popup window, whatever it shows, belongs on: the one whose usable area holds
+// the center of anchor, the rect in owner's root space of what the popup opens from, or owner's when none does. Where
+// the popup itself would land has no say, or one opened near an edge of its display would go to the next display over
+// whenever most of it hung past that edge.
+func popupDisplayFor(owner *Window, anchor geom.Rect) *Display {
+	center := geom.Rect{Point: owner.apiPointToScreen(anchor.Center())}
+	if d := bestDisplayAmong(AllDisplays(), center); d != nil {
+		return d
 	}
-	return anchor.Display()
-}
-
-// popupDisplayAmong returns the one of displays that where, in the space window rects use, overlaps most, or nil when
-// it overlaps none. Each display's overlap is measured in that display's own space.
-func popupDisplayAmong(displays []*Display, where geom.Rect) *Display {
-	var best *Display
-	var bestArea float32
-	for _, d := range displays {
-		r := d.apiRectFromWindowUnits(where)
-		if d.Usable.Contains(r) {
-			return d
-		}
-		if ri := r.Intersect(d.Usable); !ri.Empty() {
-			if area := ri.Width * ri.Height; bestArea < area {
-				bestArea = area
-				best = d
-			}
-		}
-	}
-	return best
+	return owner.Display()
 }
 
 // createPopup builds the menu's panel and the popup window showing it, as the newest menu of owner's stack, closing

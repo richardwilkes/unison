@@ -377,7 +377,7 @@ func (s *FieldSuggestions[T]) visibleRows() int {
 // windowRect returns the rect of the popup window in the space window rects use: at most MaxVisibleRows rows tall, as
 // wide as the field or as the rows and the vertical scroll bar beside them need, whichever is more, below the part of
 // the field visible within the owner, as a tooltip is placed, or above it when there is no room below, and fitted onto
-// the display.
+// that part's display; see popupDisplayFor.
 func (s *FieldSuggestions[T]) windowRect(owner *Window) geom.Rect {
 	count := s.list.Count()
 	n := min(count, max(s.MaxVisibleRows, 1))
@@ -401,12 +401,9 @@ func (s *FieldSuggestions[T]) windowRect(owner *Window) geom.Rect {
 		rowsWidth += bar
 	}
 	where.Width = max(rowsWidth, avoid.Width)
+	d := popupDisplayFor(owner, avoid)
 	where.Point = owner.apiPointToScreen(geom.NewPoint(avoid.X, avoid.Bottom()))
 	avoid.Point = owner.apiPointToScreen(avoid.Point)
-	d := tooltipDisplayAmong(AllDisplays(), where, avoid)
-	if d == nil {
-		d = owner.Display()
-	}
 	fitted, shortened := suggestionsWindowRectOn(where, avoid, d)
 	if count <= n && shortened {
 		// Shortened to the room on the display, so the rows scroll after all.

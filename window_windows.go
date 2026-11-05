@@ -903,16 +903,10 @@ func w32ChooseBestImage(images []*image.NRGBA, width, height int) *image.NRGBA {
 	return closest
 }
 
+// nativeDisplay returns the display the window overlaps most, or the nearest one when it overlaps none. The window's
+// top-left corner is no guide: a maximized window's lies outside its display, and may lie on the one next to it.
 func (w *Window) nativeDisplay() *Display {
-	var rect w32.RECT
-	w32.GetWindowRect(w.wnd.wnd, &rect)
-	pt := geom.NewPoint(float32(rect.Left), float32(rect.Top))
-	for _, d := range AllDisplays() {
-		if pt.In(d.Usable) {
-			return d
-		}
-	}
-	return monitorInfo(w32.MonitorFromWindow(w.wnd.wnd, w32.MONITOR_DEFAULTTOPRIMARY))
+	return monitorInfo(w32.MonitorFromWindow(w.wnd.wnd, w32.MONITOR_DEFAULTTONEAREST))
 }
 
 func (w *Window) nativeFrameRect() geom.Rect {

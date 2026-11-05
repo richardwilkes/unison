@@ -78,15 +78,15 @@ func (s *headlessState) clipboardIndex(dataType *uti.DataType) int {
 	})
 }
 
-// The session has exactly one display, which is the screen it was configured with. Multi-display configurations are
-// out of scope.
+// The session's primary display is the screen it was configured with, which is the only one captured. See
+// headlessState.extraDisplays for the others.
 
 func (s *headlessState) primaryDisplay() *Display {
 	return s.display
 }
 
 func (s *headlessState) allDisplays() []*Display {
-	return []*Display{s.display}
+	return append([]*Display{s.display}, s.extraDisplays...)
 }
 
 // Menus use the pure-Go in-window implementation, which is also what the non-macOS platforms use.
