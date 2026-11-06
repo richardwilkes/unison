@@ -27,15 +27,16 @@ var (
 // DefaultDockTheme holds the default DockTheme values for Docks. Modifying this data will not alter existing Docks, but
 // will alter any Docks created in the future.
 var DefaultDockTheme = DockTheme{
-	BackgroundInk: ThemeSurface,
-	DividerInk:    ThemeDeepBelowSurface,
-	GripInk:       ThemeDragHandle,
-	DropAreaInk:   ThemeWarning,
-	GripCount:     5,
-	GripGap:       1,
-	GripWidth:     4,
-	GripHeight:    2,
-	GripMargin:    2,
+	BackgroundInk:        ThemeSurface,
+	DividerInk:           ThemeDeepBelowSurface,
+	GripInk:              ThemeDragHandle,
+	DropAreaInk:          ThemeWarning,
+	GripCount:            5,
+	GripGap:              1,
+	GripWidth:            4,
+	GripHeight:           2,
+	GripMargin:           2,
+	MinimumContainerSize: geom.NewSize(100, 100),
 }
 
 // DockTheme holds theming data for a Dock.
@@ -49,6 +50,8 @@ type DockTheme struct {
 	GripWidth     float32
 	GripHeight    float32
 	GripMargin    float32
+	// MinimumContainerSize is the smallest size a DockContainer is laid out at while its Dock has the room for it.
+	MinimumContainerSize geom.Size
 }
 
 // DockGripLength returns the length (running along the divider) of a divider's grip area.
@@ -195,9 +198,30 @@ func (d *Dock) DockTo(dockable Dockable, target DockLayoutNode, s side.Enum) {
 		dc = NewDockContainer(d, dockable)
 		d.layout.DockTo(dc, target, s)
 		d.AddChild(dc)
-		d.MarkForLayoutAndRedraw()
+		d.markForLayout()
 		dc.SetCurrentDockable(dockable)
 	}
+}
+
+// markForLayout marks this Dock for layout and redraw, along with every Dock it is nested within, as a change to what
+// it holds may change the room it needs within them.
+func (d *Dock) markForLayout() {
+	d.MarkForLayoutAndRedraw()
+	for dc := Ancestor[*DockContainer](d); dc != nil; dc = Ancestor[*DockContainer](dc) {
+		if dc.Dock != nil {
+			dc.Dock.MarkForLayoutAndRedraw()
+		}
+	}
+}
+
+// DockMinimumSize implements DockMinimumSizer, so that a Dock nested within another is left the room that its own
+// DockContainers need.
+func (d *Dock) DockMinimumSize() geom.Size {
+	size := d.layout.minimumSize()
+	if b := d.Border(); b != nil {
+		size = size.Add(b.Insets().Size())
+	}
+	return size
 }
 
 // DefaultDraw fills in the background.

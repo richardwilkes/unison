@@ -28,12 +28,20 @@ type DockLayoutNode interface {
 
 // DockLayout provides layout of DockContainers and other DockLayouts within a Dock.
 type DockLayout struct {
-	dock       *Dock
-	parent     *DockLayout
-	nodes      [2]DockLayoutNode
-	frame      geom.Rect
-	divider    float32
-	Horizontal bool
+	dock    *Dock
+	parent  *DockLayout
+	nodes   [2]DockLayoutNode
+	frame   geom.Rect
+	divider float32
+	// dividerExtent is the extent the two nodes had to share when the divider was positioned: 0 if that is unknown, or
+	// less than 0 if the divider was set by hand and a layout has yet to give it.
+	dividerExtent float32
+	// rescaleExtent, when not 0, is the extent the two nodes had to share when the Dock was rearranged, for the next
+	// layout to scale the divider from it to the extent they have by then.
+	rescaleExtent float32
+	Horizontal    bool
+	// belowMinimum records which nodes the divider was set to leave less than their minimum.
+	belowMinimum [2]bool
 }
 
 // ForEachDockContainer iterates through all DockContainers in this DockLayout's hierarchy and calls the given function
@@ -114,6 +122,7 @@ func (d *DockLayout) Contains(node DockLayoutNode) bool {
 // DockTo docks a DockContainer within this DockLayout. If the DockContainer already exists in this DockLayout, it will
 // be moved to the new location.
 func (d *DockLayout) DockTo(dc *DockContainer, target DockLayoutNode, s side.Enum) {
+	d.RootLayout().prepareToRescale()
 	// Does the container already exist in our hierarchy?
 	if existingLayout := d.FindLayout(dc); existingLayout != nil {
 		// Yes. Is it the same layout?
@@ -133,7 +142,7 @@ func (d *DockLayout) DockTo(dc *DockContainer, target DockLayoutNode, s side.Enu
 				targetLayout.nodes[p2] = targetLayout.nodes[p1]
 				targetLayout.nodes[p1] = dc
 			}
-			targetLayout.Horizontal = s.Horizontal()
+			targetLayout.setHorizontal(s.Horizontal())
 			return
 		}
 		// Not in the same layout. Remove the container from the hierarchy so we can re-add it.
@@ -154,19 +163,22 @@ func (d *DockLayout) dockWithin(dc *DockContainer, s side.Enum) {
 			d.nodes[p2] = d.nodes[p1]
 		} else {
 			d.nodes[p2] = d.pushDown()
-			d.divider = -1
+			d.resetDivider()
 		}
 	}
 	d.nodes[p1] = dc
-	d.Horizontal = s.Horizontal()
+	d.setHorizontal(s.Horizontal())
 }
 
 func (d *DockLayout) pushDown() *DockLayout {
 	layout := &DockLayout{
-		dock:       d.dock,
-		parent:     d,
-		divider:    d.divider,
-		Horizontal: d.Horizontal,
+		dock:          d.dock,
+		parent:        d,
+		divider:       d.divider,
+		dividerExtent: d.dividerExtent,
+		rescaleExtent: d.rescaleExtent,
+		Horizontal:    d.Horizontal,
+		belowMinimum:  d.belowMinimum,
 	}
 	for i, n := range d.nodes {
 		if dl, ok := n.(*DockLayout); ok {
@@ -183,7 +195,7 @@ func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode,
 		if d.nodes[p2] == nil {
 			d.nodes[p2] = d.nodes[p1]
 			d.nodes[p1] = dc
-			d.Horizontal = s.Horizontal()
+			d.setHorizontal(s.Horizontal())
 		} else {
 			layout := &DockLayout{
 				dock:       d.dock,
@@ -198,14 +210,47 @@ func (d *DockLayout) dockWithContainer(dc *DockContainer, target DockLayoutNode,
 			}
 			layout.nodes[p2] = d.nodes[which]
 			d.nodes[which] = layout
-			if which == 0 {
-				layout.divider = d.divider
-				d.divider = -1
-			}
 		}
 	} else {
 		d.nodes[p1] = dc
-		d.Horizontal = s.Horizontal()
+		d.setHorizontal(s.Horizontal())
+	}
+}
+
+// setHorizontal sets the orientation, dropping a divider position that was set for the other one.
+func (d *DockLayout) setHorizontal(horizontal bool) {
+	if d.Horizontal != horizontal {
+		d.Horizontal = horizontal
+		d.resetDivider()
+	}
+}
+
+func (d *DockLayout) resetDivider() {
+	d.divider = -1
+	d.dividerExtent = 0
+	d.rescaleExtent = 0
+	d.belowMinimum = [2]bool{}
+}
+
+// prepareToRescale has each layout from this one down note the extent its nodes share, ahead of a rearrangement of the
+// Dock. A layout that then gives them another extent scales the divider to it, which keeps the proportions of the two
+// nodes rather than a position that may no longer leave room for both.
+func (d *DockLayout) prepareToRescale() {
+	if d.divider >= 0 && d.rescaleExtent == 0 {
+		available := d.DividerMaximum()
+		if d.dividerExtent < 0 && available > 0 {
+			// A divider set by hand that awaits layout is kept as given within the extent its nodes share now.
+			d.belowMinimum = d.belowMinimumWithin(available)
+			d.dividerExtent = available
+		}
+		if d.dividerExtent > 0 {
+			d.rescaleExtent = available
+		}
+	}
+	for _, node := range d.nodes {
+		if dl, ok := node.(*DockLayout); ok {
+			dl.prepareToRescale()
+		}
 	}
 }
 
@@ -218,19 +263,26 @@ func dockOrder(s side.Enum) (p1, p2 int) {
 
 // Remove a node. Returns true if the node was found and removed.
 func (d *DockLayout) Remove(node DockLayoutNode) bool {
+	d.RootLayout().prepareToRescale()
+	return d.remove(node)
+}
+
+func (d *DockLayout) remove(node DockLayoutNode) bool {
 	switch node {
 	case d.nodes[0]:
 		d.nodes[0] = nil
+		d.resetDivider()
 		d.pullUp(d.nodes[1])
 		return true
 	case d.nodes[1]:
 		d.nodes[1] = nil
+		d.resetDivider()
 		d.pullUp(d.nodes[0])
 		return true
 	default:
 		for _, n := range d.nodes {
 			if dl, ok := n.(*DockLayout); ok {
-				if dl.Remove(node) {
+				if dl.remove(node) {
 					return true
 				}
 			}
@@ -270,19 +322,17 @@ func (d *DockLayout) Full() bool {
 // DividerMaximum returns the maximum value the divider can be set to. Will always return 0 if Full() returns false.
 func (d *DockLayout) DividerMaximum() float32 {
 	if d.Full() {
-		var extent float32
-		if d.Horizontal {
-			extent = d.frame.Width
-		} else {
-			extent = d.frame.Height
-		}
-		extent -= d.dock.DockDividerSize()
-		if extent < 0 {
-			extent = 0
-		}
-		return extent
+		return max(d.extent(d.frame.Size)-d.dock.DockDividerSize(), 0)
 	}
 	return 0
+}
+
+// extent returns the part of the size that runs across the divider.
+func (d *DockLayout) extent(size geom.Size) float32 {
+	if d.Horizontal {
+		return size.Width
+	}
+	return size.Height
 }
 
 // RawDividerPosition returns the divider position, unadjusted for the current content.
@@ -290,34 +340,105 @@ func (d *DockLayout) RawDividerPosition() float32 {
 	return d.divider
 }
 
-// DividerPosition returns the current divider position.
+// DividerPosition returns the current divider position, which is where the layout puts the divider when that differs
+// from where it was set.
 func (d *DockLayout) DividerPosition() float32 {
 	if !d.Full() {
 		return 0
 	}
 	if d.divider < 0 {
-		frame := d.nodes[0].FrameRect()
-		if d.Horizontal {
-			return frame.Width
-		}
-		return frame.Height
+		return d.extent(d.nodes[0].FrameRect().Size)
 	}
-	return min(d.divider, d.DividerMaximum())
+	return d.dividerPositionFor(d.DividerMaximum())
+}
+
+// dividerPositionFor returns where the divider goes when the two nodes have the given extent to share. That is where
+// it was positioned, moved as far as it takes to leave each node its minimum. A node that the divider was set to leave
+// less than its minimum keeps the share it was left as its minimum instead, so that a divider can be dragged up against
+// another, which a layout never does while it has the room not to. Without the room, the nodes share the extent in
+// proportion to their minimums.
+func (d *DockLayout) dividerPositionFor(available float32) float32 {
+	floor0 := d.extent(dockNodeMinimumSize(d.nodes[0]))
+	floor1 := d.extent(dockNodeMinimumSize(d.nodes[1]))
+	pos := available / 2
+	if d.divider >= 0 {
+		pos = d.divider
+		extent, below := d.dividerExtent, d.belowMinimum
+		if extent <= 0 {
+			extent, below = available, d.belowMinimumWithin(available)
+		}
+		if below[0] {
+			floor0 = min(floor0, pos)
+		}
+		if below[1] {
+			floor1 = min(floor1, max(extent-pos, 0))
+		}
+	}
+	if total := floor0 + floor1; total > available {
+		return available * floor0 / total
+	}
+	return min(max(pos, floor0), available-floor1)
+}
+
+// belowMinimumWithin returns which nodes the divider leaves less than their minimum when they share the given extent.
+// The second node's share is not known for a divider of unknown origin, so it is never counted as below its minimum.
+func (d *DockLayout) belowMinimumWithin(extent float32) [2]bool {
+	return [2]bool{
+		d.divider < d.extent(dockNodeMinimumSize(d.nodes[0])),
+		d.dividerExtent < 0 && max(extent-d.divider, 0) < d.extent(dockNodeMinimumSize(d.nodes[1])),
+	}
+}
+
+// minimumSize returns the smallest size at which each node within this layout still gets its own minimum.
+func (d *DockLayout) minimumSize() geom.Size {
+	min0 := dockNodeMinimumSize(d.nodes[0])
+	min1 := dockNodeMinimumSize(d.nodes[1])
+	var dividerSize float32
+	if d.Full() {
+		dividerSize = d.dock.DockDividerSize()
+	}
+	if d.Horizontal {
+		return geom.NewSize(min0.Width+dividerSize+min1.Width, max(min0.Height, min1.Height))
+	}
+	return geom.NewSize(max(min0.Width, min1.Width), min0.Height+dividerSize+min1.Height)
+}
+
+// dockNodeMinimumSize returns the minimum size of a node, which is none for a node that has no say in it.
+func dockNodeMinimumSize(node DockLayoutNode) geom.Size {
+	if n, ok := node.(interface{ minimumSize() geom.Size }); ok {
+		return n.minimumSize()
+	}
+	return geom.Size{}
 }
 
 // SetDividerPosition sets the new divider position. Use a value less than 0 to reset the divider to its default mode,
-// which splits the available space evenly between the children.
+// which splits the available space evenly between the children, as far as their minimum sizes allow. A position that
+// leaves a child less than its minimum size, or no room at all, is kept as given.
 func (d *DockLayout) SetDividerPosition(pos float32) {
-	old := d.divider
-	if pos < 0 {
-		d.divider = -1
-	} else {
+	d.resetDivider()
+	if pos >= 0 {
 		d.divider = pos
+		d.dividerExtent = -1
 	}
-	if d.divider != old && d.Full() {
-		d.PerformLayout(nil)
-		d.dock.MarkForRedraw()
+	if d.Full() {
+		if d.dock.NeedsLayout {
+			// This layout's frame may be stale, so bring every frame up to date.
+			d.RootLayout().PerformLayout(nil)
+		} else {
+			d.PerformLayout(nil)
+		}
 	}
+	d.dock.MarkForRedraw()
+}
+
+// layoutPendingAbove returns true if a panel above the Dock awaits layout, which may yet change the extents within it.
+func (d *DockLayout) layoutPendingAbove() bool {
+	for p := d.dock.Parent(); p != nil; p = p.Parent() {
+		if p.NeedsLayout {
+			return true
+		}
+	}
+	return false
 }
 
 // PreferredSize implements DockLayoutNode.
@@ -365,27 +486,37 @@ func (d *DockLayout) PerformLayout(_ *Panel) {
 	size := d.frame.Size
 	switch {
 	case d.dock.MaximizedContainer != nil:
-		d.ForEachDockContainer(func(dc *DockContainer) bool {
-			dc.Hidden = dc != d.dock.MaximizedContainer
-			return false
-		})
-		d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width, size.Height))
+		// The maximized container fills the Dock, so only the root layout places it.
+		if d.parent == nil {
+			d.ForEachDockContainer(func(dc *DockContainer) bool {
+				dc.Hidden = dc != d.dock.MaximizedContainer
+				return false
+			})
+			d.dock.MaximizedContainer.AsPanel().SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, size.Width,
+				size.Height))
+		}
 	case d.Full():
-		available := size.Height
-		if d.Horizontal {
-			available = size.Width
-		}
 		dividerSize := d.dock.DockDividerSize()
-		available -= dividerSize
-		if available < 0 {
-			available = 0
+		available := max(d.extent(size)-dividerSize, 0)
+		if d.divider >= 0 && available > 0 {
+			switch {
+			case d.rescaleExtent > 0:
+				if available != d.rescaleExtent {
+					d.divider = d.dividerPositionFor(d.rescaleExtent) * available / d.rescaleExtent
+					d.dividerExtent = available
+				}
+				d.rescaleExtent = 0
+			case d.dividerExtent < 0 && d.layoutPendingAbove():
+				// A divider set by hand waits for the extent the panel above gives the Dock, so lay the Dock out again
+				// after that panel, even if it leaves the Dock's size alone.
+				d.dock.NeedsLayout = true
+				d.dock.layoutAgain = true
+			case d.dividerExtent <= 0:
+				d.belowMinimum = d.belowMinimumWithin(available)
+				d.dividerExtent = available
+			}
 		}
-		var primary float32
-		if d.divider < 0 {
-			primary = available / 2
-		} else {
-			primary = min(d.divider, available)
-		}
+		primary := d.dividerPositionFor(available)
 		if d.Horizontal {
 			d.nodes[0].SetFrameRect(geom.NewRect(d.frame.X, d.frame.Y, primary, size.Height))
 			d.nodes[1].SetFrameRect(geom.NewRect(d.frame.X+primary+dividerSize, d.frame.Y, available-primary,

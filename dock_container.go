@@ -32,6 +32,15 @@ type Dockable interface {
 	Modified() bool
 }
 
+// DockMinimumSizer may be implemented by a Dockable that needs more room than its Dock's MinimumContainerSize gives
+// it. The DockContainer holding it is then laid out no smaller than that, plus its header, while the Dock has the room.
+// Nothing tells the Dock when that size changes, so the Dockable must then call its MarkForLayoutRecursivelyUpward and
+// MarkForRedraw, to have every Dock holding it lay it out again.
+type DockMinimumSizer interface {
+	// DockMinimumSize returns the smallest size the Dockable should be laid out at.
+	DockMinimumSize() geom.Size
+}
+
 // DockContainer holds one or more Dockable panels.
 type DockContainer struct {
 	Dock    *Dock
@@ -162,6 +171,9 @@ func (d *DockContainer) Stack(dockable Dockable, index int) {
 	}
 	d.content.AddChildAtIndex(dockable, index)
 	d.header.addTab(dockable, index)
+	if d.Dock != nil {
+		d.Dock.markForLayout()
+	}
 	d.SetCurrentDockable(dockable)
 	d.AcquireFocus()
 }
@@ -238,13 +250,15 @@ func (d *DockContainer) remove(dockable Dockable, moving bool) {
 		d.content.RemoveChild(dockable)
 		d.header.close(dockable)
 		d.MarkForRedraw()
+		if d.Dock != nil {
+			d.Dock.markForLayout()
+		}
 		if len(children) == 1 {
 			d.Dock.Restore()
 			if dl := d.Dock.layout.findLayout(d); dl != nil {
 				dl.Remove(d)
 			}
 			d.Dock.RemoveChild(d)
-			d.Dock.MarkForLayoutAndRedraw()
 			d.Dock = nil
 		}
 		if next != nil {
@@ -281,6 +295,22 @@ func (d *DockContainer) remove(dockable Dockable, moving bool) {
 func movingWithinWindow(from, to Paneler) bool {
 	wnd := from.AsPanel().Window()
 	return wnd != nil && wnd == to.AsPanel().Window()
+}
+
+// minimumSize returns the smallest size the Dock lays this container out at while it has the room: the Dock's
+// MinimumContainerSize, or what a DockMinimumSizer within the container asks for, when that is more.
+func (d *DockContainer) minimumSize() geom.Size {
+	var need geom.Size
+	for _, c := range d.content.Children() {
+		if sizer, ok := c.Self.(DockMinimumSizer); ok {
+			need = need.Max(sizer.DockMinimumSize())
+		}
+	}
+	if need != (geom.Size{}) {
+		_, pref, _ := d.header.Sizes(geom.Size{})
+		need.Height += pref.Height
+	}
+	return need.Max(d.Dock.MinimumContainerSize)
 }
 
 // PreferredSize implements DockLayoutNode.

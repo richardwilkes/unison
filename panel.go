@@ -84,6 +84,9 @@ type Panel struct {
 	// noFocusInCells marks a panel that takes no keyboard focus while it is, or is inside, a cell of a Table, List or
 	// TableHeader. NewLink sets it; see Panel.inCell.
 	noFocusInCells bool
+	// layoutAgain is set by a layout during PerformLayout to have ValidateLayout leave NeedsLayout set, so that the
+	// panel is laid out again at the next validation.
+	layoutAgain bool
 }
 
 // NewPanel creates a new panel.
@@ -380,11 +383,12 @@ func (p *Panel) SetLayout(lay Layout) {
 // ValidateLayout performs any layout that needs to be run by this panel or its children.
 func (p *Panel) ValidateLayout() {
 	if p.NeedsLayout {
+		p.layoutAgain = false
 		if p.layout != nil {
 			p.layout.PerformLayout(p)
 			p.MarkForRedraw()
 		}
-		p.NeedsLayout = false
+		p.NeedsLayout = p.layoutAgain
 	}
 	for _, child := range p.children {
 		child.ValidateLayout()

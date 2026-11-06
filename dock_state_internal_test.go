@@ -14,6 +14,7 @@ import (
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
+	"github.com/richardwilkes/unison/enums/side"
 )
 
 // TestDockStateApplyRejectsExcessLayoutChildren verifies that applying a malformed (e.g. hand-edited) saved state
@@ -150,6 +151,67 @@ func TestDockStateCurrentIndexWithUnkeyedCurrent(t *testing.T) {
 			c.NotNil(restoredContainer)
 			c.Equal(restored[test.wantCurrent], restoredContainer.CurrentDockable())
 			c.Equal(test.wantRestoredIndex, restoredContainer.CurrentDockableIndex())
+		})
+	}
+}
+
+// TestDockStateRestoresDividers verifies that a restored state lays its containers out as the Dock it was captured from
+// goes on to: two containers side by side, with the divider set by hand, are rearranged as each case says, then
+// captured and restored into a Dock of the same size.
+func TestDockStateRestoresDividers(t *testing.T) {
+	containerOf := func(d Dockable) *DockContainer { return Ancestor[*DockContainer](d) }
+	for _, tc := range []struct {
+		rearrange func(dock *Dock, c Dockable)
+		want      map[string]geom.Rect
+		name      string
+		divider   float32
+	}{
+		{
+			// Not given its minimum size, as a container that a layout had squeezed out would be.
+			name:    "a container closed up by hand stays closed",
+			divider: 1024,
+			want:    map[string]geom.Rect{"a": geom.NewRect(0, 0, 1024, 800), "b": geom.NewRect(1032, 0, 0, 800)},
+		},
+		{
+			name:    "a divider captured before the layout that follows a rearrangement is scaled by it",
+			divider: 768,
+			rearrange: func(dock *Dock, c Dockable) {
+				dock.DockTo(c, nil, side.Right)
+				dock.ValidateLayout()
+				containerOf(c).Close(c)
+			},
+			want: map[string]geom.Rect{"a": geom.NewRect(0, 0, 768, 800), "b": geom.NewRect(776, 0, 256, 800)},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			frame := geom.NewRect(0, 0, 1032, 800)
+			source := NewDock()
+			source.SetFrameRect(frame)
+			source.DockTo(newTestDockable("a"), nil, side.Left)
+			source.DockTo(newTestDockable("b"), nil, side.Right)
+			source.ValidateLayout()
+			source.RootDockLayout().SetDividerPosition(tc.divider)
+			if tc.rearrange != nil {
+				tc.rearrange(source, newTestDockable("c"))
+			}
+			state := NewDockState(source, func(d Dockable) string { return d.Title() })
+
+			restored := map[string]Dockable{}
+			target := NewDock()
+			target.SetFrameRect(frame)
+			state.Apply(target, func(key string) Dockable {
+				restored[key] = newTestDockable(key)
+				return restored[key]
+			})
+			c.Equal(len(tc.want), len(restored))
+			for key, want := range tc.want {
+				dc := containerOf(restored[key])
+				c.True(dc != nil, "dockable %s", key)
+				if dc != nil {
+					c.Equal(want, dc.FrameRect(), "dockable %s", key)
+				}
+			}
 		})
 	}
 }

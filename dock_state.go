@@ -28,7 +28,12 @@ type DockState struct {
 	Children     []*DockState `json:"children,omitzero"`      // Only valid when Type != DockableType
 	CurrentIndex int          `json:"current_index,omitzero"` // Only valid when Type == ContainerType
 	Divider      float32      `json:"divider,omitzero"`       // Only valid when Type == LayoutType
-	Horizontal   bool         `json:"horizontal,omitzero"`    // Only valid when Type == LayoutType
+	// DividerExtent is what the children shared when Divider was set: 0 if that is unknown, or less than 0 if Divider
+	// was set by hand and has yet to be laid out.
+	DividerExtent float32 `json:"divider_extent,omitzero"`
+	RescaleExtent float32 `json:"rescale_extent,omitzero"` // What the children shared when rearranged, until laid out
+	Horizontal    bool    `json:"horizontal,omitzero"`     // Only valid when Type == LayoutType
+	BelowMinimum  [2]bool `json:"below_minimum,omitzero"`  // Which children Divider left less than their minimum
 }
 
 // NewDockState creates a new DockState for the given Dock. keyFromDockable will be passed each Dockable within the Dock
@@ -77,10 +82,13 @@ func collectDockState(node DockLayoutNode, keyFromDockable func(Dockable) string
 			}
 		}
 		return &DockState{
-			Type:       LayoutType,
-			Children:   children,
-			Divider:    t.divider,
-			Horizontal: t.Horizontal,
+			Type:          LayoutType,
+			Children:      children,
+			Divider:       t.divider,
+			DividerExtent: t.dividerExtent,
+			RescaleExtent: t.rescaleExtent,
+			Horizontal:    t.Horizontal,
+			BelowMinimum:  t.belowMinimum,
 		}
 	default:
 		errs.Log(errs.New("invalid dock data"))
@@ -98,6 +106,7 @@ func (d *DockState) Apply(dock *Dock, keyToDockable func(string) Dockable) {
 	dock.RemoveAllChildren()
 	d.apply(dock.RootDockLayout(), keyToDockable)
 	dock.MarkForLayoutRecursively()
+	dock.markForLayout()
 	dock.ValidateLayout()
 	dock.MarkForRedraw()
 }
@@ -114,7 +123,10 @@ func (d *DockState) apply(node DockLayoutNode, keyToDockable func(string) Dockab
 		t.content.SetCurrentIndex(d.CurrentIndex - 1)
 	case *DockLayout:
 		t.divider = d.Divider
+		t.dividerExtent = d.DividerExtent
+		t.rescaleExtent = d.RescaleExtent
 		t.Horizontal = d.Horizontal
+		t.belowMinimum = d.BelowMinimum
 		children := d.Children
 		if len(children) > len(t.nodes) {
 			// A layout can only hold two children. More than that can only come from a malformed (e.g. hand-edited)

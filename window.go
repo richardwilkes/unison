@@ -64,7 +64,7 @@ type Window struct {
 	MinMaxContentSizeCallback func() (minimum, maximum geom.Size)
 	// MovedCallback is called when the window is moved.
 	MovedCallback func()
-	// ResizedCallback is called when the window is resized.
+	// ResizedCallback is called when the window is resized, once its content has been laid out at the new size.
 	ResizedCallback func()
 	// MinimizedCallback is called when the window is about to beminimized or restored from minimization.
 	MinimizedCallback func(minimized bool)
@@ -406,7 +406,9 @@ func (w *Window) moved() {
 func (w *Window) resized() {
 	w.forgetTooltip()
 	w.hideSuggestions()
+	w.ValidateLayout()
 	SafeCall(w.ResizedCallback)
+	// Lay out again whatever the callback changed.
 	w.ValidateLayout()
 }
 

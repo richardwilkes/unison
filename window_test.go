@@ -20,6 +20,7 @@ import (
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/drag"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/side"
 )
 
 // ownerTitle is the title the tests give a window that owns popup windows.
@@ -2309,5 +2310,35 @@ func TestSetFocusFromLostFocusCallback(t *testing.T) {
 	c.Equal(1, lost, "the callback runs once when the focus is being removed")
 	c.Equal(1, gained)
 	c.True(focus == d.AsPanel(), "and its move stands then too")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestResizedCallbackSeesTheNewLayout verifies that a window's ResizedCallback runs once the content is laid out at the
+// new size, so that a Dock divider set from it is measured against the extent the resize gives the Dock.
+func TestResizedCallbackSeesTheNewLayout(t *testing.T) {
+	c := check.New(t)
+	var wnd *Window
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 1200, Height: 900},
+		StartupFinishedCallback(func() {
+			wnd = newHeadlessTestWindow(t, "resized", geom.NewRect(0, 0, 1032, 800))
+		}))
+	c.NotNil(wnd)
+	var frameA, frameB geom.Rect
+	c.True(screen.Do(func() {
+		a := newTestDockable("a")
+		b := newTestDockable("b")
+		dock := NewDock()
+		wnd.SetContent(dock)
+		dock.DockTo(a, nil, side.Left)
+		dock.DockTo(b, nil, side.Right)
+		wnd.ValidateLayout()
+		wnd.ResizedCallback = func() { dock.RootDockLayout().SetDividerPosition(500) }
+		wnd.SetContentRect(geom.NewRect(0, 0, 508, 800))
+		wnd.ResizedCallback = nil
+		frameA = Ancestor[*DockContainer](a).FrameRect()
+		frameB = Ancestor[*DockContainer](b).FrameRect()
+	}))
+	c.Equal(geom.NewRect(0, 0, 500, 800), frameA, "the divider is kept where the callback set it")
+	c.Equal(geom.NewRect(508, 0, 0, 800), frameB, "closing up the second container")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
