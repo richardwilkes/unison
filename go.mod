@@ -10,10 +10,10 @@ require (
 	github.com/richardwilkes/toolbox/v2 v2.22.0
 	github.com/yuin/goldmark v1.8.7
 	github.com/zeebo/xxh3 v1.1.0
-	golang.org/x/image v0.47.0
+	golang.org/x/image v0.48.0
 	golang.org/x/net v0.62.0
-	golang.org/x/sys v0.49.0
-	golang.org/x/text v0.43.0
+	golang.org/x/sys v0.50.0
+	golang.org/x/text v0.44.0
 )
 
 require (
@@ -22,6 +22,6 @@ require (
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.2 // indirect
 	github.com/miekg/dns v1.1.73 // indirect
-	golang.org/x/term v0.47.0 // indirect
+	golang.org/x/term v0.48.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

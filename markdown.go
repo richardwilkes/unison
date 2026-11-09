@@ -405,7 +405,7 @@ func (m *Markdown) walk(node ast.Node) {
 		m.processList()
 	case ast.KindListItem:
 		m.processListItem()
-	case ast.KindHTMLBlock:
+	case ast.KindHTMLBlock, ast.KindLinkReferenceDefinition:
 		// Ignore
 	case astex.KindTable:
 		m.processTable()

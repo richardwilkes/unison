@@ -10,7 +10,9 @@
 package unison
 
 import (
+	"bytes"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,8 +79,8 @@ func TestMarkdownSetContentIsIdempotent(t *testing.T) {
 }
 
 // TestMarkdownHandlesGFMConstructs exercises every block/inline handler so a panic or unhandled-element regression in
-// any of them is caught. Assertions are intentionally light because the exact rendered structure is not part of the
-// public contract.
+// any of them is caught, the latter by the error it logs. Assertions on the content are intentionally light because
+// the exact rendered structure is not part of the public contract.
 func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -92,6 +94,7 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 		{name: "ordered list", content: "1. one\n2. two\n", want: "two"},
 		{name: "unordered list", content: "- alpha\n- beta\n", want: "beta"},
 		{name: "link", content: "a [link label](http://example.com) here\n", want: "link label"},
+		{name: "reference link", content: "a [ref label][] here\n\n[ref label]: http://example.com\n", want: "ref label"},
 		{name: "autolink", content: "see http://example.com today\n", want: "example.com"},
 		{name: "emphasis", content: "this is **strong** and *weak*\n", want: "strong"},
 		{name: "underscore emphasis", content: "some _italic_ words\n", want: "italic"},
@@ -105,10 +108,15 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
+			var logged bytes.Buffer
+			prev := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+			defer slog.SetDefault(prev)
 			m := NewMarkdown(false)
 			m.SetContent(tc.content, 400)
 			c.True(len(m.Children()) > 0)
 			c.Contains(collectMarkdownText(m.AsPanel()), tc.want)
+			c.Equal("", logged.String())
 		})
 	}
 }
