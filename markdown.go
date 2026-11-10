@@ -928,8 +928,10 @@ func (m *Markdown) processListItem() {
 		m.index++
 	}
 	bullet.SetLayoutData(&FlexLayoutData{
-		HAlign:   align.End,
-		SizeHint: geom.NewSize(m.bulletWidth, 0),
+		HAlign: align.End,
+		// As tall as a line of the text and no taller: a bullet the text's font lacks, as Roboto does the circle and
+		// the square, comes from whatever font the platform falls back to, whose line may be taller.
+		SizeHint: geom.NewSize(m.bulletWidth, xmath.Ceil(m.decoration.Font.LineHeight())),
 	})
 	spacing := m.decoration.Font.Baseline() / 3
 	// Rounded down, since the labels the text is drawn in round their widths up.
