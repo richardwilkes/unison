@@ -142,10 +142,12 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 	link.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		if mouseDown {
 			// A background behind the text, as code within a Markdown link has, or the one DrawLabel fills behind the
-			// whole label, which the text need not have been decorated with, would hide the pressed ink.
-			bg := link.BackgroundInk
+			// whole label, which the text need not have been decorated with, would hide the pressed ink. The drawable
+			// is drawn in the label's own ink, which the text's decorations, being copies, do not share.
+			bg, fg := link.BackgroundInk, link.OnBackgroundInk
 			link.BackgroundInk = nil
-			defer func() { link.BackgroundInk = bg }()
+			link.OnBackgroundInk = theme.OnPressedInk
+			defer func() { link.BackgroundInk, link.OnBackgroundInk = bg, fg }()
 			defer link.Text.RestoreDecorations(link.Text.AdjustDecorations(func(decoration *TextDecoration) {
 				decoration.BackgroundInk = nil
 				decoration.OnBackgroundInk = theme.OnPressedInk

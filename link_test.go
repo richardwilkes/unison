@@ -118,6 +118,63 @@ func TestLinkPressedHidesTheBackgroundOfItsText(t *testing.T) {
 	}
 }
 
+// linkTestSwatch stands in for an icon: it fills its rect with the ink it is given.
+type linkTestSwatch struct{}
+
+func (linkTestSwatch) LogicalSize() geom.Size {
+	return geom.NewUniformSize(10)
+}
+
+func (linkTestSwatch) DrawInRect(canvas *unison.Canvas, rect geom.Rect, _ *unison.SamplingOptions, paint *unison.Paint) {
+	canvas.DrawRect(rect, paint)
+}
+
+// TestLinkPressedDrawsItsDrawableInThePressedInk verifies that a pressed link draws its drawable in the theme's
+// OnPressedInk rather than in the ink it is drawn in otherwise, which may be the same as the pressed fill, even when
+// its text was decorated otherwise.
+func TestLinkPressedDrawsItsDrawableInThePressedInk(t *testing.T) {
+	c := check.New(t)
+	theme := unison.DefaultLinkTheme
+	theme.OnBackgroundInk = unison.Red
+	theme.PressedInk = unison.Blue
+	theme.OnPressedInk = unison.Green
+	link := unison.NewLink("link", "", "target", &theme, nil)
+	link.Drawable = linkTestSwatch{}
+	link.Text = unison.NewText("link", &unison.TextDecoration{Font: unison.LabelFont, OnBackgroundInk: unison.Black})
+	link.SetFrameRect(geom.NewRect(0, 0, 100, 20))
+	// The swatch is drawn at the start of the content, ahead of the text, so these columns hold nothing else.
+	swatchEnd := int(link.ContentRect(false).X + linkTestSwatch{}.LogicalSize().Width)
+	swatchPixels := func(ink unison.Color) int {
+		img, err := unison.NewImageFromDrawing(100, 20, 72, func(cv *unison.Canvas) {
+			link.DrawCallback(cv, link.ContentRect(true))
+		})
+		c.NoError(err)
+		if err != nil {
+			return -1
+		}
+		defer img.Dispose()
+		pixels, err := img.ToNRGBA()
+		c.NoError(err)
+		if err != nil {
+			return -1
+		}
+		count := 0
+		for y := range pixels.Rect.Dy() {
+			for x := range swatchEnd {
+				if unison.ColorFromNRGBA(pixels.NRGBAAt(x, y)) == ink {
+					count++
+				}
+			}
+		}
+		return count
+	}
+	c.Equal(100, swatchPixels(unison.Red), "the drawable is drawn in the link's ink while the link is not pressed")
+	c.True(link.MouseDownCallback(geom.NewPoint(10, 10), unison.ButtonLeft, 1, 0))
+	c.Equal(100, swatchPixels(unison.Green), "the drawable is drawn in the pressed ink while the link is pressed")
+	c.True(link.MouseUpCallback(geom.NewPoint(200, 200), unison.ButtonLeft, 0))
+	c.Equal(100, swatchPixels(unison.Red), "and in the link's ink again once the link is released")
+}
+
 // linkTestField returns a field whose caret never blinks, since a blink timer outlives the session that armed it and
 // would enqueue a stray task into whichever test runs next.
 func linkTestField() *unison.Field {
