@@ -26,10 +26,11 @@ import (
 // session ends. The next session's beginStartup calls it.
 var removeSessionSecrets func()
 
-// post adds f to the event queue and wakes the event loop. It may be called from any goroutine.
-func (s *headlessState) post(f func()) {
+// post adds the events to the event queue together, so that no pass of the event loop ends between them, and wakes
+// the event loop. It may be called from any goroutine.
+func (s *headlessState) post(events ...func()) {
 	s.inputLock.Lock()
-	s.input = append(s.input, f)
+	s.input = append(s.input, events...)
 	s.inputLock.Unlock()
 	s.wakeUp()
 }

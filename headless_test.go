@@ -1336,6 +1336,48 @@ func TestHeadlessKeyDownThatMovesFocusDropsItsRune(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
+// TestHeadlessKeyDownThatClosesItsWindowDropsItsRune verifies that the rune of a key goes to the window that took its
+// key down, as on every platform, so that it is dropped when that key down closed the window rather than typed into the
+// window that takes the focus in its place.
+func TestHeadlessKeyDownThatClosesItsWindowDropsItsRune(t *testing.T) {
+	c := check.New(t)
+	var field *unison.Field
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 400, Height: 300},
+		unison.StartupFinishedCallback(func() {
+			field = unison.NewField()
+			next := newHeadlessWindow(t, "next", geom.NewRect(20, 20, 240, 60), field)
+			closing := newHeadlessWindow(t, "closing", geom.NewRect(20, 120, 240, 60), unison.NewPanel())
+			if next == nil || closing == nil {
+				return
+			}
+			next.SetFocus(field)
+			closing.KeyDownCallback = func(code unison.KeyCode, _ mod.Modifiers, _ bool) bool {
+				if code != unison.KeyQ {
+					return false
+				}
+				closing.Dispose()
+				return true
+			}
+			closing.ToFront()
+		}))
+	c.NotNil(field)
+
+	screen.Type("q")
+	var text string
+	var focused bool
+	c.True(screen.Do(func() {
+		text = field.Text()
+		focused = field.Focused()
+	}))
+	c.True(focused, "closing the window should have handed the focus to the field's window")
+	c.Equal("", text, "the rune of the key that closed its window must not be typed into the window that took the focus")
+
+	screen.Type("w")
+	c.True(screen.Do(func() { text = field.Text() }))
+	c.Equal("w", text, "keystrokes after the one that closed the window should be typed as usual")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
 // TestHeadlessPanelPoint verifies the other way of aiming at a widget: an offset into the panel's own content area is
 // taken to the same screen position a real pointer would have to be at to land there, so a click at it reaches the
 // panel at exactly that offset.

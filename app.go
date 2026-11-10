@@ -230,13 +230,14 @@ func processEvents() {
 	finishProcessingEvents()
 }
 
-// finishProcessingEvents runs the next pending UI task, draws any windows that have been marked for redraw, and then
-// performs any window activation that ToFront() asked for. It is called after each pass of event processing in the
-// main loop, as well as in nested event loops, such as the ones used for modal windows and for the source side of drag
-// & drop on Linux. The work is bracketed by a platform autorelease pool (a no-op outside macOS), since tasks and draws
-// make platform calls that produce autoreleased objects, and this is the outermost spot on the thread that can reclaim
-// them.
+// finishProcessingEvents forgets which windows took the key downs of the pass (see forgetKeyDownWindows), runs the next
+// pending UI task, draws any windows that have been marked for redraw, and then performs any window activation that
+// ToFront() asked for. It is called after each pass of event processing in the main loop, as well as in nested event
+// loops, such as the ones used for modal windows and for the source side of drag & drop on Linux. The work is bracketed
+// by a platform autorelease pool (a no-op outside macOS), since tasks and draws make platform calls that produce
+// autoreleased objects, and this is the outermost spot on the thread that can reclaim them.
 func finishProcessingEvents() {
+	forgetKeyDownWindows()
 	apiWithAutoreleasePool(func() {
 		// Cleared before anything below can mark a window for redraw, and unconditionally, so that a pass which finds
 		// nothing to do still re-arms the wake-up: from here on, the next MarkForRedraw posts an empty event, whether

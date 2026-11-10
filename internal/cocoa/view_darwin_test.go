@@ -290,6 +290,25 @@ func TestViewMouseAndKeyEvents(t *testing.T) {
 		if len(typed) != 1 || typed[0] != 'a' {
 			t.Errorf("key typed callbacks = %q, want %q", string(typed), "a")
 		}
+
+		// A press whose callback destroys the window must not report the text the key produces, which by then has no
+		// window to go to. AppKit keeps a window and its view alive while it dispatches an event to them, which the
+		// retains stand in for here.
+		w2, v2, destroy := newTestWindowAndView(t)
+		ov2 := objc.ID(v2)
+		objc.ID(w2).Send(Sel("retain"))
+		ov2.Send(Sel("retain"))
+		typed = nil
+		WindowKeyPressedCallback = func(Window, uint16, uint) { destroy() }
+		w2.MakeKeyAndOrderFront()
+		WithPool(func() {
+			ov2.Send(Sel("keyDown:"), synthKeyEvent(nsEventTypeKeyDown, "a", 0, 0, w2))
+		})
+		Release(ov2)
+		Release(objc.ID(w2))
+		if len(typed) != 0 {
+			t.Errorf("key typed callbacks after the press destroyed the window = %q, want none", string(typed))
+		}
 	})
 }
 

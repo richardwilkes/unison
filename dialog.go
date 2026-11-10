@@ -184,7 +184,7 @@ func (d *Dialog) Button(responseCode int) *Button {
 	return nil
 }
 
-// RunModal displays and brings this dialog to the front, the runs a modal event loop until StopModal is called.
+// RunModal displays and brings this dialog to the front, then runs a modal event loop until StopModal is called.
 // Disposes the dialog before it returns.
 func (d *Dialog) RunModal() int {
 	return d.wnd.RunModal()

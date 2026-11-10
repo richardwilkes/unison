@@ -66,7 +66,7 @@ type Window struct {
 	MovedCallback func()
 	// ResizedCallback is called when the window is resized, once its content has been laid out at the new size.
 	ResizedCallback func()
-	// MinimizedCallback is called when the window is about to beminimized or restored from minimization.
+	// MinimizedCallback is called when the window is about to be minimized or restored from minimization.
 	MinimizedCallback func(minimized bool)
 	// MaximizedCallback is called when the window is about to be maximized or restored from maximization.
 	MaximizedCallback func(maximized bool)
@@ -94,9 +94,11 @@ type Window struct {
 	contextMenuPanel     *Panel
 	lastMouseOverPanel   *Panel
 	lastKeyDownPanel     *Panel
+	keyDownWindow        *Window // took the last key down here, until a key up, focus change or pass end; see runeTyped
 	lastTooltip          *Panel
 	lastButtonTime       time.Time
 	pressedKeys          map[KeyCode]bool
+	forwardedKeys        map[KeyCode]*Window // modal window that took each key forwarded to one, until its release
 	pressedButtons       map[int]bool
 	data                 map[string]any
 	dragTypes            map[string]*uti.DataType
@@ -413,6 +415,8 @@ func (w *Window) resized() {
 }
 
 func (w *Window) gainedFocus() {
+	// None of the runes that arrive from now on come from a key that went down before this window took the focus.
+	w.keyDownWindow = nil
 	if !w.okToProcess() {
 		// Deliberately do NOT bring the top modal window back to the front here. Input routing already ignores windows
 		// that are blocked by a modal, so the modal does not need to hold the focus. Re-activating it on every focus
@@ -465,6 +469,8 @@ func (w *Window) lostFocus() {
 	axMarkActiveWindowChange(wasActive)
 	SafeCall(w.LostFocusCallback)
 	w.root.postLostFocus(w)
+	// The key up that would forget the window that took the last key down delivered here now goes elsewhere.
+	w.keyDownWindow = nil
 	if len(w.pressedKeys) != 0 {
 		keys := make([]KeyCode, 0, len(w.pressedKeys))
 		for key := range w.pressedKeys {
@@ -474,10 +480,14 @@ func (w *Window) lostFocus() {
 			w.keyReleased(key, 0)
 		}
 	}
+	// Keys forwarded to a modal window are released in the one that took each, by keyReleased.
+	for _, key := range slices.Collect(maps.Keys(w.forwardedKeys)) {
+		w.keyReleased(key, 0)
+	}
 	w.synthesizeMouseUp()
 }
 
-// RunModal displays and brings this window to the front, the runs a modal event loop until StopModal is called.
+// RunModal displays and brings this window to the front, then runs a modal event loop until StopModal is called.
 // Disposes the window before it returns.
 func (w *Window) RunModal() int {
 	active := ActiveWindow()
@@ -2179,12 +2189,22 @@ func (w *Window) keyPressed(key KeyCode, mods mod.Modifiers) {
 		w.owner.keyPressed(key, mods)
 		return
 	}
+	w.settleForwardedKey(key, mods)
 	if !w.okToProcess() {
 		// A window blocked by a modal may still hold the platform focus (see the comment in gainedFocus), so route
 		// keyboard input to the top modal window rather than processing it here.
-		modalStack[len(modalStack)-1].keyPressed(key, mods)
+		modal := modalStack[len(modalStack)-1]
+		w.keyDownWindow = modal
+		if w.forwardedKeys == nil {
+			w.forwardedKeys = make(map[KeyCode]*Window)
+		}
+		w.forwardedKeys[key] = modal
+		modal.keyPressed(key, mods)
+		w.keepKeyDownWindow(modal)
 		return
 	}
+	w.keyDownWindow = w
+	defer w.keepKeyDownWindow(w)
 	w.lastKeyModifiers = mods
 	w.dropRunes = false
 	repeat := w.pressedKeys[key]
@@ -2271,9 +2291,14 @@ func (w *Window) runeTyped(ch rune) {
 		w.owner.runeTyped(ch)
 		return
 	}
-	if !w.okToProcess() {
-		// See the comment in keyPressed.
-		modalStack[len(modalStack)-1].runeTyped(ch)
+	target := w.keyboardWindow()
+	if w.keyDownWindow != nil && w.keyDownWindow != target {
+		// The key down that produced the rune went to a window that no longer takes this one's keyboard input, such as
+		// a modal dialog the key dismissed, so the rune is not meant for the window that takes that input now.
+		return
+	}
+	if target != w {
+		target.runeTyped(ch)
 		return
 	}
 	if w.dropRunes {
@@ -2308,6 +2333,48 @@ func (w *Window) runeTyped(ch rune) {
 	}
 }
 
+// keyboardWindow returns the window that takes this one's keyboard input: the top modal window while one blocks this
+// window (see the comment in keyPressed), and otherwise this window itself.
+func (w *Window) keyboardWindow() *Window {
+	if w.okToProcess() {
+		return w
+	}
+	return modalStack[len(modalStack)-1]
+}
+
+// keepKeyDownWindow records took again as the window that took the key down whose handlers just returned, when an event
+// loop they ran forgot it, by taking the key up or the focus from this window or by ending a pass, and took no longer
+// takes this window's keyboard input. macOS and X11 deliver the runes of a key only after its handlers return.
+func (w *Window) keepKeyDownWindow(took *Window) {
+	if w.keyDownWindow == nil && took != w.keyboardWindow() {
+		w.keyDownWindow = took
+	}
+}
+
+// settleForwardedKey forgets the modal window an earlier press of key was forwarded to, and sends it the key's release,
+// once it no longer takes this window's keyboard input, so that it does not take its next press of the key for a repeat
+// and the release of this press goes where this press does. While it still takes that input, this press reaches it as a
+// repeat.
+func (w *Window) settleForwardedKey(key KeyCode, mods mod.Modifiers) {
+	took, ok := w.forwardedKeys[key]
+	if !ok || took == w.keyboardWindow() {
+		return
+	}
+	delete(w.forwardedKeys, key)
+	if took.IsValid() {
+		took.keyReleased(key, mods)
+	}
+}
+
+// forgetKeyDownWindows forgets, in each window, the window that took the last key down there. It is called at the end
+// of each pass of the event loop, by which every platform has delivered the runes of the keys that went down during it,
+// so that a rune arriving later is not dropped for a key whose up never reaches the window.
+func forgetKeyDownWindows() {
+	for _, w := range windowList {
+		w.keyDownWindow = nil
+	}
+}
+
 func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	if w.owner != nil {
 		// See the comment in keyPressed.
@@ -2316,15 +2383,24 @@ func (w *Window) keyReleased(key KeyCode, mods mod.Modifiers) {
 	}
 	w.lastKeyModifiers = mods
 	w.dropRunes = false
+	w.keyDownWindow = nil
 	if key == w.contextMenuChordKey {
 		w.contextMenuChordKey = KeyNone
 	}
 	pressed := w.pressedKeys[key]
 	delete(w.pressedKeys, key)
+	forwardedTo := w.forwardedKeys[key]
+	delete(w.forwardedKeys, key)
+	// The bookkeeping above is still done locally when the key up goes to a modal window, so that releases synthesized
+	// by lostFocus keep this window's pressed key state clean.
+	if forwardedTo.IsValid() {
+		// The matching key down was routed to this modal window, which takes the key up even when another modal window
+		// has opened over it since.
+		forwardedTo.keyReleased(key, mods)
+		return
+	}
 	if !w.okToProcess() {
-		// The matching key down was routed to the top modal window, so deliver the key up there as well. The
-		// bookkeeping above is still done locally so that releases synthesized by lostFocus keep this window's pressed
-		// key state clean.
+		// The top modal window takes any other key up, and delivers it only if it saw the matching key down.
 		modalStack[len(modalStack)-1].keyReleased(key, mods)
 		return
 	}

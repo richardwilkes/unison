@@ -24,6 +24,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xos"
 	"github.com/richardwilkes/unison/accessibility"
+	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
 	"github.com/richardwilkes/unison/enums/thememode"
 	"github.com/richardwilkes/unison/internal/atspi"
@@ -1161,6 +1162,36 @@ func TestX11DestroyLeavesQueuedEventsAlone(t *testing.T) {
 			c.Errorf("queued event = %T, want a ButtonRelease", ev)
 		}
 	}
+}
+
+// TestX11KeyPressTypesNoRuneIntoWindowItDisposed covers a key press whose handler disposes of its window: the rune the
+// key produces is not delivered to the window it disposed of.
+func TestX11KeyPressTypesNoRuneIntoWindowItDisposed(t *testing.T) {
+	c := check.New(t)
+	priorWindows, priorConn, priorMapping := windowList, x11Conn, x11KbMapping
+	t.Cleanup(func() { windowList, x11Conn, x11KbMapping = priorWindows, priorConn, priorMapping })
+	// A one-key mapping, so that a press of keycode 8 produces 'q'.
+	x11Conn = &x11.Conn{MinKeyCode: 8, MaxKeyCode: 8}
+	x11KbMapping = x11.KeyboardMapping{KeySymsPerKeyCode: 2, KeySyms: []uint32{'q', 'Q'}}
+	w := &Window{wnd: &apiWindow{}, pressedKeys: make(map[KeyCode]bool)}
+	w.wnd.id = x11TestWindowID
+	w.root = newRootPanel(w)
+	w.valid = true
+	windowList = []*Window{w}
+	w.KeyDownCallback = func(KeyCode, mod.Modifiers, bool) bool {
+		w.valid = false // stands in for disposing of the window, which would ask an X server to destroy it
+		return true
+	}
+	var runes []rune
+	w.RuneTypedCallback = func(ch rune) bool {
+		runes = append(runes, ch)
+		return true
+	}
+	ev := &x11.KeyPressEvent{}
+	ev.Event = w.wnd.id
+	ev.Detail = 8
+	x11ProcessEvent(ev)
+	c.Equal(0, len(runes), "the rune of a key whose handler disposed of the window is not delivered to it")
 }
 
 // TestX11PopupWindowProperties covers the properties a popup window is given: its PID, its type, which is a popup

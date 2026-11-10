@@ -1565,7 +1565,8 @@ func x11ProcessEvent(e x11.Event) {
 		if w := x11FindWindow(ev.Event); w != nil {
 			mods := x11TranslateModifierState(ev.State)
 			w.keyPressed(rawScanCodeToKeyCodeMap[uint16(ev.Detail)], mods)
-			if mods&(mod.Control|mod.Option|mod.Command) == 0 {
+			// A handler that disposed of the window leaves the text the key produces with no window to go to.
+			if w.IsValid() && mods&(mod.Control|mod.Option|mod.Command) == 0 {
 				keySym := x11ScanCodeToKeySym(uint16(ev.Detail), mods, ev.State&x11Mod5Mask != 0)
 				if ch := x11KeySymToUnicode(keySym); ch != utf8.RuneError {
 					w.runeTyped(ch)

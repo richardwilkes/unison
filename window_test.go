@@ -337,6 +337,196 @@ func TestKeyReleasedForwardedToModalWithoutMatchingDownIsNotDispatched(t *testin
 	c.False(blocked.pressedKeys[KeyA])
 }
 
+// TestLostFocusReleasesKeysForwardedToModal verifies that a window blocked by a modal releases the keys it forwarded to
+// the modal when it loses the focus, as it does its own, so that the modal does not take the next press of one for a
+// repeat.
+func TestLostFocusReleasesKeysForwardedToModal(t *testing.T) {
+	c := check.New(t)
+	t.Cleanup(resetTaskQueue) // losing the focus queues a task
+	blocked := newModalInputTestWindow()
+	blocked.valid = false // so that losing the focus asks no platform where the pointer is
+	modal := newModalInputTestWindow()
+	pushTestModal(t, modal)
+	var repeats []bool
+	modal.KeyDownCallback = func(_ KeyCode, _ mod.Modifiers, repeat bool) bool {
+		repeats = append(repeats, repeat)
+		return true
+	}
+	var ups []KeyCode
+	modal.KeyUpCallback = func(keyCode KeyCode, _ mod.Modifiers) bool {
+		ups = append(ups, keyCode)
+		return true
+	}
+	blocked.keyPressed(KeyX, 0)
+	blocked.lostFocus()
+	c.Equal([]KeyCode{KeyX}, ups)
+	modal.keyPressed(KeyX, 0)
+	c.Equal([]bool{false, false}, repeats)
+}
+
+// TestForwardedKeyReleaseGoesToModalThatTookPress verifies that a window blocked by a modal sends the release of a key
+// it forwarded to the modal window that took the press, even once another modal window has opened over that one, so
+// that the modal does not take its next press of the key for a repeat, and to no window once that modal is gone.
+func TestForwardedKeyReleaseGoesToModalThatTookPress(t *testing.T) {
+	c := check.New(t)
+	blocked := newModalInputTestWindow()
+	modal := newModalInputTestWindow()
+	pushTestModal(t, modal)
+	var repeats []bool
+	modal.KeyDownCallback = func(_ KeyCode, _ mod.Modifiers, repeat bool) bool {
+		repeats = append(repeats, repeat)
+		return true
+	}
+	ups := 0
+	modal.KeyUpCallback = func(KeyCode, mod.Modifiers) bool {
+		ups++
+		return true
+	}
+	blocked.keyPressed(KeyX, 0)
+	pushTestModal(t, newModalInputTestWindow())
+	blocked.keyReleased(KeyX, 0)
+	modalStack = modalStack[:len(modalStack)-1] // the modal opened over the one that took the press ends
+	modal.keyPressed(KeyX, 0)
+	c.Equal([]bool{false, false}, repeats, "the modal window should not take its next press of the key for a repeat")
+
+	blocked.keyPressed(KeyY, 0)
+	modal.valid = false // as disposing of it would
+	modalStack = modalStack[:len(modalStack)-1]
+	blocked.keyReleased(KeyY, 0)
+	c.Equal(0, ups, "a modal window that is gone should not be sent the release")
+}
+
+// TestForwardedKeyPressedAgainIsReleasedInModalNoLongerTakingIt verifies that a key a blocked window forwarded to a modal
+// window goes on repeating there while that modal takes the window's keyboard input, and that once it no longer does,
+// the key's next press releases it in that modal before going where the keyboard input goes now, which then takes the
+// release.
+func TestForwardedKeyPressedAgainIsReleasedInModalNoLongerTakingIt(t *testing.T) {
+	for _, one := range []struct {
+		// between changes the modal stack between the two presses, given the modal that took the first and another.
+		between func(t *testing.T, modal, other *Window)
+		name    string
+		want    []string
+	}{
+		{
+			name:    "same modal on top",
+			between: func(*testing.T, *Window, *Window) {},
+			want:    []string{"modal down", "modal repeat", "modal up"},
+		},
+		{
+			name:    "another modal opened over it",
+			between: func(t *testing.T, _, other *Window) { pushTestModal(t, other) },
+			want:    []string{"modal down", "other down", "other up"},
+		},
+		{
+			name:    "modal ended",
+			between: func(_ *testing.T, modal, _ *Window) { modal.StopModal(ModalResponseOK) },
+			want:    []string{"modal down", "modal up", "window down", "window up"},
+		},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			blocked := newModalInputTestWindow()
+			modal := newModalInputTestWindow()
+			other := newModalInputTestWindow()
+			pushTestModal(t, modal)
+			var events []string
+			for name, w := range map[string]*Window{"window": blocked, "modal": modal, "other": other} {
+				w.KeyDownCallback = func(_ KeyCode, _ mod.Modifiers, repeat bool) bool {
+					if repeat {
+						events = append(events, name+" repeat")
+					} else {
+						events = append(events, name+" down")
+					}
+					return true
+				}
+				w.KeyUpCallback = func(KeyCode, mod.Modifiers) bool {
+					events = append(events, name+" up")
+					return true
+				}
+			}
+			blocked.keyPressed(KeyX, 0)
+			one.between(t, modal, other)
+			blocked.keyPressed(KeyX, 0)
+			blocked.keyReleased(KeyX, 0)
+			c.Equal(one.want, events)
+			c.False(modal.pressedKeys[KeyX], "the modal window that took the first press should have been released")
+		})
+	}
+}
+
+// TestRuneOfKeyDownThatEndedModalIsDropped verifies that the rune a key produces goes nowhere once its key down has
+// ended the modal window that took it, rather than to the window that takes input in the modal's place, even when the
+// handler ran an event loop that took the key up or the focus before it ended the modal, and that a key up or a change
+// of focus in the window the platform delivers the keyboard to, or the end of the event loop pass, ends the
+// suppression.
+func TestRuneOfKeyDownThatEndedModalIsDropped(t *testing.T) {
+	keyUp := func(w *Window) { w.keyReleased(KeyY, 0) }
+	endPass := func(*Window) { finishProcessingEvents() }
+	for _, one := range []struct {
+		// nested is what an event loop the key-down handler runs before it ends the modal does to the window the
+		// platform delivers the keyboard to, if anything.
+		nested func(platform *Window)
+		// end ends the key in the window the platform delivers the keyboard to.
+		end        func(platform *Window)
+		name       string
+		underModal bool
+	}{
+		{name: "modal over another modal", underModal: true, end: keyUp},
+		{name: "modal over a window holding the platform focus", end: keyUp},
+		{name: "window holding the platform focus loses it", end: (*Window).lostFocus},
+		{
+			name:       "nested loop takes the focus",
+			underModal: true,
+			nested:     (*Window).lostFocus,
+			end:        (*Window).gainedFocus,
+		},
+		{name: "nested loop takes the key up", underModal: true, nested: keyUp, end: (*Window).lostFocus},
+		{name: "nested loop takes the key up before the pass ends", underModal: true, nested: keyUp, end: endPass},
+		{name: "nested loop takes the focus from a window holding it", nested: (*Window).lostFocus, end: keyUp},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			saveFrontState(t)
+			swapRedrawSet(t)
+			// The end of a pass runs the next task and activates the pending front window, and lostFocus queues a task.
+			pendingFrontWindow = nil
+			resetTaskQueue()
+			t.Cleanup(resetTaskQueue)
+			under := newModalInputTestWindow()
+			modal := newModalInputTestWindow()
+			// Listed, so that the end of a pass reaches them.
+			windowList = []*Window{modal, under}
+			// The window the platform delivers the keyboard to. It is not valid, so that losing the focus asks no
+			// platform where the pointer is.
+			platform := under
+			if one.underModal {
+				pushTestModal(t, under)
+				platform = modal
+			}
+			platform.valid = false
+			pushTestModal(t, modal)
+			modal.KeyDownCallback = func(_ KeyCode, _ mod.Modifiers, _ bool) bool {
+				if one.nested != nil {
+					one.nested(platform)
+				}
+				modal.StopModal(ModalResponseOK)
+				return true
+			}
+			var runes []rune
+			under.RuneTypedCallback = func(ch rune) bool {
+				runes = append(runes, ch)
+				return true
+			}
+			platform.keyPressed(KeyY, 0)
+			platform.runeTyped('y')
+			c.Equal(0, len(runes), "the rune of the key that ended the modal should reach no other window")
+			one.end(platform)
+			platform.runeTyped('z')
+			c.Equal([]rune{'z'}, runes)
+		})
+	}
+}
+
 // TestMouseUpWhileBlockedByModalClearsDragState is the regression test for the stuck-drag bug: when a modal opens
 // while a mouse button is held (e.g. a mouse-down handler calls RunModal, or a background task raises a dialog
 // mid-drag), the release arrives while the window is blocked. Delivery must be suppressed, but the pressed-button
@@ -1512,6 +1702,11 @@ func TestCloseRemovesPendingRedraw(t *testing.T) {
 // while a redraw was pending, rather than re-queuing them on every pass forever.
 func TestFinishProcessingEventsDropsDisposedWindows(t *testing.T) {
 	c := check.New(t)
+	saveFrontState(t)
+	// The end of a pass runs the next task and activates the pending front window.
+	pendingFrontWindow = nil
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
 	w := newRedrawTestWindow()
 	swapRedrawSet(t)
 	w.MarkForRedraw()

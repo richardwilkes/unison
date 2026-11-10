@@ -373,13 +373,20 @@ func (s *HeadlessScreen) Type(text string) {
 
 // postKeyStroke posts the press of a key, the rune it produced if it produced one, and its release. They are posted as
 // three separate events, as the platforms deliver them, so that a nested event loop started by any one of them still
-// receives the rest.
+// receives the rest, and together, so that no pass of the event loop ends between them. The rune goes to the window
+// that took the press, as it does on every platform.
 func (s *HeadlessScreen) postKeyStroke(code KeyCode, mods mod.Modifiers, ch rune) {
-	s.post(func() { s.keyDown(code, mods) })
+	var took *Window
+	events := []func(){func() {
+		// Recorded before the press is delivered, since a nested event loop the press starts may dispatch the rune.
+		took = s.focused
+		s.keyDown(code, mods)
+	}}
 	if ch != 0 {
-		s.post(func() { s.runeTyped(ch) })
+		events = append(events, func() { s.keyRuneTyped(took, ch) })
 	}
-	s.post(func() { s.keyUp(code, mods) })
+	events = append(events, func() { s.keyUp(code, mods) })
+	s.post(events...)
 }
 
 // The drag & drop entry points. A drag this application started needs none of them: a widget calling StartDrag from

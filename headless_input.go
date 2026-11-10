@@ -214,7 +214,16 @@ func (s *headlessState) keyUp(code KeyCode, mods mod.Modifiers) {
 	s.focused.keyReleased(code, mods)
 }
 
-// runeTyped delivers a typed rune to the focused window. See keyDown for what happens when there is none.
+// keyRuneTyped delivers the rune a key produced to w, the window that took the key down, and drops it if w is gone by
+// then or is nil because the key down went to no window.
+func (s *headlessState) keyRuneTyped(w *Window, ch rune) {
+	if w.IsValid() {
+		w.runeTyped(ch)
+	}
+}
+
+// runeTyped delivers a rune that no key produced, such as one from an input method, to the focused window. See keyDown
+// for what happens when there is none.
 func (s *headlessState) runeTyped(ch rune) {
 	if s.focused == nil {
 		return

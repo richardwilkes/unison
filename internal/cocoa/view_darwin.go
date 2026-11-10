@@ -106,7 +106,8 @@ var (
 )
 
 // viewWindow returns the window a macContentView was created for (stored in its wnd ivar at creation time, exactly
-// like the old Objective-C class, since callbacks may need it before the view is installed in the window).
+// like the old Objective-C class, since callbacks may need it before the view is installed in the window), or 0 once
+// the view has been released.
 func viewWindow(self objc.ID) Window {
 	return Window(self.Send(Sel("wnd")))
 }
@@ -371,7 +372,10 @@ func registerMacContentViewClass() {
 					WindowKeyPressedCallback(viewWindow(self), objc.Send[uint16](event, Sel("keyCode")),
 						eventMods(event))
 				}
-				self.Send(Sel("interpretKeyEvents:"), NSArrayFromIDs(event))
+				// A callback that destroyed the window leaves the text the key produces with no window to go to.
+				if viewWindow(self) != 0 {
+					self.Send(Sel("interpretKeyEvents:"), NSArrayFromIDs(event))
+				}
 			},
 		},
 		{
@@ -657,8 +661,10 @@ func (v View) SetLayerContentsRGBAPremul(pixels []byte, logicalWidth, logicalHei
 	Release(img)
 }
 
-// Release releases the view.
+// Release has the view forget its window, which is being destroyed, and releases it. A key down still being handled
+// then reports no text (see keyDown:).
 func (v View) Release() {
+	objc.ID(v).Send(Sel("setWnd:"), objc.ID(0))
 	Release(objc.ID(v))
 }
 
