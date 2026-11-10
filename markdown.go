@@ -19,6 +19,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,7 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
 	"github.com/richardwilkes/toolbox/v2/xstrings"
+	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/paintstyle"
@@ -53,7 +55,11 @@ const DefaultMarkdownWidth = 8 * 100
 // Markdown, but will alter any Markdown created in the future.
 var DefaultMarkdownTheme MarkdownTheme
 
-const markdownListItemKey = "unison.list.item"
+const (
+	markdownListItemKey = "unison.list.item"
+	// markdownLinkHeadKey marks a piece of a link broken across rows, other than the first, with the first.
+	markdownLinkHeadKey = "unison.link.head"
+)
 
 func init() {
 	DefaultMarkdownTheme = MarkdownTheme{
@@ -163,7 +169,15 @@ func HasAnyPrefix(prefixes []string, target string) bool {
 
 type drawableCacheEntry struct {
 	drawable Drawable
-	targets  []*DrawablePanel
+	targets  []markdownImageTarget
+}
+
+// markdownImageTarget is a placeholder waiting for an image, and the widths constrainImage is to keep the image between
+// there.
+type markdownImageTarget struct {
+	panel    *DrawablePanel
+	maxWidth float32
+	minWidth float32
 }
 
 // Markdown provides markdown display widget.
@@ -183,9 +197,11 @@ type Markdown struct {
 	node                       ast.Node
 	chainedFrameChangeCallback func()
 	content                    []byte
-	columnWidths               []int
-	drawableCache              map[string]*drawableCacheEntry
-	anchors                    map[string]*Panel
+	// columnWidths is how wide each column of the table being built is made, its cells' borders and padding included.
+	// Zero makes a column as narrow as its content allows.
+	columnWidths  []int
+	drawableCache map[string]*drawableCacheEntry
+	anchors       map[string]*Panel
 	// axDoc is the content composed into one stream of text, built on demand and thrown away whenever anything that
 	// would move a rune of it changes. See Markdown.axDocument.
 	axDoc *axDocument
@@ -211,8 +227,10 @@ type Markdown struct {
 	axWordEnd    int
 	maxWidth     float32
 	maxLineWidth float32
-	ordered      bool
-	isHeader     bool
+	// bulletWidth is the width every bullet of the list being built is given. See Markdown.listBulletWidth.
+	bulletWidth float32
+	ordered     bool
+	isHeader    bool
 	// axWordDrag reports that the gesture in progress began with a double-click, so it selects whole words.
 	axWordDrag bool
 }
@@ -354,8 +372,13 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.index = 0
 	m.ordered = false
 	m.anchors = make(map[string]*Panel)
-	m.node = goldmark.New(goldmark.WithExtensions(extension.GFM),
-		goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithHeadingAttribute())).
+	// extension.GFM, but with a task list check box that has to be followed by whitespace, as GFM requires. See
+	// markdownTaskCheckBoxParser.
+	m.node = goldmark.New(goldmark.WithExtensions(extension.Linkify, extension.Table, extension.Strikethrough),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithHeadingAttribute(),
+			parser.WithInlineParsers(util.Prioritized(markdownTaskCheckBoxParser{
+				InlineParser: extension.NewTaskCheckBoxParser(),
+			}, 0)))).
 		Parser().Parse(text.NewReader(m.content))
 	m.walk(m.node)
 	if m.StripBottomEmptyMargin && len(m.children) > 0 {
@@ -435,6 +458,8 @@ func (m *Markdown) walk(node ast.Node) {
 		m.processAutoLink()
 	case astex.KindStrikethrough:
 		m.processStrikethrough()
+	case astex.KindTaskCheckBox:
+		// Shown in place of the item's bullet; see Markdown.createListBullet.
 
 	default:
 		errs.Log(errs.New("unhandled markdown element"), "kind", m.node.Kind())
@@ -476,7 +501,9 @@ func (m *Markdown) processHeading() {
 		p := block.AsPanel()
 		insets := m.stdBottomMargin()
 		insets.Top = m.collapseMarginWithPrevious(m.decoration.Font.Baseline())
-		if m.block == m.AsPanel() && len(m.block.Children()) == 0 {
+		if len(m.block.Children()) == 0 {
+			// Nothing above it to keep apart from in the document, list item or quote it begins, where a margin would
+			// leave an item's bullet beside the space above the heading's text.
 			insets.Top = 0
 		}
 		if heading.Level == 1 || heading.Level == 2 {
@@ -526,12 +553,11 @@ func markdownHasInlineElement(p *Panel) bool {
 }
 
 func (m *Markdown) collapseMarginWithPrevious(desired float32) float32 {
-	p := m.block
-	children := p.Children()
-	if len(children) != 0 {
-		p = children[len(children)-1]
+	children := m.block.Children()
+	if len(children) == 0 {
+		return desired
 	}
-	if border := p.Border(); border != nil {
+	if border := children[len(children)-1].Border(); border != nil {
 		desired -= border.Insets().Bottom
 		if desired < 0 {
 			desired = 0
@@ -549,6 +575,11 @@ func (m *Markdown) processThematicBreak() {
 	})
 	insets := m.stdBottomMargin()
 	insets.Top = m.collapseMarginWithPrevious(insets.Bottom)
+	if _, isItem := m.block.ClientData()[markdownListItemKey]; !isItem && len(m.block.Children()) == 0 {
+		// Nothing above it to keep apart from in the document or quote it begins. In a list item, the margin keeps it
+		// level with the middle of the bullet.
+		insets.Top = 0
+	}
 	hr.SetBorder(NewEmptyBorder(insets))
 	m.block.AddChild(hr)
 }
@@ -708,14 +739,16 @@ func (m *Markdown) processList() {
 	if list, ok := m.node.(*ast.List); ok {
 		saveIndex := m.index
 		saveOrdered := m.ordered
+		saveBulletWidth := m.bulletWidth
 		saveBlock := m.block
 		m.index = list.Start
 		m.ordered = list.IsOrdered()
 		// A list is a list of items, each of which pairs a bullet with its content, rather than one grid of alternating
 		// bullets and content: an assistive technology moves from item to item, says which of how many it is on, and
-		// reads the whole of it. The look is unchanged because each item lays its bullet and content out in the same two
-		// columns the one grid used, with every bullet given the width of the widest so that the numbers of an ordered
-		// list still line up. See Markdown.equalizeListBulletWidths.
+		// reads the whole of it. The look is unchanged because each item lays its bullet and content out in the same
+		// two columns the one grid used, with every bullet given the width of the widest so that the numbers of an
+		// ordered list still line up. See Markdown.listBulletWidth.
+		m.bulletWidth = m.listBulletWidth(list)
 		p := newMarkdownContainer(role.List).AsPanel()
 		p.SetLayoutData(&FlexLayoutData{
 			HAlign: align.Fill,
@@ -736,74 +769,151 @@ func (m *Markdown) processList() {
 		saveMaxLineWidth := m.maxLineWidth
 		m.maxLineWidth -= insets.Left
 		m.processChildren()
-		m.equalizeListBulletWidths(p)
 		m.maxLineWidth = saveMaxLineWidth
 		m.index = saveIndex
 		m.ordered = saveOrdered
+		m.bulletWidth = saveBulletWidth
 		m.block = saveBlock
 	}
 }
 
-// equalizeListBulletWidths gives every bullet of a list the width of the widest of them, which is what keeps the
+// listBulletWidth returns the width every bullet of a list is given, which is that of the widest of them: it keeps the
 // numbers of an ordered list aligned with one another now that each item lays its own bullet out rather than all of
-// them sharing one column of one grid. The bullet's text is aligned to the end of that width, exactly where the one
-// grid put it, and the label is measured rather than the width being guessed so that "10." and "1." are as they were.
-func (m *Markdown) equalizeListBulletWidths(list *Panel) {
+// them sharing one column of one grid. The bullets are measured rather than the width being guessed, and before any
+// item is built, since the text of every item is wrapped to the room the column leaves.
+func (m *Markdown) listBulletWidth(list *ast.List) float32 {
 	var widest float32
-	items := list.Children()
-	bullets := make([]*Panel, 0, len(items))
-	for _, item := range items {
-		children := item.Children()
-		if len(children) == 0 {
-			continue
-		}
-		bullet := children[0]
-		if _, ok := bullet.Self.(*Label); !ok {
-			continue
-		}
-		_, prefSize, _ := bullet.Sizes(geom.Size{})
+	index := list.Start
+	for item := list.FirstChild(); item != nil; item = item.NextSibling() {
+		_, prefSize, _ := m.createListBullet(item, index).Sizes(geom.Size{})
 		widest = max(widest, prefSize.Width)
-		bullets = append(bullets, bullet)
+		index++
 	}
-	for _, bullet := range bullets {
-		bullet.SetLayoutData(&FlexLayoutData{
-			HAlign:   align.End,
-			SizeHint: geom.NewSize(widest, 0),
-		})
+	return widest
+}
+
+// markdownTaskCheckBoxParser parses the check box of a task list item only where GFM has one, which goldmark's own
+// parser does not: GFM requires whitespace after the "]", so "[x](url)" begins with a link and "[ ]todo" with text.
+type markdownTaskCheckBoxParser struct {
+	parser.InlineParser
+}
+
+// Parse implements parser.InlineParser.
+func (p markdownTaskCheckBoxParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
+	if line, _ := block.PeekLine(); len(line) > 3 && !util.IsSpace(line[3]) {
+		return nil
+	}
+	return p.InlineParser.Parse(parent, block, pc)
+}
+
+// markdownTaskCheckBox returns the check box of a task list item, or nil if the item is not a task.
+func markdownTaskCheckBox(item ast.Node) *astex.TaskCheckBox {
+	if block := item.FirstChild(); block != nil {
+		if box, ok := block.FirstChild().(*astex.TaskCheckBox); ok {
+			return box
+		}
+	}
+	return nil
+}
+
+// markdownTaskBox draws the check box of a task list item.
+type markdownTaskBox struct {
+	font    Font
+	checked bool
+}
+
+// LogicalSize implements Drawable. The height is that of a line, which keeps the box level with the text beside it.
+func (b *markdownTaskBox) LogicalSize() geom.Size {
+	return geom.NewSize(xmath.Ceil(b.font.Baseline()*0.8), b.font.LineHeight())
+}
+
+// boxRect returns where within rect the box is drawn. The box keeps its size and sits at the end of rect, since every
+// bullet is given the width of the widest; see Markdown.listBulletWidth.
+func (b *markdownTaskBox) boxRect(rect geom.Rect) geom.Rect {
+	side := b.LogicalSize().Width
+	return geom.NewRect(rect.Right()-side, rect.Y+xmath.Round((rect.Height-side)/2), side, side)
+}
+
+// DrawInRect implements Drawable.
+func (b *markdownTaskBox) DrawInRect(canvas *Canvas, rect geom.Rect, _ *SamplingOptions, paint *Paint) {
+	rect = b.boxRect(rect)
+	side := rect.Width
+	if paint == nil {
+		paint = NewPaint()
+	} else {
+		paint = paint.Clone()
+	}
+	paint.SetStyle(paintstyle.Stroke)
+	paint.SetStrokeWidth(1)
+	canvas.DrawRoundedRect(rect.Inset(geom.NewUniformInsets(0.5)), geom.NewUniformSize(side/5), paint)
+	if b.checked {
+		paint.SetStrokeWidth(side / 7)
+		mark := NewPath()
+		mark.MoveTo(geom.NewPoint(rect.X+side*0.25, rect.Y+side*0.55))
+		mark.LineTo(geom.NewPoint(rect.X+side*0.45, rect.Y+side*0.7))
+		mark.LineTo(geom.NewPoint(rect.X+side*0.75, rect.Y+side*0.3))
+		canvas.DrawPath(mark, paint)
 	}
 }
 
-func (m *Markdown) processListItem() {
-	var bullet string
-	saveMaxLineWidth := m.maxLineWidth
-	if m.ordered {
-		bullet = fmt.Sprintf("%d.", m.index)
-		m.index++
-		m.maxLineWidth -= m.decoration.Font.SimpleWidth("999. ") // This isn't right, but is a reasonable approximation
+// createTaskBox creates the check box that takes the place of a task list item's bullet or number, as it does on
+// GitHub. It is an image named for its state, which is how an assistive technology is told whether the task is done.
+func (m *Markdown) createTaskBox(checked bool) *DrawablePanel {
+	box := NewDrawablePanel()
+	box.Drawable = &markdownTaskBox{font: m.decoration.Font, checked: checked}
+	box.Ink = m.decoration.OnBackgroundInk
+	if checked {
+		box.Accessibility.Name = i18n.Text("Checked")
 	} else {
-		bullet = "•"
-		m.maxLineWidth -= m.decoration.Font.SimpleWidth("• ")
+		box.Accessibility.Name = i18n.Text("Unchecked")
 	}
+	return box
+}
+
+// createListBullet creates what marks a list item: the check box of a task, or else its number or bullet.
+func (m *Markdown) createListBullet(item ast.Node, index int) *Panel {
+	if task := markdownTaskCheckBox(item); task != nil {
+		return m.createTaskBox(task.IsChecked).AsPanel()
+	}
+	bullet := "•"
+	if m.ordered {
+		bullet = fmt.Sprintf("%d.", index)
+	}
+	label := NewLabel()
+	// The bullet is not something to move to or hear announced on its own: it says which item this is, which the item
+	// itself reports, and it is read where it is drawn as the first thing in the item's text.
+	label.Accessibility.Role = role.None
+	// The text is aligned to the end of the label rather than the label to the end of its cell, since every bullet is
+	// given the width of the widest; see Markdown.listBulletWidth.
+	label.HAlign = align.End
+	label.Text = NewText(bullet, m.decoration)
+	return label.AsPanel()
+}
+
+func (m *Markdown) processListItem() {
+	saveMaxLineWidth := m.maxLineWidth
+	bullet := m.createListBullet(m.node, m.index)
+	if m.ordered {
+		m.index++
+	}
+	bullet.SetLayoutData(&FlexLayoutData{
+		HAlign:   align.End,
+		SizeHint: geom.NewSize(m.bulletWidth, 0),
+	})
+	spacing := m.decoration.Font.Baseline() / 3
+	// Rounded down, since the labels the text is drawn in round their widths up.
+	m.maxLineWidth = xmath.Floor(m.maxLineWidth - (m.bulletWidth + spacing))
 	item := newMarkdownContainer(role.ListItem).AsPanel()
 	item.SetLayout(&FlexLayout{
 		Columns:  2,
-		HSpacing: m.decoration.Font.Baseline() / 3,
+		HSpacing: spacing,
 	})
 	item.SetLayoutData(&FlexLayoutData{
 		HAlign: align.Fill,
 		HGrab:  true,
 	})
 	m.block.AddChild(item)
-	label := NewLabel()
-	// The bullet is not something to move to or hear announced on its own: it says which item this is, which the item
-	// itself reports, and it is read where it is drawn as the first thing in the item's text.
-	label.Accessibility.Role = role.None
-	// The text is aligned to the end of the label rather than the label to the end of its cell, since every bullet is
-	// given the width of the widest; see Markdown.equalizeListBulletWidths.
-	label.HAlign = align.End
-	label.Text = NewText(bullet, m.decoration)
-	label.SetLayoutData(&FlexLayoutData{HAlign: align.End})
-	item.AddChild(label)
+	item.AddChild(bullet)
 	saveBlock := m.block
 	p := NewPanel()
 	p.Accessibility.Role = role.None
@@ -826,104 +936,89 @@ func (m *Markdown) processTable() {
 		if len(table.Alignments) != 0 {
 			saveBlock := m.block
 			saveTableRow := m.tableRow
-			m.columnWidths = make([]int, len(table.Alignments))
-			for i := 0; i < len(m.columnWidths); i++ {
-				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
-			}
+			columns := len(table.Alignments)
 			// The grid is kept as it is — one flow of cells in as many columns as the table has — because its column
 			// alignment is what the table looks like. The rows an assistive technology moves through are described over
 			// the top of it; see markdownTable.ProvideAccessibility.
-			p := newMarkdownTable(len(table.Alignments)).AsPanel()
+			p := newMarkdownTable(columns).AsPanel()
 			p.SetBorder(NewCompoundBorder(NewEmptyBorder(m.stdBottomMargin()),
 				NewLineBorder(ThemeSurfaceEdge, geom.Size{}, geom.NewUniformInsets(1), false)))
 			m.block.AddChild(p)
-			m.block = p
-			m.tableRow = 0
-			m.processChildren()
-			m.block = saveBlock
-
-			m.MarkForLayoutRecursively()
-			m.ValidateLayout()
-			if over := int(xmath.Ceil(p.FrameRect().Width - m.maxLineWidth)); over > 0 {
-				children := p.Children()
-				count := 0
-				for i := 0; i < len(m.columnWidths); i++ {
-					if i < len(children) {
-						m.columnWidths[i] = int(xmath.Ceil(children[i].FrameRect().Width))
-						if m.columnWidths[i] > 0 {
-							count++
-						}
-					} else {
-						m.columnWidths[i] = 0
-					}
-				}
-				if count > 0 {
-					widths := make([]int, len(m.columnWidths))
-					copy(widths, m.columnWidths)
-					slices.Sort(widths)
-					for i := len(widths) - 1; i > 0; i-- {
-						delta := widths[i] - widths[i-1]
-						qty := 0
-						for j := 0; j < len(m.columnWidths); j++ {
-							if m.columnWidths[j] == widths[i] {
-								qty++
-							}
-						}
-						if qty*delta > over {
-							amt := over / qty
-							extra := over - amt*qty
-							for j := 0; j < len(m.columnWidths); j++ {
-								if m.columnWidths[j] == widths[i] {
-									m.columnWidths[j] -= amt
-									if extra > 0 {
-										m.columnWidths[j]--
-										extra--
-									}
-								}
-							}
-							over = 0
-							break
-						}
-						for j := 0; j < len(m.columnWidths); j++ {
-							if m.columnWidths[j] == widths[i] {
-								m.columnWidths[j] -= delta
-								over -= delta
-							}
-						}
-					}
-					if over > 0 {
-						count = 0
-						for j := 0; j < len(m.columnWidths); j++ {
-							if m.columnWidths[j] > 0 {
-								count++
-							}
-						}
-						amt := over / count
-						extra := over - amt*count
-						for j := 0; j < len(m.columnWidths); j++ {
-							if m.columnWidths[j] > 0 {
-								m.columnWidths[j] -= amt
-								if extra > 0 {
-									m.columnWidths[j]--
-									extra--
-								}
-								if m.columnWidths[j] < 0 {
-									m.columnWidths[j] = 0
-								}
-							}
-						}
-					}
-				}
+			build := func() {
 				p.RemoveAllChildren()
 				m.block = p
 				m.tableRow = 0
 				m.processChildren()
 				m.block = saveBlock
 			}
+			m.columnWidths = make([]int, columns)
+			for i := range m.columnWidths {
+				m.columnWidths[i] = int(xmath.Floor(m.maxLineWidth))
+			}
+			build()
+			room := int(xmath.Floor(m.maxLineWidth - p.Border().Insets().Width()))
+			if natural := markdownColumnWidths(p, columns); markdownSum(natural) > room {
+				// Too wide, so built again with every column as narrow as its content allows, which says how narrow each
+				// can be made: a long word, or an image, which is never scaled narrower than its placeholder, keeps its
+				// column wider than asked.
+				clear(m.columnWidths)
+				build()
+				// A table that cannot fit even so is left that narrow.
+				if least := markdownColumnWidths(p, columns); markdownSum(least) < room {
+					m.columnWidths = markdownFitColumns(natural, least, room)
+					build()
+				}
+			}
 			m.tableRow = saveTableRow
 			m.MarkForLayoutRecursively()
 		}
 	}
+}
+
+// markdownColumnWidths returns how wide each column of a table is, which is as wide as the widest of its cells.
+func markdownColumnWidths(table *Panel, columns int) []int {
+	widths := make([]int, columns)
+	for i, cell := range table.Children() {
+		_, prefSize, _ := cell.Sizes(geom.Size{})
+		widths[i%columns] = max(widths[i%columns], int(xmath.Ceil(prefSize.Width)))
+	}
+	return widths
+}
+
+// markdownSum returns the sum of values.
+func markdownSum(values []int) int {
+	total := 0
+	for _, v := range values {
+		total += v
+	}
+	return total
+}
+
+// markdownFitColumns returns how wide to make each column of a table that is too wide for room when each column is
+// natural wide and fits it when each is least wide: the widest are narrowed first, down to a level that no column is
+// made wider than and none is made narrower than least, and whatever room that leaves goes to the narrowed columns.
+func markdownFitColumns(natural, least []int, room int) []int {
+	width := func(i, level int) int { return max(least[i], min(natural[i], level)) }
+	total := func(level int) int {
+		sum := 0
+		for i := range natural {
+			sum += width(i, level)
+		}
+		return sum
+	}
+	// The widest level at which the columns fit room, which is below the widest of them since together they do not.
+	level := sort.Search(slices.Max(natural)+1, func(level int) bool { return total(level) > room }) - 1
+	extra := room - total(level)
+	widths := make([]int, len(natural))
+	for i := range widths {
+		widths[i] = width(i, level)
+		// The columns one more unit of level would widen, of which there are more than extra.
+		if extra > 0 && least[i] <= level && level < natural[i] {
+			widths[i]++
+			extra--
+		}
+	}
+	return widths
 }
 
 func (m *Markdown) processTableHeader() {
@@ -1007,7 +1102,9 @@ func (m *Markdown) processTableCell() {
 
 		m.block = inner
 		saveMaxLineWidth := m.maxLineWidth
-		m.maxLineWidth = float32(m.columnWidths[m.columnIndex])
+		// The column's width takes in the cell's border and padding, which the text is not wrapped into.
+		m.maxLineWidth = max(float32(m.columnWidths[m.columnIndex])-
+			p.Border().Insets().Width()-inner.Border().Insets().Width(), 0)
 		m.text = NewText("", m.decoration)
 		m.processChildren()
 		m.finishTextRow()
@@ -1159,11 +1256,14 @@ func (m *Markdown) processString() {
 
 func (m *Markdown) processLink() {
 	if link, ok := m.node.(*ast.Link); ok {
-		m.addToTextRow(m.createLink(m.extractText(link), string(link.Destination), string(link.Title)))
+		m.createLink(m.extractText(link), string(link.Destination), string(link.Title))
 	}
 }
 
-func (m *Markdown) createLink(label, target, tooltip string) *Label {
+// createLink adds a link to the row being filled, broken across rows as text is when it does not fit. Each piece is a
+// link of its own to the mouse, but only the first is one to an assistive technology: it is named for the whole of the
+// link, and its span in the block's text takes in every piece. See axBlockTextBuilder.chunk.
+func (m *Markdown) createLink(label, target, tooltip string) {
 	m.flushText()
 	theme := LinkTheme{
 		LabelTheme: LabelTheme{
@@ -1176,31 +1276,86 @@ func (m *Markdown) createLink(label, target, tooltip string) *Label {
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}
-	link := NewLink(label, tooltip, target, &theme, m.linkHandler)
-	// The document takes the keyboard focus and follows the link under its reading caret itself (see
-	// Markdown.DefaultKeyDown), so the link takes no focus and needs no room for the outline.
-	link.SetFocusable(false)
-	link.SetBorder(nil)
-	// A press on the link never reaches the document, so a document that can take the focus is given it here, with its
-	// caret put on the link unless it is there already, as it is when Return or Space is what is following the link. A
-	// screen reader then finds the person on the link they followed.
-	press := link.MouseDownCallback
-	link.MouseDownCallback = func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
-		if button == ButtonLeft && m.Focusable() {
-			m.RequestFocus()
-			doc := m.axDocument()
-			if !link.Is(doc.linkAt(m.axCaret())) {
-				pos := doc.offsetAt(link.PointTo(where, m.AsPanel()))
-				m.axSetSelection(pos, pos)
+	var head *Label
+	var rest []*Panel
+	addPiece := func(part *Text) {
+		link := NewLink(part.String(), tooltip, target, &theme, m.linkHandler)
+		if head == nil {
+			head = link
+		} else {
+			link.Accessibility.Role = role.None
+			link.ClientData()[markdownLinkHeadKey] = head.AsPanel()
+			if len(rest) == 0 {
+				own := head.AsPanel()
+				// Set by a callback rather than as Accessibility.Name, which would put the rest of the link's words into
+				// the name of a heading holding it twice. A node has one rectangle, so the link's takes in every piece,
+				// along with whatever else is on the rows it begins and ends on. Whether it is offscreen was worked out
+				// from the first piece alone, and it is not while any other piece shows.
+				head.Accessibility.Callback = func(node *accessibility.Node) {
+					node.Name = label
+					node.Bounds = markdownLinkBounds(node.Bounds, own, rest)
+					node.Offscreen = node.Offscreen && !slices.ContainsFunc(rest, markdownPanelShows)
+				}
 			}
+			rest = append(rest, link.AsPanel())
 		}
-		return press(where, button, clickCount, mods)
+		// The document takes the keyboard focus and follows the link under its reading caret itself (see
+		// Markdown.DefaultKeyDown), so the link takes no focus and needs no room for the outline.
+		link.SetFocusable(false)
+		link.SetBorder(nil)
+		// A press on the link never reaches the document, so a document that can take the focus is given it here,
+		// with its caret put on the link unless it is there already, as it is when Return or Space is what is
+		// following the link. A screen reader then finds the person on the link they followed.
+		press := link.MouseDownCallback
+		first := head
+		link.MouseDownCallback = func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
+			if button == ButtonLeft && m.Focusable() {
+				m.RequestFocus()
+				doc := m.axDocument()
+				if !first.Is(doc.linkAt(m.axCaret())) {
+					pos := doc.offsetAt(link.PointTo(where, m.AsPanel()))
+					m.axSetSelection(pos, pos)
+				}
+			}
+			return press(where, button, clickCount, mods)
+		}
+		m.addToTextRow(link)
 	}
-	if m.text != nil {
-		_, prefSize, _ := link.Sizes(geom.Size{})
-		m.prepareToFlushText(prefSize.Width)
+	m.flowText(NewText(label, &theme.TextDecoration), addPiece)
+	if head == nil {
+		// An empty link has nothing to draw, nor has one of nothing but spaces beginning a line, which are not drawn (see
+		// markdownRow.leadingSpaces), and either is still a link.
+		addPiece(NewText("", &theme.TextDecoration))
 	}
-	return link
+}
+
+// markdownLinkBounds returns the smallest rectangle holding every piece of a link broken across rows: head, the first,
+// and the rest. bounds is what head's node was given, which is its area mapped into the space of the window being
+// described; that only scales and moves it, so the other pieces are mapped the same way.
+func markdownLinkBounds(bounds geom.Rect, head *Panel, rest []*Panel) geom.Rect {
+	own := head.RectToRoot(head.ContentRect(true))
+	if own.Width <= 0 || own.Height <= 0 {
+		return bounds
+	}
+	all := own
+	for _, piece := range rest {
+		all = all.Union(piece.RectToRoot(piece.ContentRect(true)))
+	}
+	scale := geom.NewPoint(bounds.Width/own.Width, bounds.Height/own.Height)
+	return geom.Rect{
+		Point: bounds.Point.Add(all.Point.Sub(own.Point).MulPt(scale)),
+		Size:  all.Size.MulPt(scale),
+	}
+}
+
+// markdownPanelShows reports whether any of p is left in view by the panels it sits within, each of which clips what it
+// draws to its own frame.
+func markdownPanelShows(p *Panel) bool {
+	visible := p.RectToRoot(p.ContentRect(true))
+	for parent := p.Parent(); parent != nil && !visible.Empty(); parent = parent.Parent() {
+		visible = visible.Intersect(parent.RectToRoot(parent.ContentRect(true)))
+	}
+	return !visible.Empty()
 }
 
 // HasURLPrefix returns true if the target has a prefix of "http://" or "https://".
@@ -1281,7 +1436,9 @@ func (m *Markdown) panelForAnchor(anchor string) *Panel {
 // queried on the UI thread. Production code must never reassign it.
 var markdownPrimaryDisplay = PrimaryDisplay
 
-func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
+// retrieveImage returns the image at target, or nil when it is not to hand within a second. One that arrives after that
+// is put in panel, constrained to maxWidth and minWidth by constrainImage.
+func (m *Markdown) retrieveImage(target string, panel *DrawablePanel, maxWidth, minWidth float32) Drawable {
 	workingDir := ""
 	if m.WorkingDirProvider != nil {
 		workingDir = m.WorkingDirProvider(m)
@@ -1296,13 +1453,13 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel) Drawable {
 	if ok {
 		d := entry.drawable
 		if d == nil {
-			entry.targets = append(entry.targets, panel)
+			entry.targets = append(entry.targets, markdownImageTarget{panel: panel, maxWidth: maxWidth, minWidth: minWidth})
 		}
 		m.drawableCacheLock.Unlock()
 		return d
 	}
 	m.drawableCache[revisedTarget] = &drawableCacheEntry{
-		targets: []*DrawablePanel{panel},
+		targets: []markdownImageTarget{{panel: panel, maxWidth: maxWidth, minWidth: minWidth}},
 	}
 	m.drawableCacheLock.Unlock()
 	isSVG := strings.ToLower(path.Ext(revisedTarget)) == ".svg"
@@ -1376,31 +1533,33 @@ func (m *Markdown) updateDrawable(target string, d Drawable) {
 		return
 	}
 	entry.drawable = d
-	d = m.constrainImage(d)
 	// An image that has just arrived takes up room where a placeholder was, so every rune after it on its line has
 	// moved. The frames it changes would say so on their own, but the drawables are replaced here before the layout
 	// runs, so the stream is thrown away here as well.
 	m.axInvalidate()
-	for _, panel := range entry.targets {
-		panel.Drawable = d
-		panel.Ink = nil
-		panel.MarkForRedraw()
-		panel.MarkForLayoutRecursivelyUpward()
+	for _, one := range entry.targets {
+		one.panel.Drawable = constrainImage(d, one.maxWidth, one.minWidth)
+		one.panel.Ink = nil
+		one.panel.MarkForRedraw()
+		one.panel.MarkForLayoutRecursivelyUpward()
 	}
 	entry.targets = nil
 }
 
-func (m *Markdown) constrainImage(drawable Drawable) Drawable {
+// constrainImage returns the drawable scaled down, if need be, to be no wider than maxWidth, though never narrower than
+// minWidth, which keeps it visible on a line with little or no room. One no wider than minWidth is left as it is.
+func constrainImage(drawable Drawable, maxWidth, minWidth float32) Drawable {
+	maxWidth = max(maxWidth, minWidth)
 	size := drawable.LogicalSize()
-	if size.Width <= m.maxWidth {
+	if size.Width <= maxWidth {
 		return drawable
 	}
-	if size.Width > 0 && size.Width > m.maxWidth {
-		size.Height *= m.maxWidth / size.Width
+	if size.Width > 0 && size.Width > maxWidth {
+		size.Height *= maxWidth / size.Width
 		if size.Height < 1 {
 			size.Height = 1
 		}
-		size.Width = m.maxWidth
+		size.Width = maxWidth
 	}
 	return &SizedDrawable{
 		Drawable: drawable,
@@ -1438,16 +1597,17 @@ func (m *Markdown) processImage() {
 	if image, ok := m.node.(*ast.Image); ok {
 		m.flushText()
 		panel := NewDrawablePanel()
-		d := m.retrieveImage(string(image.Destination), panel)
+		// The placeholder's size, which is also the narrowest an image is scaled down to.
+		size := max(m.decoration.Font.Size(), 24)
+		d := m.retrieveImage(string(image.Destination), panel, m.maxLineWidth, size)
 		if d == nil {
-			size := max(m.decoration.Font.Size(), 24)
 			panel.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
 				Size: geom.NewSize(size, size),
 			}
 			panel.Ink = m.OnBackgroundInk
 		} else {
-			panel.Drawable = m.constrainImage(d)
+			panel.Drawable = constrainImage(d, m.maxLineWidth, size)
 			panel.Ink = nil
 		}
 		primary := m.extractText(image)
@@ -1469,11 +1629,11 @@ func (m *Markdown) processImage() {
 			}
 		}
 		if m.text != nil {
-			// An image that will not fit in what is left of the line begins a new one, exactly as a link does. Without
-			// this the row's FlowLayout wraps it onto a second visual row of its own while the row still counts as the
-			// one line it was built as, and everything read from where that line was drawn — every rune boundary on it,
-			// the caret dropped at one and the highlight drawn from one — describes two rows as if they were one. See
-			// Markdown.createLink and axBlockTextBuilder.collect.
+			// An image that will not fit in what is left of the line begins a new one. Without this the row's
+			// FlowLayout wraps it onto a second visual row of its own while the row still counts as the one line it was
+			// built as, and everything read from where that line was drawn — every rune boundary on it, the caret
+			// dropped at one and the highlight drawn from one — describes two rows as if they were one. See
+			// axBlockTextBuilder.collect.
 			_, prefSize, _ := panel.Sizes(geom.Size{})
 			m.prepareToFlushText(prefSize.Width)
 		}
@@ -1484,20 +1644,27 @@ func (m *Markdown) processImage() {
 func (m *Markdown) processAutoLink() {
 	if link, ok := m.node.(*ast.AutoLink); ok {
 		u := string(link.URL(m.content))
-		m.addToTextRow(m.createLink(u, u, ""))
+		m.createLink(u, u, "")
 	}
 }
 
 func (m *Markdown) addToTextRow(p Paneler) {
 	if m.textRow == nil {
-		m.textRow = newMarkdownRow().AsPanel()
-		m.textRow.SetLayoutData(&FlexLayoutData{
-			HAlign: align.Fill,
-			HGrab:  true,
-		})
-		m.block.AddChild(m.textRow)
+		m.startTextRow()
 	}
 	m.textRow.AddChild(p)
+}
+
+// startTextRow starts a new row to fill.
+func (m *Markdown) startTextRow() *markdownRow {
+	row := newMarkdownRow()
+	m.textRow = row.AsPanel()
+	m.textRow.SetLayoutData(&FlexLayoutData{
+		HAlign: align.Fill,
+		HGrab:  true,
+	})
+	m.block.AddChild(m.textRow)
+	return row
 }
 
 func (m *Markdown) addLabelToTextRow(t *Text) {
@@ -1519,8 +1686,8 @@ func (m *Markdown) issueLineBreak() {
 }
 
 // endTextRow finishes the row being filled. hard says the line was ended by a break in the markdown itself rather than
-// by the text running out of room, which is the difference between the line ending in a line feed and the space that
-// was there being taken off the end of it — the row remembers both so that the block's text reads as what was written.
+// by the text running out of room, which is the difference between the line ending in a line feed and the spaces that
+// were there being taken off the end of it — the row remembers both so that the block's text reads as what was written.
 // See markdownRow and markdownBlock.axText.
 func (m *Markdown) endTextRow(hard bool) {
 	var children []*Panel
@@ -1534,10 +1701,22 @@ func (m *Markdown) endTextRow(hard bool) {
 		empty.Accessibility.Role = role.None
 		m.addToTextRow(empty)
 	} else if child, ok := children[len(children)-1].Self.(*Label); ok && !child.Text.Empty() {
-		if r := child.Text.Runes(); len(r) > 1 && r[len(r)-1] == ' ' {
-			child.Text = child.Text.Slice(0, len(r)-1)
+		// Text.BreakToWidth leaves every space at the break on the line, past the width it was broken to. A piece of
+		// text that is nothing but those spaces is emptied if it is all the line holds, and otherwise removed: left
+		// empty after something that fills the row, the row's FlowLayout would put it on a line of its own.
+		r := child.Text.Runes()
+		end := len(r)
+		for end > 0 && isBreakableSpace(r[end-1]) {
+			end--
+		}
+		if end < len(r) {
+			if end == 0 && len(children) > 1 && child.Accessibility.Role != role.Link {
+				m.textRow.RemoveChild(child)
+			} else {
+				child.Text = child.Text.Slice(0, end)
+			}
 			if row, is := m.textRow.Self.(*markdownRow); is {
-				row.strippedSpace = true
+				row.strippedSpaces = r[end:]
 			}
 		}
 	}
@@ -1551,45 +1730,136 @@ func (m *Markdown) endTextRow(hard bool) {
 
 func (m *Markdown) flushText() {
 	if m.text != nil && len(m.text.Runes()) != 0 {
-		if remaining := m.prepareToFlushText(m.decoration.Font.SimpleWidth("W")); remaining < m.text.Width() {
-			// Remaining space isn't large enough for the text we have, so put a chunk that will fit on this line, then
-			// go to the next line
-			part := m.text.BreakToWidth(remaining)[0]
-			m.text = m.text.Slice(len(part.Runes()), len(m.text.Runes()))
-			m.addLabelToTextRow(part)
-			m.issueLineBreak()
-			// Now break the remaining text up to the max width size and add each line
-			if parts := m.text.BreakToWidth(m.maxLineWidth); len(parts) != 0 {
-				for i := 0; i < len(parts)-1; i++ {
-					m.addLabelToTextRow(parts[i])
-					m.issueLineBreak()
-				}
-				m.addLabelToTextRow(parts[len(parts)-1])
-			}
-		} else {
-			m.addLabelToTextRow(m.text)
-		}
+		m.flowText(m.text, m.addLabelToTextRow)
 		m.text = NewText("", m.decoration)
 	}
 }
 
-func (m *Markdown) prepareToFlushText(minRemaining float32) float32 {
-	remaining := m.maxLineWidth
-	if m.textRow != nil {
-		_, prefSize, _ := m.textRow.Sizes(geom.NewSize(m.maxLineWidth, 0))
-		remaining -= prefSize.Width
+// flowText adds t to the row being filled, breaking it across as many rows as it needs. add puts one piece of it on
+// the row.
+func (m *Markdown) flowText(t *Text, add func(part *Text)) {
+	if m.textRow == nil || len(m.textRow.Children()) == 0 {
+		// The line was begun by a break in the markdown or by the block itself, and the spaces after either are not
+		// drawn, however many pieces of text they are split between. A row with nothing on it was started here for
+		// the spaces of an earlier piece. See markdownRow.leadingSpaces.
+		if lead := markdownLeadingSpaces(t); lead != 0 {
+			if m.textRow == nil {
+				m.startTextRow()
+			}
+			if row, ok := m.textRow.Self.(*markdownRow); ok {
+				row.leadingSpaces = append(row.leadingSpaces, t.Runes()[:lead]...)
+			}
+			t = t.Slice(lead, len(t.Runes()))
+		}
 	}
-	if remaining < minRemaining {
+	for !t.Empty() {
+		remaining, started := m.remainingOnTextRow()
+		if !started {
+			m.flowTextOnEmptyRows(t, remaining, add)
+			return
+		}
+		// BreakToWidth keeps a first word that is too wide, which goes on the next row instead.
+		part := t.BreakToWidth(remaining)[0]
+		if !markdownPieceFits(part, t, remaining) {
+			// The text begins the next row, and the spaces it begins with are where the line breaks, so they end this
+			// row as the spaces a piece of text was broken at do. See markdownRow.strippedSpaces.
+			row := m.textRow
+			m.issueLineBreak()
+			if lead := markdownLeadingSpaces(t); lead != 0 {
+				if r, ok := row.Self.(*markdownRow); ok {
+					r.strippedSpaces = append(slices.Clip(r.strippedSpaces), t.Runes()[:lead]...)
+				}
+				t = t.Slice(lead, len(t.Runes()))
+			}
+			continue
+		}
+		add(part)
+		// The last piece stays on the row even when the spaces after its last word go past the width, which whatever
+		// ends the row takes off it.
+		if t = t.Slice(len(part.Runes()), len(t.Runes())); !t.Empty() {
+			m.issueLineBreak()
+		}
+	}
+}
+
+// flowTextOnEmptyRows is flowText for a row with nothing on it, width wide. Every row after it begins empty too, so t
+// is broken once rather than a row at a time.
+func (m *Markdown) flowTextOnEmptyRows(t *Text, width float32, add func(part *Text)) {
+	lines := t.BreakToWidth(width)
+	// BreakToWidth keeps text that fits width exactly on one line only when that is all it was given, which the last
+	// two lines are when broken a row at a time.
+	if n := len(lines); n > 1 {
+		end := len(t.Runes())
+		if tail := t.Slice(end-len(lines[n-2].Runes())-len(lines[n-1].Runes()), end); tail.Width() <= width {
+			lines = append(lines[:n-2], tail)
+		}
+	}
+	for i, line := range lines {
+		if i != 0 {
+			m.issueLineBreak()
+		}
+		add(line)
+	}
+}
+
+// markdownLeadingSpaces returns how many breakable spaces t begins with.
+func markdownLeadingSpaces(t *Text) int {
+	runes := t.Runes()
+	lead := 0
+	for lead < len(runes) && isBreakableSpace(runes[lead]) {
+		lead++
+	}
+	return lead
+}
+
+// markdownPieceFits reports whether part, the first piece BreakToWidth broke t into for the room remaining on a row,
+// fits there. The spaces after its last word need not.
+func markdownPieceFits(part, t *Text, remaining float32) bool {
+	runes := part.Runes()
+	end := len(runes)
+	for end > 0 && isBreakableSpace(runes[end-1]) {
+		end--
+	}
+	if end == 0 {
+		// Nothing but spaces: the whole of t, which need not fit either, since whatever ends the row takes them off it
+		// and only then knows whether the line was broken there, or the spaces before a first word that did not fit.
+		return len(runes) == len(t.Runes())
+	}
+	return part.PositionForRuneIndex(end) <= remaining
+}
+
+// remainingOnTextRow returns the room left on the row being filled, which is the whole width when nothing has been put
+// on it, and whether anything has.
+func (m *Markdown) remainingOnTextRow() (remaining float32, started bool) {
+	// Rounded down, since the labels the text is drawn in round their widths up.
+	width := xmath.Floor(m.maxLineWidth)
+	if m.textRow == nil || len(m.textRow.Children()) == 0 {
+		return width, false
+	}
+	// Measured unwrapped, since the spaces that end the row may already have taken it past the width, and measuring it
+	// wrapped to the width would move them to a line of their own rather than count them.
+	_, prefSize, _ := m.textRow.Sizes(geom.Size{})
+	return xmath.Floor(width - prefSize.Width), true
+}
+
+// prepareToFlushText ends the row being filled if it has something on it and less than minRemaining of room left,
+// and returns the room left on the row that is then being filled.
+func (m *Markdown) prepareToFlushText(minRemaining float32) float32 {
+	remaining, started := m.remainingOnTextRow()
+	// A row with nothing on it is left alone, since ending it would leave a blank line.
+	if started && remaining < minRemaining {
 		m.issueLineBreak()
-		remaining = m.maxLineWidth
+		remaining = xmath.Floor(m.maxLineWidth)
 	}
 	return remaining
 }
 
 func (m *Markdown) finishTextRow() {
 	m.flushText()
+	if m.textRow != nil {
+		m.endTextRow(false)
+	}
 	m.text = nil
-	m.textRow = nil
 }
 
 // DefaultMarkdownLinkHandler is the default link handler, which opens http and https links via OpenBrowser.

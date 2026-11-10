@@ -24,6 +24,7 @@ import (
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
+	"github.com/richardwilkes/unison/enums/role"
 )
 
 // collectMarkdownText concatenates the text of every Label in the panel subtree, in tree order, so tests can assert on
@@ -93,6 +94,10 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 		{name: "blockquote", content: "> quoted text\n", want: "quoted"},
 		{name: "ordered list", content: "1. one\n2. two\n", want: "two"},
 		{name: "unordered list", content: "- alpha\n- beta\n", want: "beta"},
+		{name: "task list", content: "- [ ] todo\n- [x] done\n", want: "todo done"},
+		{name: "ordered task list", content: "1. [x] done\n2. plain\n", want: "done 2. plain"},
+		{name: "link beginning a list item", content: "- [X](https://x.com)\n", want: "• X"},
+		{name: "brackets beginning a list item", content: "- [ ]todo\n", want: "• [ ]todo"},
 		{name: "link", content: "a [link label](http://example.com) here\n", want: "link label"},
 		{name: "reference link", content: "a [ref label][] here\n\n[ref label]: http://example.com\n", want: "ref label"},
 		{name: "autolink", content: "see http://example.com today\n", want: "example.com"},
@@ -298,6 +303,438 @@ func TestMarkdownEmptyContent(t *testing.T) {
 	c.Equal("", collectMarkdownText(m.AsPanel()))
 }
 
+// TestMarkdownFitsMaxWidth verifies that content, including a list's or a quote's, is no wider than the width it was
+// wrapped to, even a fractional one. The image wide.png is wider than any of those widths.
+func TestMarkdownFitsMaxWidth(t *testing.T) {
+	const words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et " +
+		"dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip.\n"
+	wide := &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(600, 40)}
+	wideTarget, err := ReviseTarget("", "wide.png", nil)
+	check.New(t).NoError(err)
+	for _, tc := range []struct {
+		name    string
+		content string
+		// lateImage says wide.png arrives after the document has been built.
+		lateImage bool
+	}{
+		{name: "paragraph", content: words},
+		{name: "words two spaces apart", content: strings.ReplaceAll(words, " ", "  ")},
+		{name: "words em spaces apart", content: strings.ReplaceAll(words, " ", "\u2003")},
+		{name: "long word joined to a link", content: strings.ReplaceAll(words, "t, ", "t [link](u)longwordlongword ")},
+		{name: "link wider than the line", content: "[This is a fairly long link title that will not fit in the width](u)\n"},
+		{
+			name:    "link wider than the line after text",
+			content: "Some text [This is a fairly long link title that will not fit in the width](u)\n",
+		},
+		{name: "bare URL", content: "https://example.com/aaaaaaaaaaaaaaaaaaaa/bbbbbbbbbbbbbbbbbbbbbbb/cccccccccccccccc\n"},
+		{name: "links between words", content: "x [y](u) zzz [link](u) and some more words to wrap [another](u) end.\n"},
+		{name: "quote", content: "> " + words},
+		{name: "item after a task", content: "- [ ] task\n- " + words},
+		{name: "unordered", content: "- " + words},
+		{name: "nested as the first thing in an item", content: "- - " + words},
+		{name: "numbered from 1000", content: "1000. " + words},
+		{name: "numbered from 100000", content: "100000. " + words},
+		{name: "image in a list item", content: "- ![wide](wide.png)\n"},
+		{name: "image in a quote", content: "> ![wide](wide.png)\n"},
+		{name: "image arriving late in a list item", content: "- ![wide](wide.png)\n", lateImage: true},
+		{
+			name: "table with a word that cannot be broken",
+			content: "| a | b |\n| - | - |\n" +
+				"| [link in a cell](u) words and some more words to wrap | Supercalifragilistic |\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			for width := float32(200); width <= 400; width += 0.5 {
+				m := NewMarkdown(false)
+				if tc.lateImage {
+					m.drawableCache[wideTarget] = &drawableCacheEntry{}
+				} else {
+					m.drawableCache[wideTarget] = &drawableCacheEntry{drawable: wide}
+				}
+				m.SetContent(tc.content, width)
+				if tc.lateImage {
+					m.updateDrawable(wideTarget, wide)
+				}
+				_, prefSize, _ := m.Sizes(geom.Size{})
+				c.True(prefSize.Width <= width, "wrapped to %v, the content prefers %v", width, prefSize.Width)
+			}
+		})
+	}
+}
+
+// TestMarkdownImageKeepsMinimumWidth verifies that an image scaled down for a line with little or no room is kept as
+// wide as the placeholder shown while it loads, and that one narrower than that is not enlarged.
+func TestMarkdownImageKeepsMinimumWidth(t *testing.T) {
+	const table = "| a | b |\n| - | - |\n| ![img](img.png) | Supercalifragilisticexpialidocious |\n"
+	const nested = "- - - - - - - - - - - - ![img](img.png)\n"
+	wide := &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(600, 40)}
+	target, err := ReviseTarget("", "img.png", nil)
+	check.New(t).NoError(err)
+	minimum := max(DefaultMarkdownTheme.Font.Size(), 24)
+	for _, tc := range []struct {
+		image   Drawable
+		name    string
+		content string
+		width   float32
+		want    float32
+		// late says the image arrives after the document has been built.
+		late bool
+	}{
+		{name: "in a table that cannot fit", content: table, image: wide, width: 150, want: minimum},
+		{
+			name:    "arriving late in a table that cannot fit",
+			content: table,
+			image:   wide,
+			width:   150,
+			want:    minimum,
+			late:    true,
+		},
+		{name: "in a list item nested past the width", content: nested, image: wide, width: 200, want: minimum},
+		{
+			name:    "narrower than the minimum",
+			content: nested,
+			image:   &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(10, 10)},
+			width:   200,
+			want:    10,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			if tc.late {
+				m.drawableCache[target] = &drawableCacheEntry{}
+			} else {
+				m.drawableCache[target] = &drawableCacheEntry{drawable: tc.image}
+			}
+			m.SetContent(tc.content, tc.width)
+			if tc.late {
+				m.updateDrawable(target, tc.image)
+			}
+			var image *DrawablePanel
+			var find func(p *Panel)
+			find = func(p *Panel) {
+				for _, child := range p.Children() {
+					if one, ok := child.Self.(*DrawablePanel); ok && one.Accessibility.Name == "img" {
+						image = one
+					}
+					find(child)
+				}
+			}
+			find(m.AsPanel())
+			c.NotNil(image)
+			if image != nil {
+				c.Equal(tc.want, image.Drawable.LogicalSize().Width, "the image's width")
+			}
+		})
+	}
+}
+
+// TestMarkdownBreaksTextIntoRows verifies what each row draws once text has been broken to fit, with an image drawn as
+// U+FFFC, and the lines the blocks are read as, which hold every rune that was written, each row as one line.
+func TestMarkdownBreaksTextIntoRows(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		rows    []string
+		lines   []string
+		width   float32
+	}{
+		{
+			name:    "word wider than the line",
+			content: "Supercalifragilisticexpialidocious\n",
+			width:   100,
+			rows:    []string{"Supercalifragilisticexpialidocious"},
+			lines:   []string{"Supercalifragilisticexpialidocious"},
+		},
+		{
+			name:    "only a trailing space past the width before a break",
+			content: "aaa bbb <br>ddd\n",
+			width:   52,
+			rows:    []string{"aaa bbb", "ddd"},
+			lines:   []string{"aaa bbb \n", "ddd"},
+		},
+		{
+			name:    "only a trailing space past the width at the end",
+			content: "Some words here <span></span>\n",
+			width:   111,
+			rows:    []string{"Some words here"},
+			lines:   []string{"Some words here "},
+		},
+		{name: "line narrower than a W", content: "word\n", width: 10, rows: []string{"word"}, lines: []string{"word"}},
+		{
+			name:    "item nested deeper than a W leaves room for",
+			content: "- - - - - - - - - - - - deep\n",
+			width:   200,
+			rows:    []string{"deep"},
+			lines:   []string{"deep"},
+		},
+		{
+			name:    "image wider than the line",
+			content: "![x](missing-image-for-test.png)\n",
+			width:   10,
+			rows:    []string{"\uFFFC"},
+			lines:   []string{"\uFFFC"},
+		},
+		{
+			name:    "link wider than the line",
+			content: "[This is a fairly long link title that will not fit in the width](u)\n",
+			width:   200,
+			rows:    []string{"This is a fairly long link title that", "will not fit in the width"},
+			lines:   []string{"This is a fairly long link title that ", "will not fit in the width"},
+		},
+		{
+			name:    "words exactly as wide as a wrapped line",
+			content: "take could world against\n",
+			width:   84,
+			rows:    []string{"take could", "world against"},
+			lines:   []string{"take could ", "world against"},
+		},
+		{
+			name:    "space after a break",
+			content: "Line one<br> Line two\n",
+			width:   400,
+			rows:    []string{"Line one", "Line two"},
+			lines:   []string{"Line one\n", " Line two"},
+		},
+		{
+			name:    "spaces around a break",
+			content: "a <br> b\n",
+			width:   400,
+			rows:    []string{"a", "b"},
+			lines:   []string{"a \n", " b"},
+		},
+		{
+			name:    "spaces after a break split between text and a link",
+			content: "a<br> [ y](u) b\n",
+			width:   400,
+			rows:    []string{"a", "y b"},
+			lines:   []string{"a\n", "  y b"},
+		},
+		{
+			name:    "space after a break on a narrow line",
+			content: "Line one <br> Line ten\n",
+			width:   25,
+			rows:    []string{"Line", "one", "Line", "ten"},
+			lines:   []string{"Line ", "one \n", " Line ", "ten"},
+		},
+		{
+			name:    "text narrower than a W in what is left of the line",
+			content: "Some words [link](u).\n",
+			width:   110,
+			rows:    []string{"Some words link."},
+			lines:   []string{"Some words link."},
+		},
+		{
+			name:    "text narrower than a W in what is left of a wrapped line",
+			content: "Some words [link](u).\n",
+			width:   73,
+			rows:    []string{"Some", "words link."},
+			lines:   []string{"Some ", "words link."},
+		},
+		{
+			name:    "space between links before a link that does not fit",
+			content: "[aaaa](u) [bbbbbbbbbbbbbbbbbb](u) [cc](u) [dddd dddd](u) e\n",
+			width:   200,
+			rows:    []string{"aaaa bbbbbbbbbbbbbbbbbb cc", "dddd dddd e"},
+			lines:   []string{"aaaa bbbbbbbbbbbbbbbbbb cc ", "dddd dddd e"},
+		},
+		{
+			name:    "space before a word wider than the line after a link",
+			content: "Text [averylonglink](u) incomprehensibilities after.\n",
+			width:   60,
+			rows:    []string{"Text", "averylonglink", "incomprehensibilities", "after."},
+			lines:   []string{"Text ", "averylonglink ", "incomprehensibilities ", "after."},
+		},
+		{
+			name:    "space past the width before a break",
+			content: "[aaaa](u) <br>b\n",
+			width:   30,
+			rows:    []string{"aaaa", "b"},
+			lines:   []string{"aaaa \n", "b"},
+		},
+		{
+			name:    "two breaks after a space past the width",
+			content: "[aaaa](u) <br><br>b\n",
+			width:   30,
+			rows:    []string{"aaaa", "", "b"},
+			lines:   []string{"aaaa \n", "\n", "b"},
+		},
+		{
+			name:    "space after a link that fills the line",
+			content: "Text [averylonglink](u) more words after.\n",
+			width:   113,
+			rows:    []string{"Text averylonglink", "more words after."},
+			lines:   []string{"Text averylonglink ", "more words after."},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent(tc.content, tc.width)
+			_, prefSize, _ := m.Sizes(geom.Size{})
+			m.SetFrameRect(geom.NewRect(0, 0, max(tc.width, prefSize.Width), prefSize.Height))
+			m.ValidateLayout()
+			rows := make([]string, 0, len(tc.rows))
+			for _, row := range axMarkdownRows(m.AsPanel()) {
+				var drawn strings.Builder
+				for _, child := range row.Children() {
+					switch one := child.Self.(type) {
+					case *Label:
+						drawn.WriteString(one.String())
+					case *DrawablePanel:
+						drawn.WriteRune('\uFFFC')
+					}
+				}
+				rows = append(rows, drawn.String())
+			}
+			c.Equal(fmt.Sprintf("%q", tc.rows), fmt.Sprintf("%q", rows))
+			lines := make([]string, 0, len(tc.lines))
+			for _, block := range axMarkdownBlocks(m.AsPanel()) {
+				text := block.axText()
+				for _, line := range text.lines {
+					lines = append(lines, string(text.text[line.Start:line.End]))
+				}
+			}
+			c.Equal(fmt.Sprintf("%q", tc.lines), fmt.Sprintf("%q", lines))
+		})
+	}
+}
+
+// TestMarkdownLinkWithNothingToDrawIsALink verifies that a link is added however little of it there is to draw, as with
+// one of nothing but spaces where they begin a line and are not drawn, and that the text still reads as written.
+func TestMarkdownLinkWithNothingToDrawIsALink(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		text    string
+	}{
+		{name: "no text", content: "[](u) after\n", text: " after"},
+		{name: "space beginning a line", content: "[ ](u) after\n", text: "  after"},
+		{name: "space within a line", content: "before [ ](u) after\n", text: "before   after"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent(tc.content, 400)
+			_, prefSize, _ := m.Sizes(geom.Size{})
+			m.SetFrameRect(geom.NewRect(0, 0, 400, prefSize.Height))
+			m.ValidateLayout()
+			links := 0
+			var text strings.Builder
+			for _, block := range axMarkdownBlocks(m.AsPanel()) {
+				for _, row := range axMarkdownRows(block.AsPanel()) {
+					for _, child := range row.Children() {
+						if child.Accessibility.Role == role.Link {
+							links++
+						}
+					}
+				}
+				text.WriteString(string(block.axText().text))
+			}
+			c.Equal(1, links, "the link should have been added")
+			c.Equal(tc.text, text.String(), "the text should read as written")
+		})
+	}
+}
+
+// TestMarkdownBreakingTextScalesLinearly verifies, by counting allocations, that breaking a paragraph into rows costs
+// in proportion to its length rather than to its square.
+func TestMarkdownBreakingTextScalesLinearly(t *testing.T) {
+	allocs := func(words int) float64 {
+		content := strings.Repeat("lorem ipsum dolor sit amet ", words/5) + "\n"
+		return testing.AllocsPerRun(1, func() { NewMarkdown(false).SetContent(content, 100) })
+	}
+	short, long := allocs(1000), allocs(4000)
+	check.New(t).True(long < 6*short, "four times the words took %v allocations against %v", long, short)
+}
+
+// TestMarkdownHeadingBeginningContainerHasNoMarginAbove verifies that the text of a heading that begins a list item or
+// a quote is at the top of the container's content, where a list item's bullet is, rather than below a margin.
+func TestMarkdownHeadingBeginningContainerHasNoMarginAbove(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+	}{
+		{name: "list item", content: "- # big\n"},
+		{name: "quote", content: "> # Title\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent(tc.content, 400)
+			_, prefSize, _ := m.Sizes(geom.Size{})
+			m.SetFrameRect(geom.NewRect(0, 0, 400, prefSize.Height))
+			m.ValidateLayout()
+			rows := axMarkdownRows(m.AsPanel())
+			c.Equal(1, len(rows))
+			if len(rows) != 1 {
+				return
+			}
+			container := rows[0].Parent()
+			for container != nil {
+				if _, ok := container.Self.(*markdownContainer); ok {
+					break
+				}
+				container = container.Parent()
+			}
+			c.NotNil(container)
+			if container == nil {
+				return
+			}
+			c.Equal(container.RectTo(container.ContentRect(false), m.AsPanel()).Y,
+				rows[0].RectTo(rows[0].ContentRect(true), m.AsPanel()).Y, "the heading's text is at the top")
+		})
+	}
+}
+
+// TestMarkdownRuleBeginningContainerPlacement verifies that a thematic break that begins the document or a quote has no
+// margin above it, while one that begins a list item stays level with the middle of the item's bullet.
+func TestMarkdownRuleBeginningContainerPlacement(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+	}{
+		{name: "document", content: "---\n"},
+		{name: "quote", content: "> ---\n"},
+		{name: "list item", content: "- ***\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent(tc.content, 400)
+			_, prefSize, _ := m.Sizes(geom.Size{})
+			m.SetFrameRect(geom.NewRect(0, 0, 400, prefSize.Height))
+			m.ValidateLayout()
+			var rule *Panel
+			var find func(p *Panel)
+			find = func(p *Panel) {
+				for _, child := range p.Children() {
+					if _, ok := child.Self.(*Separator); ok && rule == nil {
+						rule = child
+					}
+					find(child)
+				}
+			}
+			find(m.AsPanel())
+			c.NotNil(rule)
+			if rule == nil {
+				return
+			}
+			ruleRect := rule.RectTo(rule.ContentRect(false), m.AsPanel())
+			container := rule.Parent()
+			if container.ClientData()[markdownListItemKey] == true {
+				bullet := container.Parent().Children()[0]
+				bulletRect := bullet.RectTo(bullet.ContentRect(true), m.AsPanel())
+				c.True(ruleRect.Y > bulletRect.Y+bulletRect.Height/4 && ruleRect.Bottom() < bulletRect.Bottom()-
+					bulletRect.Height/4, "the rule at %v is beside the middle of the bullet at %v", ruleRect, bulletRect)
+				return
+			}
+			c.Equal(container.RectTo(container.ContentRect(false), m.AsPanel()).Y, ruleRect.Y, "the rule is at the top")
+		})
+	}
+}
+
 // TestMarkdownTableDoesNotWrapWhenItFits guards against regressing the table column-sizing logic so that a table whose
 // natural width fits within the available width is left at full width rather than having its columns shrunk (which
 // would force premature text wrapping). The column widths are only reduced below the available width when the table's
@@ -345,7 +782,7 @@ func TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		m.retrieveImage("missing-image-for-test.png", NewDrawablePanel())
+		m.retrieveImage("missing-image-for-test.png", NewDrawablePanel(), DefaultMarkdownWidth, 0)
 	}()
 	select {
 	case <-entered:
@@ -552,7 +989,7 @@ func TestMarkdownFailedImageLoadIsRetried(t *testing.T) {
 	const target = "image.svg"
 
 	// First attempt: the file does not exist, so the load fails and must not remain cached.
-	c.Nil(m.retrieveImage(target, NewDrawablePanel()))
+	c.Nil(m.retrieveImage(target, NewDrawablePanel(), DefaultMarkdownWidth, 0))
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		m.drawableCacheLock.Lock()
@@ -570,5 +1007,5 @@ func TestMarkdownFailedImageLoadIsRetried(t *testing.T) {
 	// Second attempt: the file now exists, so the retry must succeed rather than being served the poisoned entry.
 	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`
 	c.NoError(os.WriteFile(filepath.Join(dir, target), []byte(svg), 0o600))
-	c.NotNil(m.retrieveImage(target, NewDrawablePanel()))
+	c.NotNil(m.retrieveImage(target, NewDrawablePanel(), DefaultMarkdownWidth, 0))
 }

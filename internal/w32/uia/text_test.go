@@ -323,6 +323,40 @@ func TestTextBoundaries(t *testing.T) {
 		"an unmeasured document's lines are its paragraphs")
 	c.Equal([]int{0, 6, 23, 29, 33, 35, 36}, unmeasured.Boundaries(TextUnit_Paragraph))
 
+	// A list item is one paragraph, bullet included, as a Markdown view composes "- todo\n- done": the paragraph beside
+	// a bullet begins on the line its item's span began, so it begins no paragraph of its own. A block that follows
+	// another within the item still begins one, line feed or not, which is what the "More" composed after "done" is.
+	const secondItemID, firstTextID, secondTextID, thirdTextID = accessibility.NodeID(41), accessibility.NodeID(42),
+		accessibility.NodeID(43), accessibility.NodeID(44)
+	bulleted := newTestTree(textDocumentID, 0,
+		&accessibility.Node{
+			ID: textDocumentID, Role: role.Document, Children: []accessibility.NodeID{textListID},
+			Document: &accessibility.DocumentInfo{Text: accessibility.TextInfo{
+				Text: "• todo\n• doneMore",
+				Spans: []accessibility.TextSpan{
+					{Node: textListID, Start: 0, End: 17},
+					{Node: textListItemID, Start: 0, End: 6},
+					{Node: secondItemID, Start: 7, End: 17},
+					{Node: firstTextID, Start: 2, End: 6},
+					{Node: secondTextID, Start: 9, End: 13},
+					{Node: thirdTextID, Start: 13, End: 17},
+				},
+			}},
+		},
+		&accessibility.Node{
+			ID: textListID, Role: role.List, Children: []accessibility.NodeID{textListItemID, secondItemID},
+		},
+		&accessibility.Node{ID: textListItemID, Role: role.ListItem, Children: []accessibility.NodeID{firstTextID}},
+		&accessibility.Node{
+			ID: secondItemID, Role: role.ListItem, Children: []accessibility.NodeID{secondTextID, thirdTextID},
+		},
+		&accessibility.Node{ID: firstTextID, Role: role.Paragraph},
+		&accessibility.Node{ID: secondTextID, Role: role.Paragraph},
+		&accessibility.Node{ID: thirdTextID, Role: role.Paragraph},
+	)
+	c.Equal([]int{0, 7, 13, 17},
+		newTextDocument(bulleted, bulleted.Node(textDocumentID)).Boundaries(TextUnit_Paragraph))
+
 	// An empty stream has one boundary, which is both of its ends.
 	c.Equal([]int{0}, textEmptyFixture(t).Boundaries(TextUnit_Word))
 }

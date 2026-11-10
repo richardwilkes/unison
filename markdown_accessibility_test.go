@@ -542,6 +542,88 @@ func TestMarkdownCaretActivatesLink(t *testing.T) {
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
 }
 
+// TestMarkdownBrokenLinkIsOneLink verifies that a link broken across lines is one link to an assistive technology,
+// named for the whole of it and occupying every word of it in the stream, that the caret on its last piece, or a click
+// on that piece, follows it, and that it is on the screen while any piece of it is.
+func TestMarkdownBrokenLinkIsOneLink(t *testing.T) {
+	c := check.New(t)
+	const words = "a link whose words run on well past the end of the line"
+	const target = "https://example.com/long"
+	// Followed by enough to scroll its first line out of view.
+	f := newAXMarkdownFixture(t, "Some text then ["+words+"]("+target+") and more.\n\n"+
+		strings.Repeat("More words.\n\n", 40), 200, geom.NewSize(500, 400))
+	tree, document := f.document(c)
+	links := axNodesWithRole(tree, role.Link)
+	c.Equal(1, len(links), "the pieces of the link are one link")
+	if len(links) != 1 {
+		return
+	}
+	c.Equal(words, links[0].Name)
+	var span accessibility.TextSpan
+	for _, one := range document.Document.Text.Spans {
+		if one.Node == links[0].ID {
+			span = one
+		}
+	}
+	stream := []rune(document.Document.Text.Text)
+	c.Equal(words, string(stream[span.Start:span.End]), "the link occupies every word of itself")
+	lineOf := func(offset int) int {
+		for i, line := range document.Document.Text.Lines {
+			if offset >= line.Start && offset < line.End {
+				return i
+			}
+		}
+		return -1
+	}
+	c.True(lineOf(span.Start) < lineOf(span.End-1), "the link should be broken across lines")
+	// A node has one rectangle, so the link's takes in every piece: the highlight drawn from it surrounds the whole link,
+	// and a hit test on any piece finds it.
+	pointAt := func(offset int) geom.Point {
+		line := document.Document.Text.Lines[lineOf(offset)]
+		return document.Bounds.Point.Add(line.Bounds.Point).Add(
+			geom.NewPoint(line.Advances[offset-line.Start]+1, line.Bounds.Height/2),
+		)
+	}
+	c.True(pointAt(span.Start).In(links[0].Bounds), "the link's bounds take in its first piece")
+	c.Equal(links[0].ID, tree.HitTest(pointAt(span.End-2)), "a hit test on its last piece finds it")
+
+	c.True(f.screen.PerformAccessibilityAction(accessibility.ActionRequest{
+		Node:   document.ID,
+		Action: accessibility.SetTextSelection,
+		Start:  span.End - 1,
+		End:    span.End - 1,
+	}))
+	f.screen.KeyPress(unison.KeyReturn, mod.None)
+	var followed string
+	f.screen.Do(func() { followed = f.followed })
+	c.Equal(target, followed, "Return on the last piece follows the link")
+
+	f.screen.Do(func() { f.followed = "" })
+	f.screen.Click(f.pointAt(c, span.End-2))
+	f.screen.Do(func() { followed = f.followed })
+	c.Equal(target, followed, "and so does a click on it")
+
+	scrolledTo := func(top float32) *accessibility.Node {
+		f.screen.Do(func() { f.scroller.SetPosition(0, top) })
+		f.screen.Sync()
+		tree, document = f.document(c)
+		links = axNodesWithRole(tree, role.Link)
+		c.Equal(1, len(links))
+		if len(links) != 1 {
+			return nil
+		}
+		return links[0]
+	}
+	if link := scrolledTo(document.Document.Text.Lines[lineOf(span.Start)+1].Bounds.Y); link != nil {
+		c.False(link.Offscreen, "with only its first piece scrolled out of view, the link is still on the screen")
+		c.Equal(link.ID, tree.HitTest(pointAt(span.End-2)), "and a hit test on its last piece still finds it")
+	}
+	if link := scrolledTo(10000); link != nil {
+		c.True(link.Offscreen, "with every piece scrolled out of view, it is not")
+	}
+	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
+}
+
 // TestMarkdownSetTextSelectionActions verifies that an assistive technology can move the caret and the selection from
 // either end: the document takes offsets into the whole stream, and a block takes its own, which is what a screen
 // reader asking the element it is reading from hands over.
@@ -662,6 +744,35 @@ func TestMarkdownListAccessibility(t *testing.T) {
 
 	c.True(strings.Contains(document.Document.Text.Text, "9. ninth item\n10. tenth item"),
 		"a bullet is read as part of the line its item is on: %q", document.Document.Text.Text)
+	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
+}
+
+// TestMarkdownTaskListAccessibility verifies that a task list item says whether it is done: its check box is an image
+// named for its state, read on the line of the words beside it.
+func TestMarkdownTaskListAccessibility(t *testing.T) {
+	c := check.New(t)
+	f := newAXMarkdownFixture(t, "- [ ] todo\n- [x] done\n", 300, geom.NewSize(500, 400))
+	tree, document := f.document(c)
+	boxes := axNodesWithRole(tree, role.Image)
+	c.Equal(2, len(boxes))
+	if len(boxes) != 2 {
+		return
+	}
+	c.Equal("Unchecked", boxes[0].Name)
+	c.Equal("Checked", boxes[1].Name)
+	c.Equal("\uFFFC todo\n\uFFFC done", document.Document.Text.Text)
+
+	// The box and the paragraph beside it are both within the item, so their spans arrive in the order they are read
+	// in, which is the order an adapter lists the item's children in.
+	order := make(map[accessibility.NodeID]int)
+	for i, span := range document.Document.Text.Spans {
+		order[span.Node] = i
+	}
+	todo := axMustNode(c, axNodeWithText(tree, document, "todo"))
+	box, hasBox := order[boxes[0].ID]
+	words, hasWords := order[todo.ID]
+	c.True(hasBox && hasWords, "the box and the paragraph each occupy part of the stream")
+	c.True(box < words, "the box's span (%d) should come before the paragraph's (%d)", box, words)
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
 }
 
@@ -1010,7 +1121,7 @@ func TestMarkdownReadingCaretEndOfWrappedLine(t *testing.T) {
 
 // TestMarkdownCopyAndSelectAll verifies that what the caret has selected can be copied, from the keys, from the
 // commands a menu routes to the focus, and that the placeholders standing in for the images within the selection are
-// left out of what is put on the clipboard.
+// left out of what is put on the clipboard, but for a task's check box, which is copied as a ballot box.
 func TestMarkdownCopyAndSelectAll(t *testing.T) {
 	c := check.New(t)
 	f := newAXMarkdownFixture(t, markdownAXContent, 300, geom.NewSize(500, 400))
@@ -1059,6 +1170,15 @@ func TestMarkdownCopyAndSelectAll(t *testing.T) {
 	})
 	c.True(can)
 	c.Equal(strings.ReplaceAll(stream, "￼", ""), copied)
+
+	// A task's check box takes the place of its bullet, so it is copied as a box that says whether the task is done, as
+	// a bullet is copied as one.
+	f.screen.Do(func() { f.markdown.SetContent("- [ ] todo\n- [x] done\n", 300) })
+	f.screen.Sync()
+	f.screen.KeyPress(unison.KeyA, mod.OSMenuCommand())
+	f.screen.KeyPress(unison.KeyC, mod.OSMenuCommand())
+	f.screen.Do(func() { copied = unison.ClipboardGetText() })
+	c.Equal("☐ todo\n☑ done", copied)
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
 }
 

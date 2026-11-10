@@ -11,6 +11,7 @@ package unison
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -141,18 +142,23 @@ func TestMarkdownBlockTextChunkAdvances(t *testing.T) {
 }
 
 // TestMarkdownRowFlags verifies that a block's text reads as what was written however the lines of it were broken: a
-// line the text ran out of room on had the space that separated it from the next taken off its end, and it is put back,
-// while a line a break in the markdown ended is ended by a line feed. Neither of them was drawn, so neither takes up
-// any room on the line that owns it.
+// line the text ran out of room on had the spaces that separated it from the next taken off its end, and they are put
+// back as written, while a line a break in the markdown ended is ended by a line feed, and the spaces after that break
+// are put back at the start of the next. None of them was drawn, so none takes up any room on the line that owns it,
+// and a caret sent to the end of that line stops before them.
 func TestMarkdownRowFlags(t *testing.T) {
 	c := check.New(t)
+	const spaced = "Words  two  spaces  apart,  long  enough  to  be  broken  across  more  than  one  line."
+	emSpaced := strings.ReplaceAll(spaced, "  ", "\u2003")
 	screen, _, md := axNewTestMarkdown(t,
 		"first line  \nsecond line\n\nA paragraph long enough that it has to be broken across more than one line "+
-			"of its own before it ends.\n", 160)
+			"of its own before it ends.\n\n"+spaced+"\n\n"+emSpaced+"\n\nA [link](u) incomprehensibilities after it.\n\n"+
+			"Line one<br> Line two\n",
+		160)
 	screen.Do(func() {
 		blocks := axMarkdownBlocks(md.AsPanel())
-		c.Equal(2, len(blocks))
-		if len(blocks) != 2 {
+		c.Equal(6, len(blocks))
+		if len(blocks) != 6 {
 			return
 		}
 		broken := blocks[0]
@@ -171,14 +177,52 @@ func TestMarkdownRowFlags(t *testing.T) {
 		wrapped := blocks[1]
 		rows = axMarkdownRows(wrapped.AsPanel())
 		c.True(len(rows) > 1, "the paragraph should have been broken to fit")
-		c.True(rows[0].strippedSpace, "the space the line was broken at was taken off the end of it")
+		c.Equal(" ", string(rows[0].strippedSpaces), "the space the line was broken at was taken off the end of it")
 		text = wrapped.axText()
 		c.True(len(text.lines) > 1)
 		first := text.lines[0]
 		c.Equal(' ', text.text[first.End-1], "and put back, on the line that ended with it")
 		c.Equal(first.Advances[len(first.Advances)-1], first.Advances[len(first.Advances)-2],
 			"with no room of its own, since nothing was drawn for it")
-		c.False(rows[len(rows)-1].strippedSpace, "the last line of the paragraph was not broken at all")
+		c.Equal("", string(rows[len(rows)-1].strippedSpaces), "the last line of the paragraph was not broken at all")
+
+		rows = axMarkdownRows(blocks[2].AsPanel())
+		c.True(len(rows) > 1, "the paragraph should have been broken to fit")
+		c.Equal("  ", string(rows[0].strippedSpaces), "both spaces the line was broken at were taken off the end of it")
+		text = blocks[2].axText()
+		c.Equal(spaced, string(text.text), "and both were put back")
+		c.True(len(text.lines) > 1)
+		first = text.lines[0]
+		c.Equal("  ", string(text.text[first.End-2:first.End]), "on the line that ended with them")
+		c.Equal(first.Advances[len(first.Advances)-1], first.Advances[len(first.Advances)-3],
+			"with no room of their own")
+
+		rows = axMarkdownRows(blocks[3].AsPanel())
+		c.True(len(rows) > 1, "the paragraph should have been broken to fit")
+		c.Equal("\u2003", string(rows[0].strippedSpaces), "an em space the line was broken at was taken off its end")
+		text = blocks[3].axText()
+		c.Equal(emSpaced, string(text.text), "and put back as itself")
+		c.True(len(text.lines) > 1)
+		first = text.lines[0]
+		c.Equal(first.End-1, axLineEnd(text.lines, text.text, 0), "the end of the line is before the em space")
+
+		rows = axMarkdownRows(blocks[4].AsPanel())
+		c.True(len(rows) > 1, "the paragraph should have been broken to fit")
+		c.Equal(" ", string(rows[0].strippedSpaces), "a space the text was broken at after a link was taken off its end")
+		text = blocks[4].axText()
+		c.Equal("A link incomprehensibilities after it.", string(text.text), "and put back")
+		c.True(len(text.lines) > 1)
+		first = text.lines[0]
+		c.Equal(first.End-1, axLineEnd(text.lines, text.text, 0), "the end of the line is before that space")
+
+		text = blocks[5].axText()
+		c.Equal("Line one\n Line two", string(text.text), "the space after a break is kept")
+		c.Equal(2, len(text.lines))
+		if len(text.lines) == 2 {
+			second := text.lines[1]
+			c.Equal(' ', text.text[second.Start], "at the start of the line the break began")
+			c.Equal(second.Advances[0], second.Advances[1], "with no room of its own, since it was not drawn")
+		}
 	})
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
@@ -493,9 +537,9 @@ func TestMarkdownComposedStringsAreKept(t *testing.T) {
 // TestMarkdownStreamComposesLooseRowsAndImages verifies the two pieces of content the document builder deals with
 // rather than walking into: a row of text that no block owns, which is one visual line rather than a line per piece of
 // it, and an image that no block's text holds, which occupies the one rune standing in for something that is not text.
-// Nothing builds either of them today — a row and an image are added to whatever block is being filled — so they are
-// put in by hand, since what a walk that fell through to its default case would compose is a stream that says the wrong
-// thing about the content.
+// Nothing builds either of them on its own line today — a row and an image are added to whatever block is being
+// filled, and the check box of a task list item begins the line of its item — so they are put in by hand, since what a
+// walk that fell through to its default case would compose is a stream that says the wrong thing about the content.
 func TestMarkdownStreamComposesLooseRowsAndImages(t *testing.T) {
 	c := check.New(t)
 	screen, _, md := axNewTestMarkdown(t, "# Title\n", 300)
@@ -539,6 +583,74 @@ func TestMarkdownStreamComposesLooseRowsAndImages(t *testing.T) {
 		c.False(forRow, "while the row is no element of the document and names no node in the tree")
 	})
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestMarkdownEmptyListItemEndsItsLine verifies that the bullet of a list item with nothing beside it is a line of its
+// own, rather than the start of a line that whatever follows the item continues.
+func TestMarkdownEmptyListItemEndsItsLine(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{name: "before a task", content: "-\n- [ ] b\n", want: "•\n\uFFFC b"},
+		{name: "numbered, before a task", content: "1.\n2. [x] y\n", want: "1.\n\uFFFC y"},
+		{name: "between tasks", content: "- [x] a\n-\n- [ ] b\n", want: "\uFFFC a\n•\n\uFFFC b"},
+		{name: "before another item", content: "-\n- two\n", want: "•\n• two"},
+		{name: "task with no words", content: "- [ ]\n- [x] b\n", want: "\uFFFC\n\uFFFC b"},
+		{name: "paragraph with no text", content: "- <span></span>\n- b\n", want: "•\n• b"},
+		{name: "before a paragraph", content: "- \n\npara\n", want: "•\npara"},
+		{name: "before a table", content: "-\n\n| a |\n| - |\n| b |\n", want: "•\na\nb"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			md := NewMarkdown(false)
+			md.SetContent(tc.content, 300)
+			_, prefSize, _ := md.Sizes(geom.Size{})
+			md.SetFrameRect(geom.NewRect(0, 0, 300, prefSize.Height))
+			md.ValidateLayout()
+			doc := md.axDocument()
+			c.Equal(tc.want, string(doc.text))
+			c.Equal(strings.Count(tc.want, "\n")+1, len(doc.lines), "one line per row")
+			for i, line := range doc.lines {
+				for j := 1; j < len(line.Advances); j++ {
+					c.True(line.Advances[j] >= line.Advances[j-1], "line %d: the advances must not go backwards at %d (%v)",
+						i, j, line.Advances)
+				}
+			}
+		})
+	}
+}
+
+// TestMarkdownTaskBoxIsReadWhereItIsDrawn verifies that the rune standing in for a task's check box spans the box as it
+// is drawn, at the end of a bullet column that a wider number has made wider than the box.
+func TestMarkdownTaskBoxIsReadWhereItIsDrawn(t *testing.T) {
+	for _, content := range []string{"10. [ ] ten\n11. eleven\n", "99. [x] task\n100. plain\n"} {
+		t.Run(content, func(t *testing.T) {
+			c := check.New(t)
+			md := NewMarkdown(false)
+			md.SetContent(content, 300)
+			_, prefSize, _ := md.Sizes(geom.Size{})
+			md.SetFrameRect(geom.NewRect(0, 0, 300, prefSize.Height))
+			md.ValidateLayout()
+			doc := md.axDocument()
+			boxes := 0
+			for _, span := range doc.spans {
+				image, ok := span.panel.Self.(*DrawablePanel)
+				if !ok {
+					continue
+				}
+				boxes++
+				frame := image.RectTo(image.ContentRect(false), md.AsPanel())
+				c.True(frame.Width > image.Drawable.LogicalSize().Width, "the column should be wider than the box")
+				line := doc.lines[axLineIndexFor(doc.lines, span.start)]
+				at := span.start - line.Start
+				nearlyEqual(c, frame.Right()-image.Drawable.LogicalSize().Width, line.Bounds.X+line.Advances[at])
+				nearlyEqual(c, frame.Right(), line.Bounds.X+line.Advances[at+1])
+			}
+			c.Equal(1, boxes)
+		})
+	}
 }
 
 // TestMarkdownContextMenuAnchorWithNothingLaidOut verifies that a focusable document with nothing laid out, whose

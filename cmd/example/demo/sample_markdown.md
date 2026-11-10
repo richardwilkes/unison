@@ -302,6 +302,18 @@ You can create a nested list by indending one or more list items below another i
    - More...
 2. Another...
 
+### Task Lists
+
+To create a task list, preface list items with `[ ]`. To mark a task as complete, use `[x]`.
+
+```
+- [x] Write the code
+- [ ] Write the tests
+```
+
+- [x] Write the code
+- [ ] Write the tests
+
 ## Ignoring Markdown Formatting
 
 You can tell the markdown to ignore formatting by using a `\` before the markdown character.

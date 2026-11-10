@@ -624,8 +624,9 @@ func textEndpointValid(endpoint TextPatternRangeEndpoint) bool {
 //     paragraph it can. A label draws one line and records it, so its line and its paragraph are the same stretch.
 //   - Paragraph: the line feeds the stream joins its blocks with, plus the start of every block and container that
 //     occupies text. The second half is what makes a heading, a code block, a table cell and a list item each their own
-//     paragraph even where the composition put no line feed between them. Text with no spans — everything but a
-//     document's stream — divides on its line feeds alone.
+//     paragraph even where the composition put no line feed between them, except where one continues the line an
+//     enclosing one began, which is what the paragraph beside a list item's bullet does. Text with no spans —
+//     everything but a document's stream — divides on its line feeds alone.
 //   - Format: where the styling changes, which is every run boundary, plus every span boundary — a link, an image or a
 //     block beginning or ending is a change of formatting as far as a client walking the runs of a document is
 //     concerned, and it is where the attributes this file answers can change.
@@ -645,9 +646,17 @@ func (d *textDocument) computeBoundaries(unit TextUnit) []int {
 		}
 		return sortedBoundaries(d.length, offsets)
 	case TextUnit_Paragraph:
-		offsets := textunit.ParagraphStarts(d.runes)
+		starts := textunit.ParagraphStarts(d.runes)
+		var ends []int
 		for i := range d.spans {
 			if spanIsParagraph(d.tree.Node(d.spans[i].node)) {
+				ends = append(ends, d.spans[i].end)
+			}
+		}
+		slices.Sort(ends)
+		offsets := slices.Clone(starts)
+		for i := range d.spans {
+			if d.spanBeginsParagraph(i, starts, ends) {
 				offsets = append(offsets, d.spans[i].start)
 			}
 		}
@@ -666,9 +675,34 @@ func (d *textDocument) computeBoundaries(unit TextUnit) []int {
 	}
 }
 
-// spanIsParagraph reports whether the element a span stands for begins a paragraph of the stream. These are the
-// blocks a document is read as, plus the two containers whose content is a paragraph of its own wherever it begins: a
-// list item and a quoted passage.
+// spanBeginsParagraph reports whether the i'th span begins a paragraph, given the ascending offsets the stream's line
+// feeds begin paragraphs at and the spans spanIsParagraph accepts end at. Such a span does unless the nearest enclosing
+// one that began before it did so on the same line and no block ended between the two: that is the content beside a
+// list item's bullet or check box, which is part of the item's paragraph.
+func (d *textDocument) spanBeginsParagraph(i int, starts, ends []int) bool {
+	sp := d.spans[i]
+	if !spanIsParagraph(d.tree.Node(sp.node)) {
+		return false
+	}
+	// starts holds zero, so at is zero only for a start before the stream, which sortedBoundaries drops.
+	at, found := slices.BinarySearch(starts, sp.start)
+	if found || at == 0 {
+		return true
+	}
+	p := sp.parent
+	for p >= 0 && (d.spans[p].start == sp.start || !spanIsParagraph(d.tree.Node(d.spans[p].node))) {
+		p = d.spans[p].parent
+	}
+	if p < 0 || d.spans[p].start < starts[at-1] {
+		return true
+	}
+	j, _ := slices.BinarySearch(ends, d.spans[p].start+1)
+	return j < len(ends) && ends[j] <= sp.start
+}
+
+// spanIsParagraph reports whether the element a span stands for is read as a paragraph of its own; spanBeginsParagraph
+// decides whether its span begins one. These are the blocks a document is read as, plus the two containers whose
+// content is a paragraph of its own wherever it begins: a list item and a quoted passage.
 func spanIsParagraph(n *accessibility.Node) bool {
 	if n == nil {
 		return false

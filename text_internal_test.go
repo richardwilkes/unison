@@ -13,7 +13,6 @@ import (
 	"math/rand/v2"
 	"strings"
 	"testing"
-	"unicode"
 
 	"github.com/richardwilkes/canvas/canvas"
 	"github.com/richardwilkes/canvas/raster"
@@ -72,11 +71,11 @@ func sumWidths(t *Text, i, j int) float32 {
 	return total
 }
 
-// trimmedWidth returns the width of the Text with any trailing whitespace removed. BreakToWidth() documents that
-// trailing whitespace is not considered when deciding whether a line fits.
+// trimmedWidth returns the width of the Text with any trailing whitespace other than no-break spaces removed.
+// BreakToWidth() documents that trailing whitespace is not considered when deciding whether a line fits.
 func trimmedWidth(t *Text) float32 {
 	end := len(t.runes)
-	for end > 0 && unicode.IsSpace(t.runes[end-1]) {
+	for end > 0 && isBreakableSpace(t.runes[end-1]) {
 		end--
 	}
 	return sumWidths(t, 0, end)
@@ -87,7 +86,7 @@ func trimmedWidth(t *Text) float32 {
 // wider than the requested width; such a line always looks like this.
 func isSingleWord(runes []rune) bool {
 	end := len(runes)
-	for end > 0 && unicode.IsSpace(runes[end-1]) {
+	for end > 0 && isBreakableSpace(runes[end-1]) {
 		end--
 	}
 	for i := range end - 1 {
@@ -503,10 +502,22 @@ func TestTextLayoutBreakToWidth(t *testing.T) {
 			expected: []string{"aaa/", "bbb ", "ccc"},
 		},
 		{
+			name:     "does not break at a no-break space",
+			str:      "aa bb\u00a0cc",
+			width:    advance * 6.7,
+			expected: []string{"aa ", "bb\u00a0cc"},
+		},
+		{
 			name:     "trailing whitespace is not counted against the width",
 			str:      "aa  bb",
 			width:    advance * 3.7,
 			expected: []string{"aa  ", "bb"},
+		},
+		{
+			name:     "a no-break space is counted against the width",
+			str:      "aa bb\u00a0\u00a0 cc",
+			width:    advance * 5.5,
+			expected: []string{"aa ", "bb\u00a0\u00a0 ", "cc"},
 		},
 		{
 			name:     "a word wider than the width gets its own line",

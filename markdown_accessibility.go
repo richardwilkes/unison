@@ -43,15 +43,19 @@ import (
 // markdownRow is one visual line of a block's text: the row the pieces of a line are flowed into. It is not exposed to
 // an assistive technology — the block it belongs to reports the whole of its text, a line at a time — but it has a type
 // of its own so that the two ways a line can end are remembered. A line broken because the text ran out of room had the
-// space that separated it from the next taken off its end, and a line ended by a break in the markdown itself ends in a
-// line feed; both have to be put back for the text to read as what was written. See markdownBlock.axText.
+// spaces that separated it from the next taken off its end, and a line ended by a break in the markdown itself ends in
+// a line feed; both have to be put back for the text to read as what was written, as do the spaces after such a break,
+// which are not drawn at the start of the line that follows it. See markdownBlock.axText.
 type markdownRow struct {
+	// leadingSpaces holds the spaces which began this line and were not drawn, since a break in the markdown, or the
+	// start of the block, came before them.
+	leadingSpaces []rune
+	// strippedSpaces holds the spaces which separated this line from the next and were sliced off the end of it when
+	// the text was broken to fit.
+	strippedSpaces []rune
 	Panel
 	// hardBreak reports that a break in the markdown ended this line rather than the text running out of room.
 	hardBreak bool
-	// strippedSpace reports that the space which separated this line from the next was sliced off the end of it when the
-	// text was broken to fit.
-	strippedSpace bool
 }
 
 // newMarkdownRow creates the row one visual line of a block's text is flowed into.
@@ -191,17 +195,18 @@ func (b *markdownBlock) axText() *axBlockText {
 }
 
 // axBlockLine is one visual line of a block before its text has been read out of it: where the line was drawn, the
-// pieces it is drawn with, and how it ends.
+// pieces it is drawn with, and how it begins and ends.
 type axBlockLine struct {
-	chunks []*Panel
+	chunks         []*Panel
+	leadingSpaces  []rune
+	strippedSpaces []rune
 	// bounds is where the line was drawn, in the block's own coordinates.
 	bounds geom.Rect
 	// own reports that the panel holding the line is the whole of it rather than a row the pieces of a line were flowed
 	// into, which is what the lines of a code block are. Every one of those ends where it ends, so each but the last is
 	// followed by a line feed.
-	own           bool
-	hardBreak     bool
-	strippedSpace bool
+	own       bool
+	hardBreak bool
 }
 
 // axBlockTextBuilder accumulates the text of one block as the rows that draw it are walked in order.
@@ -252,6 +257,7 @@ func (bb *axBlockTextBuilder) collect(p *Panel) {
 // back to the left partway along it and whose caret and highlight then land on the wrong words.
 func (bb *axBlockTextBuilder) row(r *markdownRow) {
 	row := r.AsPanel()
+	leadingSpaces := r.leadingSpaces
 	var band []*Panel
 	var bounds geom.Rect
 	for _, chunk := range row.Children() {
@@ -262,8 +268,14 @@ func (bb *axBlockTextBuilder) row(r *markdownRow) {
 		if len(band) != 0 && frame.Y > bounds.Y && frame.Y >= bounds.Bottom() {
 			// This piece was flowed onto a row of its own below the ones before it, so those are a line and this begins
 			// the next. Only the last line of the row ends the way the row does, since the line feed a hard break put
-			// there and the space the text was broken at both belong to the end of the row.
-			bb.lines = append(bb.lines, axBlockLine{bounds: row.RectTo(bounds, bb.block), chunks: band})
+			// there and the spaces the text was broken at both belong to the end of the row, and only the first begins
+			// with the spaces that began the row.
+			bb.lines = append(bb.lines, axBlockLine{
+				bounds:        row.RectTo(bounds, bb.block),
+				chunks:        band,
+				leadingSpaces: leadingSpaces,
+			})
+			leadingSpaces = nil
 			band = nil
 		}
 		if len(band) == 0 {
@@ -278,10 +290,11 @@ func (bb *axBlockTextBuilder) row(r *markdownRow) {
 		bounds = row.ContentRect(true)
 	}
 	bb.lines = append(bb.lines, axBlockLine{
-		bounds:        row.RectTo(bounds, bb.block),
-		chunks:        band,
-		hardBreak:     r.hardBreak,
-		strippedSpace: r.strippedSpace,
+		bounds:         row.RectTo(bounds, bb.block),
+		chunks:         band,
+		hardBreak:      r.hardBreak,
+		leadingSpaces:  leadingSpaces,
+		strippedSpaces: r.strippedSpaces,
 	})
 }
 
@@ -292,45 +305,50 @@ func (bb *axBlockTextBuilder) emit() {
 		// somewhere the caret can sit and something an assistive technology may ask to select. A block left out of the
 		// stream would refuse the very actions it advertises, so it is given the one empty line it drew. See
 		// Label.axTextLine, which reports the one place a caret can sit in an empty label the same way.
-		bb.line(bb.block.ContentRect(true), nil, false, false)
+		bb.line(&axBlockLine{bounds: bb.block.ContentRect(true)})
 		return
 	}
 	for i, line := range bb.lines {
-		hardBreak := line.hardBreak
 		if line.own && i != len(bb.lines)-1 {
-			// A line that is a panel of its own was written as a line, so it ends in a line feed rather than in the space
-			// a wrapped line was broken at. The last of them ends the block, which the document itself puts a line feed
-			// after.
-			hardBreak = true
+			// A line that is a panel of its own was written as a line, so it ends in a line feed rather than in the
+			// spaces a wrapped line was broken at. The last of them ends the block, which the document itself puts a
+			// line feed after.
+			line.hardBreak = true
 		}
-		bb.line(line.bounds, line.chunks, hardBreak, line.strippedSpace)
+		bb.line(&line)
 	}
 }
 
-// line adds one line, drawn within the given bounds and made of the given chunks in the order they are drawn in. The
-// bounds are in the block's own coordinates.
-func (bb *axBlockTextBuilder) line(bounds geom.Rect, chunks []*Panel, hardBreak, strippedSpace bool) {
+// line adds one line of the block's text.
+func (bb *axBlockTextBuilder) line(from *axBlockLine) {
 	line := accessibility.Line{
 		Start:  len(bb.text.text),
-		Bounds: bounds,
+		Bounds: from.bounds,
 	}
-	for _, chunk := range chunks {
+	// The spaces that began the line were not drawn, so they are put back with no width of their own, at the place its
+	// first drawn rune begins once that is known.
+	bb.text.text = append(bb.text.text, from.leadingSpaces...)
+	bb.decorations = append(bb.decorations, make([]*TextDecoration, len(from.leadingSpaces))...)
+	for _, chunk := range from.chunks {
 		if !chunk.Hidden {
 			bb.chunk(chunk, &line)
 		}
 	}
-	if strippedSpace {
-		// The space that separated this line from the next was taken off the end of it when the text was broken to fit,
-		// so it is put back. It is given no width of its own, since nothing was drawn for it: what it does is make the
-		// text read, and copy, as the one run of words it was written as.
-		bb.separator(&line, ' ')
+	for _, space := range from.strippedSpaces {
+		// The spaces that separated this line from the next were taken off the end of it when the text was broken to
+		// fit, so they are put back. They are given no width of their own, since nothing was drawn for them: what they
+		// do is make the text read, and copy, as the one run of words it was written as.
+		bb.separator(&line, space)
 	}
-	if hardBreak {
+	if from.hardBreak {
 		bb.separator(&line, '\n')
 	}
 	if len(line.Advances) == 0 {
 		// A line with nothing on it is still somewhere a caret can sit.
 		line.Advances = append(line.Advances, 0)
+	}
+	if len(from.leadingSpaces) != 0 {
+		line.Advances = append(slices.Repeat(line.Advances[:1], len(from.leadingSpaces)), line.Advances...)
 	}
 	// The advances are measured from the line's own left edge, which is where its first rune begins rather than where
 	// the row holding it does: a centered cell, or a bullet aligned to the end of its column, starts further in.
@@ -345,7 +363,7 @@ func (bb *axBlockTextBuilder) line(bounds geom.Rect, chunks []*Panel, hardBreak,
 	bb.text.lines = append(bb.text.lines, line)
 }
 
-// separator adds a rune that nothing was drawn for to the end of a line: the space a soft wrap took off it, or the line
+// separator adds a rune that nothing was drawn for to the end of a line: a space a soft wrap took off it, or the line
 // feed a hard break ended it with.
 func (bb *axBlockTextBuilder) separator(line *accessibility.Line, r rune) {
 	bb.text.text = append(bb.text.text, r)
@@ -359,14 +377,19 @@ func (bb *axBlockTextBuilder) separator(line *accessibility.Line, r rune) {
 // chunk adds one piece of a line: a run of text, a link, or an image.
 func (bb *axBlockTextBuilder) chunk(chunk *Panel, line *accessibility.Line) {
 	start := len(bb.text.text)
-	if _, isImage := chunk.Self.(*DrawablePanel); isImage {
+	if image, isImage := chunk.Self.(*DrawablePanel); isImage {
 		// An image is not text, so it occupies the one rune that stands in for something that is not: a screen reader
 		// walking the stream lands on it, says what the image is from the element occupying it, and moves on.
-		left := chunk.PointTo(geom.Point{}, bb.block).X - line.Bounds.X
+		area := image.ContentRect(false)
+		if box, isBox := image.Drawable.(*markdownTaskBox); isBox {
+			// A task's check box is drawn at the end of the bullet column it was given rather than across it.
+			area = box.boxRect(area)
+		}
+		left := chunk.PointTo(area.Point, bb.block).X - line.Bounds.X
 		bb.boundary(line, left)
 		bb.text.text = append(bb.text.text, textunit.ObjectReplacement)
 		bb.decorations = append(bb.decorations, nil)
-		line.Advances = append(line.Advances, left+chunk.FrameRect().Width)
+		line.Advances = append(line.Advances, left+area.Width)
 		bb.text.spans = append(bb.text.spans, axPanelSpan{panel: chunk, start: start, end: len(bb.text.text)})
 		return
 	}
@@ -382,10 +405,22 @@ func (bb *axBlockTextBuilder) chunk(chunk *Panel, line *accessibility.Line) {
 	}
 	bb.text.text = append(bb.text.text, runes...)
 	bb.decorations = append(bb.decorations, decorations...)
-	if len(runes) != 0 && chunk.Accessibility.Role == role.Link {
+	if len(runes) == 0 {
+		return
+	}
+	if chunk.Accessibility.Role == role.Link {
 		// A link is an element of its own within the text: an assistive technology offers it among the document's links,
 		// says where it leads and follows it, all of which needs to know which words it is.
 		bb.text.spans = append(bb.text.spans, axPanelSpan{panel: chunk, start: start, end: len(bb.text.text)})
+	} else if head, isPiece := chunk.data[markdownLinkHeadKey].(*Panel); isPiece {
+		// A later piece of a link broken across rows, which the span of its first piece grows to take in, along with
+		// the spaces it was broken at. See Markdown.createLink.
+		for i := len(bb.text.spans) - 1; i >= 0; i-- {
+			if bb.text.spans[i].panel == head {
+				bb.text.spans[i].end = len(bb.text.text)
+				break
+			}
+		}
 	}
 }
 
@@ -579,15 +614,23 @@ func (db *axDocBuilder) walk(p *Panel) {
 			// block's rows are rather than walked into, which would make each of its labels a line of the document.
 			db.row(c)
 		case *DrawablePanel:
-			// An image that no block's text holds. Nothing builds one today either, and walking past it would leave the
-			// stream describing less than the document holds and an assistive technology reading the text no way to
-			// reach the image within it.
+			// An image that no block's text holds, which is what the check box of a task list item is. Walking past it
+			// would leave the stream describing less than the document holds and an assistive technology reading the
+			// text no way to reach the image within it. Like a bullet, a check box is followed by the content beside
+			// it.
 			db.drawable(child)
+			if listItem && i == 0 {
+				db.pending = ' '
+			}
 		case *Separator:
 			// A rule across the page is not text and contributes nothing to read.
 		default:
 			db.walk(child)
 		}
+	}
+	if listItem && db.pending == ' ' {
+		// Nothing in the item continued its bullet's line, so whatever follows the item begins a line of its own.
+		db.pending = '\n'
 	}
 }
 
@@ -662,7 +705,10 @@ func (db *axDocBuilder) drawable(p *Panel) {
 		own:    true,
 	})
 	builder.emit()
-	db.addText(p, nil, builder.text)
+	// The image is the element the text belongs to rather than one within it, which puts its span at the depth of the
+	// blocks beside it.
+	builder.text.spans = nil
+	db.addText(p, p, builder.text)
 }
 
 // addText adds text that was composed against one panel's coordinates to the stream, rebased into the markdown's, and
@@ -672,9 +718,15 @@ func (db *axDocBuilder) addText(owner, element *Panel, text *axBlockText) int {
 	// A bullet and the content beside it are one line of the document, so the first line continues the line the bullet
 	// opened rather than beginning a new one.
 	merge := db.pending == ' '
+	lines := text.lines
+	if merge && len(text.text) == 0 {
+		// Content with no text leaves the bullet's line as it was, rather than ending it with a space.
+		db.pending = 0
+		lines = nil
+	}
 	db.flushPending()
 	start := len(db.doc.text)
-	for i, line := range text.lines {
+	for i, line := range lines {
 		bounds := owner.RectTo(line.Bounds, db.md.AsPanel())
 		if i == 0 && merge {
 			db.mergeLine(bounds, line.Advances, start+line.End-line.Start)
@@ -819,12 +871,12 @@ func axDistanceOutside(low, high, at float32) float32 {
 }
 
 // axLineEnd returns the offset just past the last rune of a line that a caret may sit at, which is before the runes
-// ending it that nothing was drawn for: the line feed a hard break put there, and the space a soft-wrapped line was
-// broken at and had put back. A caret past either of those is the beginning of the next line — the space's own offset
-// is one before that line's Start — so without this, End on a wrapped line, and Command and the right arrow with it,
-// would leave the caret at the start of the line below and have a screen reader read that line instead of this one.
+// ending it that nothing was drawn for: the line feed a hard break put there, and the spaces a soft-wrapped line was
+// broken at and had put back. The offset past the last of those is the next line's Start, so without this, End on a
+// wrapped line, and Command and the right arrow with it, would leave the caret at the start of the line below and have
+// a screen reader read that line instead of this one.
 //
-// A rune nothing was drawn for takes up no room on the line, which is what tells the space a line was broken at apart
+// A rune nothing was drawn for takes up no room on the line, which is what tells a space a line was broken at apart
 // from a space that was drawn: its advance is the advance of the rune before it.
 func axLineEnd(lines []accessibility.Line, text []rune, index int) int {
 	if index < 0 || index >= len(lines) {
@@ -836,7 +888,7 @@ func axLineEnd(lines []accessibility.Line, text []rune, index int) int {
 		at := end - line.Start
 		switch {
 		case text[end-1] == '\n':
-		case text[end-1] == ' ' && at < len(line.Advances) && line.Advances[at] == line.Advances[at-1]:
+		case isBreakableSpace(text[end-1]) && at < len(line.Advances) && line.Advances[at] == line.Advances[at-1]:
 		default:
 			return end
 		}
@@ -1222,14 +1274,42 @@ func (m *Markdown) CanCopy() bool {
 }
 
 // Copy places the selected text on the clipboard. The placeholders standing in for the images within it are left out,
-// since they are not text and there is nothing to paste for them.
+// since they are not text and there is nothing to paste for them, except that a task's check box is copied as a ballot
+// box saying whether the task is done, as the bullet it takes the place of would have been.
 func (m *Markdown) Copy() {
 	start, end := m.axSelection()
 	if start >= end {
 		return
 	}
-	ClipboardSetText(strings.ReplaceAll(string(m.axDocument().text[start:end]),
-		string(textunit.ObjectReplacement), ""))
+	doc := m.axDocument()
+	var buffer strings.Builder
+	for i, r := range doc.text[start:end] {
+		if r != textunit.ObjectReplacement {
+			buffer.WriteRune(r)
+		} else if box := doc.taskBoxAt(start + i); box != nil {
+			ballot := '☐'
+			if box.checked {
+				ballot = '☑'
+			}
+			buffer.WriteRune(ballot)
+		}
+	}
+	ClipboardSetText(buffer.String())
+}
+
+// taskBoxAt returns the check box of a task occupying the given offset of the stream, or nil when none does.
+func (d *axDocument) taskBoxAt(offset int) *markdownTaskBox {
+	for _, span := range d.spans {
+		if span.key != nil || span.start != offset {
+			continue
+		}
+		if image, ok := span.panel.Self.(*DrawablePanel); ok {
+			if box, isBox := image.Drawable.(*markdownTaskBox); isBox {
+				return box
+			}
+		}
+	}
+	return nil
 }
 
 // CanSelectAll returns true if the document has text to select.

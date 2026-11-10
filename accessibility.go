@@ -132,7 +132,8 @@ type AccessibilityInfo struct {
 	// Callback runs last, after everything else about the node has been decided, and may adjust anything on it. Use it
 	// for the occasional fact the widget itself cannot work out, such as the heading depth a piece of content really
 	// sits at within the document it was composed into, rather than the one the panel declared, or a Description for a
-	// group that only the application knows the purpose of.
+	// group that only the application knows the purpose of. Offscreen has already been worked out from the panel's own
+	// rectangle and is not worked out again, so a callback that changes Bounds sets Offscreen to match.
 	//
 	// One thing it cannot decide on its own is the keyboard focus. A window reports the focus on the node of the panel
 	// that actually holds it, and a callback that sets accessibility.Node.Focused on any other node — or on a virtual
@@ -193,9 +194,10 @@ type axVirtualEntry struct {
 // builder looks for it on Panel.Self, so it must be implemented by the widget type rather than by an embedded Panel.
 //
 // ProvideAccessibility is called with the node already filled in with everything that can be derived from the panel
-// alone — its bounds, whether it is enabled, focusable and focused, and the actions those and its callbacks imply — so
-// an implementation only sets what it knows better. It runs on the UI thread, inside SafeCall, and must not change the
-// panel hierarchy or anything else the snapshot it is part of has already looked at.
+// alone — its bounds, whether any of it can be seen, whether it is enabled, focusable and focused, and the actions
+// those and its callbacks imply — so an implementation only sets what it knows better. Offscreen is not worked out
+// again, so an implementation that changes Bounds sets Offscreen to match. It runs on the UI thread, inside SafeCall,
+// and must not change the panel hierarchy or anything else the snapshot it is part of has already looked at.
 type AccessibilityProvider interface {
 	ProvideAccessibility(b *AccessibilityBuilder)
 }

@@ -348,7 +348,8 @@ func (t *Text) PositionForRuneIndex(index int) float32 {
 }
 
 // BreakToWidth breaks the given text into multiple lines that are <= width. Trailing whitespace is not considered for
-// purposes of fitting within the given width. A minimum of one word will be placed on a line, even if that word is
+// purposes of fitting within the given width. A no-break space is treated as part of the words it joins rather than as
+// whitespace, so the text is never broken there. A minimum of one word will be placed on a line, even if that word is
 // wider than the given width.
 func (t *Text) BreakToWidth(width float32) []*Text {
 	if t.Width() <= width {
@@ -368,7 +369,7 @@ func (t *Text) BreakToWidth(width float32) []*Text {
 			break
 		}
 		// Forward past any additional whitespace
-		for i < len(t.runes) && unicode.IsSpace(t.runes[i]) {
+		for i < len(t.runes) && isBreakableSpace(t.runes[i]) {
 			i++
 		}
 		// Backup to first break
@@ -383,7 +384,7 @@ func (t *Text) BreakToWidth(width float32) []*Text {
 			if i < len(t.runes) && isWordBreak(t.runes[i]) {
 				i++
 			}
-			for i < len(t.runes) && unicode.IsSpace(t.runes[i]) {
+			for i < len(t.runes) && isBreakableSpace(t.runes[i]) {
 				i++
 			}
 		}
@@ -394,5 +395,15 @@ func (t *Text) BreakToWidth(width float32) []*Text {
 }
 
 func isWordBreak(ch rune) bool {
-	return unicode.IsSpace(ch) || ch == '/' || ch == '\\'
+	return isBreakableSpace(ch) || ch == '/' || ch == '\\'
+}
+
+// isBreakableSpace reports whether ch is whitespace other than the no-break spaces U+00A0, U+2007 and U+202F.
+func isBreakableSpace(ch rune) bool {
+	switch ch {
+	case '\u00a0', '\u2007', '\u202f':
+		return false
+	default:
+		return unicode.IsSpace(ch)
+	}
 }
