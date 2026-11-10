@@ -211,6 +211,13 @@ func TestMarkdownLinkTargets(t *testing.T) {
 		{name: "br ending a line of a label", content: "[one<br>\ntwo](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
 		{name: "hard line break in a label", content: "[one\\\ntwo](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
 		{
+			name:     "autolink in a label broken across rows",
+			content:  "[see <http://e.com>" + strings.Repeat(" and more", 20) + "](u)\n",
+			linkName: "see http://e.com" + strings.Repeat(" and more", 20),
+			target:   "u",
+			tooltip:  "u",
+		},
+		{
 			name:     "escapes and entities in a reference's title",
 			content:  "[a][r]\n\n[r]: http://e.com \"T \\\" &amp; t\"\n",
 			linkName: "a",
@@ -757,6 +764,20 @@ func TestMarkdownBreaksTextIntoRows(t *testing.T) {
 			width:   400,
 			rows:    []string{"after"},
 			lines:   []string{" after"},
+		},
+		{
+			name:    "image wider than the line after an empty link",
+			content: "[](u)![x](missing-image-for-test.png)\n",
+			width:   10,
+			rows:    []string{"\uFFFC"},
+			lines:   []string{"\uFFFC"},
+		},
+		{
+			name:    "word wider than the line after an empty link",
+			content: "[](u)Antidisestablishmentarianism\n",
+			width:   100,
+			rows:    []string{"Antidisestablishmentarianism"},
+			lines:   []string{"Antidisestablishmentarianism"},
 		},
 		{
 			name:    "space after a link of a space beginning a line",

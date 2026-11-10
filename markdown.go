@@ -1705,6 +1705,8 @@ func (m *Markdown) collectText(node ast.Node, str *strings.Builder) {
 			b := util.UnescapePunctuations(t.Value)
 			b = util.ResolveNumericReferences(b)
 			str.Write(util.ResolveEntityNames(b))
+		case *ast.AutoLink:
+			str.Write(t.Label(m.content))
 		default:
 			m.collectText(c, str)
 		}
@@ -1919,8 +1921,8 @@ func (m *Markdown) flowText(t *Text, add func(part *Text)) {
 	}
 }
 
-// flowTextOnEmptyRows is flowText for a row with nothing on it, width wide. Every row after it begins empty too, so t
-// is broken once rather than a row at a time.
+// flowTextOnEmptyRows is flowText for a row with nothing drawn on it, width wide. Every row after it begins empty too,
+// so t is broken once rather than a row at a time.
 func (m *Markdown) flowTextOnEmptyRows(t *Text, width float32, add func(part *Text)) {
 	lines := t.BreakToWidth(width)
 	// BreakToWidth keeps text that fits width exactly on one line only when that is all it was given, which the last
@@ -1977,12 +1979,12 @@ func markdownPieceFits(part, t *Text, remaining float32) bool {
 	return part.PositionForRuneIndex(end) <= remaining
 }
 
-// remainingOnTextRow returns the room left on the row being filled, which is the whole width when nothing has been put
-// on it, and whether anything has.
+// remainingOnTextRow returns the room left on the row being filled, which is the whole width when nothing drawn has
+// been put on it, and whether anything drawn has.
 func (m *Markdown) remainingOnTextRow() (remaining float32, started bool) {
 	// Rounded down, since the labels the text is drawn in round their widths up.
 	width := xmath.Floor(m.maxLineWidth)
-	if m.textRow == nil || len(m.textRow.Children()) == 0 {
+	if markdownRowIsBlank(m.textRow) {
 		return width, false
 	}
 	// Measured unwrapped, since the spaces that end the row may already have taken it past the width, and measuring it
@@ -1991,11 +1993,11 @@ func (m *Markdown) remainingOnTextRow() (remaining float32, started bool) {
 	return xmath.Floor(width - prefSize.Width), true
 }
 
-// prepareToFlushText ends the row being filled if it has something on it and less than minRemaining of room left,
+// prepareToFlushText ends the row being filled if it has something drawn on it and less than minRemaining of room left,
 // and returns the room left on the row that is then being filled.
 func (m *Markdown) prepareToFlushText(minRemaining float32) float32 {
 	remaining, started := m.remainingOnTextRow()
-	// A row with nothing on it is left alone, since ending it would leave a blank line.
+	// A row with nothing drawn on it is left alone, since ending it would leave a blank line.
 	if started && remaining < minRemaining {
 		m.issueLineBreak()
 		remaining = xmath.Floor(m.maxLineWidth)
