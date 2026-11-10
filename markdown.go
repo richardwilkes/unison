@@ -57,7 +57,8 @@ var DefaultMarkdownTheme MarkdownTheme
 
 const (
 	markdownListItemKey = "unison.list.item"
-	// markdownLinkHeadKey marks a piece of a link broken across rows, other than the first, with the first.
+	// markdownLinkHeadKey marks each piece of a link but the first with the first. A link is in pieces where it is
+	// broken across rows, and an image it holds is a piece of its own.
 	markdownLinkHeadKey = "unison.link.head"
 )
 
@@ -180,6 +181,17 @@ type markdownImageTarget struct {
 	minWidth float32
 }
 
+// markdownLink is a link whose content is being added to the rows of a block, and the pieces it has been drawn with so
+// far. See Markdown.createLink.
+type markdownLink struct {
+	head    *Panel
+	label   string
+	target  string
+	tooltip string
+	rest    []*Panel
+	theme   LinkTheme
+}
+
 // Markdown provides markdown display widget.
 //
 // It has no contextual menu of its own. An application may set ContextMenuCallback; the menu then opens beneath the
@@ -197,6 +209,8 @@ type Markdown struct {
 	node                       ast.Node
 	chainedFrameChangeCallback func()
 	content                    []byte
+	// link is the link whose content is being added, while there is one.
+	link *markdownLink
 	// columnWidths is how wide each column of the table being built is made, its cells' borders and padding included.
 	// Zero makes a column as narrow as its content allows.
 	columnWidths  []int
@@ -760,7 +774,7 @@ func (m *Markdown) processList() {
 		var data any
 		if data, ok = m.block.ClientData()[markdownListItemKey]; ok {
 			var is bool
-			if is, ok = data.(bool); ok && is {
+			if is, ok = data.(bool); ok && is && markdownInTightList(m.node.Parent()) {
 				removeBottomMarginFromLastChild(m.block)
 			}
 		}
@@ -875,9 +889,19 @@ func (m *Markdown) createListBullet(item ast.Node, index int) *Panel {
 	if task := markdownTaskCheckBox(item); task != nil {
 		return m.createTaskBox(task.IsChecked).AsPanel()
 	}
-	bullet := "•"
+	var bullet string
 	if m.ordered {
 		bullet = fmt.Sprintf("%d.", index)
+	} else {
+		// The bullet changes with how many lists the item's list is within, as a browser's does: a disc, then a circle,
+		// then a square.
+		depth := 0
+		for p := item.Parent().Parent(); p != nil; p = p.Parent() {
+			if p.Kind() == ast.KindList {
+				depth++
+			}
+		}
+		bullet = [...]string{"•", "◦", "▪"}[min(depth, 2)]
 	}
 	label := NewLabel()
 	// The bullet is not something to move to or hear announced on its own: it says which item this is, which the item
@@ -888,6 +912,13 @@ func (m *Markdown) createListBullet(item ast.Node, index int) *Panel {
 	label.HAlign = align.End
 	label.Text = NewText(bullet, m.decoration)
 	return label.AsPanel()
+}
+
+// markdownInTightList reports whether item is an item of a tight list, which is one whose source sets none of the
+// blocks within it apart with blank lines.
+func markdownInTightList(item ast.Node) bool {
+	list, ok := item.Parent().(*ast.List)
+	return ok && list.IsTight
 }
 
 func (m *Markdown) processListItem() {
@@ -926,7 +957,11 @@ func (m *Markdown) processListItem() {
 	item.AddChild(p)
 	m.block = p
 	m.processChildren()
-	removeBottomMarginFromLastChild(p)
+	if markdownInTightList(m.node) || m.node.NextSibling() == nil {
+		// The items of a loose list are set apart by the margin below each, but for the last, below which the list's
+		// own margin is.
+		removeBottomMarginFromLastChild(p)
+	}
 	m.block = saveBlock
 	m.maxLineWidth = saveMaxLineWidth
 }
@@ -1139,11 +1174,27 @@ const (
 	markdownAlertCaution
 )
 
+// markdownUnescape returns b with its backslash escapes and entities resolved.
+func markdownUnescape(b []byte) []byte {
+	return util.ResolveEntityNames(util.ResolveNumericReferences(util.UnescapePunctuations(b)))
+}
+
+// markdownTextValue returns what a text node reads as. The text of a code span is raw: it is taken as written, but for
+// the line ending that continues it on the next line, which is a space.
+func markdownTextValue(t *ast.Text, source []byte) string {
+	value := t.Value(source)
+	if !t.IsRaw() {
+		return string(markdownUnescape(value))
+	}
+	if trimmed, found := bytes.CutSuffix(value, []byte{'\n'}); found {
+		return string(bytes.TrimSuffix(trimmed, []byte{'\r'})) + " "
+	}
+	return string(value)
+}
+
 func (m *Markdown) processText() {
 	if t, ok := m.node.(*ast.Text); ok {
-		b := util.UnescapePunctuations(t.Value(m.content))
-		b = util.ResolveNumericReferences(b)
-		str := string(util.ResolveEntityNames(b))
+		str := markdownTextValue(t, m.content)
 		if m.alert > 0 {
 			switch m.alert {
 			case 1: // Looking for '['
@@ -1206,7 +1257,10 @@ func (m *Markdown) processEmphasis() {
 func (m *Markdown) processCodeSpan() {
 	save := m.decoration
 	m.decoration = save.Clone()
-	m.decoration.OnBackgroundInk = m.OnCodeBackground
+	if m.link == nil {
+		// Within a link, the code is drawn in the link's ink, which is what says it is a link.
+		m.decoration.OnBackgroundInk = m.OnCodeBackground
+	}
 	m.decoration.BackgroundInk = m.CodeBackground
 	m.decoration.Font = m.CodeBlockFont
 	m.processChildren()
@@ -1228,20 +1282,33 @@ func (m *Markdown) processRawHTML() {
 		count := raw.Segments.Len()
 		for i := range count {
 			segment := raw.Segments.At(i)
-			switch xstrings.CollapseSpaces(strings.ToLower(string(segment.Value(m.content)))) {
-			case "<br>", "<br/>", "<br />":
+			value := segment.Value(m.content)
+			if markdownIsLineBreak(value) {
 				m.flushAndIssueLineBreak()
 				if next := m.node.NextSibling(); next != nil {
 					if t, ok2 := next.(*ast.Text); ok2 {
 						t.SetSoftLineBreak(false)
 					}
 				}
+				continue
+			}
+			switch xstrings.CollapseSpaces(strings.ToLower(string(value))) {
 			case "<hr>", "<hr/>", "<hr />":
 				m.flushAndIssueLineBreak()
 				m.processThematicBreak()
 				m.flushAndIssueLineBreak()
 			}
 		}
+	}
+}
+
+// markdownIsLineBreak reports whether a piece of raw HTML is a <br> tag.
+func markdownIsLineBreak(value []byte) bool {
+	switch xstrings.CollapseSpaces(strings.ToLower(string(value))) {
+	case "<br>", "<br/>", "<br />":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1256,82 +1323,129 @@ func (m *Markdown) processString() {
 
 func (m *Markdown) processLink() {
 	if link, ok := m.node.(*ast.Link); ok {
-		m.createLink(m.extractText(link), string(link.Destination), string(link.Title))
+		m.createLink(m.extractText(link), string(markdownUnescape(link.Destination)),
+			string(markdownUnescape(link.Title)), m.processChildren)
 	}
 }
 
-// createLink adds a link to the row being filled, broken across rows as text is when it does not fit. Each piece is a
-// link of its own to the mouse, but only the first is one to an assistive technology: it is named for the whole of the
-// link, and its span in the block's text takes in every piece. See axBlockTextBuilder.chunk.
-func (m *Markdown) createLink(label, target, tooltip string) {
-	m.flushText()
-	theme := LinkTheme{
-		LabelTheme: LabelTheme{
-			TextDecoration: *m.decoration.Clone(),
-		},
-		PressedInk:   m.LinkInk,
-		OnPressedInk: m.LinkOnPressedInk,
+// createLink adds a link named label to the row being filled, broken across rows as text is when it does not fit.
+// content adds what the link holds, its text drawn in m.decoration.
+func (m *Markdown) createLink(label, target, tooltip string, content func()) {
+	if m.link != nil {
+		// A link cannot hold another, so what one holds is more of the link around it.
+		content()
+		return
 	}
-	theme.OnBackgroundInk = m.LinkInk
+	m.flushText()
+	saveDec := m.decoration
+	m.decoration = m.decoration.Clone()
+	m.decoration.OnBackgroundInk = m.LinkInk
 	if tooltip == "" && target != "" {
 		tooltip = target
 	}
-	var head *Label
-	var rest []*Panel
-	addPiece := func(part *Text) {
-		link := NewLink(part.String(), tooltip, target, &theme, m.linkHandler)
-		if head == nil {
-			head = link
-		} else {
-			link.Accessibility.Role = role.None
-			link.ClientData()[markdownLinkHeadKey] = head.AsPanel()
-			if len(rest) == 0 {
-				own := head.AsPanel()
-				// Set by a callback rather than as Accessibility.Name, which would put the rest of the link's words into
-				// the name of a heading holding it twice. A node has one rectangle, so the link's takes in every piece,
-				// along with whatever else is on the rows it begins and ends on. Whether it is offscreen was worked out
-				// from the first piece alone, and it is not while any other piece shows.
-				head.Accessibility.Callback = func(node *accessibility.Node) {
-					node.Name = label
-					node.Bounds = markdownLinkBounds(node.Bounds, own, rest)
-					node.Offscreen = node.Offscreen && !slices.ContainsFunc(rest, markdownPanelShows)
-				}
-			}
-			rest = append(rest, link.AsPanel())
-		}
-		// The document takes the keyboard focus and follows the link under its reading caret itself (see
-		// Markdown.DefaultKeyDown), so the link takes no focus and needs no room for the outline.
-		link.SetFocusable(false)
-		link.SetBorder(nil)
-		// A press on the link never reaches the document, so a document that can take the focus is given it here,
-		// with its caret put on the link unless it is there already, as it is when Return or Space is what is
-		// following the link. A screen reader then finds the person on the link they followed.
-		press := link.MouseDownCallback
-		first := head
-		link.MouseDownCallback = func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
-			if button == ButtonLeft && m.Focusable() {
-				m.RequestFocus()
-				doc := m.axDocument()
-				if !first.Is(doc.linkAt(m.axCaret())) {
-					pos := doc.offsetAt(link.PointTo(where, m.AsPanel()))
-					m.axSetSelection(pos, pos)
-				}
-			}
-			return press(where, button, clickCount, mods)
-		}
-		m.addToTextRow(link)
+	m.link = &markdownLink{
+		theme: LinkTheme{
+			LabelTheme: LabelTheme{
+				TextDecoration: *m.decoration.Clone(),
+			},
+			PressedInk:   m.LinkInk,
+			OnPressedInk: m.LinkOnPressedInk,
+		},
+		label:   label,
+		target:  target,
+		tooltip: tooltip,
 	}
-	m.flowText(NewText(label, &theme.TextDecoration), addPiece)
-	if head == nil {
+	content()
+	m.flushText()
+	if m.link.head == nil {
 		// An empty link has nothing to draw, nor has one of nothing but spaces beginning a line, which are not drawn (see
 		// markdownRow.leadingSpaces), and either is still a link.
-		addPiece(NewText("", &theme.TextDecoration))
+		m.addLinkText(NewText("", &m.link.theme.TextDecoration))
+	}
+	m.link = nil
+	m.decoration = saveDec
+}
+
+// addLinkText adds a piece of the text of the link being added to the row being filled.
+func (m *Markdown) addLinkText(part *Text) {
+	l := m.link
+	link := NewLink("", l.tooltip, l.target, &l.theme, m.linkHandler)
+	link.Text = part
+	// The document takes the keyboard focus and follows the link under its reading caret itself (see
+	// Markdown.DefaultKeyDown), so the link takes no focus and needs no room for the outline.
+	link.SetFocusable(false)
+	link.SetBorder(nil)
+	m.joinLink(link.AsPanel())
+	m.addToTextRow(link)
+}
+
+// linkImage makes an image within the link being added a piece of it, which the link is followed from with a click.
+func (m *Markdown) linkImage(image *DrawablePanel) {
+	p := image.AsPanel()
+	target := m.link.target
+	if m.link.head == nil {
+		p.Accessibility.Role = role.Link
+		p.Accessibility.URL = target
+	}
+	p.UpdateCursorCallback = func(_ geom.Point) *Cursor { return PointingCursor() }
+	p.MouseDownCallback = func(_ geom.Point, button, _ int, _ mod.Modifiers) bool { return button == ButtonLeft }
+	p.MouseUpCallback = func(where geom.Point, button int, _ mod.Modifiers) bool {
+		if button != ButtonLeft {
+			return false
+		}
+		if where.In(p.ContentRect(true)) {
+			SafeCall(func() { m.linkHandler(p, target) })
+		}
+		return true
+	}
+	m.joinLink(p)
+}
+
+// joinLink makes p a piece of the link being added. Each piece is a link of its own to the mouse, but only the first is
+// one to an assistive technology: it is named for the whole of the link, and its span in the block's text takes in
+// every piece. See axBlockTextBuilder.chunk.
+func (m *Markdown) joinLink(p *Panel) {
+	l := m.link
+	if l.head == nil {
+		l.head = p
+	} else {
+		p.Accessibility.Role = role.None
+		p.ClientData()[markdownLinkHeadKey] = l.head
+		if len(l.rest) == 0 {
+			head := l.head
+			// Set by a callback rather than as Accessibility.Name, which would put the rest of the link's words into the
+			// name of a heading holding it twice. A node has one rectangle, so the link's takes in every piece, along
+			// with whatever else is on the rows it begins and ends on. Whether it is offscreen was worked out from the
+			// first piece alone, and it is not while any other piece shows.
+			head.Accessibility.Callback = func(node *accessibility.Node) {
+				node.Name = l.label
+				node.Bounds = markdownLinkBounds(node.Bounds, head, l.rest)
+				node.Offscreen = node.Offscreen && !slices.ContainsFunc(l.rest, markdownPanelShows)
+			}
+		}
+		l.rest = append(l.rest, p)
+	}
+	// A press on the link never reaches the document, so a document that can take the focus is given it here, with its
+	// caret put on the link unless it is there already, as it is when Return or Space is what is following the link. A
+	// screen reader then finds the person on the link they followed.
+	press := p.MouseDownCallback
+	head := l.head
+	p.MouseDownCallback = func(where geom.Point, button, clickCount int, mods mod.Modifiers) bool {
+		if button == ButtonLeft && m.Focusable() {
+			m.RequestFocus()
+			doc := m.axDocument()
+			if !head.Is(doc.linkAt(m.axCaret())) {
+				pos := doc.offsetAt(p.PointTo(where, m.AsPanel()))
+				m.axSetSelection(pos, pos)
+			}
+		}
+		return press(where, button, clickCount, mods)
 	}
 }
 
-// markdownLinkBounds returns the smallest rectangle holding every piece of a link broken across rows: head, the first,
-// and the rest. bounds is what head's node was given, which is its area mapped into the space of the window being
-// described; that only scales and moves it, so the other pieces are mapped the same way.
+// markdownLinkBounds returns the smallest rectangle holding every piece of a link: head, the first, and the rest.
+// bounds is what head's node was given, which is its area mapped into the space of the window being described; that
+// only scales and moves it, so the other pieces are mapped the same way.
 func markdownLinkBounds(bounds geom.Rect, head *Panel, rest []*Panel) geom.Rect {
 	own := head.RectToRoot(head.ContentRect(true))
 	if own.Width <= 0 || own.Height <= 0 {
@@ -1577,11 +1691,15 @@ func (m *Markdown) collectText(node ast.Node, str *strings.Builder) {
 	for c := node.FirstChild(); c != nil; c = c.NextSibling() {
 		switch t := c.(type) {
 		case *ast.Text:
-			b := util.UnescapePunctuations(t.Value(m.content))
-			b = util.ResolveNumericReferences(b)
-			str.Write(util.ResolveEntityNames(b))
-			if t.SoftLineBreak() {
-				str.WriteByte(' ')
+			str.WriteString(markdownTextValue(t, m.content))
+			if t.SoftLineBreak() || t.HardLineBreak() {
+				markdownSeparateWords(str)
+			}
+		case *ast.RawHTML:
+			for i := range t.Segments.Len() {
+				if segment := t.Segments.At(i); markdownIsLineBreak(segment.Value(m.content)) {
+					markdownSeparateWords(str)
+				}
 			}
 		case *ast.String:
 			b := util.UnescapePunctuations(t.Value)
@@ -1593,13 +1711,21 @@ func (m *Markdown) collectText(node ast.Node, str *strings.Builder) {
 	}
 }
 
+// markdownSeparateWords adds the space a line break in text being collected reads as, unless the text already ends
+// with one, as it does where a <br> ends a line of the source.
+func markdownSeparateWords(str *strings.Builder) {
+	if !strings.HasSuffix(str.String(), " ") {
+		str.WriteByte(' ')
+	}
+}
+
 func (m *Markdown) processImage() {
 	if image, ok := m.node.(*ast.Image); ok {
 		m.flushText()
 		panel := NewDrawablePanel()
 		// The placeholder's size, which is also the narrowest an image is scaled down to.
 		size := max(m.decoration.Font.Size(), 24)
-		d := m.retrieveImage(string(image.Destination), panel, m.maxLineWidth, size)
+		d := m.retrieveImage(string(markdownUnescape(image.Destination)), panel, m.maxLineWidth, size)
 		if d == nil {
 			panel.Drawable = &DrawableSVG{
 				SVG:  BrokenImageSVG,
@@ -1611,7 +1737,7 @@ func (m *Markdown) processImage() {
 			panel.Ink = nil
 		}
 		primary := m.extractText(image)
-		secondary := string(image.Title)
+		secondary := string(markdownUnescape(image.Title))
 		if primary == "" && secondary != "" {
 			primary = secondary
 			secondary = ""
@@ -1637,14 +1763,21 @@ func (m *Markdown) processImage() {
 			_, prefSize, _ := panel.Sizes(geom.Size{})
 			m.prepareToFlushText(prefSize.Width)
 		}
+		if m.link != nil {
+			m.linkImage(panel)
+		}
 		m.addToTextRow(panel)
 	}
 }
 
 func (m *Markdown) processAutoLink() {
 	if link, ok := m.node.(*ast.AutoLink); ok {
-		u := string(link.URL(m.content))
-		m.createLink(u, u, "")
+		label := string(link.Label(m.content))
+		target := string(link.URL(m.content))
+		if link.AutoLinkType == ast.AutoLinkEmail && (len(target) < 7 || !strings.EqualFold(target[:7], "mailto:")) {
+			target = "mailto:" + target
+		}
+		m.createLink(label, target, "", func() { m.text.AddString(label, m.decoration) })
 	}
 }
 
@@ -1730,7 +1863,11 @@ func (m *Markdown) endTextRow(hard bool) {
 
 func (m *Markdown) flushText() {
 	if m.text != nil && len(m.text.Runes()) != 0 {
-		m.flowText(m.text, m.addLabelToTextRow)
+		add := m.addLabelToTextRow
+		if m.link != nil {
+			add = m.addLinkText
+		}
+		m.flowText(m.text, add)
 		m.text = NewText("", m.decoration)
 	}
 }
@@ -1738,10 +1875,10 @@ func (m *Markdown) flushText() {
 // flowText adds t to the row being filled, breaking it across as many rows as it needs. add puts one piece of it on
 // the row.
 func (m *Markdown) flowText(t *Text, add func(part *Text)) {
-	if m.textRow == nil || len(m.textRow.Children()) == 0 {
+	if markdownRowIsBlank(m.textRow) {
 		// The line was begun by a break in the markdown or by the block itself, and the spaces after either are not
-		// drawn, however many pieces of text they are split between. A row with nothing on it was started here for
-		// the spaces of an earlier piece. See markdownRow.leadingSpaces.
+		// drawn, however many pieces of text they are split between. A row with nothing drawn on it was started here
+		// for the spaces of an earlier piece, or holds a link with nothing to draw. See markdownRow.leadingSpaces.
 		if lead := markdownLeadingSpaces(t); lead != 0 {
 			if m.textRow == nil {
 				m.startTextRow()
@@ -1800,6 +1937,18 @@ func (m *Markdown) flowTextOnEmptyRows(t *Text, width float32, add func(part *Te
 		}
 		add(line)
 	}
+}
+
+// markdownRowIsBlank reports whether row is nil or holds nothing but links with nothing to draw.
+func markdownRowIsBlank(row *Panel) bool {
+	if row != nil {
+		for _, child := range row.Children() {
+			if label, ok := child.Self.(*Label); !ok || !label.Text.Empty() {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // markdownLeadingSpaces returns how many breakable spaces t begins with.
@@ -1862,9 +2011,9 @@ func (m *Markdown) finishTextRow() {
 	m.text = nil
 }
 
-// DefaultMarkdownLinkHandler is the default link handler, which opens http and https links via OpenBrowser.
+// DefaultMarkdownLinkHandler is the default link handler, which opens http, https and mailto links via OpenBrowser.
 func DefaultMarkdownLinkHandler(_ Paneler, target string) {
-	if HasURLPrefix(target) {
+	if HasURLPrefix(target) || strings.HasPrefix(target, "mailto:") {
 		if err := OpenBrowser(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
 		}

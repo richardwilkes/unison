@@ -60,6 +60,45 @@ func TestLinkDoesNotActivateWhenReleasedOutside(t *testing.T) {
 	c.Equal(0, *clicks)
 }
 
+// TestLinkPressedHidesTheBackgroundOfItsText verifies that a pressed link is drawn in its pressed inks alone, even where
+// a run of its text has a background of its own, as code within a Markdown link does.
+func TestLinkPressedHidesTheBackgroundOfItsText(t *testing.T) {
+	c := check.New(t)
+	link, _ := newTestLink()
+	link.Text = unison.NewText("link", &unison.TextDecoration{
+		Font:            unison.LabelFont,
+		BackgroundInk:   unison.Red,
+		OnBackgroundInk: unison.Black,
+	})
+	backgroundPixels := func() int {
+		img, err := unison.NewImageFromDrawing(100, 20, 72, func(cv *unison.Canvas) {
+			link.DrawCallback(cv, link.ContentRect(true))
+		})
+		c.NoError(err)
+		if err != nil {
+			return -1
+		}
+		defer img.Dispose()
+		pixels, err := img.ToNRGBA()
+		c.NoError(err)
+		if err != nil {
+			return -1
+		}
+		count := 0
+		for y := range pixels.Rect.Dy() {
+			for x := range pixels.Rect.Dx() {
+				if unison.ColorFromNRGBA(pixels.NRGBAAt(x, y)) == unison.Red {
+					count++
+				}
+			}
+		}
+		return count
+	}
+	c.True(backgroundPixels() > 0, "the text's background is drawn while the link is not pressed")
+	c.True(link.MouseDownCallback(geom.NewPoint(10, 10), unison.ButtonLeft, 1, 0))
+	c.Equal(0, backgroundPixels(), "no part of the text's background is drawn while the link is pressed")
+}
+
 // linkTestField returns a field whose caret never blinks, since a blink timer outlives the session that armed it and
 // would enqueue a stray task into whichever test runs next.
 func linkTestField() *unison.Field {

@@ -142,6 +142,8 @@ func NewLink(title, tooltip, target string, theme *LinkTheme, clickHandler func(
 	link.DrawCallback = func(gc *Canvas, rect geom.Rect) {
 		if mouseDown {
 			defer link.Text.RestoreDecorations(link.Text.AdjustDecorations(func(decoration *TextDecoration) {
+				// A background behind the text, as code within a Markdown link has, would hide the pressed ink.
+				decoration.BackgroundInk = nil
 				decoration.OnBackgroundInk = theme.OnPressedInk
 			}))
 			paint := theme.PressedInk.Paint(gc, rect, paintstyle.Fill)

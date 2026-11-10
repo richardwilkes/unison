@@ -390,7 +390,9 @@ func (bb *axBlockTextBuilder) chunk(chunk *Panel, line *accessibility.Line) {
 		bb.text.text = append(bb.text.text, textunit.ObjectReplacement)
 		bb.decorations = append(bb.decorations, nil)
 		line.Advances = append(line.Advances, left+area.Width)
-		bb.text.spans = append(bb.text.spans, axPanelSpan{panel: chunk, start: start, end: len(bb.text.text)})
+		if !bb.extendLink(chunk) {
+			bb.text.spans = append(bb.text.spans, axPanelSpan{panel: chunk, start: start, end: len(bb.text.text)})
+		}
 		return
 	}
 	label, ok := chunk.Self.(*Label)
@@ -412,9 +414,16 @@ func (bb *axBlockTextBuilder) chunk(chunk *Panel, line *accessibility.Line) {
 		// A link is an element of its own within the text: an assistive technology offers it among the document's links,
 		// says where it leads and follows it, all of which needs to know which words it is.
 		bb.text.spans = append(bb.text.spans, axPanelSpan{panel: chunk, start: start, end: len(bb.text.text)})
-	} else if head, isPiece := chunk.data[markdownLinkHeadKey].(*Panel); isPiece {
-		// A later piece of a link broken across rows, which the span of its first piece grows to take in, along with
-		// the spaces it was broken at. See Markdown.createLink.
+	} else {
+		bb.extendLink(chunk)
+	}
+}
+
+// extendLink grows the span of a link's first piece to take in chunk, along with the spaces the link was broken at, and
+// reports whether chunk is a later piece of a link, which is not an element of its own. See Markdown.joinLink.
+func (bb *axBlockTextBuilder) extendLink(chunk *Panel) bool {
+	head, isPiece := chunk.data[markdownLinkHeadKey].(*Panel)
+	if isPiece {
 		for i := len(bb.text.spans) - 1; i >= 0; i-- {
 			if bb.text.spans[i].panel == head {
 				bb.text.spans[i].end = len(bb.text.text)
@@ -422,6 +431,7 @@ func (bb *axBlockTextBuilder) chunk(chunk *Panel, line *accessibility.Line) {
 			}
 		}
 	}
+	return isPiece
 }
 
 // boundary records where the next chunk of a line begins.

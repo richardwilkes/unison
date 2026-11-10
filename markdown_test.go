@@ -94,6 +94,8 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 		{name: "blockquote", content: "> quoted text\n", want: "quoted"},
 		{name: "ordered list", content: "1. one\n2. two\n", want: "two"},
 		{name: "unordered list", content: "- alpha\n- beta\n", want: "beta"},
+		{name: "nested unordered lists", content: "- a\n  - b\n    - c\n      - d\n", want: "• a ◦ b ▪ c ▪ d"},
+		{name: "unordered list in an ordered one", content: "1. a\n   - b\n", want: "1. a ◦ b"},
 		{name: "task list", content: "- [ ] todo\n- [x] done\n", want: "todo done"},
 		{name: "ordered task list", content: "1. [x] done\n2. plain\n", want: "done 2. plain"},
 		{name: "link beginning a list item", content: "- [X](https://x.com)\n", want: "• X"},
@@ -127,54 +129,236 @@ func TestMarkdownHandlesGFMConstructs(t *testing.T) {
 }
 
 // TestMarkdownStyledLinkLabels verifies that link labels whose text is nested inside styled inline nodes (emphasis,
-// code spans, strikethrough, etc.) still surface their text. extractText must recurse into child nodes rather than
-// only collecting the link node's direct Text children, or the rendered link ends up with an empty label.
+// code spans, strikethrough, etc.) still surface their text, drawn in the styles written as it would be outside a link
+// but in the link's ink.
 func TestMarkdownStyledLinkLabels(t *testing.T) {
+	decorations := func(m *Markdown) []*TextDecoration {
+		var all []*TextDecoration
+		var walk func(p *Panel)
+		walk = func(p *Panel) {
+			if label, ok := p.Self.(*Label); ok && label.Text != nil {
+				all = append(all, label.Text.decorations...)
+			}
+			for _, child := range p.Children() {
+				walk(child)
+			}
+		}
+		walk(m.AsPanel())
+		return all
+	}
 	for _, tc := range []struct {
-		name    string
-		content string
-		want    string
+		name   string
+		styled string
+		want   string
 	}{
-		{name: "bold label", content: "[**bold label**](http://example.com)\n", want: "bold label"},
-		{name: "italic label", content: "[*italic label*](http://example.com)\n", want: "italic label"},
-		{name: "code label", content: "[`code label`](http://example.com)\n", want: "code label"},
-		{name: "strikethrough label", content: "[~~struck label~~](http://example.com)\n", want: "struck label"},
-		{name: "nested styles", content: "[**outer *inner* text**](http://example.com)\n", want: "outer inner text"},
-		{name: "mixed plain and styled", content: "[pre **mid** post](http://example.com)\n", want: "pre mid post"},
+		{name: "bold label", styled: "**bold label**", want: "bold label"},
+		{name: "italic label", styled: "*italic label*", want: "italic label"},
+		{name: "code label", styled: "`code label`", want: "code label"},
+		{name: "strikethrough label", styled: "~~struck label~~", want: "struck label"},
+		{name: "nested styles", styled: "**outer *inner* text**", want: "outer inner text"},
+		{name: "mixed plain and styled", styled: "pre **mid** post", want: "pre mid post"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent("["+tc.styled+"](http://example.com)\n", 400)
+			c.Contains(collectMarkdownText(m.AsPanel()), tc.want)
+			plain := NewMarkdown(false)
+			plain.SetContent(tc.styled+"\n", 400)
+			got := decorations(m)
+			want := decorations(plain)
+			c.Equal(len(want), len(got), "how many runes are drawn")
+			if len(want) != len(got) {
+				return
+			}
+			for i, d := range got {
+				c.Equal(want[i].Font.Descriptor(), d.Font.Descriptor(), "the font of rune %d", i)
+				c.Equal(want[i].BackgroundInk, d.BackgroundInk, "the background of rune %d", i)
+				c.Equal(want[i].StrikeThrough, d.StrikeThrough, "whether rune %d is struck through", i)
+				c.Equal(m.LinkInk, d.OnBackgroundInk, "the ink of rune %d", i)
+			}
+		})
+	}
+}
+
+// TestMarkdownLinkTargets verifies the name of a link, where it leads and the tooltip it shows, which an assistive
+// technology is given as well.
+func TestMarkdownLinkTargets(t *testing.T) {
+	const oneTwo = "one two"
+	const mailto = "mailto:foo@bar.com"
+	for _, tc := range []struct {
+		name     string
+		content  string
+		linkName string
+		target   string
+		tooltip  string
+	}{
+		{
+			name:     "escapes and entities in a destination",
+			content:  "[a](http://e.com/\\_x?a=1&amp;b=2)\n",
+			linkName: "a",
+			target:   "http://e.com/_x?a=1&b=2",
+			tooltip:  "http://e.com/_x?a=1&b=2",
+		},
+		{
+			name:     "entities in a reference's destination",
+			content:  "[a][r]\n\n[r]: http://e.com/?a=1&amp;b=2\n",
+			linkName: "a",
+			target:   "http://e.com/?a=1&b=2",
+			tooltip:  "http://e.com/?a=1&b=2",
+		},
+		{name: "br in a label", content: "[one<br>two](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
+		{name: "br ending a line of a label", content: "[one<br>\ntwo](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
+		{name: "hard line break in a label", content: "[one\\\ntwo](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
+		{
+			name:     "escapes and entities in a reference's title",
+			content:  "[a][r]\n\n[r]: http://e.com \"T \\\" &amp; t\"\n",
+			linkName: "a",
+			target:   "http://e.com",
+			tooltip:  "T \" & t",
+		},
+		{
+			name:     "bare address beginning with www",
+			content:  "see www.example.com now\n",
+			linkName: "www.example.com",
+			target:   "http://www.example.com",
+			tooltip:  "http://www.example.com",
+		},
+		{
+			name:     "email autolink",
+			content:  "<foo@bar.com>\n",
+			linkName: "foo@bar.com",
+			target:   mailto,
+			tooltip:  mailto,
+		},
+		{
+			name:     "bare email address",
+			content:  "mail foo@bar.com now\n",
+			linkName: "foo@bar.com",
+			target:   mailto,
+			tooltip:  mailto,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
 			m := NewMarkdown(false)
 			m.SetContent(tc.content, 400)
-			c.Contains(collectMarkdownText(m.AsPanel()), tc.want)
+			var link *Panel
+			var find func(p *Panel)
+			find = func(p *Panel) {
+				for _, child := range p.Children() {
+					if link == nil && child.Accessibility.Role == role.Link {
+						link = child
+					}
+					find(child)
+				}
+			}
+			find(m.AsPanel())
+			c.NotNil(link)
+			if link == nil {
+				return
+			}
+			node := &accessibility.Node{Name: link.Accessibility.Name}
+			if label, ok := link.Self.(*Label); ok {
+				node.Name = label.String()
+			}
+			if link.Accessibility.Callback != nil {
+				link.Accessibility.Callback(node)
+			}
+			c.Equal(tc.linkName, node.Name, "the name")
+			c.Equal(tc.target, link.Accessibility.URL, "the target")
+			c.NotNil(link.Tooltip)
+			if link.Tooltip != nil {
+				c.Equal(tc.tooltip, collectMarkdownText(link.Tooltip), "the tooltip")
+			}
 		})
 	}
 }
 
-// TestMarkdownStyledImageAltText verifies that image alt text nested inside styled inline nodes still becomes the
-// image's tooltip, exercising the same extractText recursion as styled link labels. The image target does not exist,
-// so the load fails fast and the broken-image placeholder is used; the alt-text tooltip must be attached regardless.
-func TestMarkdownStyledImageAltText(t *testing.T) {
+// TestDefaultMarkdownLinkHandler verifies which targets the default link handler opens: web and email addresses, and
+// nothing else. A headless session records what is opened rather than opening it, so this does not call t.Parallel.
+func TestDefaultMarkdownLinkHandler(t *testing.T) {
+	c := check.New(t)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 100, Height: 100})
+	for _, target := range []string{"http://e.com", "https://e.com", "mailto:foo@bar.com", "docs/readme.md"} {
+		c.True(screen.Do(func() { DefaultMarkdownLinkHandler(nil, target) }))
+	}
+	c.Equal([]string{"http://e.com", "https://e.com", "mailto:foo@bar.com"}, screen.OpenedURLs())
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestMarkdownImageSourceAndText verifies where an image is loaded from and the text it is given: its alt text, styled
+// words included, becomes its name, its title its description, and both its tooltip. An image that fails to load, as
+// missing-image-for-test.png does, is still given its text.
+func TestMarkdownImageSourceAndText(t *testing.T) {
 	saved := markdownPrimaryDisplay
 	defer func() { markdownPrimaryDisplay = saved }()
 	markdownPrimaryDisplay = func() *Display { return nil }
-	c := check.New(t)
-	m := NewMarkdown(false)
-	m.SetContent("![**styled alt text**](missing-image-for-test.png)\n", 400)
-	var tip *Panel
-	var walk func(p *Panel)
-	walk = func(p *Panel) {
-		if _, ok := p.Self.(*DrawablePanel); ok && p.Tooltip != nil {
-			tip = p.Tooltip
-		}
-		for _, child := range p.Children() {
-			walk(child)
-		}
-	}
-	walk(m.AsPanel())
-	c.NotNil(tip)
-	if tip != nil {
-		c.Contains(collectMarkdownText(tip), "styled alt text")
+	loaded := &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(30, 30)}
+	target, err := ReviseTarget("", "image_for_test.png", nil)
+	check.New(t).NoError(err)
+	for _, tc := range []struct {
+		name    string
+		content string
+		alt     string
+		title   string
+		loaded  bool
+	}{
+		{
+			name:    "styled alt text",
+			content: "![**styled alt text**](missing-image-for-test.png)\n",
+			alt:     "styled alt text",
+		},
+		{name: "escapes in a destination", content: "![a](image\\_for\\_test.png)\n", alt: "a", loaded: true},
+		{name: "br in alt text", content: "![one<br>two](image_for_test.png)\n", alt: "one two", loaded: true},
+		{
+			name:    "hard line break in alt text",
+			content: "![one\\\ntwo](image_for_test.png)\n",
+			alt:     "one two",
+			loaded:  true,
+		},
+		{
+			name:    "escapes and entities in a title",
+			content: "![a](image_for_test.png \"T \\\" &amp; t\")\n",
+			alt:     "a",
+			title:   "T \" & t",
+			loaded:  true,
+		},
+		{
+			name:    "code spans in alt text as written",
+			content: "![`a\\*b` &amp; `&lt;T&gt;`](image_for_test.png)\n",
+			alt:     "a\\*b & &lt;T&gt;",
+			loaded:  true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.drawableCache[target] = &drawableCacheEntry{drawable: loaded}
+			m.SetContent(tc.content, 400)
+			var image *DrawablePanel
+			var walk func(p *Panel)
+			walk = func(p *Panel) {
+				if one, ok := p.Self.(*DrawablePanel); ok {
+					image = one
+				}
+				for _, child := range p.Children() {
+					walk(child)
+				}
+			}
+			walk(m.AsPanel())
+			c.NotNil(image)
+			if image == nil {
+				return
+			}
+			c.Equal(tc.loaded, image.Drawable == Drawable(loaded), "whether the image was loaded from image_for_test.png")
+			c.Equal(tc.alt, image.Accessibility.Name, "the name")
+			c.Equal(tc.title, image.Accessibility.Description, "the description")
+			c.NotNil(image.Tooltip)
+			if image.Tooltip != nil {
+				c.Equal(strings.TrimSpace(tc.alt+" "+tc.title), collectMarkdownText(image.Tooltip), "the tooltip")
+			}
+		})
 	}
 }
 
@@ -567,6 +751,34 @@ func TestMarkdownBreaksTextIntoRows(t *testing.T) {
 			rows:    []string{"Text averylonglink", "more words after."},
 			lines:   []string{"Text averylonglink ", "more words after."},
 		},
+		{
+			name:    "space after an empty link beginning a line",
+			content: "[](u) after\n",
+			width:   400,
+			rows:    []string{"after"},
+			lines:   []string{" after"},
+		},
+		{
+			name:    "space after a link of a space beginning a line",
+			content: "a<br>[ ](u) b\n",
+			width:   400,
+			rows:    []string{"a", "b"},
+			lines:   []string{"a\n", "  b"},
+		},
+		{
+			name:    "code spans as written",
+			content: "`C:\\\\dir` `\\.` `a\\*b` `&lt;T&gt;` `&#42;` [`\\*`](u)\n",
+			width:   400,
+			rows:    []string{"C:\\\\dir \\. a\\*b &lt;T&gt; &#42; \\*"},
+			lines:   []string{"C:\\\\dir \\. a\\*b &lt;T&gt; &#42; \\*"},
+		},
+		{
+			name:    "code span continued on the next line",
+			content: "x `a\nb` y\n",
+			width:   400,
+			rows:    []string{"x a b y"},
+			lines:   []string{"x a b y"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
@@ -634,6 +846,72 @@ func TestMarkdownLinkWithNothingToDrawIsALink(t *testing.T) {
 			}
 			c.Equal(1, links, "the link should have been added")
 			c.Equal(tc.text, text.String(), "the text should read as written")
+		})
+	}
+}
+
+// TestMarkdownImageInLinkIsPartOfIt verifies that an image within a link is drawn as a piece of the link: a click on it
+// follows the link, and the link, which is the image itself when nothing comes before it, occupies the image and every
+// word with it in the block's text.
+func TestMarkdownImageInLinkIsPartOfIt(t *testing.T) {
+	const target = "http://e.com"
+	for _, tc := range []struct {
+		name    string
+		content string
+		row     string
+	}{
+		{name: "image alone", content: "[![alt](missing-image-for-test.png)](" + target + ")\n", row: "\uFFFC"},
+		{name: "image before text", content: "[![alt](missing-image-for-test.png) text](" + target + ")\n", row: "\uFFFC text"},
+		{name: "image after text", content: "[text ![alt](missing-image-for-test.png)](" + target + ")\n", row: "text \uFFFC"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			var followed string
+			m.LinkHandler = func(_ Paneler, to string) { followed = to }
+			m.SetContent(tc.content, 400)
+			_, prefSize, _ := m.Sizes(geom.Size{})
+			m.SetFrameRect(geom.NewRect(0, 0, 400, prefSize.Height))
+			m.ValidateLayout()
+			var drawn strings.Builder
+			var image *Panel
+			var links []*Panel
+			for _, row := range axMarkdownRows(m.AsPanel()) {
+				for _, child := range row.Children() {
+					if child.Accessibility.Role == role.Link {
+						links = append(links, child)
+					}
+					switch one := child.Self.(type) {
+					case *Label:
+						drawn.WriteString(one.String())
+					case *DrawablePanel:
+						drawn.WriteRune('\uFFFC')
+						image = child
+					}
+				}
+			}
+			c.Equal(tc.row, drawn.String(), "what is drawn")
+			c.Equal(1, len(links), "the pieces of the link are one link")
+			if image == nil || len(links) != 1 {
+				return
+			}
+			c.Equal(target, links[0].Accessibility.URL)
+			text := axMarkdownBlocks(m.AsPanel())[0].axText()
+			var covered string
+			for _, span := range text.spans {
+				if span.panel == links[0] {
+					covered = string(text.text[span.start:span.end])
+				}
+				c.True(span.panel.Accessibility.Role != role.None, "a span names only an element that is described")
+			}
+			c.Equal(tc.row, covered, "the link occupies the whole of itself")
+			c.True(image.MouseDownCallback != nil && image.MouseUpCallback != nil, "the image can be clicked")
+			if image.MouseDownCallback != nil && image.MouseUpCallback != nil {
+				where := image.ContentRect(true).Center()
+				image.MouseDownCallback(where, ButtonLeft, 1, 0)
+				image.MouseUpCallback(where, ButtonLeft, 0)
+			}
+			c.Equal(target, followed, "a click on the image follows the link")
 		})
 	}
 }
@@ -731,6 +1009,51 @@ func TestMarkdownRuleBeginningContainerPlacement(t *testing.T) {
 				return
 			}
 			c.Equal(container.RectTo(container.ContentRect(false), m.AsPanel()).Y, ruleRect.Y, "the rule is at the top")
+		})
+	}
+}
+
+// TestMarkdownListItemSpacing verifies that the blocks of a loose list, which its source sets apart with blank lines,
+// are as far apart as paragraphs are, that those of a tight list have no space between them, and that the last item of
+// either adds no space below the list's own margin.
+func TestMarkdownListItemSpacing(t *testing.T) {
+	layout := func(content string) (tops []float32, rowHeight, height float32) {
+		m := NewMarkdown(false)
+		m.SetContent(content, 400)
+		_, prefSize, _ := m.Sizes(geom.Size{})
+		m.SetFrameRect(geom.NewRect(0, 0, 400, prefSize.Height))
+		m.ValidateLayout()
+		for _, row := range axMarkdownRows(m.AsPanel()) {
+			r := row.RectTo(row.ContentRect(true), m.AsPanel())
+			tops = append(tops, r.Y)
+			rowHeight = r.Height
+		}
+		return tops, rowHeight, prefSize.Height
+	}
+	paragraphs, rowHeight, _ := layout("a\n\nb\n")
+	apart := paragraphs[1] - paragraphs[0]
+	margin := apart - rowHeight
+	for _, tc := range []struct {
+		name    string
+		content string
+		loose   bool
+	}{
+		{name: "tight", content: "- a\n- b\n- c\n"},
+		{name: "loose", content: "- a\n\n- b\n\n- c\n", loose: true},
+		{name: "tight with a nested list", content: "- a\n  - x\n- b\n"},
+		{name: "loose with a nested list", content: "- a\n\n  - x\n\n- b\n", loose: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			tops, _, height := layout(tc.content)
+			want := rowHeight
+			if tc.loose {
+				want = apart
+			}
+			for i := 1; i < len(tops); i++ {
+				c.Equal(want, tops[i]-tops[i-1], "the distance from row %d to row %d", i-1, i)
+			}
+			c.Equal(margin, height-(tops[len(tops)-1]+rowHeight), "the space below the last row")
 		})
 	}
 }
