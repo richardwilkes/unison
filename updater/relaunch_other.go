@@ -27,7 +27,7 @@ import (
 // application's own output is discarded rather than added to that log: the log is in the staging directory, which the
 // application removes once it has started, and on Windows its handle to the log would prevent that while it ran.
 func relaunch(t *target, _ string) error {
-	if err := spawnDetached(t.Path, nil, "", os.TempDir()); err != nil {
+	if _, err := spawnDetached(t.Path, nil, "", os.TempDir()); err != nil {
 		return errs.NewWithCause("unable to start the updated application", err)
 	}
 	return nil

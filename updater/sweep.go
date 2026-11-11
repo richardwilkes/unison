@@ -10,6 +10,7 @@
 package updater
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -18,18 +19,23 @@ import (
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
+	"github.com/richardwilkes/toolbox/v2/xio"
 )
 
 const (
 	// staleAge is how old a leftover has to be before the startup sweep will remove it on sight. Anything younger might
 	// belong to an update being applied right now by a helper this instance knows nothing about.
 	staleAge = 7 * 24 * time.Hour
-	// abandonedStagingAge is the shorter bound used just before a new update is prepared. By then any helper still
-	// working would have had to survive since before the application started, and the wait it performs gives up long
-	// before this, so anything older is from an attempt that did not clean up after itself. Without it, each failed
-	// attempt would leave a copy of the application in the user's applications folder for a week.
+	// abandonedStagingAge is the shorter bound used for staging directories just before a new update is prepared. By
+	// then any helper still working would have had to survive since before the application started, and the wait it
+	// performs gives up long before this, so anything older is from an attempt that did not clean up after itself.
+	// Without it, each failed attempt would leave a copy of the application in the user's applications folder for a
+	// week.
 	abandonedStagingAge = time.Hour
 )
+
+// maxHelperLog bounds how much of the end of the helper's log is copied into the application log.
+const maxHelperLog = 64 << 10
 
 // removeAttempts and removeDelay bound the retries when clearing leftovers. On Windows the helper may still be exiting
 // as the newly installed application starts, and its image cannot be deleted until it has.
@@ -75,13 +81,18 @@ func (u *Updater) reportAndSweep() *outcome {
 		u.sweepStrays(currentSweepDirs(), staleAge)
 		return nil
 	}
-	if s == nil || (s.Status == statusStaged && stagerRunning(s)) {
-		// A staged update is not abandoned while the copy that prepared it runs: that copy may yet quit and have its
-		// helper apply the update, or have its quit refused and discard it.
+	if s == nil || (s.Status == statusStaged && stagingInUse(s)) {
+		// A staged update is not abandoned while the copy that prepared it runs, nor while its helper does: that copy
+		// may yet quit and have its helper apply the update, or have its quit refused and discard it.
 		u.sweepStrays(currentSweepDirs(), staleAge)
 		return nil
 	}
+	// The helper's log is in the staging directory, which settle removes.
+	helperLog := readTail(s.LogPath, maxHelperLog)
 	out := u.settle(s)
+	if helperLog != "" && (out == nil || out.Reason != reasonNone) {
+		slog.Warn("output from the update helper", "path", s.LogPath, "output", helperLog)
+	}
 	removeIgnoringErrors(statePath)
 	dirs := currentSweepDirs()
 	if s.Target != "" {
@@ -147,10 +158,16 @@ func (u *Updater) settle(s *state) *outcome {
 	}
 }
 
-// stagerRunning reports whether the application that prepared the update s describes is still running. A process with
-// this one's identifier is an earlier one, since this one has only just started and has prepared nothing.
-func stagerRunning(s *state) bool {
-	return s.ParentPID > 0 && s.ParentPID != os.Getpid() && processIsAlive(s.ParentPID)
+// stagingInUse reports whether the application that prepared the update s describes, or the helper it started to apply
+// it, is still running. A process with this one's identifier is neither, since this one has only just started and has
+// prepared nothing.
+func stagingInUse(s *state) bool {
+	for _, pid := range []int{s.ParentPID, s.HelperPID} {
+		if pid > 0 && pid != os.Getpid() && processIsAlive(pid) {
+			return true
+		}
+	}
+	return false
 }
 
 // currentSweepDirs returns where an update to this installation would have left things.
@@ -163,12 +180,16 @@ func currentSweepDirs() []sweepDir {
 	return []sweepDir{{dir: t.Parent, targetBase: filepath.Base(t.Path)}}
 }
 
-// sweepStrays removes staging directories and displaced installations old enough that no update in progress could still
-// need them. This is the backstop for a helper killed before it could record anything, and it is what eventually clears
-// a Windows image that could not be deleted while it was still running.
-func (u *Updater) sweepStrays(dirs []sweepDir, olderThan time.Duration) {
+// sweepStrays removes staging directories older than stagingOlderThan and displaced installations older than staleAge,
+// which no update in progress could still need. A displaced installation always gets the longer bound, since one kept
+// on purpose (see settle) is the only other copy of the application. This is the backstop for a helper killed before it
+// could record anything, and it is what eventually clears a Windows image that could not be deleted while it was still
+// running.
+func (u *Updater) sweepStrays(dirs []sweepDir, stagingOlderThan time.Duration) {
 	seen := make(map[sweepDir]bool, len(dirs))
-	cutoff := time.Now().Add(-olderThan)
+	now := time.Now()
+	stagingCutoff := now.Add(-stagingOlderThan)
+	backupCutoff := now.Add(-staleAge)
 	for _, one := range dirs {
 		if one.dir == "" || seen[one] {
 			continue
@@ -189,6 +210,10 @@ func (u *Updater) sweepStrays(dirs []sweepDir, olderThan time.Duration) {
 			lastUsed := fi.ModTime()
 			if at, ok := displacedAt(entry.Name(), one.targetBase); ok && at.After(lastUsed) {
 				lastUsed = at
+			}
+			cutoff := backupCutoff
+			if strings.HasPrefix(entry.Name(), u.workDirPrefix()) {
+				cutoff = stagingCutoff
 			}
 			if lastUsed.After(cutoff) {
 				continue
@@ -231,6 +256,29 @@ func removeWithRetry(path string) {
 	if err != nil {
 		errs.Log(errs.NewWithCause("unable to remove a leftover from an update", err), "path", path)
 	}
+}
+
+// readTail returns up to the last limit bytes of the file at path, without surrounding white space, or nothing if it
+// cannot be read.
+func readTail(path string, limit int64) string {
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer xio.CloseIgnoringErrors(f)
+	if fi, statErr := f.Stat(); statErr == nil && fi.Size() > limit {
+		if _, err = f.Seek(fi.Size()-limit, io.SeekStart); err != nil {
+			return ""
+		}
+	}
+	data, err := io.ReadAll(io.LimitReader(f, limit))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func exists(path string) bool {

@@ -10,8 +10,12 @@
 package updater
 
 import (
+	"bytes"
+	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -134,19 +138,22 @@ func TestSettleOnAFailedUpdateLeavesTheInstallationAlone(t *testing.T) {
 }
 
 // An update prepared but never applied -- the helper never ran, or died before recording anything -- is cleaned up
-// without touching the installation, but only once the application that prepared it has exited: until then, that copy
-// may yet quit and have its helper apply the update. This process having the identifier that application had means
-// only that the identifier was reused.
+// without touching the installation, but only once the application that prepared it and the helper it started have
+// both exited: until then, that copy may yet quit and have its helper apply the update, or the helper may still be
+// waiting to. This process having the identifier that application had means only that the identifier was reused.
 func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 	for _, one := range []struct {
 		name      string
 		parentPID int
+		helperPID int
 		wantKept  bool
 	}{
 		{name: "the application that prepared it has exited", parentPID: exitedPID(t)},
 		{name: "no application was recorded"},
 		{name: "this process has the application's identifier", parentPID: os.Getpid()},
 		{name: "the application that prepared it is still running", parentPID: os.Getppid(), wantKept: true},
+		{name: "its helper has exited", parentPID: exitedPID(t), helperPID: exitedPID(t)},
+		{name: "its helper is still running", parentPID: exitedPID(t), helperPID: os.Getppid(), wantKept: true},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			c := check.New(t)
@@ -154,6 +161,7 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 			u.stateFile = filepath.Join(t.TempDir(), stateName)
 			s := installation(t, u, statusStaged, "target", "workdir")
 			s.ParentPID = one.parentPID
+			s.HelperPID = one.helperPID
 			c.NoError(s.save(u.stateFile))
 
 			out := u.reportAndSweep()
@@ -173,11 +181,37 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 	}
 }
 
+// The helper's log is in the staging directory, which settling removes, so when the update did not simply succeed, what
+// the log holds is carried into the application log first.
+func TestReportAndSweepKeepsTheHelperLog(t *testing.T) {
+	c := check.New(t)
+	u := newTestUpdater(t)
+	u.stateFile = filepath.Join(t.TempDir(), stateName)
+	s := installation(t, u, statusFailed, "target", "workdir")
+	s.Reason = reasonSwapFailed
+	s.LogPath = filepath.Join(s.WorkDir, logName)
+	write(t, s.LogPath, "helper-diagnostics")
+	c.NoError(s.save(u.stateFile))
+	var logged bytes.Buffer
+	prevLogger, prevOutput, prevFlags := slog.Default(), log.Writer(), log.Flags()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() {
+		slog.SetDefault(prevLogger)
+		log.SetOutput(prevOutput)
+		log.SetFlags(prevFlags)
+	})
+
+	u.reportAndSweep()
+
+	c.False(exists(s.WorkDir), "the staging directory")
+	c.Contains(logged.String(), "helper-diagnostics", "the helper's log must reach the application log")
+}
+
 // Both halves of the sweep: it clears what an interrupted update leaves behind, and it leaves alone anything recent
 // enough to belong to an update being applied right now by a helper this process knows nothing about. It must also not
 // touch the user's own files, nor a displaced copy of some other application sharing the directory. The shorter bound
 // used just before a new update is prepared (see abandonedStagingAge) clears a staging directory the startup sweep
-// leaves alone, while still sparing one a helper could be using.
+// leaves alone, while still sparing one a helper could be using, and any backup the startup sweep would spare.
 func TestSweepStraysRemovesOnlyOldLeftovers(t *testing.T) {
 	c := check.New(t)
 	u := newTestUpdater(t)
@@ -203,6 +237,12 @@ func TestSweepStraysRemovesOnlyOldLeftovers(t *testing.T) {
 	write(t, displaced, "just moved aside")
 	monthOld := time.Now().Add(-30 * 24 * time.Hour)
 	c.NoError(os.Chtimes(displaced, monthOld, monthOld))
+
+	// Kept after a version mismatch, where it is the only other copy of the application.
+	keptAt := strconv.FormatInt(time.Now().Add(-2*abandonedStagingAge).UnixNano(), 36)
+	kept := (&target{Path: filepath.Join(dir, testBundle), Parent: dir}).backupPath(keptAt)
+	write(t, kept, "kept")
+	c.NoError(os.Chtimes(kept, monthOld, monthOld))
 
 	untouched := []string{
 		filepath.Join(dir, testCmd),
@@ -239,6 +279,7 @@ func TestSweepStraysRemovesOnlyOldLeftovers(t *testing.T) {
 	c.False(exists(abandoned), "an abandoned staging directory must be cleared before a new attempt")
 	c.True(exists(recent), "a staging directory a helper could still be using must be left alone")
 	c.True(exists(displaced), "a backup moved aside just now must be left alone")
+	c.True(exists(kept), "a backup younger than staleAge must survive the sweep before a new attempt")
 }
 
 // The sweep must be harmless when the installation directory cannot be determined or no longer exists. It runs on every

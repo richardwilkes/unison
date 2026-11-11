@@ -39,6 +39,7 @@ func TestStateRoundTrip(t *testing.T) {
 		LogPath:     "/Applications/.example-update-abc/update.log",
 		HandoffPort: 13322,
 		ParentPID:   4242,
+		HelperPID:   4343,
 		Bundle:      true,
 	}
 	c.NoError(want.save(path))

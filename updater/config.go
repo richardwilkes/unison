@@ -68,7 +68,8 @@ type Config struct {
 	// with them, to prove it starts on this machine, before it replaces the installation. nil uses {"-v"}.
 	VersionArgs []string
 	// HandoffPort is the port the application's single-instance handoff listens on. The helper waits for it to be
-	// released before replacing the installation. 0 waits for the application's process to exit instead.
+	// released before replacing the installation, so the application must hold it until its process exits. 0 waits for
+	// the application's process to exit instead.
 	HandoffPort int
 }
 

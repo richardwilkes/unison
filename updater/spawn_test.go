@@ -41,8 +41,8 @@ func TestSpawnDetachedDiscardsOutputWithoutALog(t *testing.T) {
 	t.Setenv(reportWritesEnv, report)
 	exe, err := os.Executable()
 	c.NoError(err)
-	c.NoError(spawnDetached(exe, []string{"-test.run", "^TestSpawnDetachedDiscardsOutputWithoutALog$"}, "",
-		os.TempDir()))
+	_, err = spawnDetached(exe, []string{"-test.run", "^TestSpawnDetachedDiscardsOutputWithoutALog$"}, "", os.TempDir())
+	c.NoError(err)
 	for deadline := time.Now().Add(10 * time.Second); !exists(report); time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the child did not report")

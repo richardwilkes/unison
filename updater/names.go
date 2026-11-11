@@ -26,7 +26,8 @@ const (
 	// newly installed application that reports and cleans up after it.
 	stateName = "update-state.json"
 	// logName is the helper's log. The helper has no UI, so this and the application log are the only places its
-	// failures can surface.
+	// failures can surface. It is in the staging directory, so unless the update simply succeeded, the next launch
+	// copies it into the application log before removing that.
 	logName = "update.log"
 )
 

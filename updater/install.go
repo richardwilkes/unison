@@ -36,7 +36,8 @@ type pendingUpdate struct {
 // update is waiting, since unison.AttemptQuit does not return when the quit succeeds, so that it runs on every exit
 // that still executes Go code -- a quit request, the last window closing, or a termination signal. It is registered
 // that way rather than as unison's quitting callback because there is only one of those, and it belongs to the
-// application. It only starts a process, so it is safe on whichever goroutine the exit happens to run it.
+// application. It only starts a process and records it, so it is safe on whichever goroutine the exit happens to run
+// it.
 func (u *Updater) applyPending() {
 	u.pending.lock.Lock()
 	s, statePath := u.pending.state, u.pending.statePath

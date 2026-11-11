@@ -56,6 +56,27 @@ func TestFinishArgRecognizesTheHelperFlag(t *testing.T) {
 	}
 }
 
+// The helper is recorded before the application exits, so a copy started while the helper is still at work does not
+// take the update for abandoned and discard it.
+func TestSpawnFinisherRecordsTheHelper(t *testing.T) {
+	c := check.New(t)
+	exe, err := os.Executable()
+	c.NoError(err)
+	statePath := filepath.Join(t.TempDir(), stateName)
+	// The test binary stands in for the helper; it rejects the flag it is given and exits.
+	s := &state{Status: statusStaged, Helper: exe, ParentPID: os.Getpid()}
+	c.NoError(s.save(statePath))
+
+	c.NoError(newTestUpdater(t).spawnFinisher(s, statePath))
+
+	saved, err := loadState(statePath)
+	c.NoError(err)
+	c.NotNil(saved)
+	if saved != nil {
+		c.True(saved.HelperPID > 0 && saved.HelperPID != os.Getpid(), "the helper's process must be recorded")
+	}
+}
+
 // The helper only ever applies an update the application staged. A missing state, or one that has already been applied
 // or has failed, is refused without being touched, so a stray or repeated helper cannot rewrite what the newly
 // installed application will report.

@@ -199,14 +199,14 @@ func imageAttached(t *testing.T, path string) bool {
 	return strings.Contains(string(out), path)
 }
 
-// Stopping the update while the disk image is being attached, by Cancel or the update's deadline, must not leave it
-// mounted. hdiutil stopped part-way leaves the attach to finish without it, mounting the image a moment later.
+// Stopping the update while the disk image is being attached, by Cancel or the update's deadline, or giving up on an
+// attach that is taking too long, must not leave it mounted. hdiutil stopped part-way leaves the attach to finish
+// without it, mounting the image a moment later.
 func TestStagePayloadLeavesNothingMountedWhenCanceled(t *testing.T) {
 	if testing.Short() {
 		t.Skip("mounting a disk image is slow")
 	}
 	testenv.SkipTimingSensitive(t)
-	c := check.New(t)
 	dmg := makeDMG(t, testApp+" v"+testNextVersion, "the application")
 	t.Cleanup(func() {
 		if imageAttached(t, dmg) {
@@ -217,26 +217,48 @@ func TestStagePayloadLeavesNothingMountedWhenCanceled(t *testing.T) {
 			}
 		}
 	})
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	// Canceled as soon as the image is attached, which is while hdiutil is still mounting it.
-	polling := make(chan struct{})
-	go func() {
-		defer close(polling)
-		for ctx.Err() == nil {
-			if imageAttached(t, dmg) {
-				cancel()
+
+	t.Run("Cancel", func(t *testing.T) {
+		c := check.New(t)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		// Canceled as soon as the image is attached, which is while the attach is still mounting it.
+		polling := make(chan struct{})
+		go func() {
+			defer close(polling)
+			for ctx.Err() == nil {
+				if imageAttached(t, dmg) {
+					cancel()
+				}
 			}
+		}()
+
+		//nolint:errcheck // Either outcome will do
+		_ = newTestUpdater(t).stagePayload(ctx, dmg, filepath.Join(t.TempDir(), testBundle))
+		cancel()
+		<-polling
+
+		time.Sleep(time.Second) // Long enough for a mount hdiutil left unfinished to appear
+		c.False(imageAttached(t, dmg), "the disk image was left mounted")
+	})
+
+	t.Run("the attach takes too long", func(t *testing.T) {
+		c := check.New(t)
+		saved := attachWait
+		// Long enough for the attach to have begun, and too short for it to have finished.
+		attachWait = 100 * time.Millisecond
+		t.Cleanup(func() { attachWait = saved })
+
+		//nolint:errcheck // Either outcome will do
+		_ = newTestUpdater(t).stagePayload(t.Context(), dmg, filepath.Join(t.TempDir(), testBundle))
+
+		time.Sleep(time.Second) // Long enough for a mount the attach left unfinished to appear
+		// The attach given up on is detached once it finishes, which may take a moment longer.
+		for deadline := time.Now().Add(10 * time.Second); imageAttached(t, dmg) && time.Now().Before(deadline); {
+			time.Sleep(100 * time.Millisecond)
 		}
-	}()
-
-	//nolint:errcheck // Either outcome will do
-	_ = newTestUpdater(t).stagePayload(ctx, dmg, filepath.Join(t.TempDir(), testBundle))
-	cancel()
-	<-polling
-
-	time.Sleep(time.Second) // Long enough for a mount hdiutil left unfinished to appear
-	c.False(imageAttached(t, dmg), "the disk image was left mounted")
+		c.False(imageAttached(t, dmg), "the disk image was left mounted")
+	})
 }
 
 // A disk image that is readable but does not hold what was expected must be refused, rather than producing an empty or

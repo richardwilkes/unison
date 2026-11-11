@@ -77,6 +77,7 @@ type state struct {
 	Schema      int    `json:"schema"`
 	HandoffPort int    `json:"handoff_port,omitzero"`
 	ParentPID   int    `json:"parent_pid,omitzero"`
+	HelperPID   int    `json:"helper_pid,omitzero"`
 	Bundle      bool   `json:"bundle,omitzero"`
 }
 

@@ -15,10 +15,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
+	"golang.org/x/sys/unix"
 )
 
 // detachAttempts and detachDelay bound the retries when unmounting the disk image. Spotlight indexes a newly mounted
@@ -32,15 +34,17 @@ const (
 // one would otherwise leave the update dialog spinning forever.
 const commandTimeout = 2 * time.Minute
 
+// attachWait bounds how long attachDMG waits for the disk image to mount. A variable only so tests can shorten it.
+var attachWait = commandTimeout
+
 // stagePayload mounts the downloaded disk image and copies the application bundle out of it.
 func (u *Updater) stagePayload(ctx context.Context, archivePath, dstPath string) (err error) {
 	mountPoint, err := os.MkdirTemp(filepath.Dir(archivePath), "mnt-")
 	if err != nil {
 		return errs.Wrap(err)
 	}
-	// Neither Cancel nor the update's deadline stops the attach: hdiutil stopped part-way leaves the attach to finish
-	// without it, mounting the image a moment later with nothing left to detach it. commandTimeout still bounds it.
-	if err = attachDMG(context.WithoutCancel(ctx), archivePath, mountPoint); err != nil {
+	// Neither Cancel nor the update's deadline stops the attach; see attachDMG.
+	if err = attachDMG(archivePath, mountPoint); err != nil {
 		return err
 	}
 	defer detachDMG(mountPoint)
@@ -85,33 +89,86 @@ func stageHelper(ctx context.Context, t *target, workDir string) (string, error)
 	return t.execWithin(dst), nil
 }
 
+// diskutilMajorVersion is the first major version of macOS on which the disk image is attached and detached with
+// diskutil rather than hdiutil, whose attach and detach print deprecation warnings there pointing to diskutil image
+// attach and diskutil eject. diskutil gained its image verb only in macOS 13, and its use here has been verified only
+// from this version on, so earlier versions keep hdiutil, which works on all of them.
+const diskutilMajorVersion = 27
+
+// useDiskutil reports whether the running macOS is diskutilMajorVersion or later. A version that cannot be read keeps
+// hdiutil.
+func useDiskutil() bool {
+	version, err := unix.Sysctl("kern.osproductversion")
+	if err != nil {
+		return false
+	}
+	major, _, _ := strings.Cut(version, ".")
+	n, err := strconv.Atoi(major)
+	return err == nil && n >= diskutilMajorVersion
+}
+
 // attachDMG mounts the disk image at an explicit mount point.
 //
 // The mount point is given rather than discovered because upack names the volume after the application and its version,
 // and a user who already has that disk image open pushes ours to the same name with a number appended. Naming it
-// removes both the guess and the need to parse hdiutil's plist output, which Go has no standard reader for.
+// removes both the guess and the need to parse the attach's plist output, which Go has no standard reader for.
 //
 // -noverify skips re-checksumming the image, which the SHA-256 check during the download already covered far more
-// strictly, and which on a 30MB image is otherwise several seconds of doing it twice.
-func attachDMG(ctx context.Context, dmgPath, mountPoint string) error {
-	if err := run(ctx, "/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen",
-		"-mountpoint", mountPoint, dmgPath); err != nil {
-		return errs.NewWithCause("unable to open the downloaded disk image", err)
+// strictly, and which on a 30MB image is otherwise several seconds of doing it twice. diskutil has no such option and
+// needs none, since it does not re-checksum the image.
+//
+// Nothing stops the attach once it has started: hdiutil stopped part-way leaves the attach to finish without it,
+// mounting the image a moment later with nothing left to detach it. attachWait therefore bounds only how long this
+// waits, and an attach still running then is detached in the background once it finishes.
+func attachDMG(dmgPath, mountPoint string) error {
+	var cmd *exec.Cmd
+	if useDiskutil() {
+		cmd = exec.Command("/usr/sbin/diskutil", "image", "attach", "--readOnly", "--nobrowse", "--mountPoint",
+			mountPoint, dmgPath)
+	} else {
+		cmd = exec.Command("/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen",
+			"-mountpoint", mountPoint, dmgPath)
 	}
-	return nil
+	var out []byte
+	done := make(chan error, 1)
+	go func() {
+		var err error
+		out, err = cmd.CombinedOutput()
+		done <- err
+	}()
+	timer := time.NewTimer(attachWait)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		if err != nil {
+			return errs.NewWithCause("unable to open the downloaded disk image", commandFailure(cmd.Path, out, err))
+		}
+		return nil
+	case <-timer.C:
+		go func() {
+			if <-done == nil {
+				detachDMG(mountPoint)
+			}
+		}()
+		return errs.Newf("unable to open the downloaded disk image: %s did not finish within %s",
+			filepath.Base(cmd.Path), attachWait)
+	}
 }
 
 // detachDMG unmounts the disk image, retrying before resorting to force. A volume that will not unmount is not a reason
 // to fail an update that has otherwise succeeded, so this only ever logs.
 func detachDMG(mountPoint string) {
+	tool, args, forceArgs := "/usr/bin/hdiutil", []string{"detach", "-quiet", mountPoint},
+		[]string{"detach", "-force", "-quiet", mountPoint}
+	if useDiskutil() {
+		tool, args, forceArgs = "/usr/sbin/diskutil", []string{"eject", mountPoint}, []string{"eject", "force", mountPoint}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
 	defer cancel()
-	if retry(detachAttempts, detachDelay, func() error {
-		return run(ctx, "/usr/bin/hdiutil", "detach", "-quiet", mountPoint)
-	}) == nil {
+	if retry(detachAttempts, detachDelay, func() error { return run(ctx, tool, args...) }) == nil {
 		return
 	}
-	if err := run(ctx, "/usr/bin/hdiutil", "detach", "-force", "-quiet", mountPoint); err != nil {
+	if err := run(ctx, tool, forceArgs...); err != nil {
 		slog.Warn("unable to unmount the downloaded disk image", "mountPoint", mountPoint, "error", err)
 	}
 }
@@ -178,11 +235,16 @@ func run(ctx context.Context, name string, args ...string) error {
 	defer cancel()
 	out, err := exec.CommandContext(cctx, name, args...).CombinedOutput()
 	if err != nil {
-		detail := strings.TrimSpace(string(out))
-		if detail == "" {
-			return errs.NewWithCause(filepath.Base(name)+" failed", err)
-		}
-		return errs.NewWithCause(filepath.Base(name)+" failed: "+detail, err)
+		return commandFailure(name, out, err)
 	}
 	return nil
+}
+
+// commandFailure describes the failure of the command name, with its output as the detail.
+func commandFailure(name string, out []byte, err error) error {
+	detail := strings.TrimSpace(string(out))
+	if detail == "" {
+		return errs.NewWithCause(filepath.Base(name)+" failed", err)
+	}
+	return errs.NewWithCause(filepath.Base(name)+" failed: "+detail, err)
 }

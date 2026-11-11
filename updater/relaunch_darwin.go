@@ -32,14 +32,15 @@ import (
 // removes once it has started.
 func relaunch(t *target, logPath string) error {
 	if t.Kind != kindBundle {
-		return spawnDetached(t.Path, nil, "", os.TempDir())
+		_, err := spawnDetached(t.Path, nil, "", os.TempDir())
+		return err
 	}
-	if err := spawnDetached("/usr/bin/open", []string{t.Path}, logPath, os.TempDir()); err != nil {
+	if _, err := spawnDetached("/usr/bin/open", []string{t.Path}, logPath, os.TempDir()); err != nil {
 		// The executable inside the bundle gets the application running, just without a proper foreground activation,
 		// which is better than leaving the user staring at nothing.
 		slog.Warn("unable to start the updated application through Launch Services; starting it directly",
 			"error", err)
-		if fallbackErr := spawnDetached(t.execWithin(t.Path), nil, "", os.TempDir()); fallbackErr != nil {
+		if _, fallbackErr := spawnDetached(t.execWithin(t.Path), nil, "", os.TempDir()); fallbackErr != nil {
 			return errs.NewWithCause("unable to start the updated application", fallbackErr)
 		}
 	}

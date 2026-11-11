@@ -23,14 +23,27 @@ import (
 // to do other than open a window.
 const FinishFlag = "finish-update"
 
-// spawnFinisher starts the helper that applies a staged update once this process has exited. It is called from the
-// quitting path, so it must do nothing but start the child; anything slow here delays the user's quit for no reason.
+// spawnFinisher starts the helper that applies a staged update once this process has exited, and records its process
+// in the state, so that a copy of the application started while the helper is still at work does not take the update
+// for abandoned. It is called from the quitting path, so it must do nothing more; anything slow here delays the user's
+// quit for no reason.
 func (u *Updater) spawnFinisher(s *state, statePath string) error {
 	if s == nil || s.Helper == "" {
 		return errs.New("there is no prepared update to apply")
 	}
 	slog.Info("starting the update helper", "helper", s.Helper, "target", s.Target)
-	return spawnDetached(s.Helper, []string{"--" + FinishFlag, statePath}, s.LogPath, os.TempDir())
+	pid, err := spawnDetached(s.Helper, []string{"--" + FinishFlag, statePath}, s.LogPath, os.TempDir())
+	if err != nil {
+		return err
+	}
+	// The helper writes the state only once this process has exited or waitTimeout has passed, so this save comes
+	// first. With a handoff port, that relies on the application holding the port until it exits, as Config.HandoffPort
+	// requires.
+	s.HelperPID = pid
+	if err = s.save(statePath); err != nil {
+		errs.Log(errs.NewWithCause("unable to record the update helper", err))
+	}
+	return nil
 }
 
 // FinishIfRequested runs Finish and exits if args, normally os.Args, ask for it with FinishFlag. The flag may be given
