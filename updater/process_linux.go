@@ -14,40 +14,33 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
-
-	"golang.org/x/sys/unix"
 )
 
-// clockTicksPerSecond is the unit of the times in /proc/<pid>/stat, which the kernel fixes at 100 on every architecture
-// Go supports.
-const clockTicksPerSecond = 100
-
-// processStartTime returns when the process started, and whether that could be established.
-func processStartTime(pid int) (time.Time, bool) {
+// processStartID returns a value that tells the process with identifier pid apart from any other given that identifier,
+// or an empty string if that cannot be established. It is the boot the process started in and how long after that boot
+// it started, neither of which setting the clock changes.
+func processStartID(pid int) string {
+	bootID, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return ""
+	}
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
-		return time.Time{}, false
+		return ""
 	}
 	// The command name, the second field, is in parentheses and may hold spaces and parentheses of its own, so the
 	// fields are counted from the last ")". The start time is the 22nd field, in clock ticks after boot.
 	i := bytes.LastIndexByte(data, ')')
 	if i < 0 {
-		return time.Time{}, false
+		return ""
 	}
 	fields := strings.Fields(string(data[i+1:]))
 	const startTimeIndex = 22 - 3
 	if len(fields) <= startTimeIndex {
-		return time.Time{}, false
+		return ""
 	}
-	ticks, err := strconv.ParseInt(fields[startTimeIndex], 10, 64)
-	if err != nil {
-		return time.Time{}, false
+	if _, err = strconv.ParseUint(fields[startTimeIndex], 10, 64); err != nil {
+		return ""
 	}
-	var sinceBoot unix.Timespec
-	if err = unix.ClockGettime(unix.CLOCK_BOOTTIME, &sinceBoot); err != nil {
-		return time.Time{}, false
-	}
-	age := time.Duration(sinceBoot.Nano()) - time.Duration(ticks)*(time.Second/clockTicksPerSecond)
-	return time.Now().Add(-age), true
+	return strings.TrimSpace(string(bootID)) + "/" + fields[startTimeIndex]
 }

@@ -11,7 +11,7 @@ package updater
 
 import (
 	"log/slog"
-	"time"
+	"strconv"
 
 	"golang.org/x/sys/windows"
 )
@@ -41,11 +41,13 @@ func processIsAlive(pid int) bool {
 	return event == uint32(windows.WAIT_TIMEOUT)
 }
 
-// processStartTime returns when the process started, and whether that could be established.
-func processStartTime(pid int) (time.Time, bool) {
+// processStartID returns a value that tells the process with identifier pid apart from any other given that identifier,
+// or an empty string if that cannot be established. It is when the system recorded the process starting, which setting
+// the clock afterwards does not change.
+func processStartID(pid int) string {
 	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
 	if err != nil {
-		return time.Time{}, false
+		return ""
 	}
 	defer func() {
 		if closeErr := windows.CloseHandle(handle); closeErr != nil {
@@ -54,7 +56,7 @@ func processStartTime(pid int) (time.Time, bool) {
 	}()
 	var created, exited, kernel, user windows.Filetime
 	if err = windows.GetProcessTimes(handle, &created, &exited, &kernel, &user); err != nil {
-		return time.Time{}, false
+		return ""
 	}
-	return time.Unix(0, created.Nanoseconds()), true
+	return strconv.FormatInt(created.Nanoseconds(), 10)
 }

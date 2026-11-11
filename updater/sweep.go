@@ -174,15 +174,13 @@ func (u *Updater) settle(s *state) *outcome {
 // has prepared nothing, and a process with the identifier of either may be one that has since been given it.
 //
 // Until the helper is recorded, which the application does on its way out, the application counts for as long as it
-// runs, which may be indefinitely while its quit waits on the user, unless the process with its identifier started
-// after the state at statePath was written. Once the helper is recorded, only the helper counts, and only within
-// helperRunLimit of that state being written. Its start time is not compared the same way, since it starts only moments
-// before that write, closer than a coarse file time can order the two.
+// runs, which may be indefinitely while its quit waits on the user, unless the process with its identifier is not the
+// one whose start the state records. Once the helper is recorded, only the helper counts, and only within
+// helperRunLimit of the state at statePath being written.
 func stagingInUse(s *state, statePath string) bool {
-	fi, err := os.Stat(statePath)
 	pid := s.ParentPID
 	if s.HelperPID > 0 {
-		if err == nil && time.Since(fi.ModTime()) >= helperRunLimit {
+		if fi, err := os.Stat(statePath); err == nil && time.Since(fi.ModTime()) >= helperRunLimit {
 			return false
 		}
 		pid = s.HelperPID
@@ -190,8 +188,8 @@ func stagingInUse(s *state, statePath string) bool {
 	if pid <= 0 || pid == os.Getpid() || !processIsAlive(pid) {
 		return false
 	}
-	if s.HelperPID <= 0 && err == nil {
-		if started, ok := processStartTime(pid); ok && started.After(fi.ModTime()) {
+	if s.HelperPID <= 0 && s.ParentStart != "" {
+		if started := processStartID(pid); started != "" && started != s.ParentStart {
 			return false
 		}
 	}

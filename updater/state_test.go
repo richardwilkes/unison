@@ -39,6 +39,7 @@ func TestStateRoundTrip(t *testing.T) {
 		LogPath:     "/Applications/.example-update-abc/update.log",
 		HandoffPort: 13322,
 		ParentPID:   4242,
+		ParentStart: "1793050000000000000",
 		HelperPID:   4343,
 		Bundle:      true,
 	}

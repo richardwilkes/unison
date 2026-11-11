@@ -32,17 +32,18 @@ const installWait = 10 * time.Second
 type installFixture struct {
 	u *Updater
 	// onStage, when set, runs on the staging goroutine before the update is staged; an error it returns is staging's.
-	onStage   func(ctx context.Context) error
-	plan      *plan
-	exitHook  func()
-	onQuit    func()
-	workDir   string
-	spawned   []string // The status recorded in the state file each time the helper was started
-	canceled  []int
-	warnings  []string
-	errors    []string
-	quits     int
-	spawnPort int
+	onStage    func(ctx context.Context) error
+	plan       *plan
+	exitHook   func()
+	onQuit     func()
+	workDir    string
+	spawnStart string   // The start of the application recorded in the state file when the helper was last started
+	spawned    []string // The status recorded in the state file each time the helper was started
+	canceled   []int
+	warnings   []string
+	errors     []string
+	quits      int
+	spawnPort  int
 }
 
 func newInstallFixture(t *testing.T) *installFixture {
@@ -109,6 +110,7 @@ func newInstallFixture(t *testing.T) *installFixture {
 			return nil
 		}
 		f.spawned = append(f.spawned, string(saved.Status))
+		f.spawnStart = saved.ParentStart
 		f.spawnPort = s.HandoffPort
 		return nil
 	}
@@ -160,6 +162,8 @@ func TestInstall(t *testing.T) {
 		c.Equal(1, f.quits)
 		c.Equal([]string{string(statusStaged)}, f.spawned)
 		c.Equal(4321, f.spawnPort, "the helper needs the application's handoff port to wait on")
+		c.Equal(processStartID(os.Getpid()), f.spawnStart,
+			"a copy started meanwhile needs the application's start to tell it from a later process")
 		c.Equal(0, len(f.errors))
 	})
 

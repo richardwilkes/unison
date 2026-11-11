@@ -10,16 +10,18 @@
 package updater
 
 import (
-	"time"
+	"strconv"
 
 	"golang.org/x/sys/unix"
 )
 
-// processStartTime returns when the process started, and whether that could be established.
-func processStartTime(pid int) (time.Time, bool) {
+// processStartID returns a value that tells the process with identifier pid apart from any other given that identifier,
+// or an empty string if that cannot be established. It is when the system recorded the process starting, which setting
+// the clock afterwards does not change.
+func processStartID(pid int) string {
 	info, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	if err != nil {
-		return time.Time{}, false
+		return ""
 	}
-	return time.Unix(info.Proc.P_starttime.Unix()), true
+	return strconv.FormatInt(info.Proc.P_starttime.Nano(), 10)
 }

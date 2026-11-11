@@ -157,6 +157,7 @@ func (u *Updater) newState(p *plan, s *staged) *state {
 		LogPath:     s.LogPath,
 		HandoffPort: u.cfg.HandoffPort,
 		ParentPID:   os.Getpid(),
+		ParentStart: processStartID(os.Getpid()),
 		Bundle:      p.Target.Kind == kindBundle,
 	}
 }

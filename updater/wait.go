@@ -26,11 +26,12 @@ const (
 	// waitPollInterval is how often the port or process is checked. The wait is normally over within a few seconds of
 	// the application exiting, so this is short enough to be imperceptible.
 	waitPollInterval = 50 * time.Millisecond
-	// portQuietPeriod is how long the port must stay free before the wait ends. A copy of the application started just
-	// before the port was released may not have bound it yet, and a handoff that failed to reach the application retries
-	// the bind within a second or two.
-	portQuietPeriod = 2 * time.Second
 )
+
+// portQuietPeriod is how long the port must stay free before the wait ends. A copy of the application started just
+// before the port was released may not have bound it yet, and a handoff that failed to reach the application retries
+// the bind within a second or two. A variable only so tests can shorten it.
+var portQuietPeriod = 2 * time.Second
 
 // waitForPredecessor blocks until the application that staged this update has exited.
 //

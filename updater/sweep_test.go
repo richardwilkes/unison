@@ -155,23 +155,48 @@ func TestSettleOnAFailedUpdateLeavesTheInstallationAlone(t *testing.T) {
 // can still act on it: until then, that copy may yet quit and have its helper apply the update, or the helper may still
 // be waiting to. Once the application has recorded its helper, which it does on its way out, only the helper can act on
 // it, and only until helperRunLimit has passed, after which a process with its identifier is one that has since been
-// given it. This process having the identifier that application had means only that the identifier was reused.
+// given it. This process having the identifier that application had means only that the identifier was reused. Before
+// that, the application is told from a process given its identifier later by the start the state records, which a
+// change to the clock since cannot disturb, and a state that records none counts any process with the identifier.
 func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
+	parentStart := processStartID(os.Getppid())
+	if parentStart == "" {
+		t.Fatal("unable to establish when the parent process started")
+	}
 	for _, one := range []struct {
-		name      string
-		parentPID int
-		helperPID int
-		age       time.Duration
-		wantKept  bool
+		name        string
+		parentStart string
+		parentPID   int
+		helperPID   int
+		age         time.Duration
+		wantKept    bool
 	}{
 		{name: "the application that prepared it has exited", parentPID: exitedPID(t)},
 		{name: "no application was recorded"},
 		{name: "this process has the application's identifier", parentPID: os.Getpid()},
-		{name: "the application that prepared it is still running", parentPID: os.Getppid(), wantKept: true},
 		{
-			name:      "a process that started later has the application's identifier",
+			name:        "the application that prepared it is still running",
+			parentPID:   os.Getppid(),
+			parentStart: parentStart,
+			wantKept:    true,
+		},
+		{
+			// The state's time on the clock is earlier than the application's start, as when the clock was stepped.
+			name:        "the application that prepared it is still running and the clock has been stepped",
+			parentPID:   os.Getppid(),
+			parentStart: parentStart,
+			age:         10 * 365 * 24 * time.Hour,
+			wantKept:    true,
+		},
+		{
+			name:      "the application that prepared it is still running and its start was not recorded",
 			parentPID: os.Getppid(),
-			age:       10 * 365 * 24 * time.Hour,
+			wantKept:  true,
+		},
+		{
+			name:        "a process that started later has the application's identifier",
+			parentPID:   os.Getppid(),
+			parentStart: "another process",
 		},
 		{name: "its helper has exited", parentPID: exitedPID(t), helperPID: exitedPID(t)},
 		{
@@ -194,6 +219,7 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 			s := installation(t, u, statusStaged, "target", "workdir")
 			s.ToVersion = testNextVersion
 			s.ParentPID = one.parentPID
+			s.ParentStart = one.parentStart
 			s.HelperPID = one.helperPID
 			c.NoError(s.save(u.stateFile))
 			if one.age != 0 {

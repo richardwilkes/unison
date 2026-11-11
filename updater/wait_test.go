@@ -61,6 +61,14 @@ func retakePort(t *testing.T, port int) net.Listener {
 	}
 }
 
+// setPortQuietPeriod sets portQuietPeriod for the rest of the test.
+func setPortQuietPeriod(t *testing.T, quiet time.Duration) {
+	t.Helper()
+	saved := portQuietPeriod
+	portQuietPeriod = quiet
+	t.Cleanup(func() { portQuietPeriod = saved })
+}
+
 // exitedPID returns the identifier of a process that has certainly exited, and been reaped. The -h makes the
 // re-executed test binary print its usage and exit before running anything.
 func exitedPID(t *testing.T) int {
@@ -76,6 +84,7 @@ func exitedPID(t *testing.T) int {
 // The ordinary case: the application has already exited, so there is nothing to wait for.
 func TestWaitForPredecessorReturnsWhenThePortIsFree(t *testing.T) {
 	testenv.SkipTimingSensitive(t)
+	setPortQuietPeriod(t, 500*time.Millisecond)
 	c := check.New(t)
 	listener, port := holdPort(t)
 	xio.CloseIgnoringErrors(listener)
@@ -95,25 +104,31 @@ func TestWaitForPredecessorWaitsUntilThePortIsReleased(t *testing.T) {
 	for _, one := range []struct {
 		name string
 		pid  int
+		// quiet replaces portQuietPeriod. Where the port is left free, the wait ends if the test stalls for longer than
+		// quiet minus free before taking it again, so that case keeps a long one.
+		quiet time.Duration
 		// free is how long the port is left free after the wait starts before something takes it. Zero holds it from the
 		// start.
 		free time.Duration
 		held time.Duration
 	}{
-		{name: "by the application", pid: os.Getpid(), held: 500 * time.Millisecond},
+		{name: "by the application", pid: os.Getpid(), quiet: 500 * time.Millisecond, held: 500 * time.Millisecond},
 		{
-			name: "by another copy after the application has exited",
-			pid:  exitedPID(t),
-			held: portQuietPeriod + time.Second,
+			name:  "by another copy after the application has exited",
+			pid:   exitedPID(t),
+			quiet: 500 * time.Millisecond,
+			held:  time.Second,
 		},
 		{
-			name: "by another copy that takes it just after the wait finds it free",
-			pid:  exitedPID(t),
-			free: 200 * time.Millisecond,
-			held: portQuietPeriod + time.Second,
+			name:  "by another copy that takes it just after the wait finds it free",
+			pid:   exitedPID(t),
+			quiet: 2 * time.Second,
+			free:  200 * time.Millisecond,
+			held:  3 * time.Second,
 		},
 	} {
 		t.Run(one.name, func(t *testing.T) {
+			setPortQuietPeriod(t, one.quiet)
 			c := check.New(t)
 			listener, port := holdPort(t)
 			if one.free > 0 {
