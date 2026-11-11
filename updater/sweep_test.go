@@ -70,20 +70,33 @@ func TestSettleRepairsAnInterruptedSwap(t *testing.T) {
 }
 
 // The rollback window: the helper deliberately leaves the previous version on disk, and it is removed here, the first
-// moment the replacement has been shown to run.
+// moment the replacement has been shown to run. The version running shows the swap happened even when the helper never
+// recorded it, because its save failed or it was killed first.
 func TestSettleRemovesTheBackupOnlyAfterASuccessfulStart(t *testing.T) {
-	c := check.New(t)
-	u := newTestUpdater(t)
-	s := installation(t, u, statusApplied, "target", "backup", "workdir")
+	for _, one := range []struct {
+		name   string
+		status status
+	}{
+		{name: "the helper recorded the swap", status: statusApplied},
+		{name: "the helper did not record the swap", status: statusStaged},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			u := newTestUpdater(t)
+			s := installation(t, u, one.status, "target", "backup", "workdir")
 
-	out := u.settle(s)
+			out := u.settle(s)
 
-	c.True(exists(s.Target))
-	c.False(exists(s.Backup), "the previous version is removed once the new one has started")
-	c.False(exists(s.WorkDir))
-	c.NotNil(out)
-	c.True(out.Applied)
-	c.Equal(reasonNone, out.Reason)
+			c.True(exists(s.Target))
+			c.False(exists(s.Backup), "the previous version is removed once the new one has started")
+			c.False(exists(s.WorkDir))
+			c.NotNil(out)
+			if out != nil {
+				c.True(out.Applied)
+				c.Equal(reasonNone, out.Reason)
+			}
+		})
+	}
 }
 
 // When the swap claims to have installed a version other than the one now running, the previous version is kept.
@@ -138,14 +151,17 @@ func TestSettleOnAFailedUpdateLeavesTheInstallationAlone(t *testing.T) {
 }
 
 // An update prepared but never applied -- the helper never ran, or died before recording anything -- is cleaned up
-// without touching the installation, but only once the application that prepared it and the helper it started have
-// both exited: until then, that copy may yet quit and have its helper apply the update, or the helper may still be
-// waiting to. This process having the identifier that application had means only that the identifier was reused.
+// without touching the installation, but only once neither the application that prepared it nor the helper it started
+// can still act on it: until then, that copy may yet quit and have its helper apply the update, or the helper may still
+// be waiting to. Once the application has recorded its helper, which it does on its way out, only the helper can act on
+// it, and only until helperRunLimit has passed, after which a process with its identifier is one that has since been
+// given it. This process having the identifier that application had means only that the identifier was reused.
 func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 	for _, one := range []struct {
 		name      string
 		parentPID int
 		helperPID int
+		age       time.Duration
 		wantKept  bool
 	}{
 		{name: "the application that prepared it has exited", parentPID: exitedPID(t)},
@@ -153,16 +169,32 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 		{name: "this process has the application's identifier", parentPID: os.Getpid()},
 		{name: "the application that prepared it is still running", parentPID: os.Getppid(), wantKept: true},
 		{name: "its helper has exited", parentPID: exitedPID(t), helperPID: exitedPID(t)},
+		{
+			name:      "its helper has exited and another process has the application's identifier",
+			parentPID: os.Getppid(),
+			helperPID: exitedPID(t),
+		},
 		{name: "its helper is still running", parentPID: exitedPID(t), helperPID: os.Getppid(), wantKept: true},
+		{
+			name:      "another process has its helper's identifier",
+			parentPID: exitedPID(t),
+			helperPID: os.Getppid(),
+			age:       helperRunLimit + time.Minute,
+		},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			c := check.New(t)
 			u := newTestUpdater(t)
 			u.stateFile = filepath.Join(t.TempDir(), stateName)
 			s := installation(t, u, statusStaged, "target", "workdir")
+			s.ToVersion = testNextVersion
 			s.ParentPID = one.parentPID
 			s.HelperPID = one.helperPID
 			c.NoError(s.save(u.stateFile))
+			if one.age != 0 {
+				written := time.Now().Add(-one.age)
+				c.NoError(os.Chtimes(u.stateFile, written, written))
+			}
 
 			out := u.reportAndSweep()
 
@@ -182,29 +214,47 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 }
 
 // The helper's log is in the staging directory, which settling removes, so when the update did not simply succeed, what
-// the log holds is carried into the application log first.
+// the log holds is carried into the application log first. An update in place that the helper never recorded as applied
+// did not simply succeed: the log is the only record of why.
 func TestReportAndSweepKeepsTheHelperLog(t *testing.T) {
-	c := check.New(t)
-	u := newTestUpdater(t)
-	u.stateFile = filepath.Join(t.TempDir(), stateName)
-	s := installation(t, u, statusFailed, "target", "workdir")
-	s.Reason = reasonSwapFailed
-	s.LogPath = filepath.Join(s.WorkDir, logName)
-	write(t, s.LogPath, "helper-diagnostics")
-	c.NoError(s.save(u.stateFile))
-	var logged bytes.Buffer
-	prevLogger, prevOutput, prevFlags := slog.Default(), log.Writer(), log.Flags()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
-	t.Cleanup(func() {
-		slog.SetDefault(prevLogger)
-		log.SetOutput(prevOutput)
-		log.SetFlags(prevFlags)
-	})
+	for _, one := range []struct {
+		name       string
+		status     status
+		reason     reason
+		wantLogged bool
+	}{
+		{name: "the swap failed", status: statusFailed, reason: reasonSwapFailed, wantLogged: true},
+		{name: "the swap was never recorded", status: statusStaged, wantLogged: true},
+		{name: "the swap was recorded", status: statusApplied},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			u := newTestUpdater(t)
+			u.stateFile = filepath.Join(t.TempDir(), stateName)
+			s := installation(t, u, one.status, "target", "workdir")
+			s.Reason = one.reason
+			s.LogPath = filepath.Join(s.WorkDir, logName)
+			write(t, s.LogPath, "helper-diagnostics")
+			c.NoError(s.save(u.stateFile))
+			var logged bytes.Buffer
+			prevLogger, prevOutput, prevFlags := slog.Default(), log.Writer(), log.Flags()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+			t.Cleanup(func() {
+				slog.SetDefault(prevLogger)
+				log.SetOutput(prevOutput)
+				log.SetFlags(prevFlags)
+			})
 
-	u.reportAndSweep()
+			u.reportAndSweep()
 
-	c.False(exists(s.WorkDir), "the staging directory")
-	c.Contains(logged.String(), "helper-diagnostics", "the helper's log must reach the application log")
+			c.False(exists(s.WorkDir), "the staging directory")
+			if one.wantLogged {
+				c.Contains(logged.String(), "helper-diagnostics", "the helper's log must reach the application log")
+			} else {
+				c.NotContains(logged.String(), "helper-diagnostics", "a recorded success must stay quiet")
+			}
+		})
+	}
 }
 
 // Both halves of the sweep: it clears what an interrupted update leaves behind, and it leaves alone anything recent

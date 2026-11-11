@@ -46,7 +46,8 @@ type reason string
 const (
 	// reasonNone means nothing went wrong.
 	reasonNone reason = ""
-	// reasonPredecessorRunning means the application that staged the update never exited, so nothing was touched.
+	// reasonPredecessorRunning means the application that staged the update never exited, or something else, normally a
+	// copy the user started, held its handoff port until the wait gave up, so nothing was touched.
 	reasonPredecessorRunning reason = "predecessor-still-running"
 	// reasonSwapFailed means the installation could not be replaced. The original is still in place.
 	reasonSwapFailed reason = "swap-failed"

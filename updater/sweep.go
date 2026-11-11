@@ -32,6 +32,9 @@ const (
 	// Without it, each failed attempt would leave a copy of the application in the user's applications folder for a
 	// week.
 	abandonedStagingAge = time.Hour
+	// helperRunLimit bounds how long after being recorded the helper can still be at work without having recorded how
+	// the update ended: its wait gives up after waitTimeout, and the swap that follows takes seconds.
+	helperRunLimit = waitTimeout + time.Minute
 )
 
 // maxHelperLog bounds how much of the end of the helper's log is copied into the application log.
@@ -81,16 +84,17 @@ func (u *Updater) reportAndSweep() *outcome {
 		u.sweepStrays(currentSweepDirs(), staleAge)
 		return nil
 	}
-	if s == nil || (s.Status == statusStaged && stagingInUse(s)) {
+	if s == nil || (s.Status == statusStaged && stagingInUse(s, statePath)) {
 		// A staged update is not abandoned while the copy that prepared it runs, nor while its helper does: that copy
 		// may yet quit and have its helper apply the update, or have its quit refused and discard it.
 		u.sweepStrays(currentSweepDirs(), staleAge)
 		return nil
 	}
-	// The helper's log is in the staging directory, which settle removes.
+	// The helper's log is in the staging directory, which settle removes. Only a success the helper recorded leaves
+	// nothing in it worth keeping.
 	helperLog := readTail(s.LogPath, maxHelperLog)
 	out := u.settle(s)
-	if helperLog != "" && (out == nil || out.Reason != reasonNone) {
+	if helperLog != "" && (s.Status != statusApplied || out == nil || out.Reason != reasonNone) {
 		slog.Warn("output from the update helper", "path", s.LogPath, "output", helperLog)
 	}
 	removeIgnoringErrors(statePath)
@@ -118,7 +122,14 @@ func (u *Updater) settle(s *state) *outcome {
 		return &outcome{Reason: reasonSwapFailed, Detail: s.Detail, ToVersion: s.ToVersion}
 	}
 
-	switch s.Status {
+	st := s.Status
+	if st == statusStaged && s.ToVersion != "" && s.ToVersion == u.cfg.Version {
+		// Still staged, yet the version it installs is the one running, so it is in place: most likely the helper
+		// swapped it in but its save of that failed, or it was killed first.
+		slog.Warn("the update is in place but was never recorded as applied", "version", s.ToVersion)
+		st = statusApplied
+	}
+	switch st {
 	case statusApplied:
 		if s.ToVersion != "" && s.ToVersion != u.cfg.Version {
 			// The swap claimed success, yet this is not the version it installed, so keep the previous version rather
@@ -146,8 +157,8 @@ func (u *Updater) settle(s *state) *outcome {
 		}
 		return &outcome{Reason: s.Reason, Detail: s.Detail, ToVersion: s.ToVersion}
 	case statusStaged:
-		// Staged but never applied: the helper never ran, or never got as far as recording a result. Nothing was
-		// touched, so there is nothing to repair.
+		// Staged but never applied: the helper never ran, or stopped short of the swap without recording why. Nothing
+		// was touched, so there is nothing to repair.
 		slog.Info("discarding an update that was staged but never applied", "version", s.ToVersion)
 		removeWithRetry(s.WorkDir)
 		return &outcome{Reason: reasonAbandoned, ToVersion: s.ToVersion}
@@ -159,15 +170,21 @@ func (u *Updater) settle(s *state) *outcome {
 }
 
 // stagingInUse reports whether the application that prepared the update s describes, or the helper it started to apply
-// it, is still running. A process with this one's identifier is neither, since this one has only just started and has
-// prepared nothing.
-func stagingInUse(s *state) bool {
-	for _, pid := range []int{s.ParentPID, s.HelperPID} {
-		if pid > 0 && pid != os.Getpid() && processIsAlive(pid) {
-			return true
+// it, may still act on it. A process with this one's identifier is neither, since this one has only just started and
+// has prepared nothing.
+//
+// Once the helper is recorded, which the application does on its way out, only the helper counts, and only within
+// helperRunLimit of the state at statePath being written: after that, a process with its identifier is one that has
+// since been given it.
+func stagingInUse(s *state, statePath string) bool {
+	pid := s.ParentPID
+	if s.HelperPID > 0 {
+		if fi, err := os.Stat(statePath); err == nil && time.Since(fi.ModTime()) >= helperRunLimit {
+			return false
 		}
+		pid = s.HelperPID
 	}
-	return false
+	return pid > 0 && pid != os.Getpid() && processIsAlive(pid)
 }
 
 // currentSweepDirs returns where an update to this installation would have left things.

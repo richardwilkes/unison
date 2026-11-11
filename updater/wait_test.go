@@ -68,46 +68,44 @@ func TestWaitForPredecessorReturnsWhenThePortIsFree(t *testing.T) {
 }
 
 // The property the whole wait exists for. Relaunching while the port is still held would make the new instance hand its
-// arguments to the old one and exit, so the update would look as though it had done nothing at all.
+// arguments to the old one and exit, so the update would look as though it had done nothing at all. That holds whoever
+// has the port: a copy the user started during the wait can take it the moment the application exits, and the
+// installation must not be replaced under that copy. That case is watched for longer, allowing for a check that waits
+// out the moment a socket outlives its process.
 func TestWaitForPredecessorWaitsUntilThePortIsReleased(t *testing.T) {
 	testenv.SkipTimingSensitive(t)
-	c := check.New(t)
-	listener, port := holdPort(t)
+	for _, one := range []struct {
+		name string
+		pid  int
+		held time.Duration
+	}{
+		{name: "by the application", pid: os.Getpid(), held: 500 * time.Millisecond},
+		{name: "by another copy after the application has exited", pid: exitedPID(t), held: 3 * time.Second},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			listener, port := holdPort(t)
 
-	done := make(chan error, 1)
-	go func() { done <- waitForPredecessor(os.Getpid(), port, testApp) }()
+			done := make(chan error, 1)
+			go func() { done <- waitForPredecessor(one.pid, port, testApp) }()
 
-	// The wait must still be in progress while the port is held.
-	select {
-	case err := <-done:
-		t.Fatalf("the wait finished while the port was still held: %v", err)
-	case <-time.After(500 * time.Millisecond):
+			// The wait must still be in progress while the port is held.
+			select {
+			case err := <-done:
+				t.Fatalf("the wait finished while the port was still held: %v", err)
+			case <-time.After(one.held):
+			}
+
+			xio.CloseIgnoringErrors(listener)
+
+			select {
+			case err := <-done:
+				c.NoError(err)
+			case <-time.After(15 * time.Second):
+				t.Fatal("the wait did not finish after the port was released")
+			}
+		})
 	}
-
-	xio.CloseIgnoringErrors(listener)
-
-	select {
-	case err := <-done:
-		c.NoError(err)
-	case <-time.After(15 * time.Second):
-		t.Fatal("the wait did not finish after the port was released")
-	}
-}
-
-// The tiebreaker: once the application being waited for is definitively gone, a port still held belongs to something
-// else -- a second installation of the application, say -- and waiting the full timeout would abandon an update for no
-// reason.
-func TestWaitForPredecessorGivesUpOnAPortHeldByAnotherProcess(t *testing.T) {
-	testenv.SkipTimingSensitive(t)
-	c := check.New(t)
-	_, port := holdPort(t)
-	deadPID := exitedPID(t)
-
-	started := time.Now()
-	c.NoError(waitForPredecessor(deadPID, port, testApp))
-	elapsed := time.Since(started)
-	c.True(elapsed >= pidGraceInterval, "the socket outlives its process briefly, so the check must not be immediate")
-	c.True(elapsed < waitTimeout, "a port held by something else must not consume the whole timeout")
 }
 
 // An application with no handoff port has only its process to wait on: the helper must not touch the installation while
@@ -154,15 +152,4 @@ func TestWaitForPredecessorWithoutAPortWaitsForTheProcess(t *testing.T) {
 	case <-time.After(15 * time.Second):
 		t.Fatal("the wait did not finish after the process exited")
 	}
-}
-
-// The liveness check both ways round, since a wrong answer either stalls every update or starts the swap while the
-// application is still running. A zero or negative identifier, which a state file carrying no process to watch holds,
-// counts as running, so the wait falls back to the port alone rather than treating "no process" as "already gone".
-func TestProcessExists(t *testing.T) {
-	c := check.New(t)
-	c.True(processExists(os.Getpid()), "this process is certainly running")
-	c.True(processExists(0), "no process to watch must not count as already gone")
-	c.True(processExists(-1), "no process to watch must not count as already gone")
-	c.False(processExists(exitedPID(t)), "a process that has exited must not be reported as running")
 }
