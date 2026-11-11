@@ -1411,6 +1411,8 @@ func TestX11DragReplacesAndRestoresTheMenuGrab(t *testing.T) {
 	t.Cleanup(func() { dragSource, arrowCursor, builtCursorSettings = priorDragSource, priorArrow, priorSettings })
 	const arrowID = x11.CursorID(77)
 	arrowCursor, builtCursorSettings = &Cursor{cursor: arrowID}, nil
+	// Building the root panel and closing the menu mark owner for redraw.
+	swapRedrawSet(t)
 	owner := &Window{valid: true, wnd: &apiWindow{}}
 	owner.wnd.id = x11TestWindowID
 	owner.root = newRootPanel(owner)
@@ -1602,6 +1604,8 @@ func TestX11MenuGrabRefusedIsRetried(t *testing.T) {
 	arrowCursor, builtCursorSettings = &Cursor{cursor: arrowID}, nil
 	scheduled := 0
 	x11ScheduleMenuGrabRetry = func(func()) { scheduled++ }
+	// Building the root panel and closing the menu mark owner for redraw.
+	swapRedrawSet(t)
 	owner := &Window{valid: true, wnd: &apiWindow{}}
 	owner.wnd.id = x11TestWindowID
 	owner.root = newRootPanel(owner)

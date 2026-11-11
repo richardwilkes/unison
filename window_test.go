@@ -238,8 +238,9 @@ func newModalInputTestWindow() *Window {
 		pressedKeys:    make(map[KeyCode]bool),
 		pressedButtons: make(map[int]bool),
 	}
-	w.valid = true
 	w.root = newRootPanel(w)
+	// Only now, so that building the root panel leaves no redraw queued in the shared redrawSet.
+	w.valid = true
 	return w
 }
 
@@ -520,6 +521,9 @@ func TestRuneOfKeyDownThatEndedModalIsDropped(t *testing.T) {
 			platform.keyPressed(KeyY, 0)
 			platform.runeTyped('y')
 			c.Equal(0, len(runes), "the rune of the key that ended the modal should reach no other window")
+			// The end of a pass asks the platform whether each valid window waiting to be drawn is visible, which these
+			// windows, having no platform resources, cannot answer.
+			c.Equal(0, len(redrawSet), "no window should be waiting to be drawn")
 			one.end(platform)
 			platform.runeTyped('z')
 			c.Equal([]rune{'z'}, runes)
@@ -1646,13 +1650,14 @@ func TestHoverOverTooltipWindowPassesThrough(t *testing.T) {
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
-// swapRedrawSet installs a fresh, empty redrawSet for the duration of the test, restoring the previous set when the
-// test completes, so these tests neither see nor disturb redraw state left behind by other tests in the package.
+// swapRedrawSet installs a fresh, empty redrawSet and clears redrawWakePending for the duration of the test, restoring
+// both when the test completes, so these tests neither see nor disturb redraw state left behind by other tests in the
+// package.
 func swapRedrawSet(t *testing.T) {
 	t.Helper()
-	saved := redrawSet
-	redrawSet = make(map[*Window]struct{})
-	t.Cleanup(func() { redrawSet = saved })
+	saved, savedWake := redrawSet, redrawWakePending
+	redrawSet, redrawWakePending = make(map[*Window]struct{}), false
+	t.Cleanup(func() { redrawSet, redrawWakePending = saved, savedWake })
 }
 
 // preventQuitOnLastWindowClosed keeps Dispose from invoking quitting() (which would terminate the test process) when
@@ -1675,8 +1680,9 @@ func newRedrawTestWindow() *Window {
 		pressedKeys:    make(map[KeyCode]bool),
 		pressedButtons: make(map[int]bool),
 	}
-	w.valid = true
 	w.root = newRootPanel(w)
+	// Only now, so that building the root panel leaves no redraw queued in the shared redrawSet.
+	w.valid = true
 	return w
 }
 

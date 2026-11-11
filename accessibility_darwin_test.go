@@ -254,8 +254,6 @@ func macServeTasks(t *testing.T, c check.Checker) {
 func macNewDescribableWindow(t *testing.T) (*Window, *headlessWindow) {
 	t.Helper()
 	swapRedrawSet(t)
-	savedWake := redrawWakePending
-	t.Cleanup(func() { redrawWakePending = savedWake })
 	hw := &headlessWindow{rect: geom.NewRect(0, 0, 200, 100)}
 	w := &Window{wnd: &apiWindow{hw: hw}}
 	w.wnd.wnd = macTestWindow

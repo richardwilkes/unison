@@ -150,6 +150,8 @@ func TestMacMenuStackMonitorClosesOutsidePresses(t *testing.T) {
 		removals++
 		monitor = nil
 	}
+	// Building the root panels and closing the menus mark these windows for redraw.
+	swapRedrawSet(t)
 	owner := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(7)}}
 	owner.root = newRootPanel(owner)
 	other := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(9)}}
@@ -215,11 +217,13 @@ func TestMacMonitorHidesSuggestionsOnOutsidePresses(t *testing.T) {
 		removals++
 		monitor = nil
 	}
-	owner := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(7)}}
+	owner := &Window{wnd: &apiWindow{wnd: cocoa.Window(7)}}
 	owner.root = newRootPanel(owner)
 	popup := &Window{valid: true, owner: owner, kind: WindowKindDropdown, wnd: &apiWindow{wnd: cocoa.Window(8)}}
-	other := &Window{valid: true, wnd: &apiWindow{wnd: cocoa.Window(9)}}
+	other := &Window{wnd: &apiWindow{wnd: cocoa.Window(9)}}
 	other.root = newRootPanel(other)
+	// Only now, so that building the root panels leaves no redraw queued in the shared redrawSet.
+	owner.valid, other.valid = true, true
 	windowList = []*Window{owner, popup, other}
 	host := &fakeSuggestionsHost{shown: true}
 	owner.suggestions = host
@@ -308,9 +312,11 @@ func TestMacPopupShowsCursorOwnerHid(t *testing.T) {
 	macShowCursor = func() { shows++ }
 	// Not focused, so that HideCursor and ShowCursor change only the state, as with the pointer away from the owner;
 	// calling nativeUpdateCursorImage stands for the owner applying its cursor with the pointer over its content.
-	owner := &Window{valid: true, wnd: &apiWindow{}, cursor: &Cursor{}}
+	owner := &Window{wnd: &apiWindow{}, cursor: &Cursor{}}
 	owner.root = newRootPanel(owner)
 	popup := newTestPopupWindow(owner, newTestMenuPanel(0, 0, 100, 100))
+	// Only now, so that building the root panels leaves no redraw queued in the shared redrawSet.
+	owner.valid = true
 	popup.valid = true
 	popup.wnd = &apiWindow{}
 	popup.cursor = &Cursor{}
