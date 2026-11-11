@@ -33,7 +33,8 @@ type ProgressDialog struct {
 
 // NewProgressDialog creates a progress dialog. A maximum of zero gives an indeterminate progress bar. Unless cancel is
 // nil, the dialog has a Cancel button which, when pressed, disables itself, changes the message to say the operation is
-// being canceled and calls cancel. To show the dialog, call RunModal or pass it to RunProgressDialog.
+// being canceled and calls cancel. A request to close the window is refused, and acts as that button when there is one.
+// To show the dialog, call RunModal or pass it to RunProgressDialog.
 func NewProgressDialog(title, message string, maximum float32, cancel func()) (*ProgressDialog, error) {
 	wnd, err := NewWindow(title, FloatingWindowOption(), NotResizableWindowOption(), UndecoratedWindowOption(),
 		TransientWindowOption())
@@ -67,11 +68,19 @@ func NewProgressDialog(title, message string, maximum float32, cancel func()) (*
 		d.cancelButton.SetBorder(NewEmptyBorder(geom.Insets{Top: 2 * StdHSpacing}))
 		d.cancelButton.ClickCallback = func() {
 			d.cancelButton.SetEnabled(false)
-			d.label.SetTitle(i18n.Text("Canceling…"))
+			d.showMessage(i18n.Text("Canceling…"))
 			d.canceled = true
 			cancel()
 		}
 		content.AddChild(d.cancelButton)
+	}
+	// Closing the window would end the modal loop while the operation still runs, so a close request, such as Alt+F4,
+	// is refused, and taken as a press of Cancel when there is one.
+	wnd.AllowCloseCallback = func() bool {
+		if d.cancelButton != nil && !d.canceled {
+			d.cancelButton.ClickCallback()
+		}
+		return false
 	}
 	wnd.SetContent(content)
 	wnd.Pack()
@@ -98,8 +107,16 @@ func (d *ProgressDialog) Message() string {
 // operation is being canceled and should go on saying so until the dialog closes.
 func (d *ProgressDialog) SetMessage(message string) {
 	if !d.canceled {
-		d.label.SetTitle(message)
+		d.showMessage(message)
 	}
+}
+
+// showMessage puts message in the label and has it laid out and redrawn. The layout is redone from above the label,
+// since a Label has no Layout of its own to size it.
+func (d *ProgressDialog) showMessage(message string) {
+	d.label.SetTitle(message)
+	d.label.MarkForLayoutRecursivelyUpward()
+	d.label.MarkForRedraw()
 }
 
 // Canceled returns true once the Cancel button has been pressed.

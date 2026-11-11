@@ -21,8 +21,8 @@ import (
 )
 
 // stageTimeout bounds the whole prepare step. It is generous because the download can be large and some connections
-// are slow; the Cancel button, not this, is how an impatient user stops it.
-const stageTimeout = 30 * time.Minute
+// are slow; the Cancel button, not this, is how an impatient user stops it. A variable only so tests can shorten it.
+var stageTimeout = 30 * time.Minute
 
 // pendingUpdate holds an update that has been prepared and is waiting for the application to quit.
 type pendingUpdate struct {
@@ -128,11 +128,13 @@ func (u *Updater) stageWithProgress(p *plan) (*staged, bool) {
 		})
 		return stageResult{staged: prepared, err: stageErr}
 	}, nil)
+	if dialog.Canceled() {
+		// The user asked for this, so there is nothing to report. Staging may have finished anyway, if Cancel came
+		// after the last step that watches ctx.
+		discard(result.staged)
+		return nil, false
+	}
 	if result.err != nil {
-		if ctx.Err() != nil {
-			// The user asked for this, so there is nothing to report.
-			return nil, false
-		}
 		u.reportError(i18n.Text("Unable to prepare the update"), result.err)
 		return nil, false
 	}

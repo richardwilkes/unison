@@ -35,9 +35,10 @@ type Release struct {
 
 // FetchReleases returns the releases published in the GitHub repository owner/repo whose versions are at least
 // currentVersion, newest first; an empty currentVersion returns them all. Only tags of the form "v<version>" count as
-// releases. The release for currentVersion itself is dropped when a newer one exists. skip, when not nil, is called for
-// each candidate, and returning true leaves it out. The result is nil when no release qualifies, or when owner or repo
-// is empty.
+// releases, and drafts and pre-releases never do. Versions are compared in natural order, except that one with a
+// pre-release suffix, such as 1.2.0-rc1, ranks below the same version without it. The release for currentVersion itself
+// is dropped when a newer one exists. skip, when not nil, is called for each candidate, and returning true leaves it
+// out. The result is nil when no release qualifies, or when owner or repo is empty.
 //
 // client makes the request; nil uses a new http.Client. token, when not empty, is presented as a bearer token, which
 // raises GitHub's rate limit and gives access to a private repository.
@@ -71,21 +72,27 @@ func FetchReleases(ctx context.Context, client *http.Client, owner, repo, token,
 		Assets     []struct {
 			Name   string `json:"name"`
 			URL    string `json:"browser_download_url"`
+			APIURL string `json:"url"`
 			Digest string `json:"digest"`
 			Size   int64  `json:"size"`
 		} `json:"assets"`
+		Draft      bool `json:"draft"`
+		Prerelease bool `json:"prerelease"`
 	}
 	if err = json.UnmarshalRead(rsp.Body, &releases); err != nil {
 		return nil, errs.NewWithCause("unable to decode response from GitHub API "+uri, err)
 	}
 	var versions []Release
 	for _, one := range releases {
+		if one.Draft || one.Prerelease {
+			continue
+		}
 		tag, ok := strings.CutPrefix(one.TagName, "v")
 		if !ok {
 			continue
 		}
 		version := strings.TrimSpace(tag)
-		if version == "" || (version != currentVersion && !xstrings.NaturalLess(currentVersion, version, true)) {
+		if version == "" || compareVersions(version, currentVersion) < 0 {
 			continue
 		}
 		if skip != nil && skip(version, one.Body) {
@@ -104,6 +111,7 @@ func FetchReleases(ctx context.Context, client *http.Client, owner, repo, token,
 				assets[i] = Asset{
 					Name:   asset.Name,
 					URL:    asset.URL,
+					apiURL: asset.APIURL,
 					SHA256: sha,
 					Size:   asset.Size,
 				}
@@ -116,9 +124,27 @@ func FetchReleases(ctx context.Context, client *http.Client, owner, repo, token,
 			Assets:     assets,
 		})
 	}
-	slices.SortFunc(versions, func(a, b Release) int { return xstrings.NaturalCmp(b.Version, a.Version, true) })
+	slices.SortFunc(versions, func(a, b Release) int { return compareVersions(b.Version, a.Version) })
 	if len(versions) > 1 && versions[len(versions)-1].Version == currentVersion {
 		versions = versions[:len(versions)-1]
 	}
 	return versions, nil
+}
+
+// compareVersions returns -1, 0 or 1 as version a is older than, the same as or newer than b. Natural order decides,
+// except that a pre-release, whose version has a "-" suffix, is older than the same version without one.
+func compareVersions(a, b string) int {
+	aCore, aPre, aIsPre := strings.Cut(a, "-")
+	bCore, bPre, bIsPre := strings.Cut(b, "-")
+	if result := xstrings.NaturalCmp(aCore, bCore, true); result != 0 {
+		return result
+	}
+	switch {
+	case aIsPre == bIsPre:
+		return xstrings.NaturalCmp(aPre, bPre, true)
+	case aIsPre:
+		return -1
+	default:
+		return 1
+	}
 }

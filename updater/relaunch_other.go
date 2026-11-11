@@ -22,8 +22,12 @@ import (
 //
 // It is started with no arguments: reopening whatever files the user had open would mean handing paths recorded before
 // the quit to a process that starts a minute later, and passing a stale path would be worse than passing none.
-func relaunch(t *target, logPath string) error {
-	if err := spawnDetached(t.Path, nil, logPath, os.TempDir()); err != nil {
+//
+// It takes the update's log only to match the macOS version, which records the output of `open` there. The
+// application's own output is discarded rather than added to that log: the log is in the staging directory, which the
+// application removes once it has started, and on Windows its handle to the log would prevent that while it ran.
+func relaunch(t *target, _ string) error {
+	if err := spawnDetached(t.Path, nil, "", os.TempDir()); err != nil {
 		return errs.NewWithCause("unable to start the updated application", err)
 	}
 	return nil

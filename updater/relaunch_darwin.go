@@ -25,16 +25,21 @@ import (
 //
 // The application is named by absolute path rather than by bundle identifier, so Launch Services cannot resolve the
 // request to some other copy on the machine.
+//
+// Only the output of `open` is appended to logPath, the update's log, where it is the only record of why Launch
+// Services refused to start the application; `open` exits at once and does not pass its streams on, so it cannot hold
+// the log open. The application's own output is discarded, since the log is in the staging directory the application
+// removes once it has started.
 func relaunch(t *target, logPath string) error {
 	if t.Kind != kindBundle {
-		return spawnDetached(t.Path, nil, logPath, os.TempDir())
+		return spawnDetached(t.Path, nil, "", os.TempDir())
 	}
 	if err := spawnDetached("/usr/bin/open", []string{t.Path}, logPath, os.TempDir()); err != nil {
 		// The executable inside the bundle gets the application running, just without a proper foreground activation,
 		// which is better than leaving the user staring at nothing.
 		slog.Warn("unable to start the updated application through Launch Services; starting it directly",
 			"error", err)
-		if fallbackErr := spawnDetached(t.execWithin(t.Path), nil, logPath, os.TempDir()); fallbackErr != nil {
+		if fallbackErr := spawnDetached(t.execWithin(t.Path), nil, "", os.TempDir()); fallbackErr != nil {
 			return errs.NewWithCause("unable to start the updated application", fallbackErr)
 		}
 	}

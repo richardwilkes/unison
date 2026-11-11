@@ -120,7 +120,7 @@ func TestSwapRestoresTheInstallationWhenTheSecondRenameFails(t *testing.T) {
 	realRename := renameFunc
 	renameFunc = func(from, to string) error {
 		if from == f.payload {
-			return errors.New("refused")
+			return stopRetrying(errors.New("refused")) // Final, so retrying adds no delay
 		}
 		return realRename(from, to)
 	}
@@ -144,7 +144,7 @@ func TestSwapLeavesEverythingAloneWhenTheFirstRenameFails(t *testing.T) {
 	realRename := renameFunc
 	renameFunc = func(from, to string) error {
 		if from == f.target {
-			return errors.New("refused")
+			return stopRetrying(errors.New("refused")) // Final, so retrying adds no delay
 		}
 		return realRename(from, to)
 	}

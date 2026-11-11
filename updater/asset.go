@@ -26,8 +26,10 @@ const (
 type Asset struct {
 	// Name is the file's name.
 	Name string
-	// URL is where the file is downloaded from.
+	// URL is where the file is downloaded from without a token.
 	URL string
+	// apiURL is the GitHub API's address for the file, from which a token can fetch a private repository's file.
+	apiURL string
 	// SHA256 is the hex-encoded SHA-256 digest GitHub published for the file, or "" if it published none.
 	SHA256 string
 	// Size is the file's length in bytes.

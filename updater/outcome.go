@@ -27,7 +27,7 @@ func (u *Updater) ReportOutcome() {
 
 // outcomeWarning returns what to tell the user about how an update ended, and whether there is anything to tell.
 func (u *Updater) outcomeWarning(out *outcome) (primary, detail string, ok bool) {
-	if out == nil || out.Reason == reasonNone || out.Reason == reasonAbandoned {
+	if out == nil || out.Reason == reasonNone {
 		return "", "", false
 	}
 	if out.Applied {
@@ -49,6 +49,9 @@ func (u *Updater) outcomeMessage(r reason) string {
 			u.cfg.AppName)
 	case reasonVersionMismatch:
 		return i18n.Text("The update reported success but a different version is running. The previous version has been kept.")
+	case reasonAbandoned:
+		return i18n.Text("The update was prepared but never installed, so nothing was changed. Try the update again, or download it from the %s web site and install it by hand.",
+			u.cfg.AppName)
 	default:
 		return i18n.Text("The update could not be installed. Downloading it from the %s web site and installing it by hand will work.",
 			u.cfg.AppName)

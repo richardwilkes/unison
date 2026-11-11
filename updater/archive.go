@@ -23,8 +23,9 @@ import (
 )
 
 // maxPayloadSize bounds what an archive may expand to: generous headroom over any plausible executable, while still
-// refusing a decompression bomb that could fill the disk from a few kilobytes of crafted gzip.
-const maxPayloadSize = 512 << 20
+// refusing a decompression bomb that could fill the disk from a few kilobytes of crafted gzip. A variable only so tests
+// can shrink it.
+var maxPayloadSize int64 = 512 << 20
 
 // executableModePerm is the mode the extracted payload is written with. The archives record 0755 already, but it is set
 // explicitly rather than taken from the archive so that a mangled or hostile entry cannot produce something
@@ -127,7 +128,7 @@ func writePayload(r io.Reader, dstPath string) (err error) {
 		return errs.NewWithCause("unable to extract the archive", err)
 	}
 	if n > maxPayloadSize {
-		return errs.Newf("the archive expands to more than %d bytes", int64(maxPayloadSize))
+		return errs.Newf("the archive expands to more than %d bytes", maxPayloadSize)
 	}
 	if n == 0 {
 		return errs.New("the archive holds an empty file")

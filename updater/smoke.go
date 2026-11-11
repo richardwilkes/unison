@@ -57,9 +57,20 @@ func (u *Updater) verifyRuns(ctx context.Context, exePath, wantVersion string) e
 	if reported == "" || wantVersion == "" {
 		return nil
 	}
-	// A build made from a modified checkout has a "~" appended, so match on the prefix rather than for equality.
-	if !strings.HasPrefix(reported, wantVersion) {
+	// The version may be followed by more, such as the "~" a build made from a modified checkout appends.
+	if rest, found := strings.CutPrefix(reported, wantVersion); !found || versionContinues(rest) {
 		return errs.Newf("the downloaded version reports itself as %s rather than %s", reported, wantVersion)
 	}
 	return nil
+}
+
+// versionContinues reports whether rest, the text a reported version has after the wanted one, makes it a longer
+// version, as the "0" in 1.3.10 does for 1.3.1, rather than following it, as a "~" or the "-" before a build number
+// does.
+func versionContinues(rest string) bool {
+	if rest == "" {
+		return false
+	}
+	c := rest[0]
+	return c == '.' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }

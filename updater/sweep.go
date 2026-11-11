@@ -13,6 +13,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
@@ -73,7 +75,9 @@ func (u *Updater) reportAndSweep() *outcome {
 		u.sweepStrays(currentSweepDirs(), staleAge)
 		return nil
 	}
-	if s == nil {
+	if s == nil || (s.Status == statusStaged && stagerRunning(s)) {
+		// A staged update is not abandoned while the copy that prepared it runs: that copy may yet quit and have its
+		// helper apply the update, or have its quit refused and discard it.
 		u.sweepStrays(currentSweepDirs(), staleAge)
 		return nil
 	}
@@ -143,6 +147,12 @@ func (u *Updater) settle(s *state) *outcome {
 	}
 }
 
+// stagerRunning reports whether the application that prepared the update s describes is still running. A process with
+// this one's identifier is an earlier one, since this one has only just started and has prepared nothing.
+func stagerRunning(s *state) bool {
+	return s.ParentPID > 0 && s.ParentPID != os.Getpid() && processIsAlive(s.ParentPID)
+}
+
 // currentSweepDirs returns where an update to this installation would have left things.
 func currentSweepDirs() []sweepDir {
 	t, err := currentTarget()
@@ -173,7 +183,14 @@ func (u *Updater) sweepStrays(dirs []sweepDir, olderThan time.Duration) {
 				continue
 			}
 			fi, infoErr := entry.Info()
-			if infoErr != nil || fi.ModTime().After(cutoff) {
+			if infoErr != nil {
+				continue
+			}
+			lastUsed := fi.ModTime()
+			if at, ok := displacedAt(entry.Name(), one.targetBase); ok && at.After(lastUsed) {
+				lastUsed = at
+			}
+			if lastUsed.After(cutoff) {
 				continue
 			}
 			path := filepath.Join(one.dir, entry.Name())
@@ -181,6 +198,22 @@ func (u *Updater) sweepStrays(dirs []sweepDir, olderThan time.Duration) {
 			removeWithRetry(path)
 		}
 	}
+}
+
+// displacedAt returns the time target.freeBackupPath recorded in name, a backup of targetBase, and whether it recorded
+// one. That is when the update was prepared, shortly before it moved the installation aside, which the backup's
+// modification time cannot tell, since the rename keeps it.
+func displacedAt(name, targetBase string) (time.Time, bool) {
+	unique, ok := strings.CutPrefix(name, "."+targetBase+backupSuffix)
+	if !ok {
+		return time.Time{}, false
+	}
+	stamp, _, _ := strings.Cut(unique, "-")
+	nanos, err := strconv.ParseInt(stamp, 36, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(0, nanos), true
 }
 
 // removeWithRetry removes a path, retrying briefly. The retries are for Windows, where the helper's own image cannot be

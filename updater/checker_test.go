@@ -231,25 +231,34 @@ func TestVisibleCheckRecordsWhatItFinds(t *testing.T) {
 	}
 }
 
-// A development build has no release to compare against, so it says so rather than asking the update site.
+// A development build has no release to compare against, so either kind of check says so rather than asking the update
+// site.
 func TestCheckOnADevelopmentBuildDoesNotFetch(t *testing.T) {
-	c := check.New(t)
-	changes := 0
-	u := New(&Config{AppName: testApp, CmdName: testCmd, Version: "0.0", StateChanged: func() { changes++ }})
-	u.invokeFn = func(f func()) { f() }
-	u.fetchFn = func(context.Context) ([]Release, error) {
-		t.Error("a development build must not ask for releases")
-		return nil, nil
+	for _, one := range []struct {
+		check func(u *Updater)
+		name  string
+	}{
+		{name: "a visible check", check: func(u *Updater) { u.Check(true) }},
+		{name: "a quiet check", check: (*Updater).CheckQuietly},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			changes := 0
+			u := New(&Config{AppName: testApp, CmdName: testCmd, Version: "0.0", StateChanged: func() { changes++ }})
+			u.invokeFn = func(f func()) { f() }
+			u.fetchFn = func(context.Context) ([]Release, error) {
+				t.Error("a development build must not ask for releases")
+				return nil, nil
+			}
+			one.check(u)
+			title, releases, updating := u.Status()
+			c.Equal(u.devVersionText(), title)
+			c.Nil(releases)
+			c.False(updating)
+			c.False(u.Checking())
+			c.Equal(1, changes, "the application must be told the status changed")
+		})
 	}
-	u.Check(true)
-	title, releases, updating := u.Status()
-	c.Equal(u.devVersionText(), title)
-	c.Nil(releases)
-	c.False(updating)
-	c.Equal(1, changes, "the application must be told the status changed")
-
-	u.CheckQuietly()
-	c.False(u.Checking())
 }
 
 // TestCheckNotifiesOnlyOfAnUnseenRelease verifies when a visible check interrupts the user: the first time a release is
@@ -284,7 +293,9 @@ func TestCheckNotifiesOnlyOfAnUnseenRelease(t *testing.T) {
 			screen.KeyPress(unison.KeyEscape, 0)
 			c.Nil(modalDialog(screen), "escape must dismiss the dialog")
 		}
-		c.Equal(testNextVersion, u.lastSeen(), "%s", one.name)
+		var seen string
+		c.True(screen.Do(func() { seen = u.lastSeen() }))
+		c.Equal(testNextVersion, seen, "%s", one.name)
 	}
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

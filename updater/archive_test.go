@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -94,10 +95,22 @@ func makeZip(t *testing.T, names []string, bodies [][]byte) string {
 	return path
 }
 
+// umask077Env, when set, marks a run of this test binary that TestExtractSingleTGZ started under a umask of 077.
+const umask077Env = "UPDATER_TEST_UMASK_077"
+
 // TestExtractSingleTGZ verifies the happy path against the archive shape the packager actually produces, including that
-// the result is executable regardless of the umask in effect.
+// the result is executable under a umask of 077, which alone would make it 0700.
 func TestExtractSingleTGZ(t *testing.T) {
 	c := check.New(t)
+	if runtime.GOOS != xos.WindowsOS && os.Getenv(umask077Env) == "" {
+		// The umask cannot be set from Go on every platform, so a copy of this test runs under a shell that sets it.
+		t.Setenv(umask077Env, "1")
+		exe, err := os.Executable()
+		c.NoError(err)
+		out, err := exec.Command("/bin/sh", "-c", `umask 077 && exec "$0" -test.run '^TestExtractSingleTGZ$'`,
+			exe).CombinedOutput()
+		c.NoError(err, "under a umask of 077:\n%s", out)
+	}
 	dst := filepath.Join(t.TempDir(), testCmd)
 	c.NoError(extractSingleTGZ(bytes.NewReader(makeTGZ(t, tgzEntry{name: testCmd, body: []byte("\x7fELF binary")})),
 		testCmd, dst))
@@ -108,7 +121,7 @@ func TestExtractSingleTGZ(t *testing.T) {
 		fi, statErr := os.Stat(dst)
 		c.NoError(statErr)
 		c.Equal(os.FileMode(executableModePerm), fi.Mode().Perm(),
-			"the extracted file must be executable no matter what umask is in effect")
+			"the extracted file must be executable whatever the umask")
 	}
 }
 
@@ -118,6 +131,9 @@ func TestExtractSingleTGZ(t *testing.T) {
 // rejected by name matching rather than by a separate filter.
 func TestExtractSingleTGZRejectsBadArchives(t *testing.T) {
 	c := check.New(t)
+	savedMax := maxPayloadSize
+	maxPayloadSize = 1024
+	t.Cleanup(func() { maxPayloadSize = savedMax })
 	for _, one := range []struct {
 		name    string
 		archive []byte

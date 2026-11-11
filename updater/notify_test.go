@@ -71,12 +71,10 @@ func TestNotifyOffersOnlyWhatIsPossible(t *testing.T) {
 		c.Equal(tc.downloadPage != "", download != nil, "%s", tc.name)
 		c.Equal([]string{testNextVersion}, seen, "%s", tc.name)
 
-		opened := len(screen.OpenedURLs())
+		screen.OpenedURLs() // Forgets anything opened before the click
 		if download != nil {
 			screen.Click(screen.PanelCenter(download))
-			urls := screen.OpenedURLs()
-			c.Equal(opened+1, len(urls), "%s", tc.name)
-			c.Equal(testDownloadPage, urls[len(urls)-1], "%s", tc.name)
+			c.Equal([]string{testDownloadPage}, screen.OpenedURLs(), "%s", tc.name)
 		} else {
 			screen.Click(screen.PanelCenter(cancel))
 		}
@@ -90,8 +88,11 @@ func TestNotifyDoesNothingWithoutAnUpdate(t *testing.T) {
 	c := check.New(t)
 	screen := startHeadless(t)
 	u := newTestUpdater(t)
-	c.True(screen.Do(u.Notify))
+	// Posted rather than run with Do, which would never return were a dialog to open.
+	c.True(screen.Post(u.Notify))
+	screen.Sync()
 	c.Nil(modalDialog(screen))
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // Each reason an installation cannot update itself has its own explanation, and the one for Homebrew names the cask the

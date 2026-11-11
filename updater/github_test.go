@@ -57,7 +57,7 @@ func newReleasesServer(t *testing.T, body string) *releasesServer {
 	return s
 }
 
-// An updater downloads a packaged distribution directly, so an asset's name, URL and size have to survive the decode,
+// An updater downloads a packaged distribution directly, so an asset's name, URLs and size have to survive the decode,
 // along with its digest stripped of the algorithm GitHub prefixes it with. Assets that predate GitHub's digests, or
 // carry a digest of some other kind, have no SHA-256 rather than a bogus one, and a release with no assets has none
 // rather than an empty list.
@@ -72,6 +72,7 @@ func TestFetchReleasesDecodesAssets(t *testing.T) {
 				{
 					"name": "example-2.0.0-macos-arm64.dmg",
 					"browser_download_url": "https://example.com/example-2.0.0-macos-arm64.dmg",
+					"url": "https://api.example.com/assets/1",
 					"digest": "sha256:abc123",
 					"size": 29234206
 				},
@@ -93,6 +94,7 @@ func TestFetchReleasesDecodesAssets(t *testing.T) {
 				{
 					Name:   "example-2.0.0-macos-arm64.dmg",
 					URL:    "https://example.com/example-2.0.0-macos-arm64.dmg",
+					apiURL: "https://api.example.com/assets/1",
 					SHA256: "abc123",
 					Size:   29234206,
 				},
@@ -131,14 +133,19 @@ func TestFetchReleasesRequest(t *testing.T) {
 	c.Equal(int64(0), s.requests.Load(), "no request may be made without an owner and a repository")
 }
 
-// Only "v" tags at or above the running version count, newest first by natural order, and minus any the caller skips.
-// The running version's own release is kept only when nothing newer is, and nothing qualifying is nil.
+// Only "v" tags at or above the running version count, newest first, and minus any the caller skips. Drafts and
+// pre-releases never count, and a version with a pre-release suffix ranks below the same version without one, so that
+// someone running a release candidate is offered the final release. The running version's own release is kept only
+// when nothing newer is, and nothing qualifying is nil.
 func TestFetchReleasesSelectsNewerVersions(t *testing.T) {
 	c := check.New(t)
 	const body = `[
 		{"tag_name": "v1.2.3", "body": "current"},
+		{"tag_name": "v1.11.0", "body": "draft", "draft": true},
+		{"tag_name": "v1.10.0-rc1", "body": "candidate", "prerelease": true},
 		{"tag_name": "v1.10.0", "body": "ten"},
 		{"tag_name": "v1.9.0", "body": "skip me"},
+		{"tag_name": "v1.4.0-beta", "body": "candidate not marked as a pre-release"},
 		{"tag_name": "v1.3.0", "body": "three"},
 		{"tag_name": "v1.1.0", "body": "older"},
 		{"tag_name": "1.20.0", "body": "no v"},
@@ -147,7 +154,7 @@ func TestFetchReleasesSelectsNewerVersions(t *testing.T) {
 		{"tag_name": "v  ", "body": "blank version"},
 		{"tag_name": "v 1.4.0 ", "body": "padded"}
 	]`
-	const ten, nine, four = "1.10.0", "1.9.0", "1.4.0"
+	const ten, candidate, nine, four, fourBeta = "1.10.0", "1.10.0-rc1", "1.9.0", "1.4.0", "1.4.0-beta"
 	skipNotes := func(_, notes string) bool { return notes == "skip me" }
 	for _, one := range []struct {
 		skip    func(version, notes string) bool
@@ -155,14 +162,20 @@ func TestFetchReleasesSelectsNewerVersions(t *testing.T) {
 		current string
 		want    []string
 	}{
-		{name: "newer releases", current: testVersion, want: []string{ten, nine, four, testNextVersion}},
-		{name: "skipped releases", current: testVersion, skip: skipNotes, want: []string{ten, four, testNextVersion}},
+		{name: "newer releases", current: testVersion, want: []string{ten, nine, four, fourBeta, testNextVersion}},
+		{
+			name:    "skipped releases",
+			current: testVersion,
+			skip:    skipNotes,
+			want:    []string{ten, four, fourBeta, testNextVersion},
+		},
 		{name: "only the current release", current: ten, want: []string{ten}},
+		{name: "a release candidate", current: candidate, want: []string{ten}},
 		{name: "nothing at or above", current: "2.0.0"},
 		{
 			name:    "no current version",
 			current: "",
-			want:    []string{ten, nine, four, testNextVersion, testVersion, "1.1.0"},
+			want:    []string{ten, nine, four, fourBeta, testNextVersion, testVersion, "1.1.0"},
 		},
 	} {
 		s := newReleasesServer(t, body)

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/xos"
@@ -127,6 +128,11 @@ func TestFreeBackupPathAvoidsWhatIsAlreadyThere(t *testing.T) {
 	c := check.New(t)
 	dir := t.TempDir()
 	tgt := target{Path: filepath.Join(dir, testCmd), Parent: dir, Kind: kindExecutable}
+	// Both calls get the same timestamp, so only the search for a free name can tell them apart.
+	savedClock := backupClock
+	stamp := time.Now()
+	backupClock = func() time.Time { return stamp }
+	t.Cleanup(func() { backupClock = savedClock })
 
 	first := tgt.freeBackupPath()
 	write(t, first, "taken")

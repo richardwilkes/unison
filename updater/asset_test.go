@@ -10,6 +10,7 @@
 package updater
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -124,10 +125,6 @@ func TestSelectAsset(t *testing.T) {
 func TestUpdateArchPrefersAPublishedBuild(t *testing.T) {
 	c := check.New(t)
 	u := newTestUpdater(t)
-	// No arm64 asset is published here, so whatever the translation state, the result has to name an asset that exists
-	// or fall back to this build's own architecture.
-	arch := u.updateArch([]Asset{{Name: "example-1.3.0-macos-amd64.dmg"}}, testNextVersion)
-	c.True(arch == archAMD64 || arch == archARM64)
-	_, err := u.selectAsset(testNextVersion, xos.MacOS, arch, []Asset{{Name: "example-1.3.0-macos-" + arch + ".dmg"}})
-	c.NoError(err)
+	// No arm64 asset is published here, so whatever the translation state, the result is this build's own architecture.
+	c.Equal(runtime.GOARCH, u.updateArch([]Asset{{Name: "example-1.3.0-macos-amd64.dmg"}}, testNextVersion))
 }

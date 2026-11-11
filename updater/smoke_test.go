@@ -50,9 +50,10 @@ func buildStandIn(t *testing.T, src string) string {
 }
 
 // A build that runs and reports the expected version is accepted. The version comparison must tolerate the "~" a build
-// made from a modified checkout appends, which would otherwise be read as the wrong version entirely, and an executable
-// exiting cleanly without printing anything, as a Windows GUI build does, is accepted too. The build is asked for its
-// version with the arguments the application configured, which may not be the default.
+// made from a modified checkout appends and the build number xflag's --version adds, which would otherwise be read as
+// the wrong version entirely, and an executable exiting cleanly without printing anything, as a Windows GUI build does,
+// is accepted too. The build is asked for its version with the arguments the application configured, which may not be
+// the default.
 func TestVerifyRunsAcceptsAWorkingBuild(t *testing.T) {
 	c := check.New(t)
 	for _, one := range []struct {
@@ -71,6 +72,12 @@ func main() { fmt.Println("1.3.0") }
 import "fmt"
 
 func main() { fmt.Println("1.3.0~") }
+`},
+		{name: "the version with a build number", src: `package main
+
+import "fmt"
+
+func main() { fmt.Println("1.3.0-42~") }
 `},
 		{name: "nothing", src: `package main
 
@@ -121,18 +128,28 @@ func main() {
 }
 
 // An executable that starts but is not the release that was downloaded must be refused; it would mean the wrong asset
-// had been fetched or unpacked.
+// had been fetched or unpacked. A version that merely begins with the wanted one is a different version.
 func TestVerifyRunsRejectsTheWrongVersion(t *testing.T) {
 	c := check.New(t)
-	exePath := buildStandIn(t, `package main
+	for _, one := range []struct {
+		reported string
+		want     string
+	}{
+		{reported: "1.0.0", want: testNextVersion},
+		{reported: "1.3.10", want: "1.3.1"},
+	} {
+		exePath := buildStandIn(t, `package main
 
 import "fmt"
 
-func main() { fmt.Println("1.0.0") }
+func main() { fmt.Println("`+one.reported+`") }
 `)
-	err := newTestUpdater(t).verifyRuns(t.Context(), exePath, testNextVersion)
-	c.HasError(err)
-	c.Contains(err.Error(), "1.0.0")
+		err := newTestUpdater(t).verifyRuns(t.Context(), exePath, one.want)
+		c.HasError(err, "%s reported for %s", one.reported, one.want)
+		if err != nil {
+			c.Contains(err.Error(), one.reported)
+		}
+	}
 }
 
 // The case a corrupted download produces: a file that exists and is marked executable but is not a program at all.
@@ -140,6 +157,10 @@ func TestVerifyRunsRejectsSomethingUnrunnable(t *testing.T) {
 	c := check.New(t)
 	u := newTestUpdater(t)
 	exePath := filepath.Join(t.TempDir(), testCmd)
+	if runtime.GOOS == xos.WindowsOS {
+		// Without it, os/exec rejects the name before the loader ever sees the file.
+		exePath += ".exe"
+	}
 	write(t, exePath, "this is definitely not an executable")
 	c.NoError(os.Chmod(exePath, executableModePerm)) //nolint:gosec // It has to look executable to be tried
 	c.HasError(u.verifyRuns(t.Context(), exePath, testNextVersion))

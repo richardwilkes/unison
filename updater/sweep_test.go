@@ -133,20 +133,44 @@ func TestSettleOnAFailedUpdateLeavesTheInstallationAlone(t *testing.T) {
 	c.False(out.Applied)
 }
 
-// An update prepared but never applied -- the user vetoed the quit, or the helper never ran -- is cleaned up without
-// touching the installation.
-func TestSettleDiscardsAnAbandonedStaging(t *testing.T) {
-	c := check.New(t)
-	u := newTestUpdater(t)
-	s := installation(t, u, statusStaged, "target", "workdir")
+// An update prepared but never applied -- the helper never ran, or died before recording anything -- is cleaned up
+// without touching the installation, but only once the application that prepared it has exited: until then, that copy
+// may yet quit and have its helper apply the update. This process having the identifier that application had means
+// only that the identifier was reused.
+func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
+	for _, one := range []struct {
+		name      string
+		parentPID int
+		wantKept  bool
+	}{
+		{name: "the application that prepared it has exited", parentPID: exitedPID(t)},
+		{name: "no application was recorded"},
+		{name: "this process has the application's identifier", parentPID: os.Getpid()},
+		{name: "the application that prepared it is still running", parentPID: os.Getppid(), wantKept: true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			u := newTestUpdater(t)
+			u.stateFile = filepath.Join(t.TempDir(), stateName)
+			s := installation(t, u, statusStaged, "target", "workdir")
+			s.ParentPID = one.parentPID
+			c.NoError(s.save(u.stateFile))
 
-	out := u.settle(s)
+			out := u.reportAndSweep()
 
-	c.True(exists(s.Target))
-	c.Equal("new", read(t, s.Target))
-	c.False(exists(s.WorkDir))
-	c.NotNil(out)
-	c.Equal(reasonAbandoned, out.Reason)
+			c.Equal("new", read(t, s.Target), "the installation must be untouched")
+			c.Equal(one.wantKept, exists(s.WorkDir), "the staging directory")
+			c.Equal(one.wantKept, exists(u.stateFile), "the record of the prepared update")
+			if one.wantKept {
+				c.Nil(out)
+			} else {
+				c.NotNil(out)
+				if out != nil {
+					c.Equal(reasonAbandoned, out.Reason)
+				}
+			}
+		})
+	}
 }
 
 // Both halves of the sweep: it clears what an interrupted update leaves behind, and it leaves alone anything recent
@@ -173,6 +197,13 @@ func TestSweepStraysRemovesOnlyOldLeftovers(t *testing.T) {
 	recent := filepath.Join(dir, u.workDirPrefix()+"bbb")
 	write(t, recent, "in progress")
 
+	// Moving an installation aside keeps the modification time of what it holds, so a backup made just now can look a
+	// month old.
+	displaced := (&target{Path: filepath.Join(dir, testBundle), Parent: dir}).freeBackupPath()
+	write(t, displaced, "just moved aside")
+	monthOld := time.Now().Add(-30 * 24 * time.Hour)
+	c.NoError(os.Chtimes(displaced, monthOld, monthOld))
+
 	untouched := []string{
 		filepath.Join(dir, testCmd),
 		filepath.Join(dir, testBundle),
@@ -191,6 +222,7 @@ func TestSweepStraysRemovesOnlyOldLeftovers(t *testing.T) {
 		c.False(exists(path), "a stale leftover survived: %s", path)
 	}
 	c.True(exists(recent), "a recent staging directory must be left for the update still using it")
+	c.True(exists(displaced), "a backup must be aged from when it was moved aside, not from what it holds")
 	for _, path := range untouched {
 		c.True(exists(path), "the sweep removed something it did not create: %s", path)
 	}
@@ -206,13 +238,31 @@ func TestSweepStraysRemovesOnlyOldLeftovers(t *testing.T) {
 	u.sweepStrays(dirs, abandonedStagingAge)
 	c.False(exists(abandoned), "an abandoned staging directory must be cleared before a new attempt")
 	c.True(exists(recent), "a staging directory a helper could still be using must be left alone")
+	c.True(exists(displaced), "a backup moved aside just now must be left alone")
 }
 
 // The sweep must be harmless when the installation directory cannot be determined or no longer exists. It runs on every
-// launch, so it must never be able to fail the startup path.
+// launch, so it must never be able to fail the startup path, nor take an unknown directory for the working directory.
 func TestSweepStraysToleratesMissingDirectories(t *testing.T) {
+	c := check.New(t)
 	u := newTestUpdater(t)
+	wd := t.TempDir()
+	t.Chdir(wd)
+	old := time.Now().Add(-staleAge - time.Hour)
+	leftovers := []string{
+		filepath.Join(wd, u.workDirPrefix()+"aaa"),
+		filepath.Join(wd, "."+testCmd+backupSuffix+"111"),
+	}
+	for _, path := range leftovers {
+		write(t, path, "leftover")
+		c.NoError(os.Chtimes(path, old, old))
+	}
+
 	u.sweepStrays(nil, staleAge)
-	u.sweepStrays([]sweepDir{{}}, staleAge)
+	u.sweepStrays([]sweepDir{{}, {targetBase: testCmd}}, staleAge)
 	u.sweepStrays([]sweepDir{{dir: filepath.Join(t.TempDir(), "gone"), targetBase: testCmd}}, staleAge)
+
+	for _, path := range leftovers {
+		c.True(exists(path), "a sweep with no directory removed something from the working directory: %s", path)
+	}
 }

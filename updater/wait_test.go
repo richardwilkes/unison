@@ -28,12 +28,14 @@ const holdUntilStdinClosesEnv = "UPDATER_TEST_HOLD_UNTIL_STDIN_CLOSES"
 
 // holdPort takes a port and returns it along with the listener holding it. A port allocated by the system is used
 // rather than a real handoff port, so these tests cannot interfere with an application the developer is running.
+// The listener is closed when the test ends, if the test has not closed it already.
 func holdPort(t *testing.T) (listener net.Listener, port int) {
 	t.Helper()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { xio.CloseIgnoringErrors(listener) })
 	addr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
 		t.Fatalf("expected a TCP address, got %T", listener.Addr())
@@ -98,8 +100,7 @@ func TestWaitForPredecessorWaitsUntilThePortIsReleased(t *testing.T) {
 func TestWaitForPredecessorGivesUpOnAPortHeldByAnotherProcess(t *testing.T) {
 	testenv.SkipTimingSensitive(t)
 	c := check.New(t)
-	listener, port := holdPort(t)
-	defer xio.CloseIgnoringErrors(listener)
+	_, port := holdPort(t)
 	deadPID := exitedPID(t)
 
 	started := time.Now()

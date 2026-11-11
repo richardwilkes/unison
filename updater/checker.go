@@ -80,6 +80,7 @@ func (u *Updater) CheckQuietly() {
 		// Development versions never look for updates; saying so, as the visible check does, beats a status claiming
 		// that a check is still to come.
 		u.setResult(u.devVersionText())
+		u.stateChanged()
 		return
 	}
 	seq, ok := u.beginQuiet()

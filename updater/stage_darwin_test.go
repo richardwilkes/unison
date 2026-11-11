@@ -16,9 +16,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/xos"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 // signedBundle builds a directory shaped like an application bundle around a real Mach-O and signs it, then returns
@@ -109,10 +111,10 @@ func TestStageHelperCopiesEnoughOfTheBundleToRun(t *testing.T) {
 		"the staged copy must not look like a second installed application")
 }
 
-// makeDMG builds a real disk image holding a directory shaped like an application bundle, so the mount, copy and
-// unmount sequence is exercised against the tools it actually uses. The image is given the same style of volume name
-// upack produces, since that name is exactly what the mount deliberately does not rely on.
-func makeDMG(t *testing.T, volumeName string) string {
+// makeDMG builds a real disk image holding a directory shaped like an application bundle, whose executable holds app,
+// so the mount, copy and unmount sequence is exercised against the tools it actually uses. The image is given the same
+// style of volume name upack produces, since that name is exactly what the mount deliberately does not rely on.
+func makeDMG(t *testing.T, volumeName, app string) string {
 	t.Helper()
 	for _, tool := range []string{"/usr/bin/hdiutil", "/usr/bin/ditto"} {
 		if _, err := os.Stat(tool); err != nil {
@@ -120,7 +122,7 @@ func makeDMG(t *testing.T, volumeName string) string {
 		}
 	}
 	src := filepath.Join(t.TempDir(), "src")
-	write(t, filepath.Join(src, testBundle, "Contents", "MacOS", testCmd), "the application")
+	write(t, filepath.Join(src, testBundle, "Contents", "MacOS", testCmd), app)
 	write(t, filepath.Join(src, testBundle, "Contents", "Info.plist"), "<plist/>")
 	write(t, filepath.Join(src, testBundle, "Contents", "Resources", "app.icns"), "icon data")
 
@@ -148,15 +150,24 @@ func TestStagePayloadFromADiskImage(t *testing.T) {
 	volumeName := testApp + " v" + testNextVersion
 	for _, occupied := range []bool{false, true} {
 		if occupied {
-			// Mount one image under the contested name and keep it there for the rest of the test.
-			occupying := makeDMG(t, volumeName)
-			occupyingMount := filepath.Join(t.TempDir(), "occupying")
-			c.NoError(os.MkdirAll(occupyingMount, 0o755))
-			c.NoError(attachDMG(t.Context(), occupying, occupyingMount))
-			t.Cleanup(func() { detachDMG(occupyingMount) })
+			// Mount another image under the contested name where a user opening it would, and keep it there for the
+			// rest of the test. Its application differs, so a copy taken from it cannot pass for the right one.
+			occupying := makeDMG(t, volumeName, "another application")
+			out, err := exec.Command("/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen",
+				occupying).Output()
+			if err != nil {
+				t.Fatalf("unable to attach the occupying disk image: %v", err)
+			}
+			device := strings.Fields(string(out))[0]
+			t.Cleanup(func() {
+				c.NoError(run(context.Background(), "/usr/bin/hdiutil", "detach", "-force", "-quiet", device))
+			})
+			occupyingExe := filepath.Join("/Volumes/"+volumeName, testBundle, "Contents", "MacOS", testCmd)
+			c.Equal("another application", read(t, occupyingExe),
+				"the occupying image must hold the volume name's usual mount point")
 		}
 
-		dmg := makeDMG(t, volumeName)
+		dmg := makeDMG(t, volumeName, "the application")
 		dst := filepath.Join(t.TempDir(), testBundle)
 
 		c.NoError(u.stagePayload(t.Context(), dmg, dst), "volume name in use: %v", occupied)
@@ -175,6 +186,57 @@ func TestStagePayloadFromADiskImage(t *testing.T) {
 		c.NoError(err)
 		c.NotContains(string(out), dmg, "the disk image was left mounted")
 	}
+}
+
+// imageAttached reports whether hdiutil lists the disk image at path as attached.
+func imageAttached(t *testing.T, path string) bool {
+	t.Helper()
+	out, err := exec.Command("/usr/bin/hdiutil", "info").CombinedOutput()
+	if err != nil {
+		t.Errorf("unable to list the attached disk images: %v\n%s", err, out)
+		return false
+	}
+	return strings.Contains(string(out), path)
+}
+
+// Stopping the update while the disk image is being attached, by Cancel or the update's deadline, must not leave it
+// mounted. hdiutil stopped part-way leaves the attach to finish without it, mounting the image a moment later.
+func TestStagePayloadLeavesNothingMountedWhenCanceled(t *testing.T) {
+	if testing.Short() {
+		t.Skip("mounting a disk image is slow")
+	}
+	testenv.SkipTimingSensitive(t)
+	c := check.New(t)
+	dmg := makeDMG(t, testApp+" v"+testNextVersion, "the application")
+	t.Cleanup(func() {
+		if imageAttached(t, dmg) {
+			//nolint:errcheck // The pattern is valid
+			mountPoints, _ := filepath.Glob(filepath.Join(filepath.Dir(dmg), "mnt-*"))
+			for _, mountPoint := range mountPoints {
+				detachDMG(mountPoint)
+			}
+		}
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	// Canceled as soon as the image is attached, which is while hdiutil is still mounting it.
+	polling := make(chan struct{})
+	go func() {
+		defer close(polling)
+		for ctx.Err() == nil {
+			if imageAttached(t, dmg) {
+				cancel()
+			}
+		}
+	}()
+
+	//nolint:errcheck // Either outcome will do
+	_ = newTestUpdater(t).stagePayload(ctx, dmg, filepath.Join(t.TempDir(), testBundle))
+	cancel()
+	<-polling
+
+	time.Sleep(time.Second) // Long enough for a mount hdiutil left unfinished to appear
+	c.False(imageAttached(t, dmg), "the disk image was left mounted")
 }
 
 // A disk image that is readable but does not hold what was expected must be refused, rather than producing an empty or

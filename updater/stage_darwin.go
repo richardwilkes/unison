@@ -38,7 +38,9 @@ func (u *Updater) stagePayload(ctx context.Context, archivePath, dstPath string)
 	if err != nil {
 		return errs.Wrap(err)
 	}
-	if err = attachDMG(ctx, archivePath, mountPoint); err != nil {
+	// Neither Cancel nor the update's deadline stops the attach: hdiutil stopped part-way leaves the attach to finish
+	// without it, mounting the image a moment later with nothing left to detach it. commandTimeout still bounds it.
+	if err = attachDMG(context.WithoutCancel(ctx), archivePath, mountPoint); err != nil {
 		return err
 	}
 	defer detachDMG(mountPoint)

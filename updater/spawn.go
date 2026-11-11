@@ -30,7 +30,8 @@ func spawnDetached(exePath string, args []string, logPath, workingDir string) (e
 	// being replaced is the sort of thing that makes a rename fail on Windows.
 	cmd.Dir = workingDir
 
-	devNull, err := os.Open(os.DevNull)
+	// Opened for writing too, since it also stands in for the output when there is no log.
+	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		return errs.Wrap(err)
 	}

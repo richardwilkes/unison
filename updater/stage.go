@@ -83,7 +83,7 @@ func (u *Updater) stage(ctx context.Context, p *plan, progress func(fraction flo
 	if progress != nil && p.Asset.Size > 0 {
 		reportProgress = func(read int64) { progress(float64(read) / float64(p.Asset.Size)) }
 	}
-	if err = download(ctx, u.cfg.HTTPClient, p.Asset, archivePath, reportProgress); err != nil {
+	if err = download(ctx, u.cfg.HTTPClient, p.Asset, u.cfg.GitHubToken, archivePath, reportProgress); err != nil {
 		return nil, err
 	}
 

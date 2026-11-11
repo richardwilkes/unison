@@ -99,10 +99,12 @@ func (u *Updater) Finish(statePath string) error {
 	t := u.targetInfo(s)
 	if err = swap(s.Target, s.Payload, s.Backup); err != nil {
 		errs.Log(err)
-		if relaunchErr := relaunch(&t, s.LogPath); relaunchErr != nil {
+		// Recorded first, as on success, so the restarted application finds the failure rather than a staged update.
+		err = abandon(s, statePath, reasonSwapFailed, err)
+		if relaunchErr := u.relaunchFn(&t, s.LogPath); relaunchErr != nil {
 			slog.Error("unable to restart after an update that could not be applied", "error", relaunchErr)
 		}
-		return abandon(s, statePath, reasonSwapFailed, err)
+		return err
 	}
 
 	s.Status = statusApplied
@@ -114,7 +116,7 @@ func (u *Updater) Finish(statePath string) error {
 		slog.Error("unable to record that the update was applied", "error", err)
 	}
 
-	if err = relaunch(&t, s.LogPath); err != nil {
+	if err = u.relaunchFn(&t, s.LogPath); err != nil {
 		// The new version is installed and verified; it just did not start. Rolling back would replace something known
 		// to work with something older for no gain, so record it and leave the user to open it themselves.
 		slog.Error("unable to start the updated application", "error", err)

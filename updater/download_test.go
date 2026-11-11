@@ -42,25 +42,49 @@ func serveBytes(t *testing.T, payload []byte) (*httptest.Server, Asset) {
 	}
 }
 
-// The happy path, including that progress is reported and ends at the full size.
+// The happy path, including that progress is reported and ends at the full size. With a token, the file is asked of
+// the GitHub API, which is how a private repository's file is fetched with one.
 func TestDownload(t *testing.T) {
 	c := check.New(t)
 	payload := []byte("a plausible archive of some length")
-	_, asset := serveBytes(t, payload)
-	dst := filepath.Join(t.TempDir(), "asset.tgz")
-
-	var last int64
-	var calls int
-	c.NoError(download(t.Context(), nil, asset, dst, func(read int64) {
-		calls++
-		last = read
+	_, public := serveBytes(t, payload)
+	const token = "secret"
+	private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api" || r.Header.Get("Authorization") != "Bearer "+token ||
+			r.Header.Get("Accept") != "application/octet-stream" {
+			http.NotFound(w, r)
+			return
+		}
+		if _, err := w.Write(payload); err != nil {
+			t.Error(err)
+		}
 	}))
+	t.Cleanup(private.Close)
+	privateAsset := public
+	privateAsset.URL = private.URL + "/browser"
+	privateAsset.apiURL = private.URL + "/api"
+	for _, one := range []struct {
+		name  string
+		token string
+		asset Asset
+	}{
+		{name: "a public repository", asset: public},
+		{name: "a private repository", asset: privateAsset, token: token},
+	} {
+		dst := filepath.Join(t.TempDir(), "asset.tgz")
+		var last int64
+		var calls int
+		c.NoError(download(t.Context(), nil, one.asset, one.token, dst, func(read int64) {
+			calls++
+			last = read
+		}), one.name)
 
-	got, err := os.ReadFile(dst)
-	c.NoError(err)
-	c.Equal(payload, got)
-	c.True(calls > 0, "progress must be reported")
-	c.Equal(int64(len(payload)), last, "progress must finish at the full size")
+		got, err := os.ReadFile(dst)
+		c.NoError(err, one.name)
+		c.Equal(payload, got, one.name)
+		c.True(calls > 0, "%s: progress must be reported", one.name)
+		c.Equal(int64(len(payload)), last, "%s: progress must finish at the full size", one.name)
+	}
 }
 
 // A body that is not what GitHub published must never reach the disk as if it were: one that fails the integrity check
@@ -80,7 +104,7 @@ func TestDownloadRejectsAWrongLength(t *testing.T) {
 		_, asset := serveBytes(t, payload)
 		mutate(&asset)
 		dst := filepath.Join(t.TempDir(), "asset.tgz")
-		c.HasError(download(t.Context(), nil, asset, dst, nil), name)
+		c.HasError(download(t.Context(), nil, asset, "", dst, nil), name)
 		c.False(exists(dst), "%s left a file behind", name)
 	}
 }
@@ -98,7 +122,7 @@ func TestDownloadRejectsAnErrorResponse(t *testing.T) {
 		}))
 		asset := Asset{Name: "asset.tgz", URL: srv.URL, SHA256: testDigest, Size: 17}
 		dst := filepath.Join(t.TempDir(), "asset.tgz")
-		err := download(t.Context(), srv.Client(), asset, dst, nil)
+		err := download(t.Context(), srv.Client(), asset, "", dst, nil)
 		srv.Close()
 		c.HasError(err, "status %d", code)
 		c.Contains(err.Error(), strconv.Itoa(code), "status %d", code)
@@ -132,7 +156,7 @@ func TestDownloadStopsWhenCanceled(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- download(ctx, srv.Client(), asset, dst, func(int64) { cancel() })
+		done <- download(ctx, srv.Client(), asset, "", dst, func(int64) { cancel() })
 	}()
 
 	select {
@@ -151,6 +175,6 @@ func TestDownloadRefusesAnExistingDestination(t *testing.T) {
 	_, asset := serveBytes(t, []byte("content"))
 	dst := filepath.Join(t.TempDir(), "asset.tgz")
 	write(t, dst, "already here")
-	c.HasError(download(t.Context(), nil, asset, dst, nil))
+	c.HasError(download(t.Context(), nil, asset, "", dst, nil))
 	c.Equal("already here", read(t, dst), "the existing file must be left alone")
 }

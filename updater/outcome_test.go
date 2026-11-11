@@ -15,9 +15,9 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 )
 
-// Only an update that left the user on the old version is worth interrupting them for. Success is silent, as is an
-// update that was staged and never applied, and one that was installed but then failed to restart: the user is already
-// running the new version.
+// Only an update that left the user on the old version is worth interrupting them for, including one that was staged
+// and never applied, since the application quit for it and never came back. Success is silent, as is an update that
+// was installed but then failed to restart: the user is already running the new version.
 func TestOutcomeWarningOnlyForAnUpdateThatWasNotApplied(t *testing.T) {
 	u := newTestUpdater(t)
 	for _, tc := range []struct {
@@ -28,7 +28,7 @@ func TestOutcomeWarningOnlyForAnUpdateThatWasNotApplied(t *testing.T) {
 		{name: "nothing to report"},
 		{name: "applied", out: &outcome{Applied: true}},
 		{name: "applied but not restarted", out: &outcome{Applied: true, Reason: reasonRelaunchFailed}},
-		{name: "staged and abandoned", out: &outcome{Reason: reasonAbandoned}},
+		{name: "staged and abandoned", out: &outcome{Reason: reasonAbandoned}, wantWarn: true},
 		{name: "the application never quit", out: &outcome{Reason: reasonPredecessorRunning}, wantWarn: true},
 		{name: "the swap failed", out: &outcome{Reason: reasonSwapFailed}, wantWarn: true},
 		{name: "the wrong version is running", out: &outcome{Reason: reasonVersionMismatch}, wantWarn: true},

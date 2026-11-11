@@ -32,7 +32,8 @@ const (
 
 // workDirPrefix names the staging directory. It is created inside the installation's directory, not in the system
 // temporary directory, so that moving the staged copy into place is a rename within one filesystem -- atomic and
-// instant -- rather than a copy across two. The leading dot keeps it out of ordinary directory listings.
+// instant -- rather than a copy across two. The leading dot keeps it out of ordinary directory listings on macOS and
+// Linux; Windows Explorer shows it.
 func (u *Updater) workDirPrefix() string {
 	return "." + u.cfg.CmdName + "-update-"
 }

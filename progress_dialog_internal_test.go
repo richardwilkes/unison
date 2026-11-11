@@ -10,11 +10,13 @@
 package unison
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/geom"
 )
 
 // backgroundHandshakeTimeout is a generous bound on the wait for the background goroutine, so that a broken hand-off
@@ -92,6 +94,133 @@ func TestProgressDialogCancelButton(t *testing.T) {
 		d.SetMessage("Installing the library…")
 		c.Equal("Canceling…", d.Message(), "a later phase must not replace the notice that the operation is stopping")
 	})
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestProgressDialogSetMessageRedrawsTheWholeMessage checks that a new message is painted at its full width without
+// waiting for something else to redraw the window, which nothing does once a determinate bar has stopped moving.
+func TestProgressDialogSetMessageRedrawsTheWholeMessage(t *testing.T) {
+	c := check.New(t)
+	screen := startHeadlessTest(t, HeadlessConfig{Width: 800, Height: 600})
+	var (
+		d *ProgressDialog
+		w *Window
+	)
+	screen.Do(func() {
+		var err error
+		d, err = NewProgressDialog("Updating…", "Verifying…", 1, nil)
+		c.NoError(err)
+		w = d.Window()
+		w.Show()
+	})
+	if errList := screen.Errors(); len(errList) != 0 || d == nil {
+		t.Fatalf("unable to create the dialog: %v", errList)
+	}
+	before := screen.CaptureWindow(w)
+	c.NotNil(before, "the dialog must have been drawn once shown")
+	var labelWidth, wanted float32
+	screen.Do(func() {
+		d.SetMessage("Preparing to install the update…")
+	})
+	after := screen.CaptureWindow(w)
+	screen.Do(func() {
+		defer w.Dispose()
+		labelWidth = d.label.FrameRect().Width
+		_, pref, _ := d.label.Sizes(geom.Size{})
+		wanted = pref.Width
+	})
+	c.True(before != nil && after != nil && !bytes.Equal(before.Pix, after.Pix), "the new message must be painted")
+	c.Equal(wanted, labelWidth, "the label must be wide enough for the new message")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestProgressDialogRefusesCloseRequests checks that a request to close the dialog, such as Alt+F4, cannot take it down
+// while the work runs, since RunProgressDialog would then wait for that work on the UI thread, and that the request
+// acts as Cancel when the dialog has that button.
+func TestProgressDialogRefusesCloseRequests(t *testing.T) {
+	for _, one := range []struct {
+		name       string
+		withCancel bool
+	}{
+		{name: "without Cancel"},
+		{name: "with Cancel", withCancel: true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			screen := startHeadlessTest(t, HeadlessConfig{Width: 800, Height: 600})
+			var (
+				d            *ProgressDialog
+				cancelCalled bool
+			)
+			screen.Do(func() {
+				var cancel func()
+				if one.withCancel {
+					cancel = func() { cancelCalled = true }
+				}
+				var err error
+				d, err = NewProgressDialog("Updating…", "Downloading…", 1, cancel)
+				c.NoError(err)
+			})
+			if errList := screen.Errors(); len(errList) != 0 || d == nil {
+				t.Fatalf("unable to create the dialog: %v", errList)
+			}
+			release := make(chan struct{})
+			finished := make(chan struct{})
+			var result string
+			screen.Post(func() {
+				defer close(finished)
+				result = RunProgressDialog(d, func() string {
+					<-release
+					return "done"
+				}, nil)
+			})
+			type state struct {
+				message      string
+				valid        bool
+				cancelCalled bool
+				canceled     bool
+			}
+			var got state
+			observed := make(chan struct{})
+			// Posted rather than run with Do, since a close request that ended the modal loop would leave the UI thread
+			// waiting for the work, and Do waiting for the UI thread.
+			screen.Post(func() {
+				defer close(observed)
+				d.Window().requestClose()
+				got = state{
+					message:      d.Message(),
+					valid:        d.Window().IsValid(),
+					cancelCalled: cancelCalled,
+					canceled:     d.Canceled(),
+				}
+			})
+			timedOut := false
+			select {
+			case <-observed:
+			case <-time.After(backgroundHandshakeTimeout):
+				timedOut = true
+			}
+			close(release)
+			if timedOut {
+				t.Fatal("timed out waiting for the close request to be handled")
+			}
+			select {
+			case <-finished:
+			case <-time.After(backgroundHandshakeTimeout):
+				t.Fatal("RunProgressDialog did not return once the work had finished")
+			}
+			c.Equal("done", result)
+			c.True(got.valid, "a close request must leave the dialog up while the work runs")
+			c.Equal(one.withCancel, got.cancelCalled, "a close request must act as Cancel when there is one")
+			c.Equal(one.withCancel, got.canceled)
+			if one.withCancel {
+				c.Equal("Canceling…", got.message)
+			} else {
+				c.Equal("Downloading…", got.message)
+			}
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+		})
+	}
 }
 
 func TestProgressDialogFractionReporterMovesTheBar(t *testing.T) {
@@ -107,11 +236,15 @@ func TestProgressDialogFractionReporterMovesTheBar(t *testing.T) {
 		c.NoError(err)
 		report = d.FractionReporter()
 	})
+	if errList := screen.Errors(); len(errList) != 0 || d == nil {
+		t.Fatalf("unable to create the dialog: %v", errList)
+	}
 	report(0.25) // From this goroutine, as a download would
 	screen.Do(func() {
 		defer d.Window().Dispose()
 		c.Equal(float32(50), d.ProgressBar().Current())
 	})
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
 // TestRunProgressDialogReturnsTheWorkResult checks that the dialog stays up until both the work and its follow-up have
@@ -119,17 +252,32 @@ func TestProgressDialogFractionReporterMovesTheBar(t *testing.T) {
 func TestRunProgressDialogReturnsTheWorkResult(t *testing.T) {
 	c := check.New(t)
 	screen := startHeadlessTest(t, HeadlessConfig{Width: 800, Height: 600})
-	screen.Do(func() {
+	var (
+		order []string
+		got   string
+		valid bool
+	)
+	finished := make(chan struct{})
+	// Posted rather than run with Do, since RunProgressDialog runs a modal loop, and Do would never return if nothing
+	// ended it.
+	screen.Post(func() {
+		defer close(finished)
 		d, err := NewProgressDialog("Updating…", "Downloading…", 0, nil)
 		c.NoError(err)
-		var order []string
-		got := RunProgressDialog(d, func() string {
+		got = RunProgressDialog(d, func() string {
 			order = append(order, "work")
 			return "done"
 		}, func() { order = append(order, "after") })
-		// Both ran on the one background goroutine, which finished before the modal loop was released.
-		c.Equal([]string{"work", "after"}, order)
-		c.Equal("done", got)
-		c.False(d.Window().IsValid(), "the dialog is disposed of once its modal loop ends")
+		valid = d.Window().IsValid()
 	})
+	select {
+	case <-finished:
+	case <-time.After(backgroundHandshakeTimeout):
+		t.Fatal("RunProgressDialog did not return once the work had finished")
+	}
+	// Both ran on the one background goroutine, which finished before the modal loop was released.
+	c.Equal([]string{"work", "after"}, order)
+	c.Equal("done", got)
+	c.False(valid, "the dialog is disposed of once its modal loop ends")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }

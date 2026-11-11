@@ -31,6 +31,9 @@ const (
 	kindBundle
 )
 
+// backupClock supplies the timestamp in a backup's name. A variable only so tests can fix it.
+var backupClock = time.Now
+
 // target describes what an update replaces and what to run afterwards.
 type target struct {
 	// Path is what gets swapped: the .app directory on macOS, the executable elsewhere.
@@ -99,9 +102,10 @@ func (t *target) backupPath(unique string) string {
 
 // freeBackupPath returns a backup path that nothing currently occupies. The timestamp alone makes a collision all but
 // impossible, but the swap renames the installation onto this path, which on most systems silently destroys whatever is
-// there -- possibly the user's only other copy of the application.
+// there -- possibly the user's only other copy of the application. The sweep ages the backup by this timestamp; see
+// displacedAt.
 func (t *target) freeBackupPath() string {
-	base := strconv.FormatInt(time.Now().UnixNano(), 36)
+	base := strconv.FormatInt(backupClock().UnixNano(), 36)
 	path := t.backupPath(base)
 	for i := 1; ; i++ {
 		if _, err := os.Lstat(path); err != nil {

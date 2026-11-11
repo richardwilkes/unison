@@ -10,10 +10,15 @@
 package updater
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/check"
+	"github.com/richardwilkes/toolbox/v2/xos"
 )
 
 // The helper is recognized in every form the flag package accepts, so an application that also parses its own command
@@ -68,5 +73,87 @@ func TestFinishRefusesWithoutAStagedUpdate(t *testing.T) {
 		c.NoError(err)
 		c.Equal(&state{Schema: stateSchema, Status: st, Reason: reasonRelaunchFailed}, got,
 			"refusing a %s state must leave it as it was", st)
+	}
+}
+
+// The outcome is recorded before the application is restarted, whether the swap worked or not, so the restarted
+// application reports it rather than finding an update still staged, which it would discard without a word.
+func TestFinishRecordsTheOutcomeBeforeRestarting(t *testing.T) {
+	for _, one := range []struct {
+		name      string
+		want      status
+		swapFails bool
+	}{
+		{name: "the swap succeeds", want: statusApplied},
+		{name: "the swap fails", want: statusFailed, swapFails: true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			dir := t.TempDir()
+			workDir := filepath.Join(dir, ".example-update-1")
+			s := &state{
+				Status:    statusStaged,
+				ToVersion: testNextVersion,
+				Target:    filepath.Join(dir, testCmd),
+				Payload:   filepath.Join(workDir, testCmd),
+				Backup:    (&target{Path: filepath.Join(dir, testCmd), Parent: dir}).freeBackupPath(),
+				WorkDir:   workDir,
+			}
+			write(t, s.Target, "old")
+			if !one.swapFails {
+				write(t, s.Payload, "new")
+			}
+			statePath := filepath.Join(dir, stateName)
+			c.NoError(s.save(statePath))
+			u := newTestUpdater(t)
+			var found []status
+			u.relaunchFn = func(*target, string) error {
+				saved, err := loadState(statePath)
+				c.NoError(err)
+				if saved != nil {
+					found = append(found, saved.Status)
+				}
+				return nil
+			}
+			c.Equal(one.swapFails, u.Finish(statePath) != nil)
+			c.Equal([]status{one.want}, found, "what the restarted application finds")
+		})
+	}
+}
+
+// The restarted application's output does not go to the update's log: that lives in the staging directory, which the
+// application removes once it has started, and on Windows the handle it would hold for as long as it ran prevents that.
+func TestFinishRestartsWithoutTheUpdateLog(t *testing.T) {
+	if runtime.GOOS == xos.WindowsOS {
+		t.Skip("the stand-in for the application is a shell script")
+	}
+	c := check.New(t)
+	dir := t.TempDir()
+	workDir := filepath.Join(dir, ".example-update-1")
+	started := filepath.Join(dir, "started")
+	s := &state{
+		Status:  statusStaged,
+		Target:  filepath.Join(dir, testCmd),
+		Payload: filepath.Join(workDir, testCmd),
+		Backup:  (&target{Path: filepath.Join(dir, testCmd), Parent: dir}).freeBackupPath(),
+		WorkDir: workDir,
+		LogPath: filepath.Join(workDir, logName),
+	}
+	write(t, s.Target, "old")
+	write(t, s.Payload, "#!/bin/sh\necho output\necho output >&2\ntouch '"+started+"'\n")
+	c.NoError(os.Chmod(s.Payload, executableModePerm)) //nolint:gosec // The stand-in application has to run
+	statePath := filepath.Join(dir, stateName)
+	c.NoError(s.save(statePath))
+
+	c.NoError(newTestUpdater(t).Finish(statePath))
+
+	for deadline := time.Now().Add(10 * time.Second); !exists(started); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the updated application was not started")
+		}
+	}
+	if exists(s.LogPath) {
+		c.False(strings.Contains(read(t, s.LogPath), "output"),
+			"the restarted application must not write to the update's log")
 	}
 }

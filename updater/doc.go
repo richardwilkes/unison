@@ -12,10 +12,11 @@
 //
 // An application makes one Updater, from a Config that describes it, and wires it up in four places:
 //
-//	var appUpdater = updater.New(&updater.Config{GitHubOwner: "owner", GitHubRepo: "repo"})
+//	var appUpdater *updater.Updater
 //
 //	func main() {
 //		// Set xos.AppName, xos.AppCmdName, xos.AppVersion and xos.AppIdentifier before this, if not set by the linker.
+//		appUpdater = updater.New(&updater.Config{GitHubOwner: "owner", GitHubRepo: "repo"})
 //		appUpdater.FinishIfRequested(os.Args[1:])
 //		unison.Start(unison.StartupFinishedCallback(func() {
 //			appUpdater.ReportOutcome()

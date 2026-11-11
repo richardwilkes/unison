@@ -30,16 +30,18 @@ import (
 // authenticity. On macOS the code signature check that follows establishes the latter; elsewhere the trust is in GitHub
 // and the transport.
 //
+// token, when not empty, is presented to the GitHub API; see openAsset.
+//
 // progress, when not nil, is called with the running byte count. It is called often, so it must be cheap and must not
 // block; throttling and marshaling to a UI thread are the caller's business.
 //
 // dstPath must not already exist. Once created, it is removed on any failure, including cancellation, so a failed
 // attempt cannot leave a partial file for a later step to mistake for a complete one.
-func download(ctx context.Context, client *http.Client, asset Asset, dstPath string, progress func(read int64)) (err error) {
+func download(ctx context.Context, client *http.Client, asset Asset, token, dstPath string, progress func(read int64)) (err error) {
 	if asset.SHA256 == "" {
 		return errs.New("refusing to download " + asset.Name + " without a checksum")
 	}
-	body, err := xhttp.StreamData(ctx, client, asset.URL)
+	body, err := openAsset(ctx, client, asset, token)
 	if err != nil {
 		return errs.NewWithCause("unable to download "+asset.Name, err)
 	}
@@ -73,6 +75,34 @@ func download(ctx context.Context, client *http.Client, asset Asset, dstPath str
 		return errs.New(asset.Name + " failed its integrity check")
 	}
 	return nil
+}
+
+// openAsset starts the transfer of the asset. With a token, the file is asked of the GitHub API, the documented way to
+// fetch a private repository's file with one. The API sends the file or redirects to another host, to which the client
+// does not forward the token.
+func openAsset(ctx context.Context, client *http.Client, asset Asset, token string) (io.ReadCloser, error) {
+	if token == "" || asset.apiURL == "" {
+		return xhttp.StreamData(ctx, client, asset.URL)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.apiURL, http.NoBody)
+	if err != nil {
+		return nil, errs.NewWithCause(asset.apiURL, err)
+	}
+	// Without this, the API describes the file rather than sending it.
+	req.Header.Set("Accept", "application/octet-stream")
+	req.Header.Set("Authorization", "Bearer "+token)
+	if client == nil {
+		client = http.DefaultClient
+	}
+	rsp, err := client.Do(req)
+	if err != nil {
+		return nil, errs.NewWithCause(asset.apiURL, err)
+	}
+	if rsp.StatusCode < 200 || rsp.StatusCode > 299 {
+		xio.DiscardAndCloseIgnoringErrors(rsp.Body)
+		return nil, errs.Newf("%s: received status %d (%s)", asset.apiURL, rsp.StatusCode, rsp.Status)
+	}
+	return rsp.Body, nil
 }
 
 type progressWriter struct {

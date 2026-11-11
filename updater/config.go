@@ -26,7 +26,7 @@ type Config struct {
 	Icon unison.Drawable
 	// IconInk is the ink Icon is drawn with.
 	IconInk unison.Ink
-	// SkipRelease, when set, is called with each release newer than Version; returning true leaves that release out.
+	// SkipRelease, when set, is called with each release at or above Version; returning true leaves that release out.
 	SkipRelease func(version, notes string) bool
 	// FormatVersion, when set, turns a version into the form shown to the user. Asset names and version comparisons
 	// always use the raw version.
@@ -81,6 +81,7 @@ type Updater struct {
 	planFn         func(toVersion string, assets []Asset) (*plan, error)
 	stageFn        func(ctx context.Context, p *plan, progress func(fraction float64), phaseFn func(phase)) (*staged, error)
 	spawnFn        func(s *state, statePath string) error
+	relaunchFn     func(t *target, logPath string) error
 	quitFn         func()
 	atExitFn       func(f func()) int
 	cancelAtExitFn func(id int)
@@ -95,10 +96,11 @@ type Updater struct {
 }
 
 // New returns an Updater for the application cfg describes. cfg is copied, with the defaults its fields describe filled
-// in; a nil cfg takes every default.
+// in; a nil cfg takes every default. The defaults are read from xos when New is called, so set its values first.
 func New(cfg *Config) *Updater {
 	u := &Updater{
 		invokeFn:       unison.InvokeTask,
+		relaunchFn:     relaunch,
 		quitFn:         unison.AttemptQuit,
 		atExitFn:       xos.RunAtExit,
 		cancelAtExitFn: xos.CancelRunAtExit,
