@@ -41,6 +41,7 @@ func TestStateRoundTrip(t *testing.T) {
 		ParentPID:   4242,
 		ParentStart: "1793050000000000000",
 		HelperPID:   4343,
+		HelperStart: "1793050001000000000",
 		Bundle:      true,
 	}
 	c.NoError(want.save(path))

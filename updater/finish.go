@@ -24,9 +24,10 @@ import (
 const FinishFlag = "finish-update"
 
 // spawnFinisher starts the helper that applies a staged update once this process has exited, and records its process
-// in the state, so that a copy of the application started while the helper is still at work does not take the update
-// for abandoned. A helper it cannot record is stopped again, and an error returned. It is called from the quitting path,
-// so it must do nothing more; anything slow here delays the user's quit for no reason.
+// and start in the state, so that a copy of the application started while the helper is still at work does not take
+// the update for abandoned, nor a process later given its identifier for the helper. A helper it cannot record is
+// stopped again, and an error returned. It is called from the quitting path, so it must do nothing more; anything slow
+// here delays the user's quit for no reason.
 func (u *Updater) spawnFinisher(s *state, statePath string) error {
 	if s == nil || s.Helper == "" {
 		return errs.New("there is no prepared update to apply")
@@ -40,6 +41,7 @@ func (u *Updater) spawnFinisher(s *state, statePath string) error {
 	// first. With a handoff port, that relies on the application holding the port until it exits, as Config.HandoffPort
 	// requires.
 	s.HelperPID = pid
+	s.HelperStart = processStartID(pid)
 	if err = s.save(statePath); err != nil {
 		// Unrecorded, the helper could have its update taken for abandoned and discarded under it by a copy started
 		// during its wait, so it is stopped. It is still waiting for this process to exit, so it has touched nothing.

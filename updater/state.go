@@ -76,6 +76,7 @@ type state struct {
 	Helper      string `json:"helper,omitzero"`
 	LogPath     string `json:"log_path,omitzero"`
 	ParentStart string `json:"parent_start,omitzero"`
+	HelperStart string `json:"helper_start,omitzero"`
 	Schema      int    `json:"schema"`
 	HandoffPort int    `json:"handoff_port,omitzero"`
 	ParentPID   int    `json:"parent_pid,omitzero"`

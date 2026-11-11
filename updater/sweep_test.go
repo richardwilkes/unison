@@ -154,10 +154,10 @@ func TestSettleOnAFailedUpdateLeavesTheInstallationAlone(t *testing.T) {
 // without touching the installation, but only once neither the application that prepared it nor the helper it started
 // can still act on it: until then, that copy may yet quit and have its helper apply the update, or the helper may still
 // be waiting to. Once the application has recorded its helper, which it does on its way out, only the helper can act on
-// it, and only until helperRunLimit has passed, after which a process with its identifier is one that has since been
-// given it. This process having the identifier that application had means only that the identifier was reused. Before
-// that, the application is told from a process given its identifier later by the start the state records, which a
-// change to the clock since cannot disturb, and a state that records none counts any process with the identifier.
+// it. This process having the identifier that application had means only that the identifier was reused. Either is told
+// from a process given its identifier later by the start the state records, which a change to the clock since cannot
+// disturb. A state that records none counts any process with the application's identifier, and one with the helper's
+// only until helperRunLimit has passed.
 func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 	parentStart := processStartID(os.Getppid())
 	if parentStart == "" {
@@ -166,6 +166,7 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 	for _, one := range []struct {
 		name        string
 		parentStart string
+		helperStart string
 		parentPID   int
 		helperPID   int
 		age         time.Duration
@@ -204,9 +205,28 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 			parentPID: os.Getppid(),
 			helperPID: exitedPID(t),
 		},
-		{name: "its helper is still running", parentPID: exitedPID(t), helperPID: os.Getppid(), wantKept: true},
 		{
-			name:      "another process has its helper's identifier",
+			name:        "its helper is still running and the clock has been stepped",
+			parentPID:   exitedPID(t),
+			helperPID:   os.Getppid(),
+			helperStart: parentStart,
+			age:         10 * 365 * 24 * time.Hour,
+			wantKept:    true,
+		},
+		{
+			name:        "a process that started later has its helper's identifier",
+			parentPID:   exitedPID(t),
+			helperPID:   os.Getppid(),
+			helperStart: "another process",
+		},
+		{
+			name:      "its helper is still running and its start was not recorded",
+			parentPID: exitedPID(t),
+			helperPID: os.Getppid(),
+			wantKept:  true,
+		},
+		{
+			name:      "another process has its helper's identifier and its start was not recorded",
 			parentPID: exitedPID(t),
 			helperPID: os.Getppid(),
 			age:       helperRunLimit + time.Minute,
@@ -221,6 +241,7 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 			s.ParentPID = one.parentPID
 			s.ParentStart = one.parentStart
 			s.HelperPID = one.helperPID
+			s.HelperStart = one.helperStart
 			c.NoError(s.save(u.stateFile))
 			if one.age != 0 {
 				written := time.Now().Add(-one.age)

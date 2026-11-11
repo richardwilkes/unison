@@ -55,7 +55,8 @@ func (u *Updater) applyPending() {
 
 // install prepares the update described by p and, once it is verified and ready, asks the application to quit so that
 // it can be applied. The work happens in a staging directory, so canceling, failing or a refused quit leaves the
-// installation untouched.
+// installation untouched. It prepares nothing while another copy of the application has an update waiting, since every
+// copy shares the state file, and the sweep before staging could take that update's staging for abandoned.
 func (u *Updater) install(p *plan) {
 	u.pending.lock.Lock()
 	if u.pending.applying {
@@ -70,13 +71,20 @@ func (u *Updater) install(p *plan) {
 		u.pending.lock.Unlock()
 	}()
 
+	statePath := u.statePath()
+	if other, err := loadState(statePath); err == nil && other != nil && other.Status == statusStaged &&
+		stagingInUse(other, statePath) {
+		u.warnFn(i18n.Text("The update was not installed"),
+			xstrings.Wrap("", i18n.Text("Another copy of %s is already installing an update.", u.cfg.AppName), 100))
+		return
+	}
+
 	prepared, ok := u.stageWithProgress(p)
 	if !ok {
 		return
 	}
 
 	s := u.newState(p, prepared)
-	statePath := u.statePath()
 	if err := s.save(statePath); err != nil {
 		u.reportError(i18n.Text("Unable to prepare the update"), err)
 		discard(prepared)

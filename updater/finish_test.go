@@ -57,7 +57,8 @@ func TestFinishArgRecognizesTheHelperFlag(t *testing.T) {
 }
 
 // The helper is recorded before the application exits, so a copy started while the helper is still at work does not
-// take the update for abandoned and discard it.
+// take the update for abandoned and discard it. Its start is recorded too, to tell it from a process later given its
+// identifier.
 func TestSpawnFinisherRecordsTheHelper(t *testing.T) {
 	c := check.New(t)
 	exe, err := os.Executable()
@@ -74,6 +75,11 @@ func TestSpawnFinisherRecordsTheHelper(t *testing.T) {
 	c.NotNil(saved)
 	if saved != nil {
 		c.True(saved.HelperPID > 0 && saved.HelperPID != os.Getpid(), "the helper's process must be recorded")
+		// The stand-in may exit before its start is read. Outside Windows it stays until reaped, which nothing here
+		// does, but on Windows, with no handle left open on it, it is gone, and its start with it.
+		if runtime.GOOS != xos.WindowsOS {
+			c.NotEqual("", saved.HelperStart, "the helper's start must be recorded")
+		}
 	}
 }
 

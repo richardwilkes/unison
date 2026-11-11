@@ -26,11 +26,11 @@ const (
 	// staleAge is how old a leftover has to be before the startup sweep will remove it on sight. Anything younger might
 	// belong to an update being applied right now by a helper this instance knows nothing about.
 	staleAge = 7 * 24 * time.Hour
-	// abandonedStagingAge is the shorter bound used for staging directories just before a new update is prepared. By
-	// then any helper still working would have had to survive since before the application started, and the wait it
-	// performs gives up long before this, so anything older is from an attempt that did not clean up after itself.
-	// Without it, each failed attempt would leave a copy of the application in the user's applications folder for a
-	// week.
+	// abandonedStagingAge is the shorter bound used for staging directories just before a new update is prepared. That
+	// happens only when no other copy of the application, nor its helper, may still apply an update it staged (see
+	// install), so the only staging still in use is one being prepared, which takes at most stageTimeout. Anything
+	// older is from an attempt that did not clean up after itself. Without it, each failed attempt would leave a copy
+	// of the application in the user's applications folder for a week.
 	abandonedStagingAge = time.Hour
 	// helperRunLimit bounds how long after being recorded the helper can still be at work without having recorded how
 	// the update ended: its wait gives up after waitTimeout, and the swap that follows takes seconds.
@@ -170,26 +170,29 @@ func (u *Updater) settle(s *state) *outcome {
 }
 
 // stagingInUse reports whether the application that prepared the update s describes, or the helper it started to apply
-// it, may still act on it. A process with this one's identifier is neither, since this one has only just started and
-// has prepared nothing, and a process with the identifier of either may be one that has since been given it.
+// it, may still act on it. A process with this one's identifier is neither, since this one calls it only while it has
+// no update of its own waiting, and a process with the identifier of either may be one that has since been given it.
 //
 // Until the helper is recorded, which the application does on its way out, the application counts for as long as it
-// runs, which may be indefinitely while its quit waits on the user, unless the process with its identifier is not the
-// one whose start the state records. Once the helper is recorded, only the helper counts, and only within
-// helperRunLimit of the state at statePath being written.
+// runs, which may be indefinitely while its quit waits on the user. Once the helper is recorded, only the helper
+// counts. Either counts only while the process with its identifier is the one whose start the state records. Where
+// that cannot be compared, as for a state written by an earlier build, the application counts regardless, and the
+// helper only within helperRunLimit of the state at statePath being written.
 func stagingInUse(s *state, statePath string) bool {
-	pid := s.ParentPID
+	pid, start := s.ParentPID, s.ParentStart
 	if s.HelperPID > 0 {
-		if fi, err := os.Stat(statePath); err == nil && time.Since(fi.ModTime()) >= helperRunLimit {
-			return false
-		}
-		pid = s.HelperPID
+		pid, start = s.HelperPID, s.HelperStart
 	}
 	if pid <= 0 || pid == os.Getpid() || !processIsAlive(pid) {
 		return false
 	}
-	if s.HelperPID <= 0 && s.ParentStart != "" {
-		if started := processStartID(pid); started != "" && started != s.ParentStart {
+	if start != "" {
+		if started := processStartID(pid); started != "" {
+			return started == start
+		}
+	}
+	if s.HelperPID > 0 {
+		if fi, err := os.Stat(statePath); err == nil && time.Since(fi.ModTime()) >= helperRunLimit {
 			return false
 		}
 	}

@@ -150,7 +150,7 @@ func closeProgressDialog() {
 // actually exiting, and finds the staged update recorded on disk when it is. A quit that is refused throws the prepared
 // update away, tells the user, and leaves nothing for a later exit to apply. A failure to prepare the update is
 // reported and never asks the application to quit, and a cancel does the same without the report, however late it
-// comes.
+// comes. Nothing is prepared while another copy has an update waiting, since every copy shares the state file.
 func TestInstall(t *testing.T) {
 	screen := startHeadless(t)
 
@@ -210,6 +210,32 @@ func TestInstall(t *testing.T) {
 		c.Equal(1, len(f.errors), "running out of time is a failure, which must be reported")
 		c.Equal(0, f.quits, "the application must not be asked to quit")
 		c.False(exists(f.u.stateFile))
+	})
+
+	t.Run("another copy has an update waiting", func(t *testing.T) {
+		c := check.New(t)
+		f := newInstallFixture(t)
+		other := &state{
+			Schema:      stateSchema,
+			Status:      statusStaged,
+			Target:      f.plan.Target.Path,
+			WorkDir:     filepath.Join(f.plan.Target.Parent, ".example-update-other"),
+			ParentPID:   os.Getppid(),
+			ParentStart: processStartID(os.Getppid()),
+		}
+		c.NoError(other.save(f.u.stateFile))
+		staged := false
+		f.onStage = func(context.Context) error {
+			staged = true
+			return nil
+		}
+		f.install(t, screen)
+		c.False(staged, "nothing may be prepared while another copy's update is waiting")
+		c.Equal(0, f.quits, "the application must not be asked to quit")
+		c.Equal(1, len(f.warnings), "the user must be told the update was not installed")
+		got, err := loadState(f.u.stateFile)
+		c.NoError(err)
+		c.Equal(other, got, "the other copy's record of its update must be kept")
 	})
 
 	// Cancel lands after the last step that watches for it, as it can while the helper is copied or before the dialog
