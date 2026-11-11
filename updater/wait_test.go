@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 
@@ -43,6 +44,23 @@ func holdPort(t *testing.T) (listener net.Listener, port int) {
 	return listener, addr.Port
 }
 
+// retakePort takes a port a wait is probing, retrying while a probe briefly holds it, and returns the listener holding
+// it. The listener is closed when the test ends, if the test has not closed it already.
+func retakePort(t *testing.T, port int) net.Listener {
+	t.Helper()
+	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		listener, err := net.Listen("tcp4", address)
+		if err == nil {
+			t.Cleanup(func() { xio.CloseIgnoringErrors(listener) })
+			return listener
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+	}
+}
+
 // exitedPID returns the identifier of a process that has certainly exited, and been reaped. The -h makes the
 // re-executed test binary print its usage and exit before running anything.
 func exitedPID(t *testing.T) int {
@@ -64,35 +82,56 @@ func TestWaitForPredecessorReturnsWhenThePortIsFree(t *testing.T) {
 
 	started := time.Now()
 	c.NoError(waitForPredecessor(os.Getpid(), port, testApp))
-	c.True(time.Since(started) < 5*time.Second, "a free port should be noticed immediately")
+	c.True(time.Since(started) < 5*time.Second, "a port that stays free should end the wait promptly")
 }
 
 // The property the whole wait exists for. Relaunching while the port is still held would make the new instance hand its
 // arguments to the old one and exit, so the update would look as though it had done nothing at all. That holds whoever
-// has the port: a copy the user started during the wait can take it the moment the application exits, and the
-// installation must not be replaced under that copy. That case is watched for longer, allowing for a check that waits
-// out the moment a socket outlives its process.
+// has the port: a copy the user started during the wait can take it the moment the application exits, or moments after
+// the wait first finds it free, and the installation must not be replaced under that copy. Those cases hold the port for
+// longer than portQuietPeriod, so that a wait that ends on a timer while the port is held is caught.
 func TestWaitForPredecessorWaitsUntilThePortIsReleased(t *testing.T) {
 	testenv.SkipTimingSensitive(t)
 	for _, one := range []struct {
 		name string
 		pid  int
+		// free is how long the port is left free after the wait starts before something takes it. Zero holds it from the
+		// start.
+		free time.Duration
 		held time.Duration
 	}{
 		{name: "by the application", pid: os.Getpid(), held: 500 * time.Millisecond},
-		{name: "by another copy after the application has exited", pid: exitedPID(t), held: 3 * time.Second},
+		{
+			name: "by another copy after the application has exited",
+			pid:  exitedPID(t),
+			held: portQuietPeriod + time.Second,
+		},
+		{
+			name: "by another copy that takes it just after the wait finds it free",
+			pid:  exitedPID(t),
+			free: 200 * time.Millisecond,
+			held: portQuietPeriod + time.Second,
+		},
 	} {
 		t.Run(one.name, func(t *testing.T) {
 			c := check.New(t)
 			listener, port := holdPort(t)
+			if one.free > 0 {
+				xio.CloseIgnoringErrors(listener)
+			}
 
 			done := make(chan error, 1)
 			go func() { done <- waitForPredecessor(one.pid, port, testApp) }()
 
+			if one.free > 0 {
+				time.Sleep(one.free)
+				listener = retakePort(t, port)
+			}
+
 			// The wait must still be in progress while the port is held.
 			select {
 			case err := <-done:
-				t.Fatalf("the wait finished while the port was still held: %v", err)
+				t.Fatalf("the wait finished although the port is held: %v", err)
 			case <-time.After(one.held):
 			}
 

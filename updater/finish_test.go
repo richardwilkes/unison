@@ -77,6 +77,37 @@ func TestSpawnFinisherRecordsTheHelper(t *testing.T) {
 	}
 }
 
+// A helper that cannot be recorded is stopped: unrecorded, a copy started during its wait would take its update for
+// abandoned and discard it under it. It is still waiting for this process to exit, so stopping it is safe.
+func TestSpawnFinisherStopsAHelperItCannotRecord(t *testing.T) {
+	if runtime.GOOS == xos.WindowsOS {
+		t.Skip("the stand-in for the helper is a shell script")
+	}
+	c := check.New(t)
+	dir := t.TempDir()
+	helper := filepath.Join(dir, helperName)
+	write(t, helper, "#!/bin/sh\nexec sleep 5\n")
+	c.NoError(os.Chmod(helper, executableModePerm)) //nolint:gosec // The stand-in helper has to run
+	notADir := filepath.Join(dir, "file")
+	write(t, notADir, "")
+	s := &state{Status: statusStaged, Helper: helper, ParentPID: os.Getpid()}
+
+	c.HasError(newTestUpdater(t).spawnFinisher(s, filepath.Join(notADir, stateName)))
+
+	c.True(s.HelperPID > 0, "the helper must have been started")
+	if s.HelperPID > 0 {
+		proc, err := os.FindProcess(s.HelperPID)
+		c.NoError(err)
+		if err == nil {
+			ps, waitErr := proc.Wait()
+			c.NoError(waitErr)
+			if waitErr == nil {
+				c.False(ps.Exited(), "the helper must be stopped rather than left to run to its end: %s", ps)
+			}
+		}
+	}
+}
+
 // The helper only ever applies an update the application staged. A missing state, or one that has already been applied
 // or has failed, is refused without being touched, so a stray or repeated helper cannot rewrite what the newly
 // installed application will report.

@@ -42,8 +42,8 @@ func (u *Updater) outcomeWarning(out *outcome) (primary, detail string, ok bool)
 func (u *Updater) outcomeMessage(r reason) string {
 	switch r {
 	case reasonPredecessorRunning:
-		return i18n.Text("The previous copy of %s did not finish quitting, so nothing was changed. Try the update again.",
-			u.cfg.AppName)
+		return i18n.Text("A copy of %s was still running when the update was to be installed, so nothing was changed. Try the update again, and wait for %s to restart on its own.",
+			u.cfg.AppName, u.cfg.AppName)
 	case reasonSwapFailed:
 		return i18n.Text("The update could not be installed, so the previous version was kept. Downloading it from the %s web site and installing it by hand will work.",
 			u.cfg.AppName)

@@ -23,9 +23,13 @@ const (
 	// abandoning the update with nothing touched, so a generous bound costs only a delayed update, while too short a
 	// one abandons updates whenever quitting takes a while.
 	waitTimeout = 90 * time.Second
-	// waitPollInterval is how often the port or process is checked. The wait is normally over within a second or two of
+	// waitPollInterval is how often the port or process is checked. The wait is normally over within a few seconds of
 	// the application exiting, so this is short enough to be imperceptible.
 	waitPollInterval = 50 * time.Millisecond
+	// portQuietPeriod is how long the port must stay free before the wait ends. A copy of the application started just
+	// before the port was released may not have bound it yet, and a handoff that failed to reach the application retries
+	// the bind within a second or two.
+	portQuietPeriod = 2 * time.Second
 )
 
 // waitForPredecessor blocks until the application that staged this update has exited.
@@ -38,7 +42,8 @@ const (
 //
 // The port is waited on even after the application has exited, since a copy the user started meanwhile can take it the
 // moment it is released. The installation must not be replaced under that copy, and the replacement could not become
-// the primary instance while it runs anyway.
+// the primary instance while it runs anyway. Such a copy may still be on its way to binding the port when it is first
+// found free, so the wait ends only once it has stayed free for portQuietPeriod.
 //
 // The listener is closed as soon as it is obtained rather than held through the swap. Holding it would make any copy of
 // the application the user launches meanwhile connect to the helper and stall on a handoff that will never be answered.
@@ -52,11 +57,18 @@ func waitForPredecessor(pid, port int, appName string) error {
 	}
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	deadline := time.Now().Add(waitTimeout)
+	var freeSince time.Time
 	for time.Now().Before(deadline) {
 		listener, err := net.Listen("tcp4", address)
-		if err == nil {
+		if err != nil {
+			freeSince = time.Time{}
+		} else {
 			xio.CloseIgnoringErrors(listener)
-			return nil
+			if freeSince.IsZero() {
+				freeSince = time.Now()
+			} else if time.Since(freeSince) >= portQuietPeriod {
+				return nil
+			}
 		}
 		time.Sleep(waitPollInterval)
 	}

@@ -25,8 +25,8 @@ const FinishFlag = "finish-update"
 
 // spawnFinisher starts the helper that applies a staged update once this process has exited, and records its process
 // in the state, so that a copy of the application started while the helper is still at work does not take the update
-// for abandoned. It is called from the quitting path, so it must do nothing more; anything slow here delays the user's
-// quit for no reason.
+// for abandoned. A helper it cannot record is stopped again, and an error returned. It is called from the quitting path,
+// so it must do nothing more; anything slow here delays the user's quit for no reason.
 func (u *Updater) spawnFinisher(s *state, statePath string) error {
 	if s == nil || s.Helper == "" {
 		return errs.New("there is no prepared update to apply")
@@ -41,7 +41,14 @@ func (u *Updater) spawnFinisher(s *state, statePath string) error {
 	// requires.
 	s.HelperPID = pid
 	if err = s.save(statePath); err != nil {
-		errs.Log(errs.NewWithCause("unable to record the update helper", err))
+		// Unrecorded, the helper could have its update taken for abandoned and discarded under it by a copy started
+		// during its wait, so it is stopped. It is still waiting for this process to exit, so it has touched nothing.
+		if proc, findErr := os.FindProcess(pid); findErr == nil {
+			if killErr := proc.Kill(); killErr != nil {
+				errs.Log(errs.NewWithCause("unable to stop the update helper", killErr), "pid", pid)
+			}
+		}
+		return errs.NewWithCause("unable to record the update helper", err)
 	}
 	return nil
 }

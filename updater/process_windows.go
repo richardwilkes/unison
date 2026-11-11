@@ -11,6 +11,7 @@ package updater
 
 import (
 	"log/slog"
+	"time"
 
 	"golang.org/x/sys/windows"
 )
@@ -38,4 +39,22 @@ func processIsAlive(pid int) bool {
 		return true
 	}
 	return event == uint32(windows.WAIT_TIMEOUT)
+}
+
+// processStartTime returns when the process started, and whether that could be established.
+func processStartTime(pid int) (time.Time, bool) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return time.Time{}, false
+	}
+	defer func() {
+		if closeErr := windows.CloseHandle(handle); closeErr != nil {
+			slog.Warn("unable to close a process handle", "error", closeErr)
+		}
+	}()
+	var created, exited, kernel, user windows.Filetime
+	if err = windows.GetProcessTimes(handle, &created, &exited, &kernel, &user); err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(0, created.Nanoseconds()), true
 }

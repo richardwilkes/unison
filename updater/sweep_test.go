@@ -168,6 +168,11 @@ func TestReportAndSweepDiscardsOnlyAnAbandonedStaging(t *testing.T) {
 		{name: "no application was recorded"},
 		{name: "this process has the application's identifier", parentPID: os.Getpid()},
 		{name: "the application that prepared it is still running", parentPID: os.Getppid(), wantKept: true},
+		{
+			name:      "a process that started later has the application's identifier",
+			parentPID: os.Getppid(),
+			age:       10 * 365 * 24 * time.Hour,
+		},
 		{name: "its helper has exited", parentPID: exitedPID(t), helperPID: exitedPID(t)},
 		{
 			name:      "its helper has exited and another process has the application's identifier",
