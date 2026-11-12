@@ -11,7 +11,6 @@ package cocoa
 
 import (
 	"testing"
-	"time"
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -34,9 +33,9 @@ func TestMenuStackMonitor(t *testing.T) {
 				reported = append(reported, w)
 			}
 		}
-		pump := func(done func() bool) {
+		pump := func() {
 			recording = false
-			pumpMainRunLoop(done)
+			runQueuedPerforms()
 			recording = true
 		}
 		InstallMenuStackMonitor(record)
@@ -62,7 +61,7 @@ func TestMenuStackMonitor(t *testing.T) {
 		c.True(menuStackLocalMonitor != 0, "and for the block that called it to return")
 		menuStackMonitorFired(4)
 		c.Equal([]Window{3}, reported, "nothing is reported once removed")
-		pump(func() bool { return menuStackLocalMonitor == 0 })
+		pump()
 		c.Equal(objc.ID(0), menuStackLocalMonitor, "the removal is carried out on the next pass of the run loop")
 		c.Equal(objc.ID(0), menuStackGlobalMonitor)
 
@@ -73,7 +72,7 @@ func TestMenuStackMonitor(t *testing.T) {
 		})
 		menuStackMonitorFired(5)
 		c.True(menuStackLocalMonitor != 0, "a replacement installed from within the function stays")
-		pump(func() bool { return false })
+		pump()
 		c.True(menuStackLocalMonitor != 0, "even once the deferred removal has had its chance")
 		menuStackMonitorFired(6)
 		c.Equal([]Window{3, 5, 106}, reported)
@@ -83,18 +82,23 @@ func TestMenuStackMonitor(t *testing.T) {
 	})
 }
 
-// pumpMainRunLoop runs the main run loop, in passes of up to 20ms, until done returns true or a quarter of a second
-// has gone by, so that work queued for a later pass of the loop is performed: a pass may return after serving another
-// source before it gets to that work. Main thread only.
-func pumpMainRunLoop(done func() bool) {
-	deadline := time.Now().Add(250 * time.Millisecond)
-	for !done() && time.Now().Before(deadline) {
-		WithPool(func() {
-			date := objc.ID(Cls("NSDate")).Send(Sel("dateWithTimeIntervalSinceNow:"), 0.02)
-			objc.ID(Cls("NSRunLoop")).Send(Sel("currentRunLoop")).Send(Sel("runMode:beforeDate:"), defaultRunLoopMode(),
-				date)
-		})
-	}
+// runQueuedPerforms runs the main run loop until it has performed every message the main thread has queued for itself
+// with performSelectorOnMainThread:withObject:waitUntilDone:, which are performed in the order they were queued: it
+// queues one more and runs the loop until that one has been performed. A pass may serve other sources first and take
+// any time, so no deadline is placed on the wait. Main thread only.
+func runQueuedPerforms() {
+	WithPool(func() {
+		marker := objc.ID(Cls("NSMutableArray")).Send(Sel("array"))
+		marker.Send(Sel("performSelectorOnMainThread:withObject:waitUntilDone:"), Sel("addObject:"),
+			objc.ID(Cls("NSNull")).Send(Sel("null")), false)
+		for objc.Send[uint64](marker, Sel("count")) == 0 {
+			WithPool(func() {
+				date := objc.ID(Cls("NSDate")).Send(Sel("dateWithTimeIntervalSinceNow:"), 0.02)
+				objc.ID(Cls("NSRunLoop")).Send(Sel("currentRunLoop")).Send(Sel("runMode:beforeDate:"),
+					defaultRunLoopMode(), date)
+			})
+		}
+	})
 }
 
 // TestMenuStackMonitorReportsMenuBarTracking proves that a menu of the application's menu bar beginning to track is
