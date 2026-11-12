@@ -78,12 +78,15 @@ command-line usage keep working.
   progress bars, scroll panels, separators, tooltips, and color, gradient and font pickers.
 - Layouts: `FlexLayout`, `FlowLayout`, and a docking system for tool-window style user interfaces.
 - Menus and menu bars, using the global menu bar on macOS, plus configurable key bindings.
-- Message dialogs and file dialogs, using the platform's own where it has them.
+- Message dialogs, progress dialogs for long-running work, and file dialogs, using the platform's own where it has
+  them.
 - Drag & drop within an application, between applications and with the operating system.
 - Text layout, Markdown rendering, SVG and bitmap images, and PDF output.
 - Undo/redo management.
 - Light and dark themes that follow the system, with customizable colors and fonts.
 - Printing to network printers via IPP, in the `printing` package.
+- Self-update from releases published on GitHub for applications packaged with `upack`, in the `updater` package:
+  update checks, a release notes dialog, and an install that replaces the application and restarts it.
 - Secrets kept in the operating system's credential store (the macOS Keychain, the Windows Credential Manager and the
   freedesktop Secret Service on Linux), in the `secrets` package; a headless session swaps in an in-memory store.
 - Screen-reader support and display-free testing, described below.

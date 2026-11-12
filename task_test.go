@@ -18,15 +18,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/check"
 )
 
-// resetTaskQueue clears the package-level task queue so each test starts from a known state. These tests share global
-// state and therefore must not call t.Parallel.
-func resetTaskQueue() {
-	taskQueueLock.Lock()
-	taskQueue = nil
-	taskQueueHead = 0
-	taskQueueLock.Unlock()
-}
-
 func taskQueueState() (length, head int) {
 	taskQueueLock.Lock()
 	defer taskQueueLock.Unlock()
@@ -222,6 +213,25 @@ func TestInvokeTaskAndWaitIgnoresANilFunction(t *testing.T) {
 	c.Equal(0, length-head, "nothing may be left on the queue")
 }
 
+// TestInvokeTaskAfterIsDroppedByAQueueReset verifies that a timer armed before the queue is reset, as a headless session
+// resets it on starting and on ending, queues nothing afterward. This test mutates global state and therefore must not
+// call t.Parallel.
+func TestInvokeTaskAfterIsDroppedByAQueueReset(t *testing.T) {
+	c := check.New(t)
+	resetTaskQueue()
+	t.Cleanup(resetTaskQueue)
+	withRecoveryCallback(t, func(err error) { c.NoError(err) })
+
+	var stale, fresh bool
+	InvokeTaskAfter(func() { stale = true }, time.Millisecond)
+	resetTaskQueue()
+	// Due long enough after the first timer that this one's task arriving shows the first has fired as well.
+	InvokeTaskAfter(func() { fresh = true }, 50*time.Millisecond)
+
+	runTasksUntil(t, func() bool { return fresh })
+	c.False(stale, "a timer armed before the reset must not queue its task")
+}
+
 func TestProcessNextTaskCompactsDeadPrefix(t *testing.T) {
 	c := check.New(t)
 	resetTaskQueue()
@@ -236,9 +246,8 @@ func TestProcessNextTaskCompactsDeadPrefix(t *testing.T) {
 		InvokeTask(func() { order = append(order, i) })
 	}
 
-	// A timer armed by an earlier test may fire while this runs and enqueue a task of its own (see the package
-	// comment in headless.go), so the queue is drained until it is empty, with slack for such tasks, rather than
-	// exactly count times. Those tasks do nothing once their window is gone, so running them here is harmless.
+	// The queue is drained until it is empty, with slack, rather than exactly count times, since it is shared and a
+	// task from elsewhere in the process may land in it while this runs.
 	compacted := false
 	drained := false
 	for range count + 100 {

@@ -19,10 +19,8 @@ import (
 )
 
 // runTasksFor runs whatever arrives in the task queue, through the same recovery path the UI loop uses, until the
-// given duration has passed. It is how a test lets stragglers land and run rather than counting them: the queue is
-// package-global, and a timer armed by an earlier test — a caret blink from a field that was focused when a headless
-// session ended, say — may enqueue a task of its own at any moment, so an exact queue length is never something a test
-// can assert.
+// given duration has passed. It is how a test lets stragglers land and run rather than counting them, since the queue
+// is package-global and a task from elsewhere in the process may land in it.
 func runTasksFor(d time.Duration) {
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {

@@ -21,6 +21,8 @@ var (
 	taskQueueLock sync.Mutex
 	taskQueue     []func()
 	taskQueueHead int
+	// taskQueueEpoch counts the resets of the queue, which is how a timer armed before one knows to drop its task.
+	taskQueueEpoch uint64
 )
 
 // InvokeTask calls a function on the UI thread. The function is put into the system event queue and will be run at the
@@ -32,9 +34,32 @@ func InvokeTask(f func()) {
 	apiPostEmptyEvent()
 }
 
-// InvokeTaskAfter schedules a function to be run on the UI thread after waiting for the specified duration.
+// InvokeTaskAfter schedules a function to be run on the UI thread after waiting for the specified duration. A headless
+// session discards whatever was scheduled before it started and whatever is still waiting when it ends.
 func InvokeTaskAfter(f func(), after time.Duration) {
-	time.AfterFunc(after, func() { InvokeTask(f) })
+	taskQueueLock.Lock()
+	epoch := taskQueueEpoch
+	taskQueueLock.Unlock()
+	time.AfterFunc(after, func() {
+		taskQueueLock.Lock()
+		current := epoch == taskQueueEpoch
+		if current {
+			taskQueue = append(taskQueue, f)
+		}
+		taskQueueLock.Unlock()
+		if current {
+			apiPostEmptyEvent()
+		}
+	})
+}
+
+// resetTaskQueue discards the queued tasks, along with the task of every timer InvokeTaskAfter has already armed.
+func resetTaskQueue() {
+	taskQueueLock.Lock()
+	taskQueue = nil
+	taskQueueHead = 0
+	taskQueueEpoch++
+	taskQueueLock.Unlock()
 }
 
 // InvokeTaskAndWait calls a function on the UI thread and does not return until it has run. Use it when the calling

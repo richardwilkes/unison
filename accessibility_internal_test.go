@@ -1442,8 +1442,7 @@ func staticTextLabel(title string) *Label {
 	return l
 }
 
-// staticTextField returns a field whose caret never blinks, since a blink timer outlives the session that armed it and
-// would enqueue a stray task into whichever test runs next.
+// staticTextField returns a field whose caret never blinks during a test.
 func staticTextField() *Field {
 	f := NewField()
 	f.BlinkRate = time.Hour
