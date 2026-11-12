@@ -39,7 +39,7 @@ func (u *Updater) spawnFinisher(s *state, statePath string) error {
 	}
 	// The helper writes the state only once this process has exited or waitTimeout has passed, so this save comes
 	// first. With a handoff port, that relies on the application holding the port until it exits, as Config.HandoffPort
-	// requires.
+	// requires. The helper does read the state as it starts, which save waits out.
 	s.HelperPID = pid
 	s.HelperStart = processStartID(pid)
 	if err = s.save(statePath); err != nil {

@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/xio"
@@ -25,6 +26,13 @@ import (
 // is versioned and every reader tolerates fields it does not recognize. A file whose schema is not understood is
 // discarded rather than acted on.
 const stateSchema = 1
+
+// stateBusyAttempts and stateBusyDelay bound the wait for another process to let go of the state file. Each holds it
+// only for as long as reading or replacing it takes, so the first retry normally succeeds.
+const (
+	stateBusyAttempts = 40
+	stateBusyDelay    = 50 * time.Millisecond
+)
 
 // status is where an update has got to.
 type status string
@@ -94,25 +102,48 @@ func (u *Updater) statePath() string {
 	return filepath.Join(xos.AppDataDir(true), stateName)
 }
 
+// retryWhileStateBusy calls op until it no longer fails for another process having the state file open (see
+// stateFileBusy), or stateBusyAttempts have been made. The processes sharing the file read and write it at the same
+// moments: the helper reads it as the application that started it records it there, and the application started after
+// an update reads it as the helper records the outcome.
+func retryWhileStateBusy(op func() error) error {
+	return retry(stateBusyAttempts, stateBusyDelay, func() error {
+		err := op()
+		if err != nil && !stateFileBusy(err) {
+			return stopRetrying(err)
+		}
+		return err
+	})
+}
+
 // save writes the state atomically. A torn file would be read by a different build than the one that wrote it, with no
-// way to tell a truncated file from a stale one, so the write must not be observable half-done.
+// way to tell a truncated file from a stale one, so the write must not be observable half-done. It waits for a process
+// that is reading the file; see retryWhileStateBusy.
 func (s *state) save(path string) error {
 	s.Schema = stateSchema
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return errs.Wrap(err)
 	}
-	return xos.WriteSafeFile(path, func(w io.Writer) error {
-		if err := json.MarshalWrite(w, s); err != nil {
-			return errs.Wrap(err)
-		}
-		return nil
+	return retryWhileStateBusy(func() error {
+		return xos.WriteSafeFile(path, func(w io.Writer) error {
+			if err := json.MarshalWrite(w, s); err != nil {
+				return errs.Wrap(err)
+			}
+			return nil
+		})
 	})
 }
 
 // loadState reads the update state. A missing file returns a nil state and no error, since not having an update in
-// progress is the normal case rather than a failure.
+// progress is the normal case rather than a failure. It waits for a process that is replacing the file; see
+// retryWhileStateBusy.
 func loadState(path string) (*state, error) {
-	f, err := os.Open(path)
+	var f *os.File
+	err := retryWhileStateBusy(func() error {
+		var openErr error
+		f, openErr = os.Open(path)
+		return openErr
+	})
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
