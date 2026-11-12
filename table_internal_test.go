@@ -63,9 +63,7 @@ func newPanicCellTable(boom *bool, cellCalls *int) *Table[*panicCellRow] {
 
 // runTasksUntil runs queued tasks through the same recovery path the UI loop uses until done reports that the work the
 // test is waiting on has happened. It drains the queue instead of assuming the next task to arrive is the one the test
-// scheduled, since the global queue is shared: a timer left running by an earlier test, such as the caret blink a Field
-// keeps rearming via InvokeTaskAfter, can enqueue a task at any moment. Those foreign tasks are harmless to run here,
-// so they are simply executed and skipped over. These tests share the global task queue and therefore must not call
+// scheduled, since the global queue is shared. These tests share the global task queue and therefore must not call
 // t.Parallel.
 func runTasksUntil(t *testing.T, done func() bool) {
 	t.Helper()

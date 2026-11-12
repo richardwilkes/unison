@@ -44,29 +44,17 @@ import (
 // session replaces it with a fresh one, so that a goroutine the application started, which may outlive the session,
 // never reaches the user's real store either.
 //
-// A timer survives as well: one armed with InvokeTaskAfter counts down on a goroutine of its own, which no teardown can
-// reach, so it may fire after its session has ended and enqueue a task into a later one — or into none at all, in which
-// case the task simply sits in a queue that the next session's beginStartup discards. That is harmless, because every
-// closure this package arms a timer with acts solely on the one object it belongs to and either checks that the object
-// is still usable or does something that has no effect once it is not:
+// A timer does not survive. One armed with InvokeTaskAfter counts down on a goroutine of its own, which no teardown can
+// reach, but the task it would queue is dropped once the queue has been reset, which a session does as it starts and
+// again as it ends, so nothing armed before a session, or during an earlier one, ever runs in it. A widget that arms
+// one timer at a time behind a flag only that timer's task clears — a Field's caret blink, an indeterminate
+// ProgressBar's animation, a Table's EventuallySizeColumnsToFit and EventuallySyncToModel — is left with the flag set
+// when the task is dropped, so it must be built afresh for each session rather than carried into the next.
 //
-//   - Field.blink (field.go) redraws the caret only while the field's window is still valid, and scheduleBlink asks the
-//     same question before arming the next one.
-//   - tooltipSequencer.show and tooltipSequencer.close (tooltip.go), armed from Window.updateTooltip and from show
-//     itself, act only while the window's tooltipSequence still matches the one they captured. Destroying a headless
-//     window bumps that sequence, so a tooltip left in flight when a session ends is inert before it ever fires.
-//   - ProgressBar.animationTick (progress_bar.go) does nothing but mark its bar for redraw, which Panel.MarkForRedraw
-//     ignores for a detached panel and Window.MarkForRedraw ignores for a window that is no longer valid.
-//   - Table.EventuallySizeColumnsToFit and Table.EventuallySyncToModel (table.go) resize and resync the table's own
-//     columns and row cache, which nothing outside the table can observe once it is detached.
-//   - releaseImagesForContext (image.go) arms a timer that only runs the garbage collector.
-//   - x11RunDialogModal (file_dialog_linux.go) arms one that starts the helper process for the window it is itself
-//     about to run a modal loop for. No session ever arms that one, since a session's file dialogs are the pure-Go
-//     in-window ones.
-//
-// The wake-up such a task performs is safe as well: the native postEmptyEvent implementations post nothing once the
-// platform has been torn down, macOS and Windows because platformInited is clear and Linux because its atomic
-// connection handle is nil.
+// A goroutine the application started may still queue a task once its session has ended. The task sits in a queue that
+// the next session's beginStartup discards, and the wake-up it performs is safe: the native postEmptyEvent
+// implementations post nothing once the platform has been torn down, macOS and Windows because platformInited is clear
+// and Linux because its atomic connection handle is nil.
 
 // HeadlessConfig describes the stand-in screen a headless session renders onto.
 type HeadlessConfig struct {
@@ -440,11 +428,7 @@ func (s *headlessState) finish() {
 	clear(s.input)
 	s.input = nil
 	s.inputLock.Unlock()
-	taskQueueLock.Lock()
-	clear(taskQueue)
-	taskQueue = nil
-	taskQueueHead = 0
-	taskQueueLock.Unlock()
+	resetTaskQueue()
 	initTermLock.Lock()
 	initialized = false
 	initializing = false

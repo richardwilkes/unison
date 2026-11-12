@@ -1995,8 +1995,8 @@ func TestHeadlessTransparentBackground(t *testing.T) {
 }
 
 // TestHeadlessWindowCreatedDuringQuitIsInvalidated verifies that a window torn down by finishQuit rather than by
-// Dispose() — which is the fate of a window created while the application is quitting — is left invalid, since the
-// safety of every timer that outlives a session rests on the window it belongs to reporting IsValid() false.
+// Dispose() — which is the fate of a window created while the application is quitting — is left invalid, as one that
+// Dispose() tore down is.
 func TestHeadlessWindowCreatedDuringQuitIsInvalidated(t *testing.T) {
 	c := check.New(t)
 	var early, late *Window

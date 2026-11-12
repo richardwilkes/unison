@@ -77,10 +77,7 @@ func (hw *headlessWindow) destroy() {
 	w := hw.w
 	// A destroyed window is invalid and off the screen whether or not it came here through Dispose(), which is the
 	// only path that marks a window invalid on its own. The finishQuit path does not, and a window it tore down that
-	// still reported itself valid would go on being drawn, go on being composited into a capture, and — more to the
-	// point — go on re-arming every timer that checks IsValid() before arming the next one, such as a Field's caret
-	// blink, for as long as the process lives. The safety argument for timers that outlive a session, in the header of
-	// headless.go, rests on this.
+	// still reported itself valid would go on being drawn and go on being composited into a capture.
 	w.valid = false
 	hw.visible = false
 	if w.root != nil {

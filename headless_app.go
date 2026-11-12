@@ -73,13 +73,9 @@ func (s *headlessState) beginStartup() error {
 	s.prevCPURendering = cpuRenderingActive
 	cpuRenderingActive = true
 	// Drop anything left in the task queue by earlier work in this process — another test, or a session that was torn
-	// down while tasks were still pending. Those closures refer to windows that no longer exist and, worse, would run
-	// against this session's freshly reset state.
-	taskQueueLock.Lock()
-	clear(taskQueue)
-	taskQueue = taskQueue[:0]
-	taskQueueHead = 0
-	taskQueueLock.Unlock()
+	// down while tasks were still pending — along with anything a timer that work armed has yet to queue. Those
+	// closures refer to windows that no longer exist and, worse, would run against this session's freshly reset state.
+	resetTaskQueue()
 	// Disown any windows left behind the same way. A real application reaches this with all of these empty, since
 	// Start() runs before it can have made a window, but a test binary may have hand-built windows earlier that this
 	// session must not adopt: their platform state belongs to the OS backend, and a window that is valid but not

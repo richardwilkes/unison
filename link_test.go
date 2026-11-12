@@ -175,8 +175,7 @@ func TestLinkPressedDrawsItsDrawableInThePressedInk(t *testing.T) {
 	c.Equal(100, swatchPixels(unison.Red), "and in the link's ink again once the link is released")
 }
 
-// linkTestField returns a field whose caret never blinks, since a blink timer outlives the session that armed it and
-// would enqueue a stray task into whichever test runs next.
+// linkTestField returns a field whose caret never blinks during a test.
 func linkTestField() *unison.Field {
 	f := unison.NewField()
 	f.BlinkRate = time.Hour

@@ -10,6 +10,7 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"os"
@@ -28,6 +29,15 @@ import (
 const (
 	detachAttempts = 4
 	detachDelay    = 500 * time.Millisecond
+)
+
+// attachAttempts and attachDelay bound the retries when mounting the disk image. Only the failure hdiutil reports as
+// attachBusy is retried: it means another process holds a lock on the image, which is usually gone a moment later.
+// diskutil mounts an image regardless of such a lock.
+const (
+	attachAttempts = 5
+	attachDelay    = time.Second
+	attachBusy     = "Resource temporarily unavailable"
 )
 
 // commandTimeout bounds each external tool invocation. None of these should take more than a few seconds, and a hung
@@ -121,27 +131,34 @@ func useDiskutil() bool {
 // mounting the image a moment later with nothing left to detach it. attachWait therefore bounds only how long this
 // waits, and an attach still running then is detached in the background once it finishes.
 func attachDMG(dmgPath, mountPoint string) error {
-	var cmd *exec.Cmd
-	if useDiskutil() {
-		cmd = exec.Command("/usr/sbin/diskutil", "image", "attach", "--readOnly", "--nobrowse", "--mountPoint",
-			mountPoint, dmgPath)
-	} else {
-		cmd = exec.Command("/usr/bin/hdiutil", "attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen",
-			"-mountpoint", mountPoint, dmgPath)
+	tool, args := "/usr/bin/hdiutil", []string{
+		"attach", "-nobrowse", "-readonly", "-noverify", "-noautoopen", "-mountpoint", mountPoint, dmgPath,
 	}
-	var out []byte
+	if useDiskutil() {
+		tool, args = "/usr/sbin/diskutil", []string{
+			"image", "attach", "--readOnly", "--nobrowse", "--mountPoint", mountPoint, dmgPath,
+		}
+	}
 	done := make(chan error, 1)
 	go func() {
-		var err error
-		out, err = cmd.CombinedOutput()
-		done <- err
+		done <- retry(attachAttempts, attachDelay, func() error {
+			out, err := exec.Command(tool, args...).CombinedOutput()
+			if err == nil {
+				return nil
+			}
+			err = commandFailure(tool, out, err)
+			if !bytes.Contains(out, []byte(attachBusy)) {
+				return stopRetrying(err)
+			}
+			return err
+		})
 	}()
 	timer := time.NewTimer(attachWait)
 	defer timer.Stop()
 	select {
 	case err := <-done:
 		if err != nil {
-			return errs.NewWithCause("unable to open the downloaded disk image", commandFailure(cmd.Path, out, err))
+			return errs.NewWithCause("unable to open the downloaded disk image", err)
 		}
 		return nil
 	case <-timer.C:
@@ -151,7 +168,7 @@ func attachDMG(dmgPath, mountPoint string) error {
 			}
 		}()
 		return errs.Newf("unable to open the downloaded disk image: %s did not finish within %s",
-			filepath.Base(cmd.Path), attachWait)
+			filepath.Base(tool), attachWait)
 	}
 }
 
