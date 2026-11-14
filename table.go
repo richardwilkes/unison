@@ -1923,14 +1923,12 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 		t.arriveAtRow(i, leadCol)
 	case KeyHome:
 		if mods.ShiftDown() && t.HasSelection() {
-			t.SelectRange(0, t.FirstSelectedRowIndex())
+			// The selection arrives at the first row, so the lead is put there before SelectionChangedCallback hears of it.
+			t.selectRange(0, t.FirstSelectedRowIndex(), true)
 		} else {
 			t.ClearSelection()
 			t.SelectByIndex(0)
 		}
-		// The row the keys arrived at is the first one, whether the selection was replaced or extended back to it:
-		// SelectRange leaves the lead at the end of the range it was given, which for an extension is where the
-		// selection already was.
 		t.arriveAtRow(0, leadCol)
 	case KeyEnd:
 		if mods.ShiftDown() && t.HasSelection() {
@@ -2527,6 +2525,11 @@ func (t *Table[T]) SelectByIndex(indexes ...int) {
 // SelectRange selects the given range. The start will be considered the anchor selection if no existing anchor
 // selection exists.
 func (t *Table[T]) SelectRange(start, end int) {
+	t.selectRange(start, end, false)
+}
+
+// selectRange is SelectRange, but puts the person on the start of the range, not the end, when leadAtStart is set.
+func (t *Table[T]) selectRange(start, end int, leadAtStart bool) {
 	start = max(start, 0)
 	end = min(end, len(t.rowCache)-1)
 	if start > end {
@@ -2541,8 +2544,13 @@ func (t *Table[T]) SelectRange(start, end int) {
 		}
 	}
 	// The end of the range is where a selection made by dragging or by shift-arrowing has arrived, so that is the row
-	// the person is on. As with SelectByIndex, the cell cursor goes back to row level.
-	t.setLeadByIndex(end)
+	// the person is on, unless leadAtStart says the selection arrived at its start. As with SelectByIndex, the cell
+	// cursor goes back to row level.
+	if leadAtStart {
+		t.setLeadByIndex(start)
+	} else {
+		t.setLeadByIndex(end)
+	}
 	t.setLeadColumn(-1)
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()

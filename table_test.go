@@ -1516,8 +1516,12 @@ func TestTableCellCursorVerticalKeysKeepTheColumn(t *testing.T) {
 	c.Equal(2, table.LeadRowIndex())
 	c.Equal([]int{1, 2}, selectedTableIndexes(table), "neither touches the selection")
 
-	// Shifted, they keep their row-range meaning and the cursor stays in its column.
+	// Shifted, they keep their row-range meaning and the cursor stays in its column. The selection change is reported
+	// with the person already on the row the key arrived at.
+	var leads []int
+	table.SelectionChangedCallback = func() { leads = append(leads, table.LeadRowIndex()) }
 	c.True(table.DefaultKeyDown(unison.KeyHome, mod.Shift, false))
+	c.Equal([]int{0}, leads, "the lead row each selection change was reported with")
 	c.Equal([]int{0, 1, 2}, selectedTableIndexes(table))
 	c.Equal(0, table.LeadRowIndex())
 	c.Equal(0, table.LeadColumnIndex())

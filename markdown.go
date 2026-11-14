@@ -30,6 +30,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/richardwilkes/toolbox/v2/errs"
 	"github.com/richardwilkes/toolbox/v2/geom"
@@ -1357,9 +1358,65 @@ func markdownAlertMarker(quote ast.Node, source []byte) (kind int, end *ast.Text
 	}
 }
 
-// markdownUnescape returns b with its backslash escapes and entities resolved.
+// markdownUnescape returns b with its backslash escapes and character references resolved. CommonMark resolves them in
+// a single pass, so an escaped '&' begins no reference and the text a reference stands for is taken as written.
 func markdownUnescape(b []byte) []byte {
-	return util.ResolveEntityNames(util.ResolveNumericReferences(util.UnescapePunctuations(b)))
+	i := bytes.IndexAny(b, `\&`)
+	if i < 0 {
+		return b
+	}
+	out := make([]byte, i, len(b))
+	copy(out, b)
+	for i < len(b) {
+		c := b[i]
+		if c == '\\' && i+1 < len(b) && util.IsPunct(b[i+1]) {
+			out = append(out, b[i+1])
+			i += 2
+			continue
+		}
+		if c == '&' {
+			if resolved, length := markdownReference(b[i:]); length != 0 {
+				out = append(out, resolved...)
+				i += length
+				continue
+			}
+		}
+		out = append(out, c)
+		i++
+	}
+	return out
+}
+
+// markdownReference returns what the character reference that b starts with stands for and the reference's length, or
+// a length of 0 when b starts with none.
+func markdownReference(b []byte) (resolved []byte, length int) {
+	if len(b) < 3 || b[0] != '&' {
+		return nil, 0
+	}
+	if b[1] != '#' {
+		end, ok := util.ReadWhile(b, [2]int{1, len(b)}, util.IsAlphaNumeric)
+		if !ok || end == len(b) || b[end] != ';' {
+			return nil, 0
+		}
+		entity, found := util.LookUpHTML5EntityByName(string(b[1:end]))
+		if !found {
+			return nil, 0
+		}
+		return entity.Characters, end + 1
+	}
+	start, base, maxDigits, isDigit := 2, 10, 7, util.IsNumeric
+	if b[2] == 'x' || b[2] == 'X' {
+		start, base, maxDigits, isDigit = 3, 16, 6, util.IsHexDecimal
+	}
+	end, ok := util.ReadWhile(b, [2]int{start, len(b)}, isDigit)
+	if !ok || end-start > maxDigits || end == len(b) || b[end] != ';' {
+		return nil, 0
+	}
+	v, err := strconv.ParseUint(string(b[start:end]), base, 32)
+	if err != nil {
+		return nil, 0
+	}
+	return utf8.AppendRune(nil, util.ToValidRune(rune(v))), end + 1
 }
 
 // markdownTextValue returns what a text node reads as. The text of a code span is raw: it is taken as written, but for
@@ -1567,10 +1624,7 @@ func (m *Markdown) inlineImgTag(raw *ast.RawHTML) (markdownImgTag, bool) {
 
 func (m *Markdown) processString() {
 	if t, ok := m.node.(*ast.String); ok {
-		b := util.UnescapePunctuations(t.Value)
-		b = util.ResolveNumericReferences(b)
-		str := string(util.ResolveEntityNames(b))
-		m.text.AddString(str, m.decoration)
+		m.text.AddString(string(markdownUnescape(t.Value)), m.decoration)
 	}
 }
 
@@ -2114,9 +2168,7 @@ func (m *Markdown) collectText(node ast.Node, str *strings.Builder) {
 				markdownSeparateWords(str)
 			}
 		case *ast.String:
-			b := util.UnescapePunctuations(t.Value)
-			b = util.ResolveNumericReferences(b)
-			str.Write(util.ResolveEntityNames(b))
+			str.Write(markdownUnescape(t.Value))
 		case *ast.AutoLink:
 			str.Write(t.Label(m.content))
 		default:

@@ -222,6 +222,13 @@ func TestMarkdownLinkTargets(t *testing.T) {
 			tooltip:  "http://e.com/_x?a=1&b=2",
 		},
 		{
+			name:     "escapes and references resolved in one pass",
+			content:  "[\\&amp; &#38;amp;](u\\&amp; \"\\&amp;\")\n",
+			linkName: "&amp; &amp;",
+			target:   "u&amp;",
+			tooltip:  "&amp;",
+		},
+		{
 			name:     "entities in a reference's destination",
 			content:  "[a][r]\n\n[r]: http://e.com/?a=1&amp;b=2\n",
 			linkName: "a",
