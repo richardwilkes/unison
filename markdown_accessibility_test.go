@@ -855,9 +855,9 @@ func TestMarkdownCodeAndBlockquoteAccessibility(t *testing.T) {
 	c.Equal(0, len(f.screen.Errors()), "nothing should have panicked: %v", f.screen.Errors())
 }
 
-// TestMarkdownCaretSurvivesRebuild verifies what becomes of the reading caret when the content is set again: the same
-// content laid out to a different width is the same document, so the caret stays where it was in it, while different
-// content is a different document and the caret goes back to the top of it.
+// TestMarkdownCaretSurvivesRebuild verifies what becomes of the reading caret when the content is set again or rebuilt:
+// the same content laid out to a different width or rebuilt is the same document, so the caret stays where it was in
+// it, while different content is a different document and the caret goes back to the top of it.
 func TestMarkdownCaretSurvivesRebuild(t *testing.T) {
 	c := check.New(t)
 	f := newAXMarkdownFixture(t, markdownAXContent, 300, geom.NewSize(500, 400))
@@ -875,6 +875,10 @@ func TestMarkdownCaretSurvivesRebuild(t *testing.T) {
 	f.screen.Do(func() { f.markdown.SetContent(markdownAXContent, 260) })
 	_, _, caret := f.caret(c)
 	c.Equal(offset, caret, "the same content at another width is the same document, read from where it was left")
+
+	f.screen.Do(func() { f.markdown.Rebuild() })
+	_, _, caret = f.caret(c)
+	c.Equal(offset, caret, "as is the same content rebuilt")
 
 	f.screen.Do(func() { f.markdown.SetContent("# Something else\n\nA new document.\n", 260) })
 	selStart, selEnd, caret := f.caret(c)

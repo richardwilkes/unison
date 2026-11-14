@@ -290,8 +290,9 @@ func TestMarkdownDocumentCacheInvalidation(t *testing.T) {
 
 	screen.Do(func() {
 		composed := md.axDocument()
-		md.drawableCache["retrieved"] = &drawableCacheEntry{}
-		md.updateDrawable("retrieved", &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewUniformSize(16)})
+		retrieved := markdownImageKey{target: "retrieved"}
+		md.drawableCache[retrieved] = &drawableCacheEntry{}
+		md.updateDrawable(retrieved, &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewUniformSize(16)})
 		c.True(md.axDoc == nil, "an image arriving where a placeholder was moves every rune after it")
 		c.True(md.axDocument() != composed)
 	})

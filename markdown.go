@@ -14,10 +14,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
+	"maps"
+	"math"
 	"net/http"
 	"net/url"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -168,9 +172,21 @@ func HasAnyPrefix(prefixes []string, target string) bool {
 	return false
 }
 
+// markdownImageKey identifies an image in Markdown.drawableCache.
+type markdownImageKey struct {
+	// target is the image's revised target.
+	target string
+	// inFS reports that target is a path within the FileSystem, which a link may be spelled like.
+	inFS bool
+}
+
 type drawableCacheEntry struct {
 	drawable Drawable
 	targets  []markdownImageTarget
+	// used reports that the document being built, or last built, shows the image.
+	used bool
+	// failed reports that the image could not be loaded.
+	failed bool
 }
 
 // markdownImageTarget is a placeholder waiting for an image, and the widths constrainImage is to keep the image between
@@ -200,7 +216,15 @@ type markdownLink struct {
 // right-click on the text is an ordinary press; only a right-click on a part of the document no block covers opens the
 // menu.
 type Markdown struct {
-	HTTPClient                 *http.Client // Used when retrieving data from a remote host
+	HTTPClient *http.Client // Used when retrieving data from a remote host
+	// FileSystem, if not nil, is read from instead of the disk for an image whose target is neither a URL nor begins
+	// with one of the AltLinkPrefixes, at the path ReviseFSTarget gives for it. WorkingDirProvider then returns a
+	// slash-separated directory within it, "" or "." being its root. It is read from goroutines other than the UI
+	// thread, so it must be safe for concurrent use, as embed.FS and os.DirFS are.
+	FileSystem fs.FS
+	// AnchorLinkHandler, if not nil, is called in place of scrolling when a link to an anchor within the document is
+	// followed, with that anchor less its leading '#'. Call ScrollToAnchor from it to scroll there.
+	AnchorLinkHandler          func(anchor string)
 	lastParent                 *Panel
 	block                      *Panel
 	textRow                    *Panel
@@ -214,8 +238,12 @@ type Markdown struct {
 	// columnWidths is how wide each column of the table being built is made, its cells' borders and padding included.
 	// Zero makes a column as narrow as its content allows.
 	columnWidths  []int
-	drawableCache map[string]*drawableCacheEntry
-	anchors       map[string]*Panel
+	drawableCache map[markdownImageKey]*drawableCacheEntry
+	// drawableCacheFS is the FileSystem the images in drawableCache were read from.
+	drawableCacheFS fs.FS
+	anchors         map[string]*Panel
+	// anchorIDs holds the keys of anchors in the order they appear in the document.
+	anchorIDs []string
 	// axDoc is the content composed into one stream of text, built on demand and thrown away whenever anything that
 	// would move a rune of it changes. See Markdown.axDocument.
 	axDoc *axDocument
@@ -225,7 +253,7 @@ type Markdown struct {
 	// for itself is thrown away by. See Markdown.axInvalidate.
 	axGeneration      uint64
 	drawableCacheLock sync.Mutex
-	PerImageByteLimit int64 // Used when retrieving data from a remote host
+	PerImageByteLimit int64 // The most bytes read for any one image, wherever it is from; 0 or less means no limit
 	index             int
 	columnIndex       int
 	// tableRow is the row the cells being built belong to, while a table is being built.
@@ -260,7 +288,7 @@ type Markdown struct {
 func NewMarkdown(autoSizingFromParent bool) *Markdown {
 	m := &Markdown{
 		MarkdownTheme: DefaultMarkdownTheme,
-		drawableCache: make(map[string]*drawableCacheEntry),
+		drawableCache: make(map[markdownImageKey]*drawableCacheEntry),
 		anchors:       make(map[string]*Panel),
 	}
 	m.SetLayout(&FlexLayout{Columns: 1})
@@ -345,13 +373,13 @@ func (m *Markdown) SetContent(content string, maxWidth float32) {
 	m.SetContentBytes([]byte(content), maxWidth)
 }
 
-// ContentBytes returns the current markdown content as a byte slice.
+// ContentBytes returns a copy of the current markdown content as a byte slice.
 func (m *Markdown) ContentBytes() []byte {
-	return m.content
+	return bytes.Clone(m.content)
 }
 
-// SetContentBytes replaces the current markdown content. If maxWidth < 1, then the content will be sized based on the
-// parent container or use DefaultMarkdownWidth if no parent is present.
+// SetContentBytes replaces the current markdown content with a copy of content. If maxWidth < 1, then the content will
+// be sized based on the parent container or use DefaultMarkdownWidth if no parent is present.
 func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	if maxWidth < 1 {
 		if p := m.Parent(); p != nil {
@@ -367,7 +395,8 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	if m.maxWidth == maxWidth && bytes.Equal(m.content, content) {
 		return
 	}
-	if !bytes.Equal(m.content, content) {
+	newDocument := !bytes.Equal(m.content, content)
+	if newDocument {
 		// Different content is a different document, so the reading caret goes back to the top of it. The same content
 		// laid out to a different width is the same document re-wrapped, and the caret stays where it was in it —
 		// clamped, since the stream it is an offset into is rebuilt from the same runes.
@@ -378,7 +407,7 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.RemoveAllChildren()
 	m.maxWidth = maxWidth
 	m.maxLineWidth = maxWidth
-	m.content = content
+	m.content = bytes.Clone(content)
 	m.block = m.AsPanel()
 	m.textRow = nil
 	m.text = nil
@@ -386,15 +415,28 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.index = 0
 	m.ordered = false
 	m.anchors = make(map[string]*Panel)
-	// extension.GFM, but with a task list check box that has to be followed by whitespace, as GFM requires. See
-	// markdownTaskCheckBoxParser.
-	m.node = goldmark.New(goldmark.WithExtensions(extension.Linkify, extension.Table, extension.Strikethrough),
-		goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithHeadingAttribute(),
-			parser.WithInlineParsers(util.Prioritized(markdownTaskCheckBoxParser{
-				InlineParser: extension.NewTaskCheckBoxParser(),
-			}, 0)))).
-		Parser().Parse(text.NewReader(m.content))
+	m.anchorIDs = nil
+	m.drawableCacheLock.Lock()
+	if !markdownSameFS(m.FileSystem, m.drawableCacheFS) {
+		// A path within one file system names a different image in another.
+		m.drawableCache = make(map[markdownImageKey]*drawableCacheEntry)
+		m.drawableCacheFS = m.FileSystem
+	}
+	for key, entry := range m.drawableCache {
+		entry.used = false
+		if entry.failed && newDocument {
+			// Tried again for a different document, though not for the same one re-wrapped, which would otherwise wait
+			// on it again at every change of width.
+			delete(m.drawableCache, key)
+		}
+	}
+	m.drawableCacheLock.Unlock()
+	m.node = NewMarkdownParser().Parse(text.NewReader(m.content))
 	m.walk(m.node)
+	// Only the images the document shows are kept, so one it stops showing is read again when next shown.
+	m.drawableCacheLock.Lock()
+	maps.DeleteFunc(m.drawableCache, func(_ markdownImageKey, entry *drawableCacheEntry) bool { return !entry.used })
+	m.drawableCacheLock.Unlock()
 	if m.StripBottomEmptyMargin && len(m.children) > 0 {
 		if border := m.children[len(m.children)-1].Border(); border != nil {
 			switch b := border.(type) {
@@ -412,13 +454,27 @@ func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	m.MarkForLayoutAndRedraw()
 }
 
-// Rebuild rebuilds the markdown content. This is useful if the theme has been changed.
+// NewMarkdownParser returns a parser that reads markdown as Markdown does, so that an application indexing a document
+// finds the same structure and the same heading IDs that ScrollToAnchor accepts.
+func NewMarkdownParser() parser.Parser {
+	// extension.GFM, but with a task list check box that has to be followed by whitespace, as GFM requires. See
+	// markdownTaskCheckBoxParser.
+	return goldmark.New(goldmark.WithExtensions(extension.Linkify, extension.Table, extension.Strikethrough),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID(), parser.WithHeadingAttribute(),
+			parser.WithInlineParsers(util.Prioritized(markdownTaskCheckBoxParser{
+				InlineParser: extension.NewTaskCheckBoxParser(),
+			}, 0)))).Parser()
+}
+
+// Rebuild rebuilds the markdown content, reading its images again. This is useful if the theme or an image has been
+// changed.
 func (m *Markdown) Rebuild() {
+	m.drawableCacheLock.Lock()
+	clear(m.drawableCache)
+	m.drawableCacheLock.Unlock()
 	maxWidth := m.maxWidth
-	m.maxWidth = -1
-	content := m.content
-	m.content = nil
-	m.SetContentBytes(content, maxWidth)
+	m.maxWidth = float32(math.NaN()) // Equal to no width, so SetContentBytes cannot skip the rebuild as unchanged.
+	m.SetContentBytes(m.content, maxWidth)
 }
 
 func (m *Markdown) walk(node ast.Node) {
@@ -528,6 +584,7 @@ func (m *Markdown) processHeading() {
 		if id, hasID := heading.AttributeString("id"); hasID {
 			if idBytes, isBytes := id.([]byte); isBytes {
 				m.anchors[string(idBytes)] = p
+				m.anchorIDs = append(m.anchorIDs, string(idBytes))
 			}
 		}
 		m.block = p
@@ -1474,9 +1531,14 @@ func markdownPanelShows(p *Panel) bool {
 	return !visible.Empty()
 }
 
-// HasURLPrefix returns true if the target has a prefix of "http://" or "https://".
+// HasURLPrefix returns true if the target has a prefix of "http://" or "https://", in any case.
 func HasURLPrefix(target string) bool {
-	return strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://")
+	for _, prefix := range []string{"http://", "https://"} {
+		if len(target) >= len(prefix) && strings.EqualFold(target[:len(prefix)], prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // ReviseTarget returns a sanitized target with either a link or an absolute path.
@@ -1503,8 +1565,43 @@ func ReviseTarget(workingDir, target string, altLinkPrefixes []string) (string, 
 	return revised, nil
 }
 
+// ReviseFSTarget returns a sanitized target with either a link or a path within a file system, as ReviseTarget does
+// for one on disk. A path is found from workingDir, a slash-separated directory within the file system ("" or "." for
+// its root), or from the root when it begins with a '/'. One that would lead out of the file system is an error
+// wrapping fs.ErrInvalid.
+func ReviseFSTarget(workingDir, target string, altLinkPrefixes []string) (string, error) {
+	revised, _, err := reviseFSTarget(workingDir, target, altLinkPrefixes)
+	return revised, err
+}
+
+// reviseFSTarget is ReviseFSTarget, also reporting whether the result is a path within the file system rather than a
+// link, which it may begin like when the working directory does.
+func reviseFSTarget(workingDir, target string, altLinkPrefixes []string) (revised string, inFS bool, err error) {
+	if HasURLPrefix(target) {
+		return target, false, nil
+	}
+	if revised, err = url.PathUnescape(target); err != nil {
+		return target, false, errs.Wrap(err)
+	}
+	if HasAnyPrefix(altLinkPrefixes, revised) {
+		return revised, false, nil
+	}
+	if strings.HasPrefix(revised, "/") {
+		workingDir = ""
+	}
+	revised = path.Join(workingDir, strings.TrimLeft(revised, "/"))
+	if !fs.ValidPath(revised) {
+		return target, false, errs.Wrap(&fs.PathError{Op: "open", Path: revised, Err: fs.ErrInvalid})
+	}
+	return revised, true, nil
+}
+
 func (m *Markdown) linkHandler(_ Paneler, target string) {
-	if strings.HasPrefix(target, "#") {
+	if anchor, isAnchor := strings.CutPrefix(target, "#"); isAnchor {
+		if m.AnchorLinkHandler != nil && m.panelForAnchor(markdownAnchorID(target)) != nil {
+			m.AnchorLinkHandler(anchor)
+			return
+		}
 		if m.ScrollToAnchor(target) {
 			return
 		}
@@ -1512,15 +1609,20 @@ func (m *Markdown) linkHandler(_ Paneler, target string) {
 	m.LinkHandler(m, target)
 }
 
-// ScrollToAnchor attempts to scroll the heading associated with the given anchor into view. The anchor may optionally
-// be prefixed with '#' and may be URL-escaped. Matching is first attempted case-sensitively, then case-insensitively.
-// Returns true if a matching anchor was found.
-func (m *Markdown) ScrollToAnchor(anchor string) bool {
+// markdownAnchorID returns the ID an anchor names, which is the anchor less any leading '#' and URL escaping.
+func markdownAnchorID(anchor string) string {
 	anchor = strings.TrimPrefix(anchor, "#")
 	if unescaped, err := url.PathUnescape(anchor); err == nil {
-		anchor = unescaped
+		return unescaped
 	}
-	if p := m.panelForAnchor(anchor); p != nil {
+	return anchor
+}
+
+// ScrollToAnchor attempts to scroll the heading associated with the given anchor into view. The anchor may optionally
+// be prefixed with '#' and may be URL-escaped. Matching is first attempted case-sensitively, then case-insensitively,
+// taking the first ID in the document that matches. Returns true if a matching anchor was found.
+func (m *Markdown) ScrollToAnchor(anchor string) bool {
+	if p := m.panelForAnchor(markdownAnchorID(anchor)); p != nil {
 		// Bring the top of the heading to the top of the view (when the scroll range allows), revealing the section
 		// that follows it rather than leaving the heading pinned to the bottom of the view. Inflating the height of the
 		// rect we request to be made visible to the full height of the document forces a top alignment: the rect can
@@ -1539,9 +1641,9 @@ func (m *Markdown) panelForAnchor(anchor string) *Panel {
 	if p, ok := m.anchors[anchor]; ok {
 		return p
 	}
-	for id, p := range m.anchors {
+	for _, id := range m.anchorIDs {
 		if strings.EqualFold(id, anchor) {
-			return p
+			return m.anchors[id]
 		}
 	}
 	return nil
@@ -1559,26 +1661,47 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel, maxWidth, 
 	if m.WorkingDirProvider != nil {
 		workingDir = m.WorkingDirProvider(m)
 	}
-	revisedTarget, err := ReviseTarget(workingDir, target, m.AltLinkPrefixes)
+	fsys := m.FileSystem
+	var revisedTarget string
+	var err error
+	if fsys != nil {
+		var inFS bool
+		if revisedTarget, inFS, err = reviseFSTarget(workingDir, target, m.AltLinkPrefixes); !inFS {
+			fsys = nil
+		}
+	} else {
+		revisedTarget, err = ReviseTarget(workingDir, target, m.AltLinkPrefixes)
+	}
 	if err != nil {
 		errs.Log(err, "workingDir", workingDir, "target", target, "altLinkPrefixes", m.AltLinkPrefixes)
 		return nil
 	}
+	key := markdownImageKey{target: revisedTarget, inFS: fsys != nil}
 	m.drawableCacheLock.Lock()
-	entry, ok := m.drawableCache[revisedTarget]
+	entry, ok := m.drawableCache[key]
 	if ok {
+		entry.used = true
 		d := entry.drawable
-		if d == nil {
+		if d == nil && !entry.failed {
 			entry.targets = append(entry.targets, markdownImageTarget{panel: panel, maxWidth: maxWidth, minWidth: minWidth})
 		}
 		m.drawableCacheLock.Unlock()
 		return d
 	}
-	m.drawableCache[revisedTarget] = &drawableCacheEntry{
+	entry = &drawableCacheEntry{
 		targets: []markdownImageTarget{{panel: panel, maxWidth: maxWidth, minWidth: minWidth}},
+		used:    true,
 	}
+	m.drawableCache[key] = entry
 	m.drawableCacheLock.Unlock()
-	isSVG := strings.ToLower(path.Ext(revisedTarget)) == ".svg"
+	name := revisedTarget
+	if xhttp.HasHTTPOrFileURLPrefix(name) {
+		// A URL's query and fragment are not part of the name of what it retrieves.
+		if u, parseErr := url.Parse(name); parseErr == nil {
+			name = u.Path
+		}
+	}
+	isSVG := strings.EqualFold(path.Ext(name), ".svg")
 	// Displays may only be queried on the UI thread (on macOS the lookup calls into AppKit, and the platform
 	// implementations use unsynchronized state), so capture the scale here, on the calling thread, rather than inside
 	// the image-loading goroutine below.
@@ -1588,62 +1711,125 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel, maxWidth, 
 			scale = scale.DivPt(d.Scale)
 		}
 	}
+	client := m.HTTPClient
+	limit := m.PerImageByteLimit
 	result := make(chan Drawable, 1)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		// On failure, the cache entry must be removed. Leaving it in place would permanently poison the cache: the
-		// load would never be retried and every subsequent rebuild would append another dead placeholder panel to the
-		// entry's target list, retaining those detached panels for the life of the Markdown widget.
+		// A failed entry stays, with no placeholder waiting on it, so that the same document laid out again does not
+		// wait on the load again; SetContentBytes lets it go for a different document, which tries again. It is marked
+		// before the result is sent, so that another use of the image in the same build finds it failed.
 		fail := func(failure error, args ...any) {
+			m.drawableCacheLock.Lock()
+			entry.failed = true
+			entry.targets = nil
+			m.drawableCacheLock.Unlock()
 			result <- nil
 			errs.Log(failure, args...)
-			m.drawableCacheLock.Lock()
-			delete(m.drawableCache, revisedTarget)
-			m.drawableCacheLock.Unlock()
+		}
+		var data []byte
+		if fsys != nil {
+			data, err = markdownReadFile(fsys, revisedTarget, limit)
+		} else {
+			data, err = xhttp.RetrieveDataWithLimit(ctx, client, revisedTarget, limit)
+		}
+		if err != nil {
+			fail(err, "path", revisedTarget)
+			return
 		}
 		var d Drawable
 		if isSVG {
-			var r io.ReadCloser
-			if r, err = xhttp.StreamData(ctx, nil, revisedTarget); err != nil {
-				fail(err, "path", revisedTarget)
-				return
-			}
-			defer xio.CloseIgnoringErrors(r)
 			var svg *SVG
-			if svg, err = NewSVGFromReader(r); err != nil {
+			if svg, err = NewSVGFromReader(bytes.NewReader(data)); err != nil {
 				fail(err, "path", revisedTarget)
 				return
 			}
-			d = &DrawableSVG{
-				SVG:  svg,
-				Size: svg.SuggestedSize(),
-			}
+			d = &DrawableSVG{SVG: svg, Size: svg.SuggestedSize()}
 		} else {
 			var img *Image
-			if img, err = NewImageFromFilePathOrURL(ctx, m.HTTPClient, revisedTarget, scale, m.PerImageByteLimit); err != nil {
+			if img, err = NewImageFromBytes(data, scale); err != nil {
 				fail(err, "path", revisedTarget, "scale", scale)
 				return
 			}
 			d = img
 		}
 		result <- d
-		InvokeTask(func() { m.updateDrawable(revisedTarget, d) })
+		InvokeTask(func() {
+			m.drawableCacheLock.Lock()
+			current := m.drawableCache[key] == entry
+			m.drawableCacheLock.Unlock()
+			// An entry no longer in the cache was let go by a build since, which replaced its placeholders.
+			if current {
+				m.updateDrawable(key, d)
+			}
+		})
 	}()
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	select {
 	case one := <-result:
+		if one != nil {
+			// The entry is filled here rather than only by updateDrawable, which runs later, so that another use of the
+			// same image further on finds it rather than waiting with a placeholder.
+			m.drawableCacheLock.Lock()
+			entry.drawable = one
+			entry.targets = nil
+			m.drawableCacheLock.Unlock()
+		}
 		return one
 	case <-timer.C:
 		return nil
 	}
 }
 
-func (m *Markdown) updateDrawable(target string, d Drawable) {
+// markdownReadFile returns the contents of the named file within fsys, failing if there are more than maxBytes of them
+// as xhttp.RetrieveDataWithLimit does. A maxBytes of 0 or less, or math.MaxInt64, means no limit.
+func markdownReadFile(fsys fs.FS, name string, maxBytes int64) ([]byte, error) {
+	f, err := fsys.Open(name)
+	if err != nil {
+		return nil, errs.NewWithCause(name, err)
+	}
+	defer xio.CloseIgnoringErrors(f)
+	var r io.Reader = f
+	limited := maxBytes > 0 && maxBytes != math.MaxInt64
+	if limited {
+		r = io.LimitReader(f, maxBytes+1)
+	}
+	var data []byte
+	if data, err = io.ReadAll(r); err != nil {
+		return nil, errs.NewWithCause(name, err)
+	}
+	if limited && int64(len(data)) > maxBytes {
+		return nil, errs.Newf("data from %s exceeds maximum of %d bytes", name, maxBytes)
+	}
+	return data, nil
+}
+
+// markdownSameFS reports whether a and b are the same file system. Two of a type that cannot be compared are the same
+// only when they are one map, as an fstest.MapFS is; any other such pair is taken to differ.
+func markdownSameFS(a, b fs.FS) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	va := reflect.ValueOf(a)
+	vb := reflect.ValueOf(b)
+	switch {
+	case va.Type() != vb.Type():
+		return false
+	case va.Comparable() && vb.Comparable():
+		return a == b
+	case va.Kind() == reflect.Map:
+		return va.UnsafePointer() == vb.UnsafePointer()
+	default:
+		return false
+	}
+}
+
+func (m *Markdown) updateDrawable(key markdownImageKey, d Drawable) {
 	m.drawableCacheLock.Lock()
 	defer m.drawableCacheLock.Unlock()
-	entry, ok := m.drawableCache[target]
+	entry, ok := m.drawableCache[key]
 	if !ok {
 		// This should never happen
 		return
@@ -2015,9 +2201,11 @@ func (m *Markdown) finishTextRow() {
 	m.text = nil
 }
 
-// DefaultMarkdownLinkHandler is the default link handler, which opens http, https and mailto links via OpenBrowser.
+// DefaultMarkdownLinkHandler is the default link handler, which opens http, https and mailto links, in any case, via
+// OpenBrowser.
 func DefaultMarkdownLinkHandler(_ Paneler, target string) {
-	if HasURLPrefix(target) || strings.HasPrefix(target, "mailto:") {
+	const mailto = "mailto:"
+	if HasURLPrefix(target) || (len(target) >= len(mailto) && strings.EqualFold(target[:len(mailto)], mailto)) {
 		if err := OpenBrowser(target); err != nil {
 			ErrorDialogWithError(i18n.Text("Opening the link failed"), err)
 		}

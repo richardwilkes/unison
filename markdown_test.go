@@ -11,20 +11,28 @@ package unison
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"maps"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
+	"github.com/richardwilkes/canvas/codecs"
 	"github.com/richardwilkes/toolbox/v2/check"
 	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/behavior"
 	"github.com/richardwilkes/unison/enums/mod"
 	"github.com/richardwilkes/unison/enums/role"
+	"github.com/richardwilkes/unison/internal/testenv"
 )
 
 // collectMarkdownText concatenates the text of every Label in the panel subtree, in tree order, so tests can assert on
@@ -77,6 +85,19 @@ func TestMarkdownSetContentIsIdempotent(t *testing.T) {
 	// Changing the content rebuilds the tree.
 	m.SetContent("Different content.\n", 400)
 	c.Contains(collectMarkdownText(m.AsPanel()), "Different")
+
+	// So does changing it within the slice it was given in.
+	buf := []byte("First.\n")
+	m.SetContentBytes(buf, 400)
+	copy(buf, "Other.\n")
+	m.SetContentBytes(buf, 400)
+	c.Contains(collectMarkdownText(m.AsPanel()), "Other")
+
+	// Or within the slice ContentBytes returned.
+	buf = m.ContentBytes()
+	copy(buf, "Third.\n")
+	m.SetContentBytes(buf, 400)
+	c.Contains(collectMarkdownText(m.AsPanel()), "Third")
 }
 
 // TestMarkdownHandlesGFMConstructs exercises every block/inline handler so a panic or unhandled-element regression in
@@ -287,10 +308,13 @@ func TestMarkdownLinkTargets(t *testing.T) {
 func TestDefaultMarkdownLinkHandler(t *testing.T) {
 	c := check.New(t)
 	screen := startHeadlessTest(t, HeadlessConfig{Width: 100, Height: 100})
-	for _, target := range []string{"http://e.com", "https://e.com", "mailto:foo@bar.com", "docs/readme.md"} {
+	for _, target := range []string{
+		"http://e.com", "https://e.com", "HTTPS://e.com", "mailto:foo@bar.com", "MAILTO:foo@bar.com", "docs/readme.md",
+	} {
 		c.True(screen.Do(func() { DefaultMarkdownLinkHandler(nil, target) }))
 	}
-	c.Equal([]string{"http://e.com", "https://e.com", "mailto:foo@bar.com"}, screen.OpenedURLs())
+	c.Equal([]string{"http://e.com", "https://e.com", "HTTPS://e.com", "mailto:foo@bar.com", "MAILTO:foo@bar.com"},
+		screen.OpenedURLs())
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -341,7 +365,7 @@ func TestMarkdownImageSourceAndText(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
 			m := NewMarkdown(false)
-			m.drawableCache[target] = &drawableCacheEntry{drawable: loaded}
+			m.drawableCache[markdownImageKey{target: target}] = &drawableCacheEntry{drawable: loaded}
 			m.SetContent(tc.content, 400)
 			var image *DrawablePanel
 			var walk func(p *Panel)
@@ -369,10 +393,234 @@ func TestMarkdownImageSourceAndText(t *testing.T) {
 	}
 }
 
+// TestMarkdownImagesFromFileSystem verifies where the images of a Markdown given a FileSystem are loaded from, that
+// every image is held to PerImageByteLimit, that an image used twice on a page is shown both times, and when an image
+// is read again. Each case shows its pages in turn, each with different text or width since showing unchanged content
+// does nothing unless rebuilt, and checks the width of every image on the last, 0 standing for the broken-image
+// placeholder.
+func TestMarkdownImagesFromFileSystem(t *testing.T) {
+	testenv.SkipTimingSensitive(t)
+	saved := markdownPrimaryDisplay
+	defer func() { markdownPrimaryDisplay = saved }()
+	markdownPrimaryDisplay = func() *Display { return nil }
+	codecs.Register() // normally done at app startup, which these tests skip
+	setup := check.New(t)
+	const sub = "Scripting"
+	const fileA = "a.svg"
+	svg := func(side int) []byte {
+		return fmt.Appendf(nil, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %[1]d %[1]d"><rect width="%[1]d" height="%[1]d"/></svg>`, side)
+	}
+	small := svg(10)
+	fsys := fstest.MapFS{
+		fileA:                  {Data: small},
+		sub + "/a.svg":         {Data: svg(20)},
+		"md:" + sub + "/a.svg": {Data: svg(20)},
+		"images/shot.png":      {Data: distinctPNGForTest(setup, 6, 4, 131)},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write(svg(30))
+		setup.NoError(err)
+	}))
+	defer server.Close()
+	diskDir := t.TempDir()
+	setup.NoError(os.WriteFile(filepath.Join(diskDir, fileA), small, 0o600))
+	type page struct {
+		fsys         fstest.MapFS // Replaces the FileSystem when not nil.
+		files        fstest.MapFS // Added to the case's own copy of fsys before the page is shown.
+		dir, content string
+		width        float32 // The width the content is set to, 0 standing for 400.
+		rebuild      bool    // Rebuild rather than setting content.
+	}
+	const showA = "![a](a.svg)\n"
+	changedA := fstest.MapFS{fileA: {Data: svg(20)}}
+	for _, tc := range []struct {
+		name   string
+		pages  []page
+		widths []float32
+		alt    []string
+		limit  int64
+		onDisk bool // FileSystem is left nil.
+	}{
+		{
+			name:   "relative to the working directory",
+			pages:  []page{{dir: sub, content: showA}},
+			widths: []float32{20},
+		},
+		{
+			name:   "working directory beginning with an alternate link prefix",
+			pages:  []page{{dir: "md:" + sub, content: showA}},
+			widths: []float32{20},
+			alt:    []string{"md:"},
+		},
+		{
+			// The alternate link is read from the disk, where nothing has its name.
+			name:   "file and alternate link spelled alike",
+			pages:  []page{{dir: "md:" + sub, content: "![a](a.svg) ![b](md:" + sub + "/a.svg)\n"}},
+			widths: []float32{20, 0},
+			alt:    []string{"md:"},
+		},
+		{
+			name: "same name in two directories",
+			pages: []page{
+				{content: "![root](a.svg)\n"},
+				{dir: sub, content: "![scripting](a.svg)\n"},
+			},
+			widths: []float32{20},
+		},
+		{
+			name: "file system replaced",
+			pages: []page{
+				{content: showA},
+				{fsys: changedA, content: "![b](a.svg)\n"},
+			},
+			widths: []float32{20},
+		},
+		{
+			name:   "changed and rebuilt",
+			pages:  []page{{content: showA}, {files: changedA, rebuild: true}},
+			widths: []float32{20},
+		},
+		{
+			name: "changed while not shown",
+			pages: []page{
+				{content: showA},
+				{files: changedA, content: "No image.\n"},
+				{content: "![again](a.svg)\n"},
+			},
+			widths: []float32{20},
+		},
+		{
+			name: "changed while still shown",
+			pages: []page{
+				{content: showA},
+				{files: changedA, content: "![b](a.svg)\n"},
+			},
+			widths: []float32{10},
+		},
+		{
+			name: "failed and laid out again",
+			pages: []page{
+				{content: "![late](late.svg)\n"},
+				{files: fstest.MapFS{"late.svg": {Data: svg(20)}}, content: "![late](late.svg)\n", width: 300},
+			},
+			widths: []float32{0},
+		},
+		{
+			name: "failed and shown by another page",
+			pages: []page{
+				{content: "![late](late.svg)\n"},
+				{files: fstest.MapFS{"late.svg": {Data: svg(20)}}, content: "![again](late.svg)\n"},
+			},
+			widths: []float32{20},
+		},
+		{
+			name:   "used twice on a page",
+			pages:  []page{{content: "![one](a.svg) ![two](a.svg)\n"}},
+			widths: []float32{10, 10},
+		},
+		{
+			name:   "raster",
+			pages:  []page{{dir: "images", content: "![shot](shot.png)\n"}},
+			widths: []float32{6},
+		},
+		{
+			name:   "URL",
+			pages:  []page{{content: "![url](" + server.URL + "/c.svg)\n"}},
+			widths: []float32{30},
+		},
+		{
+			name:   "SVG URL with a query",
+			pages:  []page{{content: "![url](" + server.URL + "/c.svg?v=2#top)\n"}},
+			widths: []float32{30},
+		},
+		{
+			name:   "at the byte limit",
+			pages:  []page{{content: showA}},
+			widths: []float32{10},
+			limit:  int64(len(small)),
+		},
+		{
+			name:   "over the byte limit",
+			pages:  []page{{content: showA}},
+			widths: []float32{0},
+			limit:  int64(len(small)) - 1,
+		},
+		{
+			name:   "SVG on disk over the byte limit",
+			pages:  []page{{dir: diskDir, content: showA}},
+			widths: []float32{0},
+			limit:  int64(len(small)) - 1,
+			onDisk: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			own := maps.Clone(fsys)
+			if !tc.onDisk {
+				m.FileSystem = own
+			}
+			m.PerImageByteLimit = tc.limit
+			m.AltLinkPrefixes = tc.alt
+			var dir string
+			m.WorkingDirProvider = func(_ Paneler) string { return dir }
+			// loading reports whether a placeholder is waiting on an image, as one is until its load is done with.
+			loading := func() bool {
+				m.drawableCacheLock.Lock()
+				defer m.drawableCacheLock.Unlock()
+				for _, entry := range m.drawableCache {
+					if len(entry.targets) != 0 {
+						return true
+					}
+				}
+				return false
+			}
+			for _, one := range tc.pages {
+				// The next page would otherwise find a load under way rather than its outcome.
+				for deadline := time.Now().Add(10 * time.Second); loading(); time.Sleep(10 * time.Millisecond) {
+					if time.Now().After(deadline) {
+						t.Fatal("an image is still loading")
+					}
+				}
+				if one.fsys != nil {
+					m.FileSystem = one.fsys
+				}
+				maps.Copy(own, one.files)
+				dir = one.dir
+				switch {
+				case one.rebuild:
+					m.Rebuild()
+				case one.width != 0:
+					m.SetContent(one.content, one.width)
+				default:
+					m.SetContent(one.content, 400)
+				}
+			}
+			var widths []float32
+			var walk func(p *Panel)
+			walk = func(p *Panel) {
+				if image, ok := p.Self.(*DrawablePanel); ok {
+					var width float32
+					if broken, isSVG := image.Drawable.(*DrawableSVG); !isSVG || broken.SVG != BrokenImageSVG {
+						width = image.Drawable.LogicalSize().Width
+					}
+					widths = append(widths, width)
+				}
+				for _, child := range p.Children() {
+					walk(child)
+				}
+			}
+			walk(m.AsPanel())
+			c.Equal(tc.widths, widths, "the width of each image")
+		})
+	}
+}
+
 func TestMarkdownHeadingAnchors(t *testing.T) {
+	const content = "# New\n\ntext\n\n## Second Heading\n\nmore\n\n### Custom {#my-id}\n\nend\n"
 	c := check.New(t)
 	m := NewMarkdown(false)
-	m.SetContent("# New\n\ntext\n\n## Second Heading\n\nmore\n\n### Custom {#my-id}\n\nend\n", 400)
+	m.SetContent(content, 400)
 
 	// Headings automatically get GitHub-style slug anchors.
 	c.NotNil(m.anchors["new"])
@@ -393,6 +641,30 @@ func TestMarkdownHeadingAnchors(t *testing.T) {
 
 	// An unknown anchor reports no match so the caller can fall back to normal link handling.
 	c.False(m.ScrollToAnchor("#does-not-exist"))
+
+	// With an AnchorLinkHandler, following a link to an anchor the document has hands the anchor to it in place of
+	// scrolling, while a link to one it lacks still reaches the LinkHandler.
+	scroll, m := markdownInScrollPanel(content, 20)
+	var anchors, links []string
+	m.AnchorLinkHandler = func(anchor string) { anchors = append(anchors, anchor) }
+	m.LinkHandler = func(_ Paneler, target string) { links = append(links, target) }
+	m.linkHandler(m, "#my-id")
+	m.linkHandler(m, "#does-not-exist")
+	m.linkHandler(m, "##new") // The anchor "#new", which no heading has.
+	c.Equal([]string{"my-id"}, anchors, "the anchors handed to the AnchorLinkHandler")
+	c.Equal([]string{"#does-not-exist", "##new"}, links, "the links handed to the LinkHandler")
+	c.Equal(float32(0), scroll.Bar(false).Value(), "the AnchorLinkHandler is called in place of scrolling")
+
+	// An anchor that matches several IDs only when case is ignored names the first of them in the document.
+	m.SetContent("# One {#API}\n\n## Api\n", 400)
+	first := m.anchors["API"]
+	c.NotNil(first)
+	c.NotNil(m.anchors["api"])
+	same := true
+	for range 100 {
+		same = same && m.panelForAnchor("Api") == first
+	}
+	c.True(same, "the same heading every time")
 }
 
 // markdownInScrollPanel builds a Markdown from the given content inside a ScrollPanel with the given viewport height,
@@ -463,7 +735,7 @@ func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
 			rect := p.RectToRoot(p.ContentRect(true))
 			if tc.nearEnd {
 				c.True(rect.Y >= 0, "the heading is fully visible")
-				bar := scroll.Bar(true)
+				bar := scroll.Bar(false)
 				c.Equal(bar.Max(), bar.Value()+bar.Extent(), "the view is scrolled as far as the content allows")
 			} else {
 				c.Equal(float32(0), rect.Y, "the heading's top is brought to the top of the view")
@@ -502,6 +774,7 @@ func TestMarkdownFitsMaxWidth(t *testing.T) {
 	wide := &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(600, 40)}
 	wideTarget, err := ReviseTarget("", "wide.png", nil)
 	check.New(t).NoError(err)
+	wideKey := markdownImageKey{target: wideTarget}
 	for _, tc := range []struct {
 		name    string
 		content string
@@ -539,13 +812,13 @@ func TestMarkdownFitsMaxWidth(t *testing.T) {
 			for width := float32(200); width <= 400; width += 0.5 {
 				m := NewMarkdown(false)
 				if tc.lateImage {
-					m.drawableCache[wideTarget] = &drawableCacheEntry{}
+					m.drawableCache[wideKey] = &drawableCacheEntry{}
 				} else {
-					m.drawableCache[wideTarget] = &drawableCacheEntry{drawable: wide}
+					m.drawableCache[wideKey] = &drawableCacheEntry{drawable: wide}
 				}
 				m.SetContent(tc.content, width)
 				if tc.lateImage {
-					m.updateDrawable(wideTarget, wide)
+					m.updateDrawable(wideKey, wide)
 				}
 				_, prefSize, _ := m.Sizes(geom.Size{})
 				c.True(prefSize.Width <= width, "wrapped to %v, the content prefers %v", width, prefSize.Width)
@@ -562,6 +835,7 @@ func TestMarkdownImageKeepsMinimumWidth(t *testing.T) {
 	wide := &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(600, 40)}
 	target, err := ReviseTarget("", "img.png", nil)
 	check.New(t).NoError(err)
+	key := markdownImageKey{target: target}
 	minimum := max(DefaultMarkdownTheme.Font.Size(), 24)
 	for _, tc := range []struct {
 		image   Drawable
@@ -594,13 +868,13 @@ func TestMarkdownImageKeepsMinimumWidth(t *testing.T) {
 			c := check.New(t)
 			m := NewMarkdown(false)
 			if tc.late {
-				m.drawableCache[target] = &drawableCacheEntry{}
+				m.drawableCache[key] = &drawableCacheEntry{}
 			} else {
-				m.drawableCache[target] = &drawableCacheEntry{drawable: tc.image}
+				m.drawableCache[key] = &drawableCacheEntry{drawable: tc.image}
 			}
 			m.SetContent(tc.content, tc.width)
 			if tc.late {
-				m.updateDrawable(target, tc.image)
+				m.updateDrawable(key, tc.image)
 			}
 			var image *DrawablePanel
 			var find func(p *Panel)
@@ -1185,6 +1459,53 @@ func TestReviseTarget(t *testing.T) {
 	c.Equal(absWithSpace, revised)
 }
 
+// TestReviseFSTarget verifies how targets are turned into links or paths within a file system.
+func TestReviseFSTarget(t *testing.T) {
+	const dir = "Scripting"
+	for _, tc := range []struct {
+		name       string
+		workingDir string
+		target     string
+		want       string
+		alt        []string
+		invalid    bool
+	}{
+		{
+			name:       "relative and unescaped",
+			workingDir: dir,
+			target:     "img%20one.png",
+			want:       "Scripting/img one.png",
+		},
+		{
+			name:       "up out of the working directory",
+			workingDir: dir,
+			target:     "../images/a.svg",
+			want:       "images/a.svg",
+		},
+		{name: "dot is the root", workingDir: ".", target: "a.svg", want: "a.svg"},
+		{name: "rooted", workingDir: dir, target: "/images/a.svg", want: "images/a.svg"},
+		{name: "above the root", target: "../a.svg", invalid: true},
+		{
+			name:       "URL",
+			workingDir: dir,
+			target:     "https://example.com/a%20b.png",
+			want:       "https://example.com/a%20b.png",
+		},
+		{name: "alt prefix", workingDir: dir, target: "md:Page%20One", want: "md:Page One", alt: []string{"md:"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			revised, err := ReviseFSTarget(tc.workingDir, tc.target, tc.alt)
+			if tc.invalid {
+				c.True(errors.Is(err, fs.ErrInvalid), "an error wrapping fs.ErrInvalid, not %v", err)
+			} else {
+				c.NoError(err)
+				c.Equal(tc.want, revised)
+			}
+		})
+	}
+}
+
 // These tests cover the keyboard focus a Markdown takes for an assistive technology's sake — see Panel.axTakesFocus:
 // that it takes it only while one is being served, and only on the platforms whose screen readers start from the focus;
 // that a window in which nothing held the focus hands it to the document as support starts, while a focus that was
@@ -1319,37 +1640,4 @@ func TestMarkdownJoinsTabOrderOnlyWhileAccessibilityIsActive(t *testing.T) {
 	screen.KeyPress(KeyTab, mod.None)
 	c.True(focus().Is(second), "once none is being served, the tab order skips the document again")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
-}
-
-// TestMarkdownFailedImageLoadIsRetried verifies that a failed image load does not permanently poison the drawable
-// cache: the failed entry must be removed so a later rebuild retries the load (and does not keep appending dead
-// placeholder panels to the stale entry's target list). The load is then made to succeed at the same path to prove
-// the retry actually happens.
-func TestMarkdownFailedImageLoadIsRetried(t *testing.T) {
-	c := check.New(t)
-	m := NewMarkdown(false)
-	dir := t.TempDir()
-	m.WorkingDirProvider = func(_ Paneler) string { return dir }
-	const target = "image.svg"
-
-	// First attempt: the file does not exist, so the load fails and must not remain cached.
-	c.Nil(m.retrieveImage(target, NewDrawablePanel(), DefaultMarkdownWidth, 0))
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		m.drawableCacheLock.Lock()
-		remaining := len(m.drawableCache)
-		m.drawableCacheLock.Unlock()
-		if remaining == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the failed image load was never removed from the drawable cache")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	// Second attempt: the file now exists, so the retry must succeed rather than being served the poisoned entry.
-	svg := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>`
-	c.NoError(os.WriteFile(filepath.Join(dir, target), []byte(svg), 0o600))
-	c.NotNil(m.retrieveImage(target, NewDrawablePanel(), DefaultMarkdownWidth, 0))
 }
