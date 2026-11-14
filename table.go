@@ -986,11 +986,12 @@ func (t *Table[T]) adoptCellIfFocused(cell *Panel, rowData T, row, col int) {
 	// of the change only when the selection really changed — a row that builds a fresh wrapper on every call arrives
 	// here over and over for as long as the editing lasts, and by then the row is already the whole of the selection.
 	id := rowData.ID()
-	if !t.selMap[id] {
-		t.axSelectOnly(id)
+	if t.selMap[id] {
+		t.setLead(id)
+		t.setLeadColumn(col)
+	} else {
+		t.axSelectOnly(id, col)
 	}
-	t.setLead(id)
-	t.setLeadColumn(col)
 }
 
 // cellFor returns the cell panel for the given row data and position. Every place that asks a row for one of its cells
@@ -1844,7 +1845,10 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 		// all under the other. This is the same refusal axSetRowOpen makes for the equivalent request from an
 		// assistive technology, and it is what ApplyFilter's promise that no modifications to the row data are
 		// performed requires.
-		if !repeat && !t.IsFiltered() && t.HasSelection() {
+		if !repeat && !t.IsFiltered() {
+			// The selection is pruned without HasSelection, whose prune would report a change of its own ahead of the
+			// one that closing the containers makes, so that the key reports one change.
+			changed := t.pruneSelection()
 			altered := false
 			for _, row := range t.SelectedRows(false) {
 				if mods.OptionDown() {
@@ -1858,7 +1862,10 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			}
 			if altered {
 				t.SyncToModel()
-				t.PruneSelectionOfUndisclosedNodes()
+				changed = t.pruneSelection() || changed
+			}
+			if changed {
+				t.notifyOfSelectionChange()
 			}
 		}
 	case KeyRight:
@@ -1902,42 +1909,30 @@ func (t *Table[T]) DefaultKeyDown(keyCode KeyCode, mods mod.Modifiers, repeat bo
 			t.setLeadColumn(0)
 			t.ScrollRowCellIntoView(intoCells, 0)
 		}
+	// The vertical keys find the selected rows without HasSelection, whose prune would report a change of its own ahead
+	// of the one arriveAtRow reports.
 	case KeyUp:
-		var i int
-		if t.HasSelection() {
-			i = max(t.FirstSelectedRowIndex()-1, 0)
-		} else {
-			i = len(t.rowCache) - 1
+		i := len(t.rowCache) - 1
+		if first := t.FirstSelectedRowIndex(); first >= 0 {
+			i = max(first-1, 0)
 		}
-		if !mods.ShiftDown() {
-			t.ClearSelection()
-		}
-		t.SelectByIndex(i)
-		t.arriveAtRow(i, leadCol)
+		t.arriveAtRow(i, i, mods.ShiftDown(), leadCol)
 	case KeyDown:
 		i := min(t.LastSelectedRowIndex()+1, len(t.rowCache)-1)
-		if !mods.ShiftDown() {
-			t.ClearSelection()
-		}
-		t.SelectByIndex(i)
-		t.arriveAtRow(i, leadCol)
+		t.arriveAtRow(i, i, mods.ShiftDown(), leadCol)
 	case KeyHome:
-		if mods.ShiftDown() && t.HasSelection() {
-			// The selection arrives at the first row, so the lead is put there before SelectionChangedCallback hears of it.
-			t.selectRange(0, t.FirstSelectedRowIndex(), true)
+		if first := t.FirstSelectedRowIndex(); mods.ShiftDown() && first >= 0 {
+			t.arriveAtRow(first, 0, true, leadCol)
 		} else {
-			t.ClearSelection()
-			t.SelectByIndex(0)
+			t.arriveAtRow(0, 0, false, leadCol)
 		}
-		t.arriveAtRow(0, leadCol)
 	case KeyEnd:
-		if mods.ShiftDown() && t.HasSelection() {
-			t.SelectRange(t.LastSelectedRowIndex(), len(t.rowCache)-1)
+		last := len(t.rowCache) - 1
+		if lastSel := t.LastSelectedRowIndex(); mods.ShiftDown() && lastSel >= 0 {
+			t.arriveAtRow(lastSel, last, true, leadCol)
 		} else {
-			t.ClearSelection()
-			t.SelectByIndex(len(t.rowCache) - 1)
+			t.arriveAtRow(last, last, false, leadCol)
 		}
-		t.arriveAtRow(len(t.rowCache)-1, leadCol)
 	default:
 		return false
 	}
@@ -1957,14 +1952,50 @@ func (t *Table[T]) rowOpensOnRight(row int) bool {
 	return data.CanHaveChildren() && !data.IsOpen()
 }
 
-// arriveAtRow settles the person on the row at the given index after a key moved the selection there: the row becomes
-// the lead row, the cell cursor goes back into the column it was in — selecting a row drops it to row level, since a
-// selection made from code puts the person on the row itself — and the cell the person is now on is scrolled into view,
-// which is the row itself when they are at row level. keepCol is the column the cursor was in before the key, or -1.
-func (t *Table[T]) arriveAtRow(index, keepCol int) {
-	t.setLeadByIndex(index)
+// arriveAtRow carries out a key that moves the person through the rows: the rows between the indexes from and to,
+// inclusive, replace the selection, or are added to it when extend is set; the row at to becomes the lead row; and the
+// cell cursor stays in keepCol, the column it was in before the key, or -1 for row level. Only then does
+// SelectionChangedCallback hear of the change, and only once, so that the callback never sees the selection emptied on
+// the way or the cursor dropped to row level, where SelectByIndex and SelectRange would leave it; whatever the callback
+// then does to the selection or the cursor stands. The cell the key arrived at is then scrolled into view, which is the
+// row itself at row level, wherever the callback has left the row and whatever columns it has left the table.
+func (t *Table[T]) arriveAtRow(from, to int, extend bool, keepCol int) {
+	if extend {
+		// Rows the table no longer shows leave the selection as part of the one change reported below.
+		t.pruneSelection()
+	} else {
+		t.selMap = make(map[tid.TID]bool)
+		t.selNeedsPrune = false
+		t.selAnchor = ""
+		t.setLead("")
+	}
+	// The rows come from the row cache, so adding them leaves nothing to prune.
+	for i := max(min(from, to), 0); i <= min(max(from, to), len(t.rowCache)-1); i++ {
+		id := t.rowCache[i].row.ID()
+		t.selMap[id] = true
+		if t.selAnchor == "" {
+			t.selAnchor = id
+		}
+	}
+	t.setLeadByIndex(to)
 	t.setLeadColumn(keepCol)
-	t.ScrollRowCellIntoView(index, max(keepCol, 0))
+	t.MarkForRedraw()
+	// Only an empty table has no row at to, and so nothing to scroll to.
+	var id tid.TID
+	if to >= 0 && to < len(t.rowCache) {
+		id = t.rowCache[to].row.ID()
+	}
+	t.notifyOfSelectionChange()
+	if id != "" {
+		if row := t.rowIndexSince(id, to); row >= 0 {
+			// The callback may have cut the columns back, which leaves the cursor on the last one (see leadCell).
+			if col := min(keepCol, len(t.Columns)-1); col < 0 {
+				t.ScrollRowIntoView(row)
+			} else {
+				t.ScrollRowCellIntoView(row, col)
+			}
+		}
+	}
 	t.followLead()
 }
 
@@ -2194,12 +2225,20 @@ func (t *Table[T]) focusAdjacentCell(forward bool) bool {
 // PruneSelectionOfUndisclosedNodes removes any nodes in the selection map that are no longer disclosed from the
 // selection map.
 func (t *Table[T]) PruneSelectionOfUndisclosedNodes() {
+	if t.pruneSelection() {
+		t.notifyOfSelectionChange()
+	}
+}
+
+// pruneSelection is PruneSelectionOfUndisclosedNodes without the notification, for a caller that reports the change
+// itself. Returns true if the selection changed.
+func (t *Table[T]) pruneSelection() bool {
 	if !t.selNeedsPrune {
-		return
+		return false
 	}
 	t.selNeedsPrune = false
 	if len(t.selMap) == 0 {
-		return
+		return false
 	}
 	oldLen := len(t.selMap)
 	selMap := make(map[tid.TID]bool, oldLen)
@@ -2211,9 +2250,7 @@ func (t *Table[T]) PruneSelectionOfUndisclosedNodes() {
 	}
 	t.selMap = selMap
 	t.pruneLead()
-	if len(selMap) != oldLen {
-		t.notifyOfSelectionChange()
-	}
+	return len(selMap) != oldLen
 }
 
 // FirstSelectedRowIndex returns the first selected row index, or -1 if there is no selection.
@@ -2265,8 +2302,9 @@ func (t *Table[T]) LeadColumnIndex() int {
 
 // SetLeadCell puts the cell cursor on the given cell, making that row the whole of the selection and the row the person
 // is on, and scrolls the cell into view. A column of -1 puts the person at row level, on the row alone, and scrolls the
-// row into view rather than any one cell of it. Reports false, changing nothing, if the row names no row the table is
-// showing or the column names no column it has.
+// row into view rather than any one cell of it. SelectionChangedCallback, when the selection changes, runs once the
+// person is on the cell. Reports false, changing nothing, if the row names no row the table is showing or the column
+// names no column it has.
 func (t *Table[T]) SetLeadCell(row, col int) bool {
 	if row < 0 || row >= len(t.rowCache) || col < -1 || col >= len(t.Columns) {
 		return false
@@ -2277,12 +2315,11 @@ func (t *Table[T]) SetLeadCell(row, col int) bool {
 	// already: an assistive technology stepping the cursor across the cells of a row asks for this once per cell, and
 	// the selection is the same row every time.
 	id := t.rowCache[row].row.ID()
-	t.axSelectOnly(id)
-	t.setLead(id)
-	t.setLeadColumn(col)
+	t.axSelectOnly(id, col)
 	// The row is looked up again, since the SelectionChangedCallback axSelectOnly runs may have changed the rows.
 	if row = t.rowIndexSince(id, row); row >= 0 {
-		if col < 0 {
+		// The callback may also have cut the columns back, which leaves the cursor on the last one (see leadCell).
+		if col = min(col, len(t.Columns)-1); col < 0 {
 			// At row level there is no one cell to bring into view: the row is what the person is on, so the row is
 			// what is scrolled to, exactly as the keys that step back out of the cells do.
 			t.ScrollRowIntoView(row)
@@ -2513,8 +2550,7 @@ func (t *Table[T]) SelectByIndex(indexes ...int) {
 		}
 		// The last row actually selected is the one the person has arrived on, which is what the row the keyboard
 		// focus is reported on is worked out from. Selecting from code puts the person on the row itself rather than
-		// on one of its cells, so the cell cursor goes back to row level; the keys that move it across the rows put it
-		// back afterwards, since a person moving up and down at cell level stays in the column they were in.
+		// on one of its cells, so the cell cursor goes back to row level.
 		t.setLead(id)
 		t.setLeadColumn(-1)
 	}
@@ -2525,11 +2561,6 @@ func (t *Table[T]) SelectByIndex(indexes ...int) {
 // SelectRange selects the given range. The start will be considered the anchor selection if no existing anchor
 // selection exists.
 func (t *Table[T]) SelectRange(start, end int) {
-	t.selectRange(start, end, false)
-}
-
-// selectRange is SelectRange, but puts the person on the start of the range, not the end, when leadAtStart is set.
-func (t *Table[T]) selectRange(start, end int, leadAtStart bool) {
 	start = max(start, 0)
 	end = min(end, len(t.rowCache)-1)
 	if start > end {
@@ -2544,13 +2575,8 @@ func (t *Table[T]) selectRange(start, end int, leadAtStart bool) {
 		}
 	}
 	// The end of the range is where a selection made by dragging or by shift-arrowing has arrived, so that is the row
-	// the person is on, unless leadAtStart says the selection arrived at its start. As with SelectByIndex, the cell
-	// cursor goes back to row level.
-	if leadAtStart {
-		t.setLeadByIndex(start)
-	} else {
-		t.setLeadByIndex(end)
-	}
+	// the person is on. As with SelectByIndex, the cell cursor goes back to row level.
+	t.setLeadByIndex(end)
 	t.setLeadColumn(-1)
 	t.MarkForRedraw()
 	t.notifyOfSelectionChange()
@@ -3838,13 +3864,19 @@ func (t *Table[T]) PerformAccessibilityAction(req accessibility.ActionRequest) b
 		}
 		// Both of the gestures this stands for act on the selection: a double-click has already selected the row with
 		// its first click, and the Return key runs against whatever is selected. So the row is selected first when it
-		// was not already, and the callback then finds what it expects.
+		// was not already, with the person put on it as the click would, and the callback then finds what it expects.
 		if !t.IsRowSelected(row) {
-			t.axSelectOnly(id)
+			t.axSelectOnly(id, -1)
 		}
 		SafeCall(t.DoubleClickCallback)
 	case accessibility.Select:
-		t.axSelectOnly(id)
+		// The person is put on the row, at row level unless they are on one of its cells already, since an assistive
+		// technology re-selects the row it is on (see axSelectOnly).
+		leadRow, leadCol := t.leadCell()
+		if leadRow != row {
+			leadCol = -1
+		}
+		t.axSelectOnly(id, leadCol)
 		// The row is looked up again, since the SelectionChangedCallback axSelectOnly runs may have changed the rows.
 		if row = t.rowIndexSince(id, row); row >= 0 {
 			t.ScrollRowIntoView(row)
@@ -3946,14 +3978,15 @@ func (t *Table[T]) axShowRowContextMenu(id tid.TID, col int) bool {
 	if row < 0 {
 		return false
 	}
-	t.selectRowForContextMenu(row)
-	if row = t.axRowIndexForID(id); row < 0 || !axMayShowContextMenu(t.AsPanel()) {
-		return false
-	}
 	if col >= len(t.Columns) {
 		col = -1
 	}
-	t.setLeadColumn(col)
+	t.selectRowForContextMenu(row, col)
+	if row = t.axRowIndexForID(id); row < 0 || !axMayShowContextMenu(t.AsPanel()) {
+		return false
+	}
+	// A SelectionChangedCallback may have cut the columns back, which leaves the cursor on the last one (see leadCell).
+	col = min(col, len(t.Columns)-1)
 	// The menu opens over the row in the view showing it, which takes the focus as this one would have, or at this
 	// view's default anchor when no view in its window shows the row.
 	v := t.rowViewIn(row, t.Window())
@@ -3990,14 +4023,16 @@ func (t *Table[T]) axShowRowContextMenu(id tid.TID, col int) bool {
 }
 
 // selectRowForContextMenu readies the row at the given index for the contextual menu about to open over it and makes it
-// the lead row. An unselected row becomes the whole of the selection, as a left-click would make it; a selected one
-// keeps the rest of the selection, which the menu then acts on.
-func (t *Table[T]) selectRowForContextMenu(row int) {
+// the lead row, with the cell cursor in column col, or at row level for -1. An unselected row becomes the whole of the
+// selection, as a left-click would make it; a selected one keeps the rest of the selection for the menu to act on.
+func (t *Table[T]) selectRowForContextMenu(row, col int) {
 	id := t.rowCache[row].row.ID()
-	if !t.IsRowSelected(row) {
-		t.axSelectOnly(id)
+	if t.IsRowSelected(row) {
+		t.setLead(id)
+		t.setLeadColumn(col)
+	} else {
+		t.axSelectOnly(id, col)
 	}
-	t.setLead(id)
 }
 
 // ContextMenuPressed implements ContextMenuPressHandler: the table takes the focus without scrolling, when it can hold
@@ -4010,8 +4045,7 @@ func (t *Table[T]) ContextMenuPressed(where geom.Point, mods mod.Modifiers) bool
 		t.RequestFocusWithoutScroll()
 	}
 	if row := t.OverRow(where.Y); row != -1 {
-		t.selectRowForContextMenu(row)
-		t.setLeadColumn(-1)
+		t.selectRowForContextMenu(row, -1)
 		t.MarkForRedraw()
 	}
 	return mods&mod.NonSticky == 0
@@ -4184,23 +4218,28 @@ func (t *Table[T]) ContextMenuAnchor() geom.Point {
 	return pt
 }
 
-// axSelectOnly makes the row with the given id the whole of the selection, and the anchor a later shift-click extends
-// from. A plain click does both — setting the selection alone leaves the anchor wherever it last was, on a row that may
-// not even be selected any more — and a person who has just moved the selection with an assistive technology and then
-// shift-clicks expects the same thing to happen as if they had clicked the row themselves.
+// axSelectOnly makes the row with the given id the whole of the selection, the anchor a later shift-click extends from,
+// and the row the person is on, with the cell cursor in column col, or at row level for -1. A plain click does all
+// three — setting the selection alone leaves the anchor wherever it last was, on a row that may not even be selected
+// any more — and a person who has just moved the selection with an assistive technology and then shift-clicks expects
+// the same thing to happen as if they had clicked the row themselves.
 //
 // The application is told the selection changed only when it did, exactly as DefaultMouseDown says nothing for a click
-// on the row that is already the whole of the selection. An assistive technology re-selects the row it is already on
-// constantly, and an application told its selection had changed does whatever it does when that happens. The selection
-// is made either way, since it also puts the anchor on the row.
-func (t *Table[T]) axSelectOnly(id tid.TID) {
-	changed := t.SelectionCount() != 1 || !t.selMap[id]
-	// Nothing needs pruning: the caller found the row in the row cache, so the one id the selection now holds is known
-	// to be in it, exactly as DefaultMouseDown's equivalent branch leaves the flag alone. Setting it would make the
-	// next HasSelection, SelectionCount or SelectedRows walk the whole row cache and rebuild the map — once for every
-	// row an assistive technology steps onto.
+// on the row that is already the whole of the selection, and only once the person is on the row. An assistive
+// technology re-selects the row it is already on constantly, and an application told its selection had changed does
+// whatever it does when that happens. The selection is made either way, since it also puts the anchor and the person on
+// the row.
+func (t *Table[T]) axSelectOnly(id tid.TID, col int) {
+	// The selection is not pruned first, since a prune that drops a row the table no longer shows reports that change
+	// on its own, before the person is on the row; replacing a selection that still holds such a row is a change too.
+	changed := len(t.selMap) != 1 || !t.selMap[id]
+	// Nothing is left to prune either: the caller found the row in the row cache, so the one id the selection now holds
+	// is known to be in it.
 	t.selMap = map[tid.TID]bool{id: true}
+	t.selNeedsPrune = false
 	t.selAnchor = id
+	t.setLead(id)
+	t.setLeadColumn(col)
 	t.MarkForRedraw()
 	if changed {
 		t.notifyOfSelectionChange()

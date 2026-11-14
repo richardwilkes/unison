@@ -1872,12 +1872,13 @@ func markdownAnchorID(anchor string) string {
 func (m *Markdown) ScrollToAnchor(anchor string) bool {
 	if p := m.panelForAnchor(markdownAnchorID(anchor)); p != nil {
 		// Bring the top of the heading to the top of the view (when the scroll range allows), revealing the section
-		// that follows it rather than leaving the heading pinned to the bottom of the view. Inflating the height of the
-		// rect we request to be made visible to the full height of the document forces a top alignment: the rect can
-		// never fully fit, so the scroll logic aligns its top edge with the top of the view (clamped to the available
-		// scroll range). When the heading itself is taller than the view, this still shows its top rather than its
-		// bottom.
+		// that follows it rather than leaving the heading pinned to the bottom of the view. A rect from the heading's
+		// top as tall as the document cannot fit, so the scroll logic aligns its top edge with the top of the view
+		// (clamped to the available scroll range), which shows the top of even a heading taller than the view. The
+		// scroll logic leaves alone a rect that already fills the view, though, as that one does while the heading's
+		// top is above the view, so the top edge alone is brought into view first.
 		rect := p.ContentRect(true)
+		p.ScrollRectIntoView(geom.NewRect(rect.X, rect.Y, rect.Width, 0))
 		rect.Height = max(rect.Height, m.ContentRect(true).Height)
 		p.ScrollRectIntoView(rect)
 		return true

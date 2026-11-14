@@ -2538,8 +2538,8 @@ func TestContextMenuChordDuringAHeldPressKeepsTheSelection(t *testing.T) {
 // the focus for an assistive technology's request for a row's menu, and after the row is selected for it, since the
 // panel losing the focus or the selection callback may end the offer: the request is refused, without the widget being
 // asked, when the row is gone, the menu was taken away, the widget was disabled or another window was made the active
-// one, with the selection left alone where the focus move ended the offer and the cell cursor left alone where the
-// selection callback did.
+// one, with the selection left alone where the focus move ended the offer and, where the selection callback did, the
+// cell cursor left on the cell the request named, as the change was reported.
 func TestContextMenuRowRequestAfterTheFocusMoveEndsTheOffer(t *testing.T) {
 	c := check.New(t)
 	w := newMouseButtonTestWindow()
@@ -2690,8 +2690,8 @@ func TestContextMenuRowRequestAfterTheFocusMoveEndsTheOffer(t *testing.T) {
 	table.SyncToModel()
 	cell.LostFocusCallback = lost
 
-	// A SelectionChangedCallback that ends the offer: refused once the row is selected, with the cell cursor left
-	// where it was.
+	// A SelectionChangedCallback that ends the offer: refused once the row is selected, with the cell cursor left on
+	// the cell the request named, where the selection change was reported.
 	w.SetFocus(table)
 	c.True(table.SetLeadCell(0, 1))
 	c.Equal(1, table.LeadColumnIndex())
@@ -2706,7 +2706,7 @@ func TestContextMenuRowRequestAfterTheFocusMoveEndsTheOffer(t *testing.T) {
 	c.Equal(1, tableChanges, "once the row was selected")
 	c.True(table.IsRowSelected(1))
 	c.Equal(0, asked, "without the table being asked")
-	c.Equal(1, table.LeadColumnIndex(), "and the cell cursor left where it was")
+	c.Equal(0, table.LeadColumnIndex(), "and the cell cursor left on the cell the request named")
 }
 
 // TestContextMenuCellRequestRefusedLeavesThePress verifies that an assistive technology's request for the menu of a

@@ -841,9 +841,9 @@ func TestContextMenuRows(t *testing.T) {
 }
 
 // TestContextMenuTableCells verifies what is particular to a table: its cells offer the menu too, and a request on a
-// cell leaves the cell cursor on the cell while a right-click or a request on a row puts it at row level; a right-drag
-// is handed back to the table's own mouse handling and opens no menu; and shift+F10 opens the menu beneath the row the
-// person is on.
+// cell leaves the cell cursor on the cell while a right-click or a request on a row puts it at row level, before the
+// selection change is reported; a right-drag is handed back to the table's own mouse handling and opens no menu; and
+// shift+F10 opens the menu beneath the row the person is on.
 func TestContextMenuTableCells(t *testing.T) {
 	c := check.New(t)
 	var table, quiet *unison.Table[*tableTestRow]
@@ -878,10 +878,27 @@ func TestContextMenuTableCells(t *testing.T) {
 		}
 	}
 
+	// The row and column the person is on whenever the selection change is reported.
+	var reported [][2]int
+	screen.Do(func() {
+		table.SelectionChangedCallback = func() {
+			reported = append(reported, [2]int{table.LeadRowIndex(), table.LeadColumnIndex()})
+		}
+	})
+	takeReported := func() [][2]int {
+		var got [][2]int
+		screen.Do(func() {
+			got = reported
+			reported = nil
+		})
+		return got
+	}
+
 	// A request on a cell selects the cell's row and leaves the cell cursor on the cell.
 	screen.Do(func() {
 		table.ClearSelection()
 		table.SelectByIndex(0, 1, 2)
+		reported = nil
 	})
 	tree = screen.AccessibilityTree(wnd)
 	rows = axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(table)))
@@ -909,6 +926,7 @@ func TestContextMenuTableCells(t *testing.T) {
 	})
 	c.Equal(3, lead)
 	c.Equal(1, leadCol, "the cell cursor is on the cell the menu was asked for")
+	c.Equal([][2]int{{3, 1}}, takeReported(), "the selection change is reported with the person on the cell")
 	c.Equal(expected, cmLast(screen, &calls), "the menu opens beneath the cell")
 	cmMenuAt(c, screen, wnd, table, expected, "and is put there")
 	cmCloseMenu(c, screen, wnd)
@@ -919,6 +937,7 @@ func TestContextMenuTableCells(t *testing.T) {
 		table.SetLeadCell(3, 1)
 		frame := table.RowFrame(1)
 		rowPoint = geom.NewPoint(frame.X+10, frame.CenterY())
+		reported = nil
 	})
 	screen.ClickWith(cmScreenPoint(c, screen, table, rowPoint), unison.ButtonRight, mod.None)
 	menus, _ = cmOpenMenu(c, screen, wnd)
@@ -929,8 +948,12 @@ func TestContextMenuTableCells(t *testing.T) {
 	})
 	c.Equal(1, lead, "a right-click on a row puts the person on the row")
 	c.Equal(-1, leadCol, "at row level")
+	c.Equal([][2]int{{1, -1}}, takeReported(), "the selection change is reported with the person on the row")
 	cmCloseMenu(c, screen, wnd)
-	screen.Do(func() { table.SetLeadCell(1, 0) })
+	screen.Do(func() {
+		table.SetLeadCell(1, 0)
+		reported = nil
+	})
 	tree = screen.AccessibilityTree(wnd)
 	rows = axTableRows(tree, axMustNode(c, screen.AccessibilityNodeFor(table)))
 	c.True(screen.PerformAccessibilityAction(accessibility.ActionRequest{
@@ -943,6 +966,7 @@ func TestContextMenuTableCells(t *testing.T) {
 	})
 	c.Equal(2, lead, "a request on a row puts the person on the row")
 	c.Equal(-1, leadCol, "at row level")
+	c.Equal([][2]int{{2, -1}}, takeReported(), "the selection change is reported with the person on the row")
 	cmCloseMenu(c, screen, wnd)
 
 	// Once a right press moves beyond the drag threshold, the window hands it to the table's own mouse handling where

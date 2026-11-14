@@ -965,9 +965,10 @@ func TestTableCellFocusedCellUsesPlainInks(t *testing.T) {
 
 // TestTableFocusCellSelectsTheRow verifies that the focus arriving in a cell of a row that is not selected, whether
 // through FocusCell or through the click into a Field that starts most editing sessions, takes the person to that
-// cell: the row becomes the whole of the selection and the cursor lands on the column, so that Tab carries both along
-// with the focus and Escape hands the focus back to the table on the cell that was being edited. Leaving the selection
-// where it was left the ring and the cursor on some other row, and Escape then landed on a cell nobody was in.
+// cell: the row becomes the whole of the selection and the cursor lands on the column, both before the application
+// hears of the change, so that Tab carries both along with the focus and Escape hands the focus back to the table on
+// the cell that was being edited. Leaving the selection where it was left the ring and the cursor on some other row,
+// and Escape then landed on a cell nobody was in.
 func TestTableFocusCellSelectsTheRow(t *testing.T) {
 	for _, one := range []struct {
 		focus func(c check.Checker, screen *unison.HeadlessScreen, e *editTable)
@@ -993,7 +994,7 @@ func TestTableFocusCellSelectsTheRow(t *testing.T) {
 			c := check.New(t)
 			var e *editTable
 			var wnd *unison.Window
-			changes := 0
+			var reported [][2]int
 			screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
 				unison.StartupFinishedCallback(func() {
 					e = newEditTable(3, 2, "abc", false)
@@ -1007,20 +1008,25 @@ func TestTableFocusCellSelectsTheRow(t *testing.T) {
 			// The person starts on the second cell of the middle row, with the selection counting from there.
 			c.True(screen.Do(func() {
 				c.True(e.table.SetLeadCell(1, 1))
-				e.table.SelectionChangedCallback = func() { changes++ }
+				e.table.SelectionChangedCallback = func() {
+					reported = append(reported, [2]int{e.table.LeadRowIndex(), e.table.LeadColumnIndex()})
+				}
 			}))
 			one.focus(c, screen, e)
 			var indexes []int
+			var got [][2]int
 			var row, col int
 			c.True(screen.Do(func() {
 				indexes = selectedTableIndexes(e.table)
 				row = e.table.LeadRowIndex()
 				col = e.table.LeadColumnIndex()
+				got = slices.Clone(reported)
 			}))
 			c.Equal([]int{2}, indexes, "the row whose cell took the focus becomes the whole of the selection")
 			c.Equal(2, row)
 			c.Equal(0, col, "and the cursor lands on the cell the focus went to")
-			c.Equal(1, changes, "and the application hears of the one change that really happened")
+			c.Equal([][2]int{{2, 0}}, got,
+				"and the application hears of the one change that really happened, made with the person on the cell")
 
 			// Tab moves the focus along the row, and the cursor goes with it.
 			screen.KeyPress(unison.KeyTab, 0)
@@ -1031,10 +1037,11 @@ func TestTableFocusCellSelectsTheRow(t *testing.T) {
 			c.True(screen.Do(func() {
 				indexes = selectedTableIndexes(e.table)
 				col = e.table.LeadColumnIndex()
+				got = slices.Clone(reported)
 			}))
 			c.Equal(1, col, "the cursor follows the focus across the row")
 			c.Equal([]int{2}, indexes)
-			c.Equal(1, changes, "a move within the row that was already the whole of the selection changes nothing")
+			c.Equal(1, len(got), "a move within the row that was already the whole of the selection changes nothing")
 
 			// Escape ends the editing and leaves the person standing on the cell they were working in.
 			screen.KeyPress(unison.KeyEscape, 0)
@@ -1387,6 +1394,27 @@ func TestTableDisclosureKeysAreInertUnderHierarchicalFilter(t *testing.T) {
 	c.False(outer.IsOpen(), "Left must close the container again once the filter is gone")
 }
 
+// TestTableLeftReportsOneSelectionChange verifies that a Left which closes containers reports one selection change,
+// made once the rows it hid have left the selection, along with any row an earlier close hid.
+func TestTableLeftReportsOneSelectionChange(t *testing.T) {
+	c := check.New(t)
+	first := newTableTestRow("first")
+	first.SetChildren([]*tableTestRow{newTableTestRow("first child")})
+	first.SetOpen(true)
+	second := newTableTestRow("second")
+	second.SetChildren([]*tableTestRow{newTableTestRow("second child")})
+	second.SetOpen(true)
+	table := newTestTable(first, second)
+	table.SelectByIndex(1, 2, 3)
+	first.SetOpen(false)
+	table.SyncToModel()
+	var reports [][]int
+	table.SelectionChangedCallback = func() { reports = append(reports, selectedTableIndexes(table)) }
+	c.True(table.DefaultKeyDown(unison.KeyLeft, 0, false))
+	c.False(second.IsOpen(), "Left closes the selected container")
+	c.Equal([][]int{{1}}, reports, "the selection changes reported for Left")
+}
+
 // newCursorTable returns a table of the given rows with three columns, for the tests that drive the cell cursor. The
 // rows name each of their columns, so that what the cursor is standing on can be told from what it reads as.
 func newCursorTable(rows ...*tableTestRow) *unison.Table[*tableTestRow] {
@@ -1485,7 +1513,8 @@ func TestTableCellCursorRightOpensBeforeItEnters(t *testing.T) {
 
 // TestTableCellCursorVerticalKeysKeepTheColumn verifies that the keys that move through the rows keep the column the
 // cursor is in, which is what lets a person read down a column, and that Home and End move the cursor across the row
-// unmodified but go on moving through the rows when shifted.
+// unmodified but go on moving through the rows when shifted. Each key that moves through the rows reports one selection
+// change, made once the selection, the row and the column are where the key put them.
 func TestTableCellCursorVerticalKeysKeepTheColumn(t *testing.T) {
 	c := check.New(t)
 	table := newCursorTable(flatRows(4)...)
@@ -1494,18 +1523,40 @@ func TestTableCellCursorVerticalKeysKeepTheColumn(t *testing.T) {
 	c.True(table.DefaultKeyDown(unison.KeyRight, 0, false))
 	c.Equal(1, table.LeadColumnIndex())
 
+	type report struct {
+		selection []int
+		row, col  int
+	}
+	var reports []report
+	table.SelectionChangedCallback = func() {
+		reports = append(reports, report{
+			selection: selectedTableIndexes(table),
+			row:       table.LeadRowIndex(),
+			col:       table.LeadColumnIndex(),
+		})
+	}
+	reported := func() []report {
+		r := reports
+		reports = nil
+		return r
+	}
+
 	c.True(table.DefaultKeyDown(unison.KeyDown, 0, false))
 	c.Equal(2, table.LeadRowIndex())
 	c.Equal(1, table.LeadColumnIndex(), "moving down a row keeps the person in the column they were reading")
 	c.Equal([]int{2}, selectedTableIndexes(table))
+	c.Equal([]report{{selection: []int{2}, row: 2, col: 1}}, reported(), "the selection changes reported for Down")
 
 	c.True(table.DefaultKeyDown(unison.KeyUp, 0, false))
 	c.Equal(1, table.LeadRowIndex())
 	c.Equal(1, table.LeadColumnIndex())
+	c.Equal([]report{{selection: []int{1}, row: 1, col: 1}}, reported(), "the selection changes reported for Up")
 
 	c.True(table.DefaultKeyDown(unison.KeyDown, mod.Shift, false))
 	c.Equal([]int{1, 2}, selectedTableIndexes(table), "a shifted Down still extends the selection")
 	c.Equal(1, table.LeadColumnIndex())
+	c.Equal([]report{{selection: []int{1, 2}, row: 2, col: 1}}, reported(),
+		"the selection changes reported for a shifted Down")
 
 	// Unmodified Home and End move across the row at cell level.
 	c.True(table.DefaultKeyDown(unison.KeyEnd, 0, false))
@@ -1515,16 +1566,65 @@ func TestTableCellCursorVerticalKeysKeepTheColumn(t *testing.T) {
 	c.Equal(0, table.LeadColumnIndex(), "Home at cell level goes to the first column")
 	c.Equal(2, table.LeadRowIndex())
 	c.Equal([]int{1, 2}, selectedTableIndexes(table), "neither touches the selection")
+	c.Equal(0, len(reported()), "and neither reports a selection change")
 
-	// Shifted, they keep their row-range meaning and the cursor stays in its column. The selection change is reported
-	// with the person already on the row the key arrived at.
-	var leads []int
-	table.SelectionChangedCallback = func() { leads = append(leads, table.LeadRowIndex()) }
+	// Shifted, they keep their row-range meaning and the cursor stays in its column.
 	c.True(table.DefaultKeyDown(unison.KeyHome, mod.Shift, false))
-	c.Equal([]int{0}, leads, "the lead row each selection change was reported with")
 	c.Equal([]int{0, 1, 2}, selectedTableIndexes(table))
 	c.Equal(0, table.LeadRowIndex())
 	c.Equal(0, table.LeadColumnIndex())
+	c.Equal([]report{{selection: []int{0, 1, 2}, row: 0, col: 0}}, reported(),
+		"the selection changes reported for a shifted Home")
+
+	// At row level, an unmodified End is a row key again.
+	c.True(table.DefaultKeyDown(unison.KeyEscape, 0, false))
+	c.Equal(0, len(reported()), "leaving the cells is not a selection change")
+	c.True(table.DefaultKeyDown(unison.KeyEnd, 0, false))
+	c.Equal([]report{{selection: []int{3}, row: 3, col: -1}}, reported(), "the selection changes reported for End")
+
+	// A row a closed container hid stays in the selection until something prunes it. The key's one change takes it out,
+	// leaving nothing for a later query to prune and report.
+	for _, test := range []struct {
+		name string
+		want report
+		key  unison.KeyCode
+		mods mod.Modifiers
+	}{
+		{name: "Up", key: unison.KeyUp, want: report{selection: []int{0}, row: 0, col: 1}},
+		{name: "shifted Up", key: unison.KeyUp, mods: mod.Shift, want: report{selection: []int{0, 1}, row: 0, col: 1}},
+		{
+			name: "shifted Down",
+			key:  unison.KeyDown,
+			mods: mod.Shift,
+			want: report{selection: []int{1, 2}, row: 2, col: 1},
+		},
+		{
+			name: "shifted Home",
+			key:  unison.KeyHome,
+			mods: mod.Shift,
+			want: report{selection: []int{0, 1}, row: 0, col: 1},
+		},
+		{
+			name: "shifted End",
+			key:  unison.KeyEnd,
+			mods: mod.Shift,
+			want: report{selection: []int{1, 2, 3}, row: 3, col: 1},
+		},
+	} {
+		container := newTableTestRow("container")
+		container.SetChildren([]*tableTestRow{newTableTestRow("child")})
+		container.SetOpen(true)
+		table.SetRootRows(append([]*tableTestRow{container}, flatRows(3)...))
+		c.True(table.SetLeadCell(1, 1))
+		c.True(table.DefaultKeyDown(unison.KeyDown, mod.Shift, false))
+		container.SetOpen(false)
+		table.SyncToModel()
+		reported()
+		c.True(table.DefaultKeyDown(test.key, test.mods, false))
+		c.True(table.HasSelection())
+		c.Equal([]report{test.want}, reported(), "the selection changes reported for %s with a hidden row selected",
+			test.name)
+	}
 }
 
 // TestTableCellCursorEscapeReturnsToRowLevel verifies that Escape puts the person back on the row, which is the way
@@ -1542,6 +1642,90 @@ func TestTableCellCursorEscapeReturnsToRowLevel(t *testing.T) {
 	c.Equal(-1, table.LeadColumnIndex(), "Escape leaves the cells from wherever the cursor was")
 	c.Equal(0, table.LeadRowIndex())
 	c.Equal([]int{0}, selectedTableIndexes(table))
+}
+
+// TestTableRowLevelMovesKeepTheHorizontalScroll verifies that moving onto a row at row level in a table wider than its
+// view brings the row into view vertically and leaves the horizontal scroll where it was, wherever that is, since the
+// row already fills the view's width.
+func TestTableRowLevelMovesKeepTheHorizontalScroll(t *testing.T) {
+	const target = 21
+	for _, test := range []struct {
+		setup func(table *unison.Table[*tableTestRow])
+		move  func(table *unison.Table[*tableTestRow]) bool
+		name  string
+	}{
+		{
+			name:  "down key",
+			setup: func(table *unison.Table[*tableTestRow]) { table.SelectByIndex(target - 1) },
+			move: func(table *unison.Table[*tableTestRow]) bool {
+				return table.DefaultKeyDown(unison.KeyDown, 0, false)
+			},
+		},
+		{
+			name:  "up key",
+			setup: func(table *unison.Table[*tableTestRow]) { table.SelectByIndex(target + 1) },
+			move:  func(table *unison.Table[*tableTestRow]) bool { return table.DefaultKeyDown(unison.KeyUp, 0, false) },
+		},
+		{
+			name:  "escape from a cell",
+			setup: func(table *unison.Table[*tableTestRow]) { table.SetLeadCell(target, 2) },
+			move: func(table *unison.Table[*tableTestRow]) bool {
+				return table.DefaultKeyDown(unison.KeyEscape, 0, false)
+			},
+		},
+		{
+			name:  "lead row",
+			setup: func(*unison.Table[*tableTestRow]) {},
+			move:  func(table *unison.Table[*tableTestRow]) bool { return table.SetLeadCell(target, -1) },
+		},
+		{
+			name:  "assistive technology select",
+			setup: func(*unison.Table[*tableTestRow]) {},
+			move: func(table *unison.Table[*tableTestRow]) bool {
+				return table.PerformAccessibilityAction(accessibility.ActionRequest{
+					Key:    table.RowFromIndex(target).ID(),
+					Action: accessibility.Select,
+				})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Less than the first column's padding, well into the table, and as far right as it goes.
+			for _, start := range []float32{3, 450, -1} {
+				c := check.New(t)
+				table := newCursorTable(flatRows(40)...)
+				for i := range table.Columns {
+					table.Columns[i].Current = 300
+				}
+				scroll := unison.NewScrollPanel()
+				scroll.SetContent(table, behavior.Fill, behavior.Fill)
+				scroll.SetFrameRect(geom.NewRect(0, 0, 300, 100))
+				scroll.ValidateLayout()
+				test.setup(table)
+				h := start
+				if h < 0 {
+					bar := scroll.Bar(true)
+					h = bar.Max() - bar.Extent()
+				}
+				scroll.SetPosition(h, 0)
+				view := scroll.ContentView()
+				viewRect := view.ContentRect(false)
+				rowRect := table.RectTo(table.RowFrame(target), view)
+				c.True(rowRect.Y >= viewRect.Bottom(), "the row starts out below the view: %v, %v", rowRect, viewRect)
+				startH, _ := scroll.Position()
+				c.Equal(h, startH, "the view starts out scrolled right")
+
+				c.True(test.move(table))
+				c.Equal(target, table.LeadRowIndex())
+				c.Equal(-1, table.LeadColumnIndex())
+				gotH, _ := scroll.Position()
+				c.Equal(h, gotH, "the horizontal scroll is kept")
+				rowRect = table.RectTo(table.RowFrame(target), view)
+				c.True(rowRect.Y >= viewRect.Y && rowRect.Bottom() <= viewRect.Bottom(),
+					"the row is brought into view: %v, %v", rowRect, viewRect)
+			}
+		})
+	}
 }
 
 // TestTableCellCursorNeedsARowToStandOn verifies that the cursor is given up whenever the row beneath it goes: the
@@ -1589,27 +1773,30 @@ func TestTableCellCursorNeedsARowToStandOn(t *testing.T) {
 }
 
 // TestTableSetLeadCell verifies the programmatic way onto a cell: it selects the row, puts the cursor where it was
-// asked for, and refuses anything the table is not showing. It reports one selection change when the row changes and
-// none when the cursor merely moves within the row that was already the whole of the selection, which is what an
-// assistive technology stepping across the cells asks for.
+// asked for, and refuses anything the table is not showing. It reports one selection change when the row changes, made
+// with the person already on the cell, even when the selection still holds a row a closed container hid, and none when
+// the cursor merely moves within the row that was already the whole of the selection, which is what an assistive
+// technology stepping across the cells asks for.
 func TestTableSetLeadCell(t *testing.T) {
 	c := check.New(t)
 	table := newCursorTable(flatRows(3)...)
 	table.SelectByIndex(0)
-	changes := 0
-	table.SelectionChangedCallback = func() { changes++ }
+	var reported [][2]int
+	table.SelectionChangedCallback = func() {
+		reported = append(reported, [2]int{table.LeadRowIndex(), table.LeadColumnIndex()})
+	}
 
 	c.True(table.SetLeadCell(2, 1))
 	c.Equal(2, table.LeadRowIndex())
 	c.Equal(1, table.LeadColumnIndex())
 	c.Equal([]int{2}, selectedTableIndexes(table), "the cell's row becomes the whole of the selection")
-	c.Equal(1, changes, "moving onto another row is one selection change")
+	c.Equal([][2]int{{2, 1}}, reported, "moving onto another row is one selection change, reported from the cell")
 
 	c.True(table.SetLeadCell(2, 2))
 	c.True(table.SetLeadCell(2, -1), "a column of -1 puts the person on the row itself")
 	c.Equal(-1, table.LeadColumnIndex())
 	c.Equal(2, table.LeadRowIndex())
-	c.Equal(1, changes, "moving within the row that is already the selection is not a selection change at all")
+	c.Equal(1, len(reported), "moving within the row that is already the selection is not a selection change at all")
 
 	c.False(table.SetLeadCell(3, 0), "a row the table is not showing is refused")
 	c.False(table.SetLeadCell(-1, 0))
@@ -1617,6 +1804,18 @@ func TestTableSetLeadCell(t *testing.T) {
 	c.False(table.SetLeadCell(0, -2))
 	c.Equal(2, table.LeadRowIndex(), "a refusal changes nothing")
 	c.Equal(-1, table.LeadColumnIndex())
+
+	// SyncToModel leaves the hidden row in the selection for the next query of it to prune.
+	container := newTableTestRow("container")
+	container.SetChildren([]*tableTestRow{newTableTestRow("child")})
+	container.SetOpen(true)
+	table.SetRootRows([]*tableTestRow{container, newTableTestRow("other")})
+	table.SelectByIndex(1)
+	container.SetOpen(false)
+	table.SyncToModel()
+	reported = nil
+	c.True(table.SetLeadCell(1, 0))
+	c.Equal([][2]int{{1, 0}}, reported, "moving off a hidden row is one selection change, reported from the cell")
 }
 
 // TestTableCellCursorMouseWorksAtRowLevel verifies that the mouse leaves the person on a row rather than in one of its
@@ -2005,6 +2204,46 @@ func TestTableAccessibilitySelectSetsTheAnchor(t *testing.T) {
 	c.Equal([]int{1, 2, 3}, axTableSelectedIndexes(screen, table),
 		"the shift-click should have extended from the row that was selected")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableAccessibilitySelectingARowPutsThePersonOnIt verifies that an assistive technology replacing the selection
+// with a row, by selecting it or by pressing it while it is not selected, puts the person on that row at row level
+// before the application hears of the change, as a click would, and that acting on the row the person is on leaves the
+// cell cursor where it is.
+func TestTableAccessibilitySelectingARowPutsThePersonOnIt(t *testing.T) {
+	for _, action := range []accessibility.Action{accessibility.Select, accessibility.Press} {
+		t.Run(action.String(), func(t *testing.T) {
+			c := check.New(t)
+			table := newCursorTable(flatRows(3)...)
+			table.DoubleClickCallback = func() {}
+			c.True(table.SetLeadCell(0, 1))
+			var reported [][2]int
+			table.SelectionChangedCallback = func() {
+				reported = append(reported, [2]int{table.LeadRowIndex(), table.LeadColumnIndex()})
+			}
+			perform := func(row int) {
+				c.True(table.PerformAccessibilityAction(accessibility.ActionRequest{
+					Key:    table.RowFromIndex(row).ID(),
+					Action: action,
+				}))
+			}
+
+			perform(2)
+			c.Equal([]int{2}, selectedTableIndexes(table))
+			c.Equal(2, table.LeadRowIndex(), "the person is on the row")
+			c.Equal(-1, table.LeadColumnIndex(), "at row level")
+			c.Equal([][2]int{{2, -1}}, reported, "the selection change is reported with the person on the row")
+
+			perform(0)
+			c.Equal(0, table.LeadRowIndex())
+			c.Equal(-1, table.LeadColumnIndex(), "the column the person was in on the row before does not come back")
+
+			c.True(table.SetLeadCell(1, 2))
+			perform(1)
+			c.Equal(1, table.LeadRowIndex())
+			c.Equal(2, table.LeadColumnIndex(), "acting on the row the person is on leaves the cursor where it is")
+		})
+	}
 }
 
 // axTableSelectedIndexes returns the indexes of the rows a table currently has selected, in order, read on the thread

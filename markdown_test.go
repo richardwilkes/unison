@@ -765,9 +765,11 @@ func markdownInScrollPanel(content string, viewHeight float32) (*ScrollPanel, *M
 
 // TestMarkdownScrollToAnchorAlignsTop verifies that scrolling to an anchor brings the top of the heading to the top of
 // the view (revealing the section that follows it) rather than leaving it pinned to the bottom of the view, even when
-// the heading is taller than the view, so it isn't reduced to showing only its last "bit". A heading too near the end
-// of the document to be pulled to the top is instead brought fully into view, the scroll clamped to the end.
+// the heading is taller than the view, so it isn't reduced to showing only its last "bit", and whether the view starts
+// out above the heading or below its top. A heading too near the end of the document to be pulled to the top is
+// instead brought fully into view, the scroll clamped to the end.
 func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
+	const target = "target-heading"
 	lines := func(n int, suffix string) string {
 		var sb strings.Builder
 		for i := range n {
@@ -783,20 +785,21 @@ func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
 		viewHeight float32
 		taller     bool // The heading is taller than the view.
 		nearEnd    bool // The content below the heading is too short for it to reach the top of the view.
+		above      bool // The view starts out scrolled just past the heading's top, which is then above it.
 	}{
 		{
 			name: "heading in the middle",
 			content: "# Top\n\n" + lines(40, " of the top section") + "## Target Heading\n\n" +
 				lines(40, " of the target section"),
 			anchor:     "#Target-Heading",
-			slug:       "target-heading",
+			slug:       target,
 			viewHeight: 300,
 		},
 		{
 			name:       "heading taller than the view",
 			content:    "# Top\n\n" + lines(40, "") + "## Target Heading\n\nbody\n",
-			anchor:     "target-heading",
-			slug:       "target-heading",
+			anchor:     target,
+			slug:       target,
 			viewHeight: 10,
 			taller:     true,
 		},
@@ -808,12 +811,36 @@ func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
 			viewHeight: 300,
 			nearEnd:    true,
 		},
+		{
+			name: "heading top above the view",
+			content: "# Top\n\n" + lines(40, " of the top section") + "## Target Heading\n\n" +
+				lines(40, " of the target section"),
+			anchor:     target,
+			slug:       target,
+			viewHeight: 300,
+			above:      true,
+		},
+		{
+			name:       "heading taller than the view and spanning it",
+			content:    "# Top\n\n" + lines(40, "") + "## Target Heading\n\n" + lines(40, ""),
+			anchor:     target,
+			slug:       target,
+			viewHeight: 10,
+			taller:     true,
+			above:      true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
 			scroll, m := markdownInScrollPanel(tc.content, tc.viewHeight)
 			p := m.anchors[tc.slug]
 			c.NotNil(p)
+			if tc.above {
+				scroll.SetPosition(0, p.RectToRoot(p.ContentRect(true)).Y+2)
+				rect := p.RectToRoot(p.ContentRect(true))
+				c.True(rect.Y < 0, "the heading's top starts out above the view: %v", rect)
+				c.Equal(tc.taller, rect.Bottom() > tc.viewHeight, "only the taller heading starts out spanning the view")
+			}
 			c.True(m.ScrollToAnchor(tc.anchor))
 			rect := p.RectToRoot(p.ContentRect(true))
 			if tc.nearEnd {

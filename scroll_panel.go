@@ -322,7 +322,13 @@ func (s *ScrollPanel) DefaultScrollRectIntoView(rect geom.Rect) bool {
 	return false
 }
 
+// computeScrollAdj returns how far to scroll along one axis to bring the content into view: by the least that shows all
+// of it when it fits, else so that its leading edge meets the view's. Content that already fills the view is as visible
+// as it can be, so it is left where it is.
 func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBottomRight float32) float32 {
+	if contentTopLeft <= viewTopLeft && contentBottomRight >= viewBottomRight {
+		return 0
+	}
 	if contentTopLeft < viewTopLeft {
 		return contentTopLeft - viewTopLeft
 	}

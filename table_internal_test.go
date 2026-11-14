@@ -1383,14 +1383,17 @@ func TestTableArrowAcrossAViewBoundaryMovesTheFocusToThatView(t *testing.T) {
 	}
 }
 
-// TestTableMovingOntoARowFollowsItOnceSelected verifies that moving onto a row, from code or for an assistive
-// technology, scrolls to the row and puts the focus on the view showing it where the row is once selecting it is done,
-// when the SelectionChangedCallback that ran has moved the row to another view.
+// TestTableMovingOntoARowFollowsItOnceSelected verifies that moving onto a row, from code, for an assistive technology
+// or with a key, scrolls to the row and puts the focus on the view showing it where the row is once selecting it is
+// done, when the SelectionChangedCallback that ran has moved the row to another view, and to the last column left when
+// it has also taken away the one the cursor was in.
 func TestTableMovingOntoARowFollowsItOnceSelected(t *testing.T) {
 	for _, test := range []struct {
-		move func(table *Table[*focusCellRow]) bool
-		name string
-		col  int
+		setup func(table *Table[*focusCellRow]) // Run before the callback is installed, when set
+		move  func(table *Table[*focusCellRow]) bool
+		name  string
+		col   int  // The column of the cell scrolled to, or -1 for the row itself
+		cut   bool // Whether the callback also takes the last column away
 	}{
 		{
 			name: "assistive technology focus",
@@ -1424,13 +1427,37 @@ func TestTableMovingOntoARowFollowsItOnceSelected(t *testing.T) {
 		},
 		{name: "lead row", col: -1, move: func(table *Table[*focusCellRow]) bool { return table.SetLeadCell(0, -1) }},
 		{name: "lead cell", col: 1, move: func(table *Table[*focusCellRow]) bool { return table.SetLeadCell(0, 1) }},
+		{
+			name: "lead cell in a column the callback takes away",
+			col:  1,
+			cut:  true,
+			move: func(table *Table[*focusCellRow]) bool { return table.SetLeadCell(0, 2) },
+		},
+		{
+			name: "down key",
+			col:  -1,
+			move: func(table *Table[*focusCellRow]) bool { return table.DefaultKeyDown(KeyDown, 0, false) },
+		},
+		{
+			name:  "up key in a column the callback takes away",
+			col:   1,
+			cut:   true,
+			setup: func(table *Table[*focusCellRow]) { table.SetLeadCell(1, 2) },
+			move:  func(table *Table[*focusCellRow]) bool { return table.DefaultKeyDown(KeyUp, 0, false) },
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			c := check.New(t)
 			f, views := newTableViewsFixture(t, fourTableViewIDs, 2, [2]int{0, 2}, [2]int{2, 4})
+			if test.setup != nil {
+				test.setup(f.table)
+			}
 			f.table.SelectionChangedCallback = func() {
 				f.model.SetRootRows([]*focusCellRow{f.rows[1], f.rows[2], f.rows[3], f.rows[0]})
 				f.table.SyncToModel()
+				if test.cut {
+					f.table.Columns = f.table.Columns[:len(f.table.Columns)-1]
+				}
 			}
 			var scrolled []geom.Rect
 			f.w.Content().ScrollRectIntoViewCallback = func(rect geom.Rect) bool {
