@@ -110,6 +110,12 @@ func TestSVGParseErrors(t *testing.T) {
 		{name: "not xml", content: "this is not svg"},
 		{name: "viewBox wrong arity", content: `<svg viewBox="0 0 10"><path d="M0 0 Z"/></svg>`},
 		{name: "malformed path command", content: `<svg viewBox="0 0 10 10"><path d="Q junk"/></svg>`},
+		{name: "NaN width", content: `<svg width="NaN" height="10"/>`},
+		{name: "negative width", content: `<svg width="-50" height="10"/>`},
+		// Below the lowest float32, it is read as negative infinity.
+		{name: "negative height", content: `<svg width="10" height="-1e39"/>`},
+		{name: "negative viewBox width", content: `<svg viewBox="0 0 -50 10"/>`},
+		{name: "negative viewBox height", content: `<svg viewBox="0 0 10 -1e39"/>`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)

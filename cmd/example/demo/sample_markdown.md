@@ -236,6 +236,14 @@ You can display an image by adding `!` and wrapping the alt text in `[ ]`, then 
 
 ![GURPS Character Sheet](https://gurpscharactersheet.com/images/app_icon.svg)
 
+To choose the size an image is shown at, use an HTML `<img>` tag, whose `width` and `height` are in logical pixels. Given only one of them, the other keeps the image's proportions.
+
+```
+<img src="https://gurpscharactersheet.com/images/app_icon.svg" alt="GURPS Character Sheet" width="48">
+```
+
+<img src="https://gurpscharactersheet.com/images/app_icon.svg" alt="GURPS Character Sheet" width="48">
+
 ## Lists
 
 You can make an unordered list by preceding one or more lines of text with `-`, `*`, or `+`.

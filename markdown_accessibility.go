@@ -252,7 +252,7 @@ func (bb *axBlockTextBuilder) collect(p *Panel) {
 // row adds the lines one row of the block was drawn as. A row holds the pieces of a line in a FlowLayout, so it is one
 // visual line only as long as every piece of it fitted: a piece that did not was flowed onto a row of its own beneath
 // the others, and each of those rows is a line in its own right. The code that fills the rows keeps a piece from
-// overflowing in the first place — see Markdown.flushText, Markdown.createLink and Markdown.processImage — and this is
+// overflowing in the first place — see Markdown.flushText, Markdown.createLink and Markdown.addImage — and this is
 // what keeps a row that overflowed anyway from being reported as one line two rows tall, whose rune boundaries walk
 // back to the left partway along it and whose caret and highlight then land on the wrong words.
 func (bb *axBlockTextBuilder) row(r *markdownRow) {

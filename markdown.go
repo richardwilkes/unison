@@ -12,6 +12,8 @@ package unison
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -24,6 +26,7 @@ import (
 	"reflect"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,7 +38,6 @@ import (
 	"github.com/richardwilkes/toolbox/v2/xio"
 	"github.com/richardwilkes/toolbox/v2/xmath"
 	"github.com/richardwilkes/toolbox/v2/xreflect"
-	"github.com/richardwilkes/toolbox/v2/xstrings"
 	"github.com/richardwilkes/unison/accessibility"
 	"github.com/richardwilkes/unison/enums/align"
 	"github.com/richardwilkes/unison/enums/mod"
@@ -50,6 +52,9 @@ import (
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
+	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
+	"golang.org/x/net/html/charset"
 )
 
 // DefaultMarkdownWidth is the default maximum width to use, roughly equivalent to a page at 100dpi.
@@ -189,12 +194,48 @@ type drawableCacheEntry struct {
 	failed bool
 }
 
-// markdownImageTarget is a placeholder waiting for an image, and the widths constrainImage is to keep the image between
-// there.
+// markdownImageTarget is a use of an image: the panel showing it, which is a placeholder until the image arrives, the
+// size asked for, and the widths constrainImage is to keep it between there.
 type markdownImageTarget struct {
-	panel    *DrawablePanel
+	panel *DrawablePanel
+	// size is the size asked for in logical pixels, a dimension of 0 or less being left to the image. See
+	// markdownSizeImage.
+	size     geom.Size
 	maxWidth float32
 	minWidth float32
+}
+
+// fit returns d as this use shows it.
+func (t markdownImageTarget) fit(d Drawable) Drawable {
+	return constrainImage(markdownSizeImage(d, t.size), t.maxWidth, t.minWidth)
+}
+
+// markdownSizeImage returns d at size, a dimension of 0 or less being left to the image: given one dimension, the other
+// keeps the image's proportions, and given neither, the image keeps its own size.
+func markdownSizeImage(d Drawable, size geom.Size) Drawable {
+	if size.Width <= 0 && size.Height <= 0 {
+		return d
+	}
+	natural := d.LogicalSize()
+	switch {
+	case size.Width <= 0:
+		size.Width = natural.Width
+		if natural.Height > 0 {
+			size.Width = markdownScale(natural.Width, size.Height, natural.Height)
+		}
+	case size.Height <= 0:
+		size.Height = natural.Height
+		if natural.Width > 0 {
+			size.Height = markdownScale(natural.Height, size.Width, natural.Width)
+		}
+	}
+	return &SizedDrawable{Drawable: d, Size: size}
+}
+
+// markdownScale returns n * to / from, at most math.MaxFloat32. It works in float64, where no step overflows: in
+// float32, to / from is infinite for a tiny from, and an n of 0 times that is NaN.
+func markdownScale(n, to, from float32) float32 {
+	return float32(min(float64(n)*float64(to)/float64(from), math.MaxFloat32))
 }
 
 // markdownLink is a link whose content is being added to the rows of a block, and the pieces it has been drawn with so
@@ -209,6 +250,15 @@ type markdownLink struct {
 }
 
 // Markdown provides markdown display widget.
+//
+// Of HTML, it understands <br> and <hr> within text, and <img>, which shows an image as ![alt](src "title") does, from
+// its src, alt and title attributes. An <img> within text is shown where it is written, and an HTML block of nothing
+// but <img> tags and white space is shown as a paragraph of their images. The width and height attributes give the size
+// the image is shown at in logical pixels, each a plain number greater than 0, any other value being ignored. Given
+// only one, the other keeps the image's proportions; given neither, the image is shown as ![alt](src) shows it, a
+// raster image pixel for pixel on the primary display. An image wider than the line is then scaled down to fit it, and
+// one taller than 16777216 logical pixels to that height. An <img> without a src shows nothing, other tags within text
+// are dropped, and other HTML blocks are not shown.
 //
 // It has no contextual menu of its own. An application may set ContextMenuCallback; the menu then opens beneath the
 // reading caret from the keyboard or at an assistive technology's request (see ContextMenuAnchor). The text is drawn
@@ -235,6 +285,9 @@ type Markdown struct {
 	content                    []byte
 	// link is the link whose content is being added, while there is one.
 	link *markdownLink
+	// alertMarker is the text node that ends the alert marker beginning the quote being built, until it is reached.
+	// The marker's text is not shown. See markdownAlertMarker.
+	alertMarker *ast.Text
 	// columnWidths is how wide each column of the table being built is made, its cells' borders and padding included.
 	// Zero makes a column as narrow as its content allows.
 	columnWidths  []int
@@ -258,7 +311,6 @@ type Markdown struct {
 	columnIndex       int
 	// tableRow is the row the cells being built belong to, while a table is being built.
 	tableRow int
-	alert    int
 	// caret is where the reading caret sits within the composed stream, and anchor is the end of the selection it was
 	// made from. They are equal when nothing is selected. See Markdown.axSetSelection.
 	caret  int
@@ -498,7 +550,9 @@ func (m *Markdown) walk(node ast.Node) {
 		m.processList()
 	case ast.KindListItem:
 		m.processListItem()
-	case ast.KindHTMLBlock, ast.KindLinkReferenceDefinition:
+	case ast.KindHTMLBlock:
+		m.processHTMLBlock()
+	case ast.KindLinkReferenceDefinition:
 		// Ignore
 	case astex.KindTable:
 		m.processTable()
@@ -544,15 +598,50 @@ func (m *Markdown) processChildren() {
 }
 
 func (m *Markdown) processParagraphOrTextBlock() {
+	m.addParagraph(m.processChildren)
+}
+
+// addParagraph adds a paragraph to the block being filled. content adds what the paragraph holds.
+func (m *Markdown) addParagraph(content func()) {
 	p := newMarkdownBlock(m, role.Paragraph).AsPanel()
 	p.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
 	save := m.block
 	m.block.AddChild(p)
 	m.block = p
 	m.text = NewText("", m.decoration)
-	m.processChildren()
+	content()
 	m.finishTextRow()
 	m.block = save
+}
+
+// processHTMLBlock shows a block of nothing but <img> tags and white space as a paragraph of the images, with a space
+// between two that white space separates, as a browser would. Any other HTML block is ignored.
+func (m *Markdown) processHTMLBlock() {
+	block, ok := m.node.(*ast.HTMLBlock)
+	if !ok {
+		return
+	}
+	// Only a block that begins with something other than <img> has a closing line, so that line would change nothing.
+	tags, isImg := markdownImgTags(block.Lines().Value(m.content))
+	if !isImg || !slices.ContainsFunc(tags, func(tag markdownImgTag) bool { return tag.src != "" }) {
+		return
+	}
+	m.addParagraph(func() {
+		shown := false
+		// spaced reports that white space comes after the last image shown, the tags since showing nothing.
+		spaced := false
+		for _, tag := range tags {
+			spaced = spaced || tag.spaced
+			if tag.src != "" {
+				if shown && spaced {
+					m.text.AddString(" ", m.decoration)
+				}
+				m.addImage(tag.src, tag.alt, tag.title, tag.size)
+				shown = true
+				spaced = false
+			}
+		}
+	})
 }
 
 func (m *Markdown) stdBottomMargin() geom.Insets {
@@ -733,62 +822,59 @@ func (m *Markdown) processBlockquote() {
 	wrapper.AddChild(p)
 	m.block.AddChild(wrapper)
 	m.block = p
-	saveAlert := m.alert
-	m.alert = 1
+	var kind int
+	kind, m.alertMarker = markdownAlertMarker(m.node, m.content)
 	m.text = NewText("", m.decoration)
 	m.processChildren()
 	m.finishTextRow()
 	quoteBarColor := m.QuoteBarColor
-	if m.alert < 0 {
-		var str string
-		var svg *SVG
-		switch -m.alert {
-		case markdownAlertNote:
-			quoteBarColor = m.QuoteBarNoteColor
-			str = i18n.Text("Note")
-			svg = MarkdownNoteSVG
-		case markdownAlertTip:
-			quoteBarColor = m.QuoteBarTipColor
-			str = i18n.Text("Tip")
-			svg = MarkdownTipSVG
-		case markdownAlertImportant:
-			quoteBarColor = m.QuoteBarImportantColor
-			str = i18n.Text("Important")
-			svg = MarkdownImportantSVG
-		case markdownAlertWarning:
-			quoteBarColor = m.QuoteBarWarningColor
-			str = i18n.Text("Warning")
-			svg = MarkdownWarningSVG
-		case markdownAlertCaution:
-			quoteBarColor = m.QuoteBarCautionColor
-			str = i18n.Text("Caution")
-			svg = MarkdownCautionSVG
+	var str string
+	var svg *SVG
+	switch kind {
+	case markdownAlertNote:
+		quoteBarColor = m.QuoteBarNoteColor
+		str = i18n.Text("Note")
+		svg = MarkdownNoteSVG
+	case markdownAlertTip:
+		quoteBarColor = m.QuoteBarTipColor
+		str = i18n.Text("Tip")
+		svg = MarkdownTipSVG
+	case markdownAlertImportant:
+		quoteBarColor = m.QuoteBarImportantColor
+		str = i18n.Text("Important")
+		svg = MarkdownImportantSVG
+	case markdownAlertWarning:
+		quoteBarColor = m.QuoteBarWarningColor
+		str = i18n.Text("Warning")
+		svg = MarkdownWarningSVG
+	case markdownAlertCaution:
+		quoteBarColor = m.QuoteBarCautionColor
+		str = i18n.Text("Caution")
+		svg = MarkdownCautionSVG
+	}
+	if str != "" {
+		label := NewLabel()
+		// What kind of alert this is belongs to the quote rather than to a label within it: the title and its icon are
+		// how the quote says so on the screen, and an assistive technology hears it as the name of the passage it
+		// introduces. The label's text is still part of the document's stream, read where it is drawn.
+		p.Accessibility.Name = str
+		label.Accessibility.Role = role.None
+		label.Gap *= 2
+		label.Font = m.HeadingFont[3]
+		label.OnBackgroundInk = quoteBarColor
+		label.SetTitle(str)
+		label.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
+		label.Drawable = &DrawableSVG{
+			SVG:  svg,
+			Size: geom.NewUniformSize(label.Font.Baseline()),
 		}
-		if str != "" {
-			label := NewLabel()
-			// What kind of alert this is belongs to the quote rather than to a label within it: the title and its icon
-			// are how the quote says so on the screen, and an assistive technology hears it as the name of the passage
-			// it introduces. The label's text is still part of the document's stream, read where it is drawn.
-			p.Accessibility.Name = str
-			label.Accessibility.Role = role.None
-			label.Gap *= 2
-			label.Font = m.HeadingFont[3]
-			label.OnBackgroundInk = quoteBarColor
-			label.SetTitle(str)
-			label.SetBorder(NewEmptyBorder(m.stdBottomMargin()))
-			label.Drawable = &DrawableSVG{
-				SVG:  svg,
-				Size: geom.NewUniformSize(label.Font.Baseline()),
-			}
-			p.AddChildAtIndex(label, 0)
-		}
+		p.AddChildAtIndex(label, 0)
 	}
 	p.SetBorder(NewCompoundBorder(
 		NewLineBorder(quoteBarColor, geom.Size{}, geom.Insets{Left: m.QuoteBarThickness}, false),
 		NewEmptyBorder(geom.NewUniformInsets(m.CodeAndQuotePadding)),
 	))
 	removeBottomMarginFromLastChild(p)
-	m.alert = saveAlert
 	m.decoration = saveDec
 	m.block = saveBlock
 	m.maxLineWidth = saveMaxLineWidth
@@ -1226,12 +1312,50 @@ func (m *Markdown) alignment(alignment astex.Alignment) align.Enum {
 }
 
 const (
-	markdownAlertNote = iota + 3
+	markdownAlertNote = iota + 1
 	markdownAlertTip
 	markdownAlertImportant
 	markdownAlertWarning
 	markdownAlertCaution
 )
+
+// markdownAlertMarker returns the kind of alert a quote is, and the text node that ends the marker making it one, or 0
+// and nil if it is not an alert. The marker, such as [!NOTE], must begin the quote: the quote's first block is a
+// paragraph whose first three nodes are the texts "[", "!NOTE" and "]", with no hard line break before the last.
+func markdownAlertMarker(quote ast.Node, source []byte) (kind int, end *ast.Text) {
+	paragraph := quote.FirstChild()
+	if paragraph == nil || paragraph.Kind() != ast.KindParagraph {
+		return 0, nil
+	}
+	var parts [3]string
+	node := paragraph.FirstChild()
+	for i := range parts {
+		t, ok := node.(*ast.Text)
+		if !ok || (i < 2 && t.HardLineBreak()) {
+			return 0, nil
+		}
+		parts[i] = markdownTextValue(t, source)
+		end = t
+		node = node.NextSibling()
+	}
+	if parts[0] != "[" || parts[2] != "]" {
+		return 0, nil
+	}
+	switch parts[1] {
+	case "!NOTE":
+		return markdownAlertNote, end
+	case "!TIP":
+		return markdownAlertTip, end
+	case "!IMPORTANT":
+		return markdownAlertImportant, end
+	case "!WARNING":
+		return markdownAlertWarning, end
+	case "!CAUTION":
+		return markdownAlertCaution, end
+	default:
+		return 0, nil
+	}
+}
 
 // markdownUnescape returns b with its backslash escapes and entities resolved.
 func markdownUnescape(b []byte) []byte {
@@ -1253,45 +1377,19 @@ func markdownTextValue(t *ast.Text, source []byte) string {
 
 func (m *Markdown) processText() {
 	if t, ok := m.node.(*ast.Text); ok {
-		str := markdownTextValue(t, m.content)
-		if m.alert > 0 {
-			switch m.alert {
-			case 1: // Looking for '['
-				if str == "[" {
-					m.alert = 2
-				} else {
-					m.alert = 0
-				}
-			case 2: // Looking for '!' followed by one of 'NOTE', 'TIP', 'IMPORTANT', 'WARNING', or 'CAUTION'
-				switch str {
-				case "!NOTE":
-					m.alert = markdownAlertNote
-				case "!TIP":
-					m.alert = markdownAlertTip
-				case "!IMPORTANT":
-					m.alert = markdownAlertImportant
-				case "!WARNING":
-					m.alert = markdownAlertWarning
-				case "!CAUTION":
-					m.alert = markdownAlertCaution
-				default:
-					m.alert = 0
-				}
-			case 3, 4, 5, 6, 7: // Looking for terminating ']'
-				if str == "]" {
-					m.text = NewText("", m.decoration)
-					m.alert = -m.alert
-					return
-				}
-				m.alert = 0
+		if m.alertMarker != nil {
+			// The marker is the first text of its quote, so every text until its end is part of it.
+			if t == m.alertMarker {
+				m.alertMarker = nil
 			}
+			return
 		}
+		str := markdownTextValue(t, m.content)
 		if t.SoftLineBreak() {
 			str += " "
 		}
 		m.text.AddString(str, m.decoration)
 		if t.HardLineBreak() {
-			m.alert = 0
 			m.flushAndIssueLineBreak()
 		}
 	}
@@ -1338,37 +1436,133 @@ func (m *Markdown) processStrikethrough() {
 
 func (m *Markdown) processRawHTML() {
 	if raw, ok := m.node.(*ast.RawHTML); ok {
-		count := raw.Segments.Len()
-		for i := range count {
-			segment := raw.Segments.At(i)
-			value := segment.Value(m.content)
-			if markdownIsLineBreak(value) {
-				m.flushAndIssueLineBreak()
-				if next := m.node.NextSibling(); next != nil {
-					if t, ok2 := next.(*ast.Text); ok2 {
-						t.SetSoftLineBreak(false)
-					}
+		if tag, isImg := m.inlineImgTag(raw); isImg {
+			if tag.src != "" {
+				m.addImage(tag.src, tag.alt, tag.title, tag.size)
+			}
+			return
+		}
+		// A tag written over several lines is in several segments.
+		switch markdownTagAtom(raw.Segments.Value(m.content)) {
+		case atom.Br:
+			m.flushAndIssueLineBreak()
+			// A line ending directly after the tag comes as an empty text, which would begin the new line with a space.
+			if next := m.node.NextSibling(); next != nil {
+				if t, ok2 := next.(*ast.Text); ok2 && t.Segment.IsEmpty() {
+					t.SetSoftLineBreak(false)
 				}
-				continue
 			}
-			switch xstrings.CollapseSpaces(strings.ToLower(string(value))) {
-			case "<hr>", "<hr/>", "<hr />":
-				m.flushAndIssueLineBreak()
-				m.processThematicBreak()
-				m.flushAndIssueLineBreak()
-			}
+		case atom.Hr:
+			m.flushAndIssueLineBreak()
+			m.processThematicBreak()
+			m.flushAndIssueLineBreak()
 		}
 	}
 }
 
-// markdownIsLineBreak reports whether a piece of raw HTML is a <br> tag.
-func markdownIsLineBreak(value []byte) bool {
-	switch xstrings.CollapseSpaces(strings.ToLower(string(value))) {
-	case "<br>", "<br/>", "<br />":
-		return true
-	default:
-		return false
+// markdownTagAtom returns the name of the start or self-closing tag that is the whole of an HTML fragment, or 0 if the
+// fragment is anything else.
+func markdownTagAtom(fragment []byte) atom.Atom {
+	z := html.NewTokenizer(bytes.NewReader(fragment))
+	if kind := z.Next(); (kind != html.StartTagToken && kind != html.SelfClosingTagToken) ||
+		len(z.Raw()) != len(fragment) {
+		return 0
 	}
+	name, _ := z.TagName()
+	return atom.Lookup(name)
+}
+
+// markdownHTMLSpace is the characters HTML treats as white space.
+const markdownHTMLSpace = " \t\n\f\r"
+
+// markdownImgTag is what an <img> tag says about the image it shows.
+type markdownImgTag struct {
+	src   string
+	alt   string
+	title string
+	// size is the size its width and height ask for. See markdownImageTarget.size.
+	size geom.Size
+	// spaced reports that white space separates it from the tag before it.
+	spaced bool
+}
+
+// markdownImgTags returns the <img> tags in an HTML fragment, and false if it holds anything but those tags and white
+// space.
+func markdownImgTags(fragment []byte) ([]markdownImgTag, bool) {
+	z := html.NewTokenizer(bytes.NewReader(fragment))
+	var tags []markdownImgTag
+	consumed := 0
+	spaced := false
+	for {
+		kind := z.Next()
+		if kind == html.ErrorToken {
+			// Whatever the tokenizer stops short of, as it does an unfinished tag, is neither a tag nor white space.
+			return tags, consumed == len(fragment)
+		}
+		raw := z.Raw()
+		consumed += len(raw)
+		switch kind {
+		case html.TextToken:
+			if len(bytes.Trim(raw, markdownHTMLSpace)) != 0 {
+				return nil, false
+			}
+			spaced = true
+		case html.StartTagToken, html.SelfClosingTagToken:
+			token := z.Token()
+			if token.DataAtom != atom.Img {
+				return nil, false
+			}
+			tag := markdownImgTag{spaced: spaced}
+			// Backward, so that the first of an attribute given twice wins, as it does in a browser.
+			for _, attr := range slices.Backward(token.Attr) {
+				switch atom.Lookup([]byte(attr.Key)) {
+				case atom.Src:
+					tag.src = strings.Trim(attr.Val, markdownHTMLSpace)
+				case atom.Alt:
+					tag.alt = attr.Val
+				case atom.Title:
+					tag.title = attr.Val
+				case atom.Width:
+					tag.size.Width = markdownImgDimension(attr.Val)
+				case atom.Height:
+					tag.size.Height = markdownImgDimension(attr.Val)
+				}
+			}
+			tags = append(tags, tag)
+			spaced = false
+		default:
+			return nil, false
+		}
+	}
+}
+
+// markdownMaxImageSize is the most logical pixels tall an image is shown, and the most an <img> tag's width or height
+// gives, which keeps the other dimension, worked out from a raster image's proportions, within a float32. Up to it, a
+// float32 holds every whole number.
+const markdownMaxImageSize = 1 << 24
+
+// markdownImgDimension returns the logical pixels an <img> tag's width or height gives, at most markdownMaxImageSize,
+// or 0 for a value that is not a plain number.
+func markdownImgDimension(value string) float32 {
+	value = strings.Trim(value, markdownHTMLSpace)
+	// ParseFloat alone would also take a sign, an exponent, "Inf" and more.
+	if strings.ContainsFunc(value, func(r rune) bool { return (r < '0' || r > '9') && r != '.' }) {
+		return 0
+	}
+	// A number too large for a float32 is still a number, which ParseFloat gives as +Inf.
+	n, err := strconv.ParseFloat(value, 32)
+	if err != nil && !errors.Is(err, strconv.ErrRange) {
+		return 0
+	}
+	return float32(min(n, markdownMaxImageSize))
+}
+
+// inlineImgTag returns the <img> tag raw is, and false if it is anything else.
+func (m *Markdown) inlineImgTag(raw *ast.RawHTML) (markdownImgTag, bool) {
+	if tags, ok := markdownImgTags(raw.Segments.Value(m.content)); ok && len(tags) == 1 {
+		return tags[0], true
+	}
+	return markdownImgTag{}, false
 }
 
 func (m *Markdown) processString() {
@@ -1655,8 +1849,8 @@ func (m *Markdown) panelForAnchor(anchor string) *Panel {
 var markdownPrimaryDisplay = PrimaryDisplay
 
 // retrieveImage returns the image at target, or nil when it is not to hand within a second. One that arrives after that
-// is put in panel, constrained to maxWidth and minWidth by constrainImage.
-func (m *Markdown) retrieveImage(target string, panel *DrawablePanel, maxWidth, minWidth float32) Drawable {
+// is put in use's panel as use shows it.
+func (m *Markdown) retrieveImage(target string, use markdownImageTarget) Drawable {
 	workingDir := ""
 	if m.WorkingDirProvider != nil {
 		workingDir = m.WorkingDirProvider(m)
@@ -1683,33 +1877,24 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel, maxWidth, 
 		entry.used = true
 		d := entry.drawable
 		if d == nil && !entry.failed {
-			entry.targets = append(entry.targets, markdownImageTarget{panel: panel, maxWidth: maxWidth, minWidth: minWidth})
+			entry.targets = append(entry.targets, use)
 		}
 		m.drawableCacheLock.Unlock()
 		return d
 	}
 	entry = &drawableCacheEntry{
-		targets: []markdownImageTarget{{panel: panel, maxWidth: maxWidth, minWidth: minWidth}},
+		targets: []markdownImageTarget{use},
 		used:    true,
 	}
 	m.drawableCache[key] = entry
 	m.drawableCacheLock.Unlock()
-	name := revisedTarget
-	if xhttp.HasHTTPOrFileURLPrefix(name) {
-		// A URL's query and fragment are not part of the name of what it retrieves.
-		if u, parseErr := url.Parse(name); parseErr == nil {
-			name = u.Path
-		}
-	}
-	isSVG := strings.EqualFold(path.Ext(name), ".svg")
 	// Displays may only be queried on the UI thread (on macOS the lookup calls into AppKit, and the platform
 	// implementations use unsynchronized state), so capture the scale here, on the calling thread, rather than inside
-	// the image-loading goroutine below.
+	// the image-loading goroutine below. Only what that goroutine reads tells whether the image is an SVG, which has no
+	// use for the scale.
 	scale := geom.NewPoint(1, 1)
-	if !isSVG {
-		if d := markdownPrimaryDisplay(); d != nil {
-			scale = scale.DivPt(d.Scale)
-		}
+	if d := markdownPrimaryDisplay(); d != nil {
+		scale = scale.DivPt(d.Scale)
 	}
 	client := m.HTTPClient
 	limit := m.PerImageByteLimit
@@ -1739,13 +1924,18 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel, maxWidth, 
 			return
 		}
 		var d Drawable
-		if isSVG {
+		// The content decides, since a URL need not end in .svg to serve an SVG.
+		if markdownIsSVG(data) {
 			var svg *SVG
 			if svg, err = NewSVGFromReader(bytes.NewReader(data)); err != nil {
 				fail(err, "path", revisedTarget)
 				return
 			}
-			d = &DrawableSVG{SVG: svg, Size: svg.SuggestedSize()}
+			// An SVG can give a size too large for a float32, and an infinite one cannot be scaled.
+			size := svg.SuggestedSize()
+			size.Width = min(size.Width, math.MaxFloat32)
+			size.Height = min(size.Height, math.MaxFloat32)
+			d = &DrawableSVG{SVG: svg, Size: size}
 		} else {
 			var img *Image
 			if img, err = NewImageFromBytes(data, scale); err != nil {
@@ -1781,6 +1971,33 @@ func (m *Markdown) retrieveImage(target string, panel *DrawablePanel, maxWidth, 
 	case <-timer.C:
 		return nil
 	}
+}
+
+// markdownIsSVG reports whether data is to be read as an SVG document, which it is when its first element is <svg>.
+// Data that begins as XML does but that encoding/xml cannot read as far as its first element is too, so that reading
+// it as an SVG reports what is wrong with it.
+func markdownIsSVG(data []byte) bool {
+	d := xml.NewDecoder(bytes.NewReader(data))
+	d.CharsetReader = charset.NewReaderLabel
+	for {
+		t, err := d.Token()
+		if err != nil {
+			return markdownBeginsAsXML(data)
+		}
+		if se, ok := t.(xml.StartElement); ok {
+			return se.Name.Local == "svg"
+		}
+	}
+}
+
+// markdownBeginsAsXML reports whether data begins as XML does, which no raster image does: with a UTF-16 byte order
+// mark, or with "<" after any UTF-8 one and white space.
+func markdownBeginsAsXML(data []byte) bool {
+	if bytes.HasPrefix(data, []byte{0xFE, 0xFF}) || bytes.HasPrefix(data, []byte{0xFF, 0xFE}) {
+		return true
+	}
+	data = bytes.TrimLeft(bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF")), " \t\r\n")
+	return len(data) != 0 && data[0] == '<'
 }
 
 // markdownReadFile returns the contents of the named file within fsys, failing if there are more than maxBytes of them
@@ -1840,7 +2057,7 @@ func (m *Markdown) updateDrawable(key markdownImageKey, d Drawable) {
 	// runs, so the stream is thrown away here as well.
 	m.axInvalidate()
 	for _, one := range entry.targets {
-		one.panel.Drawable = constrainImage(d, one.maxWidth, one.minWidth)
+		one.panel.Drawable = one.fit(d)
 		one.panel.Ink = nil
 		one.panel.MarkForRedraw()
 		one.panel.MarkForLayoutRecursivelyUpward()
@@ -1848,12 +2065,13 @@ func (m *Markdown) updateDrawable(key markdownImageKey, d Drawable) {
 	entry.targets = nil
 }
 
-// constrainImage returns the drawable scaled down, if need be, to be no wider than maxWidth, though never narrower than
-// minWidth, which keeps it visible on a line with little or no room. One no wider than minWidth is left as it is.
+// constrainImage returns the drawable scaled down, if need be, to be no wider than maxWidth and no taller than
+// markdownMaxImageSize. It is not narrowed past minWidth to fit maxWidth, which keeps it visible on a line with little
+// or no room, nor widened to it.
 func constrainImage(drawable Drawable, maxWidth, minWidth float32) Drawable {
 	maxWidth = max(maxWidth, minWidth)
 	size := drawable.LogicalSize()
-	if size.Width <= maxWidth {
+	if size.Width <= maxWidth && size.Height <= markdownMaxImageSize {
 		return drawable
 	}
 	if size.Width > 0 && size.Width > maxWidth {
@@ -1862,6 +2080,10 @@ func constrainImage(drawable Drawable, maxWidth, minWidth float32) Drawable {
 			size.Height = 1
 		}
 		size.Width = maxWidth
+	}
+	if size.Height > markdownMaxImageSize {
+		size.Width *= markdownMaxImageSize / size.Height
+		size.Height = markdownMaxImageSize
 	}
 	return &SizedDrawable{
 		Drawable: drawable,
@@ -1884,10 +2106,12 @@ func (m *Markdown) collectText(node ast.Node, str *strings.Builder) {
 				markdownSeparateWords(str)
 			}
 		case *ast.RawHTML:
-			for i := range t.Segments.Len() {
-				if segment := t.Segments.At(i); markdownIsLineBreak(segment.Value(m.content)) {
-					markdownSeparateWords(str)
-				}
+			if tag, isImg := m.inlineImgTag(t); isImg {
+				str.WriteString(tag.alt)
+				continue
+			}
+			if markdownTagAtom(t.Segments.Value(m.content)) == atom.Br {
+				markdownSeparateWords(str)
 			}
 		case *ast.String:
 			b := util.UnescapePunctuations(t.Value)
@@ -1911,53 +2135,55 @@ func markdownSeparateWords(str *strings.Builder) {
 
 func (m *Markdown) processImage() {
 	if image, ok := m.node.(*ast.Image); ok {
-		m.flushText()
-		panel := NewDrawablePanel()
-		// The placeholder's size, which is also the narrowest an image is scaled down to.
-		size := max(m.decoration.Font.Size(), 24)
-		d := m.retrieveImage(string(markdownUnescape(image.Destination)), panel, m.maxLineWidth, size)
-		if d == nil {
-			panel.Drawable = &DrawableSVG{
-				SVG:  BrokenImageSVG,
-				Size: geom.NewSize(size, size),
-			}
-			panel.Ink = m.OnBackgroundInk
-		} else {
-			panel.Drawable = constrainImage(d, m.maxLineWidth, size)
-			panel.Ink = nil
-		}
-		primary := m.extractText(image)
-		secondary := string(markdownUnescape(image.Title))
-		if primary == "" && secondary != "" {
-			primary = secondary
-			secondary = ""
-		}
-		if primary != "" {
-			// The alternative text is what the image is called, which is the only thing about it an assistive
-			// technology can pass on; without it the image is skipped entirely rather than announced as a picture of
-			// nothing.
-			panel.Accessibility.Name = primary
-			panel.Accessibility.Description = secondary
-			if secondary != "" {
-				panel.Tooltip = NewTooltipWithSecondaryText(primary, secondary)
-			} else {
-				panel.Tooltip = NewTooltipWithText(primary)
-			}
-		}
-		if m.text != nil {
-			// An image that will not fit in what is left of the line begins a new one. Without this the row's
-			// FlowLayout wraps it onto a second visual row of its own while the row still counts as the one line it was
-			// built as, and everything read from where that line was drawn — every rune boundary on it, the caret
-			// dropped at one and the highlight drawn from one — describes two rows as if they were one. See
-			// axBlockTextBuilder.collect.
-			_, prefSize, _ := panel.Sizes(geom.Size{})
-			m.prepareToFlushText(prefSize.Width)
-		}
-		if m.link != nil {
-			m.linkImage(panel)
-		}
-		m.addToTextRow(panel)
+		m.addImage(string(markdownUnescape(image.Destination)), m.extractText(image),
+			string(markdownUnescape(image.Title)), geom.Size{})
 	}
+}
+
+// addImage adds the image at target to the row being filled, with its alt text and title, at size (see
+// markdownImageTarget.size).
+func (m *Markdown) addImage(target, alt, title string, size geom.Size) {
+	m.flushText()
+	panel := NewDrawablePanel()
+	// The placeholder's size, which is also the narrowest an image is scaled down to.
+	placeholder := max(m.decoration.Font.Size(), 24)
+	use := markdownImageTarget{panel: panel, size: size, maxWidth: m.maxLineWidth, minWidth: placeholder}
+	if d := m.retrieveImage(target, use); d == nil {
+		panel.Drawable = &DrawableSVG{
+			SVG:  BrokenImageSVG,
+			Size: geom.NewSize(placeholder, placeholder),
+		}
+		panel.Ink = m.OnBackgroundInk
+	} else {
+		panel.Drawable = use.fit(d)
+		panel.Ink = nil
+	}
+	if alt == "" {
+		alt, title = title, ""
+	}
+	if alt != "" {
+		// The alternative text is what the image is called, which is the only thing about it an assistive technology
+		// can pass on; without it the image is skipped entirely rather than announced as a picture of nothing.
+		panel.Accessibility.Name = alt
+		panel.Accessibility.Description = title
+		if title != "" {
+			panel.Tooltip = NewTooltipWithSecondaryText(alt, title)
+		} else {
+			panel.Tooltip = NewTooltipWithText(alt)
+		}
+	}
+	if m.text != nil {
+		// An image that will not fit in what is left of the line begins a new one. Without this the row's FlowLayout
+		// wraps it onto a second visual row of its own while the row still counts as the one line it was built as, and
+		// everything read from where that line was drawn — every rune boundary on it, the caret dropped at one and the
+		// highlight drawn from one — describes two rows as if they were one. See axBlockTextBuilder.collect.
+		_, prefSize, _ := panel.Sizes(geom.Size{})
+		m.prepareToFlushText(prefSize.Width)
+	}
+	if m.link != nil {
+		m.linkImage(panel)
+	}
+	m.addToTextRow(panel)
 }
 
 func (m *Markdown) processAutoLink() {

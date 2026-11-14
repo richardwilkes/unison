@@ -230,7 +230,15 @@ func TestMarkdownLinkTargets(t *testing.T) {
 		},
 		{name: "br in a label", content: "[one<br>two](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
 		{name: "br ending a line of a label", content: "[one<br>\ntwo](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
+		{name: "br over two lines in a label", content: "[one<br\n/>two](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
 		{name: "hard line break in a label", content: "[one\\\ntwo](u)\n", linkName: oneTwo, target: "u", tooltip: "u"},
+		{
+			name:     "img tag in a label",
+			content:  "[site <img src=\"missing-image-for-test.png\" alt=\"GCS\">](u)\n",
+			linkName: "site GCS",
+			target:   "u",
+			tooltip:  "u",
+		},
 		{
 			name:     "autolink in a label broken across rows",
 			content:  "[see <http://e.com>" + strings.Repeat(" and more", 20) + "](u)\n",
@@ -319,8 +327,9 @@ func TestDefaultMarkdownLinkHandler(t *testing.T) {
 }
 
 // TestMarkdownImageSourceAndText verifies where an image is loaded from and the text it is given: its alt text, styled
-// words included, becomes its name, its title its description, and both its tooltip. An image that fails to load, as
-// missing-image-for-test.png does, is still given its text.
+// words included, becomes its name, its title its description, and both its tooltip, and a title with no alt text
+// becomes its name. An <img> tag's attributes do the same. An image that fails to load, as missing-image-for-test.png
+// does, is still given its text.
 func TestMarkdownImageSourceAndText(t *testing.T) {
 	saved := markdownPrimaryDisplay
 	defer func() { markdownPrimaryDisplay = saved }()
@@ -361,6 +370,19 @@ func TestMarkdownImageSourceAndText(t *testing.T) {
 			alt:     "a\\*b & &lt;T&gt;",
 			loaded:  true,
 		},
+		{
+			name:    "img tag in any case with entities",
+			content: "<IMG Src=\"image_for_test.png\" ALT=\"A &amp; b\" Title='T &quot;t&quot;'>\n",
+			alt:     "A & b",
+			title:   "T \"t\"",
+			loaded:  true,
+		},
+		{
+			name:    "img tag within text with only a title",
+			content: "Before <img src=\"image_for_test.png\" title=\"T\"> after.\n",
+			alt:     "T",
+			loaded:  true,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
@@ -394,10 +416,11 @@ func TestMarkdownImageSourceAndText(t *testing.T) {
 }
 
 // TestMarkdownImagesFromFileSystem verifies where the images of a Markdown given a FileSystem are loaded from, that
-// every image is held to PerImageByteLimit, that an image used twice on a page is shown both times, and when an image
-// is read again. Each case shows its pages in turn, each with different text or width since showing unchanged content
-// does nothing unless rebuilt, and checks the width of every image on the last, 0 standing for the broken-image
-// placeholder.
+// an image's content rather than its name tells whether it is an SVG, that an SVG giving a size too large for a float32
+// can still be scaled, that every image is held to PerImageByteLimit, that an image used twice on a page is shown both
+// times, and when an image is read again. Each case shows its pages in turn, each with different text or width since
+// showing unchanged content does nothing unless rebuilt, and checks the width of every image on the last, 0 standing
+// for the broken-image placeholder.
 func TestMarkdownImagesFromFileSystem(t *testing.T) {
 	testenv.SkipTimingSensitive(t)
 	saved := markdownPrimaryDisplay
@@ -411,14 +434,25 @@ func TestMarkdownImagesFromFileSystem(t *testing.T) {
 		return fmt.Appendf(nil, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %[1]d %[1]d"><rect width="%[1]d" height="%[1]d"/></svg>`, side)
 	}
 	small := svg(10)
+	shot := distinctPNGForTest(setup, 6, 4, 131)
 	fsys := fstest.MapFS{
 		fileA:                  {Data: small},
 		sub + "/a.svg":         {Data: svg(20)},
 		"md:" + sub + "/a.svg": {Data: svg(20)},
-		"images/shot.png":      {Data: distinctPNGForTest(setup, 6, 4, 131)},
+		"images/shot.png":      {Data: shot},
+		"images/shot.svg":      {Data: shot},
+		// Too large for a float32, its width and height are infinite once read.
+		"huge.svg": {
+			Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="1e39" height="1e39" viewBox="0 0 10 10"/>`),
+		},
 	}
+	// The server's SVG has what may precede its root element: a byte order mark, an XML declaration, a comment and a
+	// DOCTYPE.
+	served := append([]byte("\xEF\xBB\xBF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!-- c -->\n"+
+		"<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n"),
+		svg(30)...)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, err := w.Write(svg(30))
+		_, err := w.Write(served)
 		setup.NoError(err)
 	}))
 	defer server.Close()
@@ -524,14 +558,24 @@ func TestMarkdownImagesFromFileSystem(t *testing.T) {
 			widths: []float32{6},
 		},
 		{
+			name:   "raster named as an SVG",
+			pages:  []page{{dir: "images", content: "![shot](shot.svg)\n"}},
+			widths: []float32{6},
+		},
+		{
 			name:   "URL",
 			pages:  []page{{content: "![url](" + server.URL + "/c.svg)\n"}},
 			widths: []float32{30},
 		},
 		{
-			name:   "SVG URL with a query",
-			pages:  []page{{content: "![url](" + server.URL + "/c.svg?v=2#top)\n"}},
+			name:   "SVG URL without an extension",
+			pages:  []page{{content: "![build](" + server.URL + "/badge/build-passing-green)\n"}},
 			widths: []float32{30},
+		},
+		{
+			name:   "SVG of a size too large for a float32 given a height",
+			pages:  []page{{content: "<img src=\"huge.svg\" height=\"64\">\n"}},
+			widths: []float32{64},
 		},
 		{
 			name:   "at the byte limit",
@@ -612,6 +656,38 @@ func TestMarkdownImagesFromFileSystem(t *testing.T) {
 			}
 			walk(m.AsPanel())
 			c.Equal(tc.widths, widths, "the width of each image")
+		})
+	}
+}
+
+// TestMarkdownIsSVG verifies that data beginning as XML is read as an SVG when encoding/xml cannot read as far as its
+// first element, so that the SVG parser reports what is wrong with it, but not when that element is something else.
+func TestMarkdownIsSVG(t *testing.T) {
+	const root = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>`
+	const utf16Text = `<?xml version="1.0" encoding="UTF-16"?>` + root
+	// Little-endian, after its byte order mark.
+	utf16 := append(make([]byte, 0, 2+2*len(utf16Text)), 0xFF, 0xFE)
+	for _, b := range []byte(utf16Text) {
+		utf16 = append(utf16, b, 0)
+	}
+	for _, tc := range []struct {
+		name string
+		data []byte
+		want bool
+	}{
+		{
+			name: "entity declared in the DOCTYPE used in the root tag",
+			data: []byte("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE svg [\n" +
+				"\t<!ENTITY ns_extend \"http://ns.adobe.com/Extensibility/1.0/\">\n]>\n" +
+				`<svg xmlns:x="&ns_extend;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"/>`),
+			want: true,
+		},
+		{name: "XML 1.1", data: []byte(`<?xml version="1.1"?>` + root), want: true},
+		{name: "UTF-16", data: utf16, want: true},
+		{name: "first element not svg", data: []byte(`<?xml version="1.0"?><html/>`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			check.New(t).Equal(tc.want, markdownIsSVG(tc.data))
 		})
 	}
 }
@@ -895,6 +971,166 @@ func TestMarkdownImageKeepsMinimumWidth(t *testing.T) {
 	}
 }
 
+// TestMarkdownAlertMarkerMustBeginQuote verifies that a quote is an alert only when its marker begins it: one after
+// anything else the quote shows, or within a block other than a paragraph, is shown as written. A quote that is an
+// alert stays one whatever follows its marker.
+func TestMarkdownAlertMarkerMustBeginQuote(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content string
+		alert   string // The name an alert is given, or "" for a quote that is not one.
+	}{
+		{name: "hard line break after the marker", content: "> [!NOTE]\n> one\\\n> two\n", alert: "Note"},
+		{name: "image", content: "> ![x](missing-image-for-test.png)\n>\n> [!NOTE]\n> text\n"},
+		{name: "img tag", content: "> <img src=\"missing-image-for-test.png\">\n>\n> [!NOTE]\n> text\n"},
+		{name: "code block", content: "> ```\n> code\n> ```\n>\n> [!NOTE]\n> text\n"},
+		{name: "thematic break", content: "> ***\n>\n> [!NOTE]\n> text\n"},
+		{name: "nested quote", content: "> > quoted\n>\n> [!NOTE]\n> text\n"},
+		{name: "heading beginning with the marker", content: "> # [!NOTE]\n> text\n"},
+		{name: "list beginning with the marker", content: "> - [!NOTE]\n>   text\n"},
+		{name: "table beginning with the marker", content: "> | [!NOTE] |\n> | --- |\n> | text |\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			m := NewMarkdown(false)
+			m.SetContent(tc.content, 400)
+			var quote *Panel
+			var find func(p *Panel)
+			find = func(p *Panel) {
+				for _, child := range p.Children() {
+					if quote == nil && child.Accessibility.Role == role.BlockQuote {
+						quote = child
+					}
+					find(child)
+				}
+			}
+			find(m.AsPanel())
+			c.NotNil(quote)
+			if quote != nil {
+				c.Equal(tc.alert, quote.Accessibility.Name, "the name of the alert the quote is")
+				if tc.alert == "" {
+					c.Contains(collectMarkdownText(quote), "[!NOTE] text", "the marker is shown as written")
+				}
+			}
+		})
+	}
+}
+
+// TestMarkdownImgTagImages verifies which images <img> tags show and the size of each: the one their width and height
+// give, the one given alone keeping the image's proportions, then scaled down to fit the line and to be no taller than
+// markdownMaxImageSize. Each case is shown with a vector and a raster image, both 200 by 100, unless it has an image of
+// its own, and with each to hand and arriving late.
+func TestMarkdownImgTagImages(t *testing.T) {
+	codecs.Register() // normally done at app startup, which these tests skip
+	setup := check.New(t)
+	raster, err := NewImageFromBytes(distinctPNGForTest(setup, 200, 100, 151), geom.NewPoint(1, 1))
+	setup.NoError(err)
+	defer raster.Dispose()
+	vector := &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(200, 100)}
+	target, err := ReviseTarget("", "img.png", nil)
+	setup.NoError(err)
+	key := markdownImageKey{target: target}
+	for _, tc := range []struct {
+		image   Drawable
+		name    string
+		content string
+		sizes   []geom.Size
+	}{
+		{name: "neither width nor height", content: `<img src="img.png">`, sizes: []geom.Size{geom.NewSize(200, 100)}},
+		{name: "width", content: `<img src="img.png" width="50">`, sizes: []geom.Size{geom.NewSize(50, 25)}},
+		{name: "height", content: `<img src="img.png" height="50">`, sizes: []geom.Size{geom.NewSize(100, 50)}},
+		{
+			name:    "width and height",
+			content: `<img src="img.png" width="30" height="70">`,
+			sizes:   []geom.Size{geom.NewSize(30, 70)},
+		},
+		{
+			name:    "values that are not plain numbers",
+			content: `<img src="img.png" width="50%" height="1e1">`,
+			sizes:   []geom.Size{geom.NewSize(200, 100)},
+		},
+		{name: "wider than the line", content: `<img src="img.png" width="800">`, sizes: []geom.Size{geom.NewSize(400, 200)}},
+		{
+			// One height is the largest float32, the other past it.
+			name: "heights of any size",
+			content: "<img src=\"img.png\" height=\"340282350000000000000000000000000000000\">\n" +
+				"<img src=\"img.png\" height=\"1" + strings.Repeat("0", 40) + "\">",
+			sizes: []geom.Size{geom.NewSize(400, 200), geom.NewSize(400, 200)},
+		},
+		{
+			name:    "taller than the most shown",
+			content: `<img src="img.png">`,
+			image:   &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(100, 1<<25)},
+			sizes:   []geom.Size{geom.NewSize(50, 1<<24)},
+		},
+		{
+			// 50 / 1e-38 is past the largest float32.
+			name:    "width of an image with no height and almost no width",
+			content: `<img src="img.png" width="50">`,
+			image:   &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(1e-38, 0)},
+			sizes:   []geom.Size{geom.NewSize(50, 0)},
+		},
+		{
+			name:    "height of an image with no width and almost no height",
+			content: `<img src="img.png" height="50">`,
+			image:   &DrawableSVG{SVG: BrokenImageSVG, Size: geom.NewSize(0, 1e-38)},
+			sizes:   []geom.Size{geom.NewSize(0, 50)},
+		},
+		{
+			name:    "within text",
+			content: `Before <img src="img.png" width="50"> after.`,
+			sizes:   []geom.Size{geom.NewSize(50, 25)},
+		},
+		{
+			name:    "block of the same image at two sizes",
+			content: "<img src=\"img.png\" width=\"50\">\n<img src=\"img.png\" height=\"20\">",
+			sizes:   []geom.Size{geom.NewSize(50, 25), geom.NewSize(40, 20)},
+		},
+		{
+			name:    "no src or an empty one",
+			content: "<img alt=\"x\">\n<img src=\"img.png\" width=\"50\">\n<img src=\"\" alt=\"y\">\n\nBefore <img alt=\"z\"> after.",
+			sizes:   []geom.Size{geom.NewSize(50, 25)},
+		},
+		{name: "block with text", content: "<img src=\"img.png\">\ntext"},
+		{name: "block with other markup", content: "<img src=\"img.png\">\n<br>"},
+		{name: "block ending in an unfinished tag", content: "<img src=\"img.png\">\n<img src=\"img.png\""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			images := []Drawable{vector, raster}
+			if tc.image != nil {
+				images = []Drawable{tc.image}
+			}
+			for _, image := range images {
+				for _, late := range []bool{false, true} {
+					m := NewMarkdown(false)
+					if late {
+						m.drawableCache[key] = &drawableCacheEntry{}
+					} else {
+						m.drawableCache[key] = &drawableCacheEntry{drawable: image}
+					}
+					m.SetContent(tc.content+"\n", 400)
+					if late {
+						m.updateDrawable(key, image)
+					}
+					var sizes []geom.Size
+					var walk func(p *Panel)
+					walk = func(p *Panel) {
+						if one, ok := p.Self.(*DrawablePanel); ok {
+							sizes = append(sizes, one.Drawable.LogicalSize())
+						}
+						for _, child := range p.Children() {
+							walk(child)
+						}
+					}
+					walk(m.AsPanel())
+					c.Equal(tc.sizes, sizes, "the size of each %T image, arriving late: %v", image, late)
+				}
+			}
+		})
+	}
+}
+
 // TestMarkdownBreaksTextIntoRows verifies what each row draws once text has been broken to fit, with an image drawn as
 // U+FFFC, and the lines the blocks are read as, which hold every rune that was written, each row as one line.
 func TestMarkdownBreaksTextIntoRows(t *testing.T) {
@@ -942,6 +1178,21 @@ func TestMarkdownBreaksTextIntoRows(t *testing.T) {
 			lines:   []string{"\uFFFC"},
 		},
 		{
+			name:    "block of img tags apart and together",
+			content: "<img src=\"missing-image-for-test.png\">\n<img src=\"a.png\"><img src=\"b.png\">\n",
+			width:   400,
+			rows:    []string{"￼ ￼￼"},
+			lines:   []string{"￼ ￼￼"},
+		},
+		{
+			name:    "block of img tags apart with one without src between",
+			content: "<img src=\"missing-image-for-test.png\">\n<img alt=\"x\"><img src=\"b.png\">\n",
+			width:   400,
+			rows:    []string{"￼ ￼"},
+			lines:   []string{"￼ ￼"},
+		},
+		{name: "block of img tags without src", content: "<img alt=\"x\">\n<img src=\"\">\n", width: 400},
+		{
 			name:    "link wider than the line",
 			content: "[This is a fairly long link title that will not fit in the width](u)\n",
 			width:   200,
@@ -975,6 +1226,27 @@ func TestMarkdownBreaksTextIntoRows(t *testing.T) {
 			width:   400,
 			rows:    []string{"a", "y b"},
 			lines:   []string{"a\n", "  y b"},
+		},
+		{
+			name:    "line endings directly after a break and after text following one",
+			content: "a<br>\nb<br>c\nd\n",
+			width:   400,
+			rows:    []string{"a", "b", "c d"},
+			lines:   []string{"a\n", "b\n", "c d"},
+		},
+		{
+			name:    "break written over two lines",
+			content: "a<br\n/>b\n",
+			width:   400,
+			rows:    []string{"a", "b"},
+			lines:   []string{"a\n", "b"},
+		},
+		{
+			name:    "rule written over two lines",
+			content: "a<hr\n/>b\n",
+			width:   400,
+			rows:    []string{"a", "", "b"},
+			lines:   []string{"a\n", "\n", "b"},
 		},
 		{
 			name:    "space after a break on a narrow line",
@@ -1158,6 +1430,7 @@ func TestMarkdownImageInLinkIsPartOfIt(t *testing.T) {
 		{name: "image alone", content: "[![alt](missing-image-for-test.png)](" + target + ")\n", row: "\uFFFC"},
 		{name: "image before text", content: "[![alt](missing-image-for-test.png) text](" + target + ")\n", row: "\uFFFC text"},
 		{name: "image after text", content: "[text ![alt](missing-image-for-test.png)](" + target + ")\n", row: "text \uFFFC"},
+		{name: "img tag", content: "[<img src=\"missing-image-for-test.png\" alt=\"alt\">](" + target + ")\n", row: "\uFFFC"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
@@ -1400,7 +1673,8 @@ func TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		m.retrieveImage("missing-image-for-test.png", NewDrawablePanel(), DefaultMarkdownWidth, 0)
+		m.retrieveImage("missing-image-for-test.png",
+			markdownImageTarget{panel: NewDrawablePanel(), maxWidth: DefaultMarkdownWidth})
 	}()
 	select {
 	case <-entered:

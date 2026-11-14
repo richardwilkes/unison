@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -169,6 +170,7 @@ var (
 var (
 	errParamMismatch = errors.New("param mismatch")
 	errZeroLengthID  = errors.New("zero length id")
+	errNegativeSize  = errors.New("negative width or height")
 	svgUnits         = []struct {
 		suffix     string
 		multiplier float64
@@ -1758,6 +1760,10 @@ func (p *svgParser) handleSVGElement(attrs []xml.Attr) error {
 			if len(p.pts) != 4 {
 				return errParamMismatch
 			}
+			// SVG makes a negative width or height an error, here and in the width and height attributes.
+			if p.pts[2] < 0 || p.pts[3] < 0 {
+				return errNegativeSize
+			}
 			p.svg.viewBox.X = p.pts[0]
 			p.svg.viewBox.Y = p.pts[1]
 			p.svg.viewBox.Width = p.pts[2]
@@ -1767,11 +1773,17 @@ func (p *svgParser) handleSVGElement(attrs []xml.Attr) error {
 			if err != nil {
 				return err
 			}
+			if width < 0 {
+				return errNegativeSize
+			}
 			p.svg.suggestedSize.Width = width
 		case "height":
 			height, _, err := svgParseUnit(attr.Value)
 			if err != nil {
 				return err
+			}
+			if height < 0 {
+				return errNegativeSize
 			}
 			p.svg.suggestedSize.Height = height
 		}
@@ -1968,8 +1980,12 @@ func svgParseUnit(s string) (f float32, isPercent bool, err error) {
 			break
 		}
 	}
+	s = strings.TrimSpace(s)
 	var out float64
-	out, err = strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if out, err = strconv.ParseFloat(s, 64); math.IsNaN(out) {
+		// ParseFloat also reads "NaN", which no SVG number is.
+		return 0, isPercent, &strconv.NumError{Func: "ParseFloat", Num: s, Err: strconv.ErrSyntax}
+	}
 	return float32(out * multiplier), isPercent, err
 }
 
