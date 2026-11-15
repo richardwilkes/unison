@@ -727,7 +727,7 @@ func TestMarkdownHeadingAnchors(t *testing.T) {
 
 	// With an AnchorLinkHandler, following a link to an anchor the document has hands the anchor to it in place of
 	// scrolling, while a link to one it lacks still reaches the LinkHandler.
-	scroll, m := markdownInScrollPanel(content, 20)
+	scroll, m := markdownInScrollPanel(content, "", 20)
 	var anchors, links []string
 	m.AnchorLinkHandler = func(anchor string) { anchors = append(anchors, anchor) }
 	m.LinkHandler = func(_ Paneler, target string) { links = append(links, target) }
@@ -751,13 +751,24 @@ func TestMarkdownHeadingAnchors(t *testing.T) {
 }
 
 // markdownInScrollPanel builds a Markdown from the given content inside a ScrollPanel with the given viewport height,
-// lays it out, and returns both so tests can assert on scroll behavior. The root of the ScrollPanel sits at (0,0), so a
-// panel's root coordinates are also its coordinates relative to the visible viewport (0..viewHeight).
-func markdownInScrollPanel(content string, viewHeight float32) (*ScrollPanel, *Markdown) {
+// lays it out, and returns both so tests can assert on scroll behavior. When after is not empty, the Markdown is
+// followed by another made from it, the two in a column the ScrollPanel scrolls. The root of the ScrollPanel sits at
+// (0,0), so a panel's root coordinates are also its coordinates relative to the visible viewport (0..viewHeight).
+func markdownInScrollPanel(content, after string, viewHeight float32) (*ScrollPanel, *Markdown) {
 	m := NewMarkdown(false)
 	m.SetContent(content, 400)
+	var scrolled Paneler = m
+	if after != "" {
+		next := NewMarkdown(false)
+		next.SetContent(after, 400)
+		column := NewPanel()
+		column.SetLayout(&FlexLayout{Columns: 1})
+		column.AddChild(m)
+		column.AddChild(next)
+		scrolled = column
+	}
 	scroll := NewScrollPanel()
-	scroll.SetContent(m, behavior.Fill, behavior.Fill)
+	scroll.SetContent(scrolled, behavior.Fill, behavior.Fill)
 	scroll.SetFrameRect(geom.NewRect(0, 0, 420, viewHeight))
 	scroll.ValidateLayout()
 	return scroll, m
@@ -766,8 +777,9 @@ func markdownInScrollPanel(content string, viewHeight float32) (*ScrollPanel, *M
 // TestMarkdownScrollToAnchorAlignsTop verifies that scrolling to an anchor brings the top of the heading to the top of
 // the view (revealing the section that follows it) rather than leaving it pinned to the bottom of the view, even when
 // the heading is taller than the view, so it isn't reduced to showing only its last "bit", and whether the view starts
-// out above the heading or below its top. A heading too near the end of the document to be pulled to the top is
-// instead brought fully into view, the scroll clamped to the end.
+// out above the heading or below its top, or the document is shorter than the view and shares it with another. A
+// heading too near the end of what the view scrolls to be pulled to the top is instead brought fully into view, the
+// scroll clamped to the end.
 func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
 	const target = "target-heading"
 	lines := func(n int, suffix string) string {
@@ -780,6 +792,7 @@ func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
 		content    string
+		after      string // The content of a document following this one in the view, if any.
 		anchor     string // Given to ScrollToAnchor; slug is the key it resolves to.
 		slug       string
 		viewHeight float32
@@ -829,10 +842,21 @@ func TestMarkdownScrollToAnchorAlignsTop(t *testing.T) {
 			taller:     true,
 			above:      true,
 		},
+		{
+			name:       "document shorter than the view",
+			content:    "# Top\n\n" + lines(3, "") + "## Target Heading\n\n" + lines(3, ""),
+			after:      lines(40, " of the next document"),
+			anchor:     target,
+			slug:       target,
+			viewHeight: 300,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := check.New(t)
-			scroll, m := markdownInScrollPanel(tc.content, tc.viewHeight)
+			scroll, m := markdownInScrollPanel(tc.content, tc.after, tc.viewHeight)
+			if tc.after != "" {
+				c.True(m.FrameRect().Height < tc.viewHeight, "the document is shorter than the view")
+			}
 			p := m.anchors[tc.slug]
 			c.NotNil(p)
 			if tc.above {
@@ -877,7 +901,8 @@ func TestMarkdownEmptyContent(t *testing.T) {
 }
 
 // TestMarkdownFitsMaxWidth verifies that content, including a list's or a quote's, is no wider than the width it was
-// wrapped to, even a fractional one. The image wide.png is wider than any of those widths.
+// wrapped to, even a fractional one, and is the same size wrapped again to the width it then prefers. The image
+// wide.png is wider than any of those widths.
 func TestMarkdownFitsMaxWidth(t *testing.T) {
 	const words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et " +
 		"dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip.\n"
@@ -932,9 +957,109 @@ func TestMarkdownFitsMaxWidth(t *testing.T) {
 				}
 				_, prefSize, _ := m.Sizes(geom.Size{})
 				c.True(prefSize.Width <= width, "wrapped to %v, the content prefers %v", width, prefSize.Width)
+				m.SetContent(tc.content, prefSize.Width)
+				_, again, _ := m.Sizes(geom.Size{})
+				c.Equal(prefSize, again, "the size preferred, wrapped to %v and then to that width", width)
 			}
 		})
 	}
+}
+
+// TestMarkdownAutoSizingKeepsWrapping verifies that a Markdown keeping its content wrapped to its parent's width leaves
+// it wrapped as it was in a parent sized from the Markdown's own preferred width, rather than narrowing it at every
+// layout, and still wraps it narrower, to the room the parent has, once the parent has no room for it, whatever the
+// Markdown's scale. Content set before the parent has been laid out is wrapped as it is without a parent.
+func TestMarkdownAutoSizingKeepsWrapping(t *testing.T) {
+	const words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore " +
+		"et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip."
+	paragraphs := words + "\n\n" + strings.Repeat(words+" ", 3) + "\n"
+	for _, tc := range []struct {
+		name    string
+		content string
+		scale   float32 // 0 leaves the Markdown unscaled.
+		// joinFirst sets the content after the Markdown joins its parent rather than before.
+		joinFirst bool
+	}{
+		{name: "paragraphs", content: paragraphs},
+		{name: "lists", content: "- " + words + "\n- - " + words + "\n\n1000. " + words + "\n"},
+		{name: "nested list", content: "- - - " + words + "\n"},
+		{name: "block quote", content: "> " + words + "\n"},
+		{name: "table", content: "| a | b |\n| - | - |\n| " + words + " | " + words + " |\n"},
+		{name: "content set in the parent", content: paragraphs, joinFirst: true},
+		{name: "scaled up", content: paragraphs, scale: 2},
+		{name: "scaled down", content: paragraphs, scale: 0.5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := check.New(t)
+			scale := geom.NewPoint(tc.scale, tc.scale)
+			unparented := NewMarkdown(false)
+			unparented.SetScale(scale)
+			unparented.SetContent(tc.content, 0)
+			_, want, _ := unparented.Sizes(geom.Size{})
+			m := NewMarkdown(true)
+			m.SetScale(scale)
+			column := NewPanel()
+			column.SetLayout(&FlexLayout{Columns: 1})
+			column.SetBorder(NewEmptyBorder(StdInsets()))
+			if !tc.joinFirst {
+				m.SetContent(tc.content, 0)
+			}
+			column.AddChild(m)
+			if tc.joinFirst {
+				m.SetContent(tc.content, 0)
+			}
+			scroll := NewScrollPanel()
+			scroll.SetContent(column, behavior.Unmodified, behavior.Unmodified)
+			scroll.SetFrameRect(geom.NewRect(0, 0, 500, 300))
+			for range 10 {
+				scroll.ValidateLayout()
+			}
+			rect := m.FrameRect()
+			c.Equal(want.Height, rect.Height, "the height of the content, which is %v wide, once laid out", rect.Width)
+
+			narrower := column.FrameRect()
+			narrower.Width -= 100
+			column.SetFrameRect(narrower)
+			_, pref, _ := m.Sizes(geom.Size{})
+			room := column.ContentRect(false).Width
+			c.True(pref.Width <= room && pref.Width > room/2, "the content prefers %v in a parent with room for %v",
+				pref.Width, room)
+		})
+	}
+}
+
+// TestMarkdownLeavingParentKeepsItsCallbacks verifies that a Markdown keeping its content wrapped to its parent's width
+// leaves the parent's frame changes reaching every other callback on the parent when it leaves: the one the parent had
+// before, one chained on since, and another such Markdown's.
+func TestMarkdownLeavingParentKeepsItsCallbacks(t *testing.T) {
+	c := check.New(t)
+	const words = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore " +
+		"et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip."
+	parent := NewPanel()
+	parent.SetLayout(&FlexLayout{Columns: 1})
+	var before, since int
+	parent.FrameChangeCallback = func() { before++ }
+	first := NewMarkdown(true)
+	parent.AddChild(first)
+	second := NewMarkdown(true)
+	parent.AddChild(second)
+	chained := parent.FrameChangeCallback
+	parent.FrameChangeCallback = func() {
+		since++
+		chained()
+	}
+	second.SetContent(words, 0)
+	parent.RemoveChild(first)
+	parent.SetFrameRect(geom.NewRect(0, 0, 300, 100))
+	c.Equal(1, before, "calls of the callback the parent had before")
+	c.Equal(1, since, "calls of the callback chained on since")
+	_, pref, _ := second.Sizes(geom.Size{})
+	c.True(pref.Width <= 300, "the Markdown left in the parent prefers %v in a parent 300 wide", pref.Width)
+
+	parent.RemoveChild(second)
+	parent.SetFrameRect(geom.NewRect(0, 0, 200, 100))
+	c.Equal(2, before, "calls of the callback the parent had before, once no Markdown is left")
+	c.Equal(2, since, "calls of the callback chained on since, once no Markdown is left")
 }
 
 // TestMarkdownImageKeepsMinimumWidth verifies that an image scaled down for a line with little or no room is kept as
@@ -1663,7 +1788,7 @@ func TestMarkdownListItemSpacing(t *testing.T) {
 // TestMarkdownTableDoesNotWrapWhenItFits guards against regressing the table column-sizing logic so that a table whose
 // natural width fits within the available width is left at full width rather than having its columns shrunk (which
 // would force premature text wrapping). The column widths are only reduced below the available width when the table's
-// natural width actually exceeds it.
+// natural width actually exceeds it, and never below the narrowest its content allows.
 func TestMarkdownTableDoesNotWrapWhenItFits(t *testing.T) {
 	c := check.New(t)
 	const content = "| one | two | three | four | five | six | seven | eight | nine | ten |\n" +
@@ -1677,15 +1802,34 @@ func TestMarkdownTableDoesNotWrapWhenItFits(t *testing.T) {
 		c.Equal(800, w, "column %d should not be shrunk when the table fits", i)
 	}
 
-	// At a width narrower than the table's natural width, columns must be shrunk so the table fits.
+	// At a width narrower than the table's natural width, but not than its narrowest, columns must be shrunk so the
+	// table fits.
 	m = NewMarkdown(false)
-	m.SetContent(content, 200)
+	m.SetContent(content, 500)
 	total := 0
 	for _, w := range m.columnWidths {
-		c.True(w < 200, "columns should be shrunk when the table cannot fit")
+		c.True(w < 500, "columns should be shrunk when the table cannot fit")
 		total += w
 	}
-	c.True(total <= 200, "shrunk columns must sum to no more than the available width")
+	c.True(total <= 500, "shrunk columns must sum to no more than the available width")
+
+	// A table with too little room for its narrowest columns, each as narrow as a word that cannot be broken allows, or
+	// with just enough, is built at those widths rather than with every cell wrapped to no width, so it is as tall as
+	// with a unit more room, which wraps no word differently.
+	const unbreakable = "| Supercalifragilistic | x |\n|-|-|\n| a b c | Expialidocious d e f |\n"
+	m = NewMarkdown(false)
+	m.SetContent(unbreakable, 50)
+	_, narrowest, _ := m.Sizes(geom.Size{})
+	m = NewMarkdown(false)
+	m.SetContent(unbreakable, narrowest.Width+1)
+	_, want, _ := m.Sizes(geom.Size{})
+	for _, width := range []float32{50, narrowest.Width} {
+		m = NewMarkdown(false)
+		m.SetContent(unbreakable, width)
+		_, pref, _ := m.Sizes(geom.Size{})
+		c.Equal(want.Height, pref.Height, "the height of the table wrapped to %v, %v wide at its narrowest", width,
+			narrowest.Width)
+	}
 }
 
 // TestMarkdownRetrieveImageQueriesDisplayOnCallingGoroutine verifies that retrieveImage queries the primary display

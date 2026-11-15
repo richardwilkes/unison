@@ -64,6 +64,8 @@ type Config struct {
 	GitHubToken string
 	// DownloadPageURL is where the user can download a release by hand. "" offers no download page.
 	DownloadPageURL string
+	// SponsorURL is where the user can sponsor the application's development. "" offers no Sponsor button.
+	SponsorURL string
 	// VersionArgs make the application print its version and exit without opening a window. A staged release is run
 	// with them, to prove it starts on this machine, before it replaces the installation. nil uses {"-v"}.
 	VersionArgs []string

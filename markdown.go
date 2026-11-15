@@ -70,7 +70,25 @@ const (
 	// markdownLinkHeadKey marks each piece of a link but the first with the first. A link is in pieces where it is
 	// broken across rows, and an image it holds is a piece of its own.
 	markdownLinkHeadKey = "unison.link.head"
+	// markdownParentHookKey holds, on a parent of a Markdown keeping its content wrapped to its parent's width, the
+	// markdownParentHook installed as the parent's FrameChangeCallback.
+	markdownParentHookKey = "unison.markdown.parent.hook"
 )
+
+// markdownParentHook tells the Markdowns keeping their content wrapped to a parent's width of the parent's frame
+// changes, then calls on to the FrameChangeCallback it replaced. It is never removed, since a callback chained on since
+// may call on to it.
+type markdownParentHook struct {
+	chained   func()
+	markdowns []*Markdown
+}
+
+func (h *markdownParentHook) frameChanged() {
+	for _, m := range slices.Clone(h.markdowns) {
+		SafeCall(m.adjustToParent)
+	}
+	SafeCall(h.chained)
+}
 
 func init() {
 	DefaultMarkdownTheme = MarkdownTheme{
@@ -275,15 +293,14 @@ type Markdown struct {
 	FileSystem fs.FS
 	// AnchorLinkHandler, if not nil, is called in place of scrolling when a link to an anchor within the document is
 	// followed, with that anchor less its leading '#'. Call ScrollToAnchor from it to scroll there.
-	AnchorLinkHandler          func(anchor string)
-	lastParent                 *Panel
-	block                      *Panel
-	textRow                    *Panel
-	text                       *Text
-	decoration                 *TextDecoration
-	node                       ast.Node
-	chainedFrameChangeCallback func()
-	content                    []byte
+	AnchorLinkHandler func(anchor string)
+	lastParent        *Panel
+	block             *Panel
+	textRow           *Panel
+	text              *Text
+	decoration        *TextDecoration
+	node              ast.Node
+	content           []byte
 	// link is the link whose content is being added, while there is one.
 	link *markdownLink
 	// alertMarker is the text node that ends the alert marker beginning the quote being built, until it is reached.
@@ -331,7 +348,9 @@ type Markdown struct {
 }
 
 // NewMarkdown creates a new markdown widget. If autoSizingFromParent is true, then the Markdown will attempt to keep
-// its content wrapped to its parent's width. Currently, things like tables don't play nice with width management.
+// its content wrapped to its parent's width, which it is told of through the parent's FrameChangeCallback: one assigned
+// to the parent afterward must call on to the one it replaces. Currently, things like tables don't play nice with width
+// management.
 //
 // An application that installs a FrameChangeInChildHierarchyCallback of its own on the result must call
 // Markdown.DefaultFrameChangeInChildHierarchy from it, or chain whatever this installed: everything the text of the
@@ -405,20 +424,54 @@ func (m *Markdown) DefaultFocusLost() {
 func (m *Markdown) adjustSizeOnParentChange() {
 	if p := m.Parent(); p != m.lastParent {
 		if m.lastParent != nil {
-			m.lastParent.FrameChangeCallback = m.chainedFrameChangeCallback
+			if hook, ok := m.lastParent.ClientData()[markdownParentHookKey].(*markdownParentHook); ok {
+				hook.markdowns = slices.DeleteFunc(hook.markdowns, func(one *Markdown) bool { return one == m })
+			}
 			m.lastParent = nil
 		}
 		if p != nil {
 			m.lastParent = p
-			m.chainedFrameChangeCallback = p.FrameChangeCallback
-			p.FrameChangeCallback = m.adjustToParent
+			hook, ok := p.ClientData()[markdownParentHookKey].(*markdownParentHook)
+			if !ok {
+				hook = &markdownParentHook{chained: p.FrameChangeCallback}
+				p.FrameChangeCallback = hook.frameChanged
+				p.ClientData()[markdownParentHookKey] = hook
+			}
+			hook.markdowns = append(hook.markdowns, m)
 		}
 	}
 }
 
 func (m *Markdown) adjustToParent() {
-	m.SetContentBytes(m.content, 0)
-	SafeCall(m.chainedFrameChangeCallback)
+	// The content is not wrapped narrower while, as wrapped, it fills the parent: a parent sized from the Markdown is
+	// only as wide as it, so wrapping the content Slop narrower than that would narrow both at every layout.
+	if p := m.Parent(); p == nil {
+		m.SetContentBytes(m.content, 0)
+	} else if width := m.widthIn(p); width >= m.maxWidth || !m.fills(p) {
+		m.SetContentBytes(m.content, width)
+	}
+}
+
+// widthIn returns the width to wrap the content to within p: p's content width less the Slop, in the Markdown's own
+// coordinates, less the Markdown's border.
+func (m *Markdown) widthIn(p *Panel) float32 {
+	width := (p.ContentRect(false).Width - m.Slop) / m.Scale().X
+	if border := m.Border(); border != nil {
+		width -= border.Insets().Width()
+	}
+	return width
+}
+
+// fills reports whether the Markdown, as wrapped, fits within p with no more than the Slop to spare. Its width plus p's
+// border is compared to p's whole width, that being the sum a layout sizing p from the Markdown makes, so that rounding
+// cannot leave such a p narrower than the Markdown.
+func (m *Markdown) fills(p *Panel) bool {
+	_, pref, _ := m.Sizes(geom.Size{})
+	if border := p.Border(); border != nil {
+		pref.Width += border.Insets().Width()
+	}
+	width := p.ContentRect(true).Width
+	return pref.Width <= width && width <= pref.Width+m.Slop
 }
 
 // SetContent replaces the current markdown content.
@@ -432,17 +485,15 @@ func (m *Markdown) ContentBytes() []byte {
 }
 
 // SetContentBytes replaces the current markdown content with a copy of content. If maxWidth < 1, then the content will
-// be sized based on the parent container or use DefaultMarkdownWidth if no parent is present.
+// be sized based on the parent container, or use DefaultMarkdownWidth if no parent is present or it has less than 1 to
+// offer, as one not yet laid out has.
 func (m *Markdown) SetContentBytes(content []byte, maxWidth float32) {
 	if maxWidth < 1 {
+		maxWidth = DefaultMarkdownWidth
 		if p := m.Parent(); p != nil {
-			maxWidth = p.ContentRect(false).Width - m.Slop
-			if border := m.Border(); border != nil {
-				insets := border.Insets()
-				maxWidth -= insets.Width()
+			if width := m.widthIn(p); width >= 1 {
+				maxWidth = width
 			}
-		} else {
-			maxWidth = DefaultMarkdownWidth
 		}
 	}
 	if m.maxWidth == maxWidth && bytes.Equal(m.content, content) {
@@ -1078,8 +1129,7 @@ func (m *Markdown) processListItem() {
 		SizeHint: geom.NewSize(m.bulletWidth, xmath.Ceil(m.decoration.Font.LineHeight())),
 	})
 	spacing := m.decoration.Font.Baseline() / 3
-	// Rounded down, since the labels the text is drawn in round their widths up.
-	m.maxLineWidth = xmath.Floor(m.maxLineWidth - (m.bulletWidth + spacing))
+	m.maxLineWidth -= m.bulletWidth + spacing
 	item := newMarkdownContainer(role.ListItem).AsPanel()
 	item.SetLayout(&FlexLayout{
 		Columns:  2,
@@ -1144,10 +1194,16 @@ func (m *Markdown) processTable() {
 				// column wider than asked.
 				clear(m.columnWidths)
 				build()
-				// A table that cannot fit even so is left that narrow.
-				if least := markdownColumnWidths(p, columns); markdownSum(least) < room {
-					m.columnWidths = markdownFitColumns(natural, least, room)
-					build()
+				// Then built again fitted to the room, or, when it cannot fit even so, at those narrowest widths,
+				// rather than left with every cell wrapped to no width.
+				m.columnWidths = markdownFitColumns(natural, markdownColumnWidths(p, columns), room)
+				build()
+				// Each column keeps the width it was fitted to, not just that of its text, so that the table prefers
+				// the room it was fitted to: wrapped again to less, its columns would be fitted narrower.
+				for i, cell := range p.Children() {
+					if data, isFlex := cell.LayoutData().(*FlexLayoutData); isFlex {
+						data.MinSize.Width = float32(m.columnWidths[i%columns])
+					}
 				}
 			}
 			m.tableRow = saveTableRow
@@ -1176,8 +1232,9 @@ func markdownSum(values []int) int {
 }
 
 // markdownFitColumns returns how wide to make each column of a table that is too wide for room when each column is
-// natural wide and fits it when each is least wide: the widest are narrowed first, down to a level that no column is
-// made wider than and none is made narrower than least, and whatever room that leaves goes to the narrowed columns.
+// natural wide: the widest are narrowed first, down to a level that no column is made wider than and none is made
+// narrower than least, and whatever room that leaves goes to the narrowed columns. It returns least when least is too
+// wide for room or just fits it.
 func markdownFitColumns(natural, least []int, room int) []int {
 	width := func(i, level int) int { return max(least[i], min(natural[i], level)) }
 	total := func(level int) int {
@@ -1187,7 +1244,8 @@ func markdownFitColumns(natural, least []int, room int) []int {
 		}
 		return sum
 	}
-	// The widest level at which the columns fit room, which is below the widest of them since together they do not.
+	// The widest level at which the columns fit room, which is below the widest of them since together they do not, or
+	// -1 when they fit at none.
 	level := sort.Search(slices.Max(natural)+1, func(level int) bool { return total(level) > room }) - 1
 	extra := room - total(level)
 	widths := make([]int, len(natural))
@@ -1873,13 +1931,17 @@ func (m *Markdown) ScrollToAnchor(anchor string) bool {
 	if p := m.panelForAnchor(markdownAnchorID(anchor)); p != nil {
 		// Bring the top of the heading to the top of the view (when the scroll range allows), revealing the section
 		// that follows it rather than leaving the heading pinned to the bottom of the view. A rect from the heading's
-		// top as tall as the document cannot fit, so the scroll logic aligns its top edge with the top of the view
-		// (clamped to the available scroll range), which shows the top of even a heading taller than the view. The
-		// scroll logic leaves alone a rect that already fills the view, though, as that one does while the heading's
-		// top is above the view, so the top edge alone is brought into view first.
+		// top as tall as the tallest panel holding it, the content a view scrolls among them, cannot fit in a view with
+		// anything to scroll, so the scroll logic aligns its top edge with the top of the view (clamped to the
+		// available scroll range), which shows the top of even a heading taller than the view. A view enclosing that
+		// one is handed only what that one shows of the rect, which it brings in whole when it fits. The scroll logic
+		// leaves alone a rect that already fills the view, though, as the tall one does while the heading's top is
+		// above the view, so the top edge alone is brought into view first.
 		rect := p.ContentRect(true)
 		p.ScrollRectIntoView(geom.NewRect(rect.X, rect.Y, rect.Width, 0))
-		rect.Height = max(rect.Height, m.ContentRect(true).Height)
+		for look := p.Parent(); look != nil; look = look.Parent() {
+			rect.Height = max(rect.Height, look.RectTo(look.ContentRect(true), p).Height)
+		}
 		p.ScrollRectIntoView(rect)
 		return true
 	}

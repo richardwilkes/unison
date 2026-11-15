@@ -68,6 +68,7 @@ type ScrollPanel struct {
 	widthBehavior  behavior.Enum
 	heightBehavior behavior.Enum
 	syncing        bool
+	layingOut      bool
 }
 
 // NewScrollPanel creates a new scrollable area.
@@ -119,7 +120,11 @@ func (s *ScrollPanel) SetColumnHeader(p Paneler) {
 	s.columnHeader = p
 	if p != nil {
 		if s.columnHeaderView == nil {
-			s.columnHeaderView = NewPanel()
+			view := NewPanel()
+			view.ScrollRectIntoViewCallback = func(rect geom.Rect) bool {
+				return s.scrollHeaderRectIntoView(view, rect, true)
+			}
+			s.columnHeaderView = view
 			s.AddChild(s.columnHeaderView)
 		}
 		s.columnHeaderView.AddChild(p)
@@ -149,7 +154,11 @@ func (s *ScrollPanel) SetRowHeader(p Paneler) {
 	s.rowHeader = p
 	if p != nil {
 		if s.rowHeaderView == nil {
-			s.rowHeaderView = NewPanel()
+			view := NewPanel()
+			view.ScrollRectIntoViewCallback = func(rect geom.Rect) bool {
+				return s.scrollHeaderRectIntoView(view, rect, false)
+			}
+			s.rowHeaderView = view
 			s.AddChild(s.rowHeaderView)
 		}
 		s.rowHeaderView.AddChild(p)
@@ -225,27 +234,27 @@ func (s *ScrollPanel) ProvideAccessibility(b *AccessibilityBuilder) {
 	}
 }
 
-// Sync the headers and content with the current scroll state.
+// Sync the headers and content with the current scroll state, placing each inside the border of its view.
 func (s *ScrollPanel) Sync() {
 	if !s.syncing {
 		s.syncing = true
 		defer func() { s.syncing = false }()
 		if s.columnHeader != nil {
 			r := s.columnHeader.AsPanel().FrameRect()
-			r.X = -s.horizontalBar.Value()
-			r.Y = 0
+			r.Point = s.columnHeaderView.ContentRect(false).Point
+			r.X -= s.horizontalBar.Value()
 			s.columnHeader.AsPanel().SetFrameRect(r)
 		}
 		if s.rowHeader != nil {
 			r := s.rowHeader.AsPanel().FrameRect()
-			r.X = 0
-			r.Y = -s.verticalBar.Value()
+			r.Point = s.rowHeaderView.ContentRect(false).Point
+			r.Y -= s.verticalBar.Value()
 			s.rowHeader.AsPanel().SetFrameRect(r)
 		}
 		if s.content != nil {
 			r := s.content.AsPanel().FrameRect()
-			r.X = -s.horizontalBar.Value()
-			r.Y = -s.verticalBar.Value()
+			r.Point = s.contentView.ContentRect(false).Point.Sub(geom.NewPoint(s.horizontalBar.Value(),
+				s.verticalBar.Value()))
 			s.content.AsPanel().SetFrameRect(r)
 		}
 		s.MarkForRedraw()
@@ -303,23 +312,54 @@ func (s *ScrollPanel) DefaultMouseWheel(_, delta geom.Point, _ mod.Modifiers) bo
 // column header along the bottom of the view, so that a row sitting in that strip — in plain sight — was scrolled up
 // out of it whenever it was selected, and an assistive technology that had just read where the row was found it had
 // moved.
+//
+// It never reports the rect handled, so that the panels enclosing this one bring what this panel then shows of the rect
+// into their own views as well, which this panel's view may lie outside of.
 func (s *ScrollPanel) DefaultScrollRectIntoView(rect geom.Rect) bool {
+	viewRect := s.contentViewRect()
+	hAdj := computeScrollAdj(rect.X, viewRect.X, rect.Right(), viewRect.Right())
+	vAdj := computeScrollAdj(rect.Y, viewRect.Y, rect.Bottom(), viewRect.Bottom())
+	if hAdj != 0 {
+		s.horizontalBar.SetRange(s.horizontalBar.Value()+hAdj, s.horizontalBar.Extent(), s.horizontalBar.Max())
+	}
+	if vAdj != 0 {
+		s.verticalBar.SetRange(s.verticalBar.Value()+vAdj, s.verticalBar.Extent(), s.verticalBar.Max())
+	}
+	return false
+}
+
+// contentViewRect returns the region of this panel, in its own coordinates, through which the content is seen.
+func (s *ScrollPanel) contentViewRect() geom.Rect {
 	viewRect := s.contentView.FrameRect()
 	if border := s.contentView.Border(); border != nil {
 		viewRect = viewRect.Inset(border.Insets())
 	}
-	hAdj := computeScrollAdj(rect.X, viewRect.X, rect.Right(), viewRect.Right())
-	vAdj := computeScrollAdj(rect.Y, viewRect.Y, rect.Bottom(), viewRect.Bottom())
-	if hAdj != 0 || vAdj != 0 {
-		if hAdj != 0 {
-			s.horizontalBar.SetRange(s.horizontalBar.Value()+hAdj, s.horizontalBar.Extent(), s.horizontalBar.Max())
+	return viewRect
+}
+
+// scrollHeaderRectIntoView is the ScrollRectIntoViewCallback of a header view, which scrolls with the content along one
+// axis only. This panel's own callback would compare the rect against the content view, beside which the header view
+// lies, so this one brings the rect into the header view, hands what that shows to the panels enclosing this one and
+// reports the rect handled.
+func (s *ScrollPanel) scrollHeaderRectIntoView(view *Panel, rect geom.Rect, horizontal bool) bool {
+	viewRect := view.ContentRect(false)
+	if horizontal {
+		was := s.horizontalBar.Value()
+		if adj := computeScrollAdj(rect.X, viewRect.X, rect.Right(), viewRect.Right()); adj != 0 {
+			s.horizontalBar.SetRange(was+adj, s.horizontalBar.Extent(), s.horizontalBar.Max())
 		}
-		if vAdj != 0 {
-			s.verticalBar.SetRange(s.verticalBar.Value()+vAdj, s.verticalBar.Extent(), s.verticalBar.Max())
+		rect.X -= s.horizontalBar.Value() - was
+	} else {
+		was := s.verticalBar.Value()
+		if adj := computeScrollAdj(rect.Y, viewRect.Y, rect.Bottom(), viewRect.Bottom()); adj != 0 {
+			s.verticalBar.SetRange(was+adj, s.verticalBar.Extent(), s.verticalBar.Max())
 		}
-		return true
+		rect.Y -= s.verticalBar.Value() - was
 	}
-	return false
+	if s.parent != nil {
+		s.parent.ScrollRectIntoView(view.RectTo(clampRect(rect, viewRect), s.parent))
+	}
+	return true
 }
 
 // computeScrollAdj returns how far to scroll along one axis to bring the content into view: by the least that shows all
@@ -343,28 +383,26 @@ func computeScrollAdj(contentTopLeft, viewTopLeft, contentBottomRight, viewBotto
 
 // DefaultFrameChangeInChildHierarchy provides the default frame change in child hierarchy handling.
 func (s *ScrollPanel) DefaultFrameChangeInChildHierarchy(_ *Panel) {
-	if s.syncing {
-		// Frame changes triggered while syncing are position-only (scrolling) and never require a re-layout.
+	if s.syncing || s.layingOut {
+		// Frame changes triggered while syncing are position-only (scrolling) and never require a re-layout. Those
+		// triggered by PerformLayout come before it has resized everything, so it clamps the scroll itself instead.
 		return
 	}
 	if s.content != nil {
-		vs := s.contentView.FrameRect().Size
-		r := s.content.AsPanel().FrameRect()
-		nl := r.Point
-		if r.Y != 0 && vs.Height > r.Bottom() {
-			nl.Y = min(vs.Height-r.Height, 0)
+		// Removing blank space past the end of the content is a change in scroll position, so adjust the scroll bars
+		// rather than moving the content (and headers) directly. Sync derives their positions from the bar values, so
+		// repositioning only the content here would leave the two disagreeing: with a now-stale bar value, the Sync
+		// below would immediately undo the move, and that frame change would re-enter this handler and recurse until
+		// the stack overflowed. Updating the bars keeps them the single source of truth and lets Sync settle in one
+		// pass. The blank space is found from the bar values too, as a border change leaves the content's position
+		// stale until the next Sync.
+		view := s.contentView.ContentRect(false).Size
+		size := s.content.AsPanel().FrameRect().Size
+		if limit := max(size.Width-view.Width, 0); s.horizontalBar.Value() > limit {
+			s.horizontalBar.SetRange(limit, s.horizontalBar.Extent(), s.horizontalBar.Max())
 		}
-		if r.X != 0 && vs.Width > r.Right() {
-			nl.X = min(vs.Width-r.Width, 0)
-		}
-		if nl != r.Point {
-			// Removing the blank space is a change in scroll position, so adjust the scroll bars rather than moving the
-			// content (and headers) directly. Sync derives their positions from the bar values, so repositioning only
-			// the content here would leave the two disagreeing: with a now-stale bar value, the Sync below would
-			// immediately undo the move, and that frame change would re-enter this handler and recurse until the stack
-			// overflowed. Updating the bars keeps them the single source of truth and lets Sync settle in one pass.
-			s.horizontalBar.SetRange(-nl.X, s.horizontalBar.Extent(), s.horizontalBar.Max())
-			s.verticalBar.SetRange(-nl.Y, s.verticalBar.Extent(), s.verticalBar.Max())
+		if limit := max(size.Height-view.Height, 0); s.verticalBar.Value() > limit {
+			s.verticalBar.SetRange(limit, s.verticalBar.Extent(), s.verticalBar.Max())
 		}
 		s.MarkForLayoutAndRedraw()
 		s.Sync()
@@ -413,6 +451,8 @@ func (s *ScrollPanel) LayoutSizes(_ *Panel, hint geom.Size) (minSize, prefSize, 
 
 // PerformLayout implements the Layout interface.
 func (s *ScrollPanel) PerformLayout(_ *Panel) {
+	s.layingOut = true
+	defer func() { s.layingOut = false }()
 	// Lay out from the content rect rather than the frame rect so the ScrollPanel's own border is honored. LayoutSizes
 	// adds those insets to the reported sizes, so ignoring them here would draw the content view and scroll bars on top
 	// of the border.
@@ -507,17 +547,19 @@ func (s *ScrollPanel) PerformLayout(_ *Panel) {
 		width, s.horizontalBar.MinimumThickness))
 	s.contentView.SetFrameRect(r)
 	if s.columnHeaderView != nil {
-		vr := s.columnHeaderView.FrameRect()
+		vr := s.columnHeaderView.ContentRect(false)
 		r = s.columnHeader.AsPanel().FrameRect()
 		r.Height = vr.Height
 		r.Width = max(vr.Width, contentSize.Width)
 		s.columnHeader.AsPanel().SetFrameRect(r)
 	}
 	if s.rowHeaderView != nil {
-		vr := s.rowHeaderView.FrameRect()
+		vr := s.rowHeaderView.ContentRect(false)
 		r = s.rowHeader.AsPanel().FrameRect()
 		r.Width = vr.Width
 		r.Height = max(vr.Height, contentSize.Height)
 		s.rowHeader.AsPanel().SetFrameRect(r)
 	}
+	// Synced even when the scroll state is unchanged, as a view's border may have moved.
+	s.Sync()
 }

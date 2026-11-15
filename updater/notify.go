@@ -20,13 +20,17 @@ import (
 	"github.com/richardwilkes/unison/enums/behavior"
 )
 
-// downloadPageResponse is the Download Page button's response code; Cancel and OK already use the predefined ones.
-const downloadPageResponse = unison.ModalResponseUserBase
+// The response codes of the Download Page and Sponsor buttons; Cancel and OK already use the predefined ones.
+const (
+	downloadPageResponse = unison.ModalResponseUserBase + iota
+	sponsorResponse
+)
 
 // Notify shows the user the update the last check found: the release notes of every release newer than the running
 // version, with a button that installs the newest and restarts the application and, when Config has a DownloadPageURL,
-// one that opens it. It does nothing when no update is known. When the installation cannot replace itself, the dialog
-// says why in place of offering to.
+// one that opens it. When Config has a SponsorURL, a further button opens that and leaves the dialog up. It does
+// nothing when no update is known. When the installation cannot replace itself, the dialog says why in place of
+// offering to.
 func (u *Updater) Notify() {
 	title, releases, _ := u.Status()
 	if releases == nil {
@@ -36,29 +40,53 @@ func (u *Updater) Notify() {
 	// that would be refused after a large download.
 	p, unavailableMsg := u.planFor(&releases[0])
 
-	var buffer strings.Builder
-	fmt.Fprintf(&buffer, "# %s\n", title)
+	// Each release's notes are a document of their own, so that their blocks, link reference definitions and heading
+	// IDs cannot reach into another's. Each document but the first begins with the rule setting it apart from the one
+	// before, so that nothing follows the notes for them to run on into.
+	column := unison.NewPanel()
+	column.SetLayout(&unison.FlexLayout{Columns: 1})
+	column.SetBorder(unison.NewEmptyBorder(unison.StdInsets()))
 	for i, rel := range releases {
-		if i != 0 {
+		var buffer strings.Builder
+		if i == 0 {
+			fmt.Fprintf(&buffer, "# %s\n", title)
+			if unavailableMsg != "" {
+				// An alert ahead of the notes, so that it is not taken for one of them and shows when the dialog opens.
+				fmt.Fprintf(&buffer, "> [!IMPORTANT]\n> %s\n\n", unavailableMsg)
+			}
+		} else {
 			buffer.WriteString("---\n")
 		}
 		fmt.Fprintf(&buffer, "## %s\n",
 			i18n.Text("Release Notes for %s %s", u.cfg.AppName, u.formatVersion(rel.Version)))
 		buffer.WriteString(rel.Notes)
-		buffer.WriteByte('\n')
+		md := unison.NewMarkdown(false)
+		md.SetContent(buffer.String(), 0)
+		column.AddChild(md)
 	}
-	if unavailableMsg != "" {
-		fmt.Fprintf(&buffer, "---\n%s\n", unavailableMsg)
-	}
-
-	md := unison.NewMarkdown(true)
-	md.SetBorder(unison.NewEmptyBorder(unison.StdInsets()))
-	md.SetContent(buffer.String(), 0)
 
 	scroll := unison.NewScrollPanel()
-	scroll.SetContent(md, behavior.Unmodified, behavior.Unmodified)
+	scroll.SetContent(column, behavior.Unmodified, behavior.Unmodified)
+	view := scroll.ContentView()
+	// Wraps each document to the view's width, since sizing itself from its parent would wrap it to the column, which
+	// is only as wide as the documents already are.
+	view.FrameChangeCallback = func() {
+		width := view.ContentRect(false).Width - column.Border().Insets().Width()
+		for _, child := range column.Children() {
+			if md, ok := child.Self.(*unison.Markdown); ok {
+				md.SetContentBytes(md.ContentBytes(), width-md.Slop)
+			}
+		}
+	}
 
-	buttons := []*unison.DialogButtonInfo{unison.NewCancelButtonInfo()}
+	var buttons []*unison.DialogButtonInfo
+	if u.cfg.SponsorURL != "" {
+		buttons = append(buttons, &unison.DialogButtonInfo{
+			Title:        i18n.Text("Sponsor %s", u.cfg.AppName),
+			ResponseCode: sponsorResponse,
+		})
+	}
+	buttons = append(buttons, unison.NewCancelButtonInfo())
 	if u.cfg.DownloadPageURL != "" {
 		buttons = append(buttons, &unison.DialogButtonInfo{
 			Title:        i18n.Text("Download Page"),
@@ -83,6 +111,16 @@ func (u *Updater) Notify() {
 		errs.Log(err)
 		return
 	}
+	if sponsor := dialog.Button(sponsorResponse); sponsor != nil {
+		// Replaces the click that would close the dialog, so the update can still be installed afterward.
+		sponsor.ClickCallback = func() {
+			if openErr := unison.OpenBrowser(u.cfg.SponsorURL); openErr != nil {
+				u.reportError(i18n.Text("Unable to open web page for sponsoring"), openErr)
+			}
+		}
+		// Keeps the initial focus on Cancel, where it is without this button, rather than on the first button.
+		dialog.Button(unison.ModalResponseCancel).RequestFocus()
+	}
 	u.setLastSeen(releases[0].Version)
 	switch dialog.RunModal() {
 	case unison.ModalResponseOK:
@@ -95,7 +133,7 @@ func (u *Updater) Notify() {
 }
 
 // planFor checks whether this installation can replace itself with the given release. It returns either a plan to do
-// so, or a message explaining why it cannot, which the dialog shows alongside the release notes.
+// so, or a message explaining why it cannot, which the dialog shows ahead of the release notes.
 func (u *Updater) planFor(release *Release) (p *plan, unavailableMsg string) {
 	p, err := u.planFn(release.Version, release.Assets)
 	if err == nil {

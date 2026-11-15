@@ -730,25 +730,47 @@ func (p *Panel) ScrollIntoView() {
 }
 
 // ScrollRectIntoView attempts to scroll the rect (in coordinates local to this Panel) into the current view if it is
-// not already there, using scroll areas in this Panel's hierarchy.
+// not already there, using scroll areas in this Panel's hierarchy. The scroll areas enclosing a ScrollPanel whose
+// content holds the rect are handed only what that ScrollPanel's view shows of it.
 func (p *Panel) ScrollRectIntoView(rect geom.Rect) {
-	look := p
-	for look != nil {
-		if look.ScrollRectIntoViewCallback != nil {
-			handled := false
-			SafeCall(func() { handled = look.ScrollRectIntoViewCallback(rect) })
-			if handled {
+	for look := p; look != nil; look = look.parent {
+		if look.ScrollRectIntoViewCallback == nil {
+			continue
+		}
+		// Converted from this Panel's coordinates afresh, since a callback below may have scrolled the rect.
+		local := rect
+		for panel := p; panel != look; panel = panel.parent {
+			if panel == nil {
+				// A callback below took this Panel out from under look.
 				return
 			}
+			scale := panel.Scale()
+			pt := local.BottomRight().MulPt(scale)
+			local.Point = local.Point.MulPt(scale)
+			local.Width = pt.X - local.X
+			local.Height = pt.Y - local.Y
+			local.Point = local.Point.Add(panel.frame.Point)
+			if up := panel.parent; up != nil && up != look {
+				if s, ok := up.Self.(*ScrollPanel); ok && s.contentView == panel {
+					local = clampRect(local, s.contentViewRect())
+				}
+			}
 		}
-		scale := look.Scale()
-		pt := rect.BottomRight().MulPt(scale)
-		rect.Point = rect.Point.MulPt(scale)
-		rect.Width = pt.X - rect.X
-		rect.Height = pt.Y - rect.Y
-		rect.Point = rect.Point.Add(look.frame.Point)
-		look = look.parent
+		handled := false
+		SafeCall(func() { handled = look.ScrollRectIntoViewCallback(local) })
+		if handled {
+			return
+		}
 	}
+}
+
+// clampRect returns the part of rect within bounds. Unlike geom.Rect.Intersect, it keeps an empty rect within bounds
+// where it is and collapses one wholly outside bounds onto the nearest edge.
+func clampRect(rect, bounds geom.Rect) geom.Rect {
+	x := min(max(rect.X, bounds.X), bounds.Right())
+	y := min(max(rect.Y, bounds.Y), bounds.Bottom())
+	return geom.NewRect(x, y, min(max(rect.Right(), bounds.X), bounds.Right())-x,
+		min(max(rect.Bottom(), bounds.Y), bounds.Bottom())-y)
 }
 
 // ClientData returns a map of client data for this Panel.
