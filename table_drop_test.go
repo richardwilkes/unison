@@ -296,6 +296,34 @@ func TestTableMoveOutOfHierarchicallyFilteredSource(t *testing.T) {
 	c.Equal(1, src.RootRowCount())
 }
 
+// TestTableMoveOutOfSortedFilteredSourceKeepsTheSort verifies that the rows left in a table showing a filter of either
+// kind, once a row is dragged out of it, stay in the order the sort in force gave them.
+func TestTableMoveOutOfSortedFilteredSourceKeepsTheSort(t *testing.T) {
+	for _, test := range []struct {
+		apply func(table *unison.Table[*tableTestRow], filter func(*tableTestRow) bool)
+		name  string
+	}{
+		{name: "flat", apply: (*unison.Table[*tableTestRow]).ApplyFilter},
+		{name: "hierarchical", apply: (*unison.Table[*tableTestRow]).ApplyHierarchicalFilter},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := check.New(t)
+			moved := newTableTestRow("b")
+			src := newTestTable(newTableTestRow("a"), moved, newTableTestRow("c"))
+			colHeader := newTestColumnHeader()
+			colHeader.SetSortState(unison.SortState{Order: 0, Ascending: false, Sortable: true})
+			unison.NewTableHeader(src, unison.TableColumnHeader[*tableTestRow](colHeader))
+			test.apply(src, func(*tableTestRow) bool { return false })
+			c.Equal([]tid.TID{"c", "b", "a"}, shownRowIDs(src))
+
+			dst := newTestTable(newTableTestRow("d0"))
+			installMoveDropSupport(t, dst, src, moved)
+			c.True(dst.DropCallback(&fakeDragInfo{dataType: tableDropDataType().UTI}, geom.NewPoint(10, 299), 0))
+			c.Equal([]tid.TID{"c", "a"}, shownRowIDs(src), "the rows left are still sorted")
+		})
+	}
+}
+
 // TestTableDropOutsideAViewsRows verifies where a drop outside the rows a view shows lands: above them, before its first
 // row; below them, after its last row when a later view shows more rows, and inside that row ahead of its children when
 // they follow it; before the row its range starts at when it shows none; and at the end of the top-level rows only

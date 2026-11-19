@@ -14,6 +14,7 @@ import (
 	"image/color"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -616,6 +617,44 @@ func TestTableCellFieldRowRemovedWhileEditing(t *testing.T) {
 	before := e.texts(c, screen)
 	screen.Type("zzz")
 	c.Equal(before, e.texts(c, screen), "no field should still be collecting what is typed")
+	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+}
+
+// TestTableCellFieldKeepsTheFocusWhenARowAboveGoesWhileDrawing verifies that a field being edited keeps the focus when
+// the application's code run while the table is drawn removes a row above it, which moves the field's row to the index
+// of a row the draw has yet to finish.
+func TestTableCellFieldKeepsTheFocusWhenARowAboveGoesWhileDrawing(t *testing.T) {
+	c := check.New(t)
+	var e *editTable
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400},
+		unison.StartupFinishedCallback(func() {
+			e = newEditTable(3, 1, "", false)
+			newEditWindow(t, e, false)
+		}))
+	c.NotNil(e)
+	if e == nil {
+		return
+	}
+	focused := false
+	c.True(screen.Do(func() {
+		focused = e.table.FocusCell(2, 0)
+		cellFactory := e.rows[1].cellFactory
+		armed := true
+		e.rows[1].cellFactory = func(row, col int) unison.Paneler {
+			if armed {
+				armed = false
+				e.model.SetRootRows(e.rows[1:])
+				e.table.SyncToModel()
+			}
+			return cellFactory(row, col)
+		}
+		e.table.MarkForRedraw()
+	}))
+	c.True(focused)
+	s := e.snapshot(c, screen, 2, 0)
+	c.True(s.fieldFocused, "the field being edited should still hold the focus")
+	c.Equal(0, s.lost)
+	c.Equal(1, s.focusRow, "the field's row has moved up")
 	c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
 }
 
@@ -1392,6 +1431,551 @@ func TestTableDisclosureKeysAreInertUnderHierarchicalFilter(t *testing.T) {
 	table.ApplyFilter(nil)
 	c.True(table.DefaultKeyDown(unison.KeyLeft, 0, false))
 	c.False(outer.IsOpen(), "Left must close the container again once the filter is gone")
+}
+
+// TestTableFilterChangeMeasuresOnlyRowsWithoutAHeight verifies that applying or removing a filter of either kind, with
+// a sort in force, measures only the rows it shows that have not been measured since the table last measured them all,
+// and that a row whose content has changed is measured as it is now once SyncToModel, SyncRowHeights, DiscardRowHeights
+// or a change of theme, which may have changed the fonts, has come between.
+func TestTableFilterChangeMeasuresOnlyRowsWithoutAHeight(t *testing.T) {
+	c := check.New(t)
+	// A row is asked for its cell once each time it is measured, and for nothing else here.
+	measured := make(map[tid.TID]int)
+	heights := make(map[tid.TID]float32)
+	newRow := func(id string) *tableTestRow {
+		row := newTableTestRow(id)
+		row.cellParams = func(_, _ int, _, _ unison.Ink, _, _, _ bool) { measured[row.ID()]++ }
+		row.cellFactory = func(_, _ int) unison.Paneler {
+			panel := unison.NewPanel()
+			panel.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+				prefSize.Height = heights[row.ID()]
+				return prefSize, prefSize, prefSize
+			})
+			return panel
+		}
+		return row
+	}
+	// ThemeChanged needs a session.
+	screen := startHeadless(t, unison.HeadlessConfig{Width: 500, Height: 400})
+	screen.Do(func() {
+		parent := newRow("p")
+		parent.SetChildren([]*tableTestRow{newRow("c0"), newRow("c1")})
+		table := newTestTable(parent, newRow("s"))
+		table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100}}
+		colHeader := newTestColumnHeader()
+		colHeader.SetSortState(unison.SortState{Order: 0, Ascending: true, Sortable: true})
+		unison.NewTableHeader(table, unison.TableColumnHeader[*tableTestRow](colHeader))
+		table.SyncToModel()
+		c.Equal(map[tid.TID]int{"p": 1, "s": 1}, measured, "a sync measures the rows shown")
+
+		clear(measured)
+		table.ApplyHierarchicalFilter(func(row *tableTestRow) bool { return row.ID() != "c1" })
+		c.Equal(map[tid.TID]int{"c1": 1}, measured, "only the row the filter is the first to show is measured")
+		table.SyncToModel() // Leaves the table with the heights of the rows shown alone
+		clear(measured)
+		table.ApplyHierarchicalFilter(nil)
+		c.Equal(map[tid.TID]int{"s": 1}, measured, "removing the filter measures only the row it brings back")
+
+		for _, one := range []struct {
+			measureAgain func()
+			name         string
+		}{
+			{name: "SyncToModel", measureAgain: table.SyncToModel},
+			{name: "SyncRowHeights", measureAgain: table.SyncRowHeights},
+			{name: "DiscardRowHeights", measureAgain: table.DiscardRowHeights},
+			{name: "ThemeChanged", measureAgain: unison.ThemeChanged},
+		} {
+			heights["s"] += 20
+			one.measureAgain()
+			table.ApplyHierarchicalFilter(func(*tableTestRow) bool { return false })
+			c.Equal(tid.TID("s"), table.RowFromIndex(3).ID())
+			c.Equal(heights["s"]+table.Padding.Top+table.Padding.Bottom, table.RowHeights()[3],
+				"a filter applied after %s shows the row at the height it has now", one.name)
+			table.ApplyHierarchicalFilter(nil)
+		}
+
+		// A flat filter shows the rows of a table without containers as they were measured.
+		flat := newTestTable(newRow("a"), newRow("b"))
+		flat.Columns = []unison.ColumnInfo{{ID: 0, Current: 100}}
+		flat.SyncToModel()
+		clear(measured)
+		flat.ApplyFilter(func(row *tableTestRow) bool { return row.ID() != "b" })
+		c.Equal(1, flat.LastRowIndex()+1)
+		c.Equal(0, len(measured), "a flat filter measures no row already measured either")
+	})
+}
+
+// TestTableFilterChangeMeasuresARowAgainAtAnotherIndent verifies that a row a change of filter shows at another indent,
+// as a flat filter shows a child, is measured again, since its indent takes from the width of its cell in the hierarchy
+// column.
+func TestTableFilterChangeMeasuresARowAgainAtAnotherIndent(t *testing.T) {
+	c := check.New(t)
+	// Each cell is as tall as the width it is offered.
+	newRow := func(id string) *tableTestRow {
+		row := newTableTestRow(id)
+		row.cellFactory = func(_, _ int) unison.Paneler {
+			panel := unison.NewPanel()
+			panel.SetSizer(func(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
+				prefSize.Height = hint.Width
+				return prefSize, prefSize, prefSize
+			})
+			return panel
+		}
+		return row
+	}
+	parent := newRow("p")
+	parent.SetChildren([]*tableTestRow{newRow("c")})
+	parent.SetOpen(true)
+	table := newTestTable(parent)
+	table.Columns = []unison.ColumnInfo{{ID: table.HierarchyColumnID, Current: 200}}
+	table.SyncToModel()
+	indented := table.RowHeights()[1]
+
+	table.ApplyFilter(func(row *tableTestRow) bool { return row.ID() != "c" })
+	c.True(table.RowHeights()[0] > indented, "the child shown flat is measured at the full width of its column")
+	table.ApplyFilter(nil)
+	c.Equal(indented, table.RowHeights()[1], "the child is measured again once it is indented again")
+}
+
+// TestTableToleratesChangesWhileMeasuring verifies that a pass that measures rows finishes, leaving the table showing
+// the rows of the sync made while it measured a row, if one was, at the heights they measure at and with any columns it
+// sized as wide as those rows make them, when the application's code run while a row is asked for its cell changes the
+// model, the filter, the columns or their widths, syncing the table or not.
+func TestTableToleratesChangesWhileMeasuring(t *testing.T) {
+	c := check.New(t)
+	var table *unison.Table[*tableTestRow]
+	// Each cell is as tall as the width it is offered, so that a row's height turns on the column widths, and wider the
+	// later its row's ID starts in the alphabet, so that a column's fitted width turns on the rows shown. A cell built
+	// narrower than that wraps to a little under its width, as word-wrapped text does.
+	sized := func(id string, row, col int) unison.Paneler {
+		width := 25 * float32(id[0]-'a'+1)
+		if cellWidth := table.CellWidth(row, col); cellWidth > 0 && cellWidth < width {
+			width = cellWidth - 1
+		}
+		panel := unison.NewPanel()
+		panel.SetSizer(func(hint geom.Size) (minSize, prefSize, maxSize geom.Size) {
+			prefSize = geom.NewSize(width, hint.Width)
+			return prefSize, prefSize, prefSize
+		})
+		return panel
+	}
+	newRow := func(id string) *tableTestRow {
+		row := newTableTestRow(id)
+		row.cellFactory = func(index, col int) unison.Paneler { return sized(id, index, col) }
+		return row
+	}
+	// resync returns what has the model hold "a" followed by new rows with the given ids, and syncs the table.
+	resync := func(ids ...string) func(table *unison.Table[*tableTestRow], a, b *tableTestRow) {
+		return func(table *unison.Table[*tableTestRow], a, _ *tableTestRow) {
+			rows := make([]*tableTestRow, 0, 1+len(ids))
+			rows = append(rows, a)
+			for _, id := range ids {
+				rows = append(rows, newRow(id))
+			}
+			table.Model.SetRootRows(rows)
+			table.SyncToModel()
+		}
+	}
+	showAll := func(*tableTestRow) bool { return false }
+	removeLastColumn := func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) {
+		table.Columns = table.Columns[:len(table.Columns)-1]
+	}
+	for _, one := range []struct {
+		measure func(table *unison.Table[*tableTestRow])
+		during  func(table *unison.Table[*tableTestRow], a, b *tableTestRow) // What measuring "a" runs, the first time
+		name    string
+		want    []string            // The rows shown afterward
+		columns []unison.ColumnInfo // The columns the table starts with, if not a single one 100 wide
+		column  int                 // Which of the cells of "a" runs during when first asked for
+	}{
+		{
+			name:   "a change of filter",
+			during: resync("b"),
+			want:   []string{"a"},
+			measure: func(table *unison.Table[*tableTestRow]) {
+				table.DiscardRowHeights()
+				table.ApplyFilter(func(r *tableTestRow) bool { return r.ID() != "a" })
+			},
+		},
+		{
+			name:    "SyncToModel, with a row removed",
+			during:  resync(),
+			want:    []string{"a"},
+			measure: (*unison.Table[*tableTestRow]).SyncToModel,
+		},
+		{
+			name:    "SyncToModel, with a row replaced",
+			during:  resync("c"),
+			want:    []string{"a", "c"},
+			measure: (*unison.Table[*tableTestRow]).SyncToModel,
+		},
+		{
+			name:    "SyncToModel, with the columns sized to fit",
+			during:  func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) { table.SizeColumnsToFit(false) },
+			want:    []string{"a", "b"},
+			measure: (*unison.Table[*tableTestRow]).SyncToModel,
+		},
+		{
+			name:    "SyncToModel, with a filter applied",
+			during:  func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) { table.ApplyFilter(showAll) },
+			want:    []string{"a", "b"},
+			measure: (*unison.Table[*tableTestRow]).SyncToModel,
+		},
+		{
+			name: "SyncToModel, with a row disclosed but not synced",
+			during: func(_ *unison.Table[*tableTestRow], _, b *tableTestRow) {
+				b.SetChildren([]*tableTestRow{newRow("b0")})
+				b.SetOpen(true)
+			},
+			want:    []string{"a", "b"},
+			measure: (*unison.Table[*tableTestRow]).SyncToModel,
+		},
+		{
+			name:    "SyncRowHeights, with a row removed",
+			during:  resync(),
+			want:    []string{"a"},
+			measure: (*unison.Table[*tableTestRow]).SyncRowHeights,
+		},
+		{
+			name:   "SyncRowHeights, with a filter applied",
+			during: func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) { table.ApplyFilter(showAll) },
+			want:   []string{"a", "b"},
+			measure: func(table *unison.Table[*tableTestRow]) {
+				table.Columns[0].Current = 60
+				table.SyncRowHeights()
+			},
+		},
+		{
+			name:    "SizeColumnsToFit, with a row replaced",
+			during:  resync("c"),
+			want:    []string{"a", "c"},
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnsToFit(false) },
+		},
+		{
+			name: "SizeColumnsToFit, with a row replaced and the columns sized to fit",
+			during: func(table *unison.Table[*tableTestRow], a, b *tableTestRow) {
+				resync("c")(table, a, b)
+				table.SizeColumnsToFit(false)
+			},
+			want: []string{"a", "c"},
+			measure: func(table *unison.Table[*tableTestRow]) {
+				// Narrower than "c", which then wraps when built at the width this leaves the column.
+				table.Columns[0].AutoMaximum = 50
+				table.SizeColumnsToFit(false)
+			},
+		},
+		{
+			name:    "SizeColumnsToFit, with a column removed",
+			during:  removeLastColumn,
+			want:    []string{"a", "b"},
+			columns: []unison.ColumnInfo{{ID: 0}, {ID: 1}},
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnsToFit(false) },
+		},
+		{
+			name:   "SizeColumnsToFit, with the columns sized to fit",
+			during: func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) { table.SizeColumnsToFit(false) },
+			want:   []string{"a", "b"},
+			// Narrower than "b", which then wraps when built at the width this leaves the column.
+			columns: []unison.ColumnInfo{{ID: 0, AutoMaximum: 40}},
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnsToFit(false) },
+		},
+		{
+			name: "SizeColumnToFit, with a filter applied",
+			during: func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) {
+				table.ApplyFilter(func(r *tableTestRow) bool { return r.ID() == "b" })
+			},
+			want:    []string{"a"},
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnToFit(0, false) },
+		},
+		{
+			name:    "SizeColumnToFit, with the column removed",
+			during:  removeLastColumn,
+			want:    []string{"a", "b"},
+			columns: []unison.ColumnInfo{{ID: 0, Current: 100}, {ID: 1}},
+			column:  1,
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnToFit(1, false) },
+		},
+		{
+			name:   "SizeColumnsToFitWithExcessIn, with a row replaced while measuring the rows' heights",
+			during: resync("c"),
+			want:   []string{"a", "c"},
+			// A minimum wider than what the table's frame leaves over keeps the excess column's width from turning on the
+			// frame.
+			columns: []unison.ColumnInfo{{ID: 0}, {ID: 1, Minimum: 100}},
+			column:  1, // The excess column, whose cells are measured only for the rows' heights
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnsToFitWithExcessIn(1) },
+		},
+		{
+			name: "SizeColumnsToFitWithExcessIn, with a column added while measuring the rows' heights",
+			during: func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) {
+				table.Columns = append(table.Columns, unison.ColumnInfo{ID: 2})
+			},
+			want:    []string{"a", "b"},
+			columns: []unison.ColumnInfo{{ID: 0}, {ID: 1, Minimum: 100}},
+			column:  1,
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnsToFitWithExcessIn(1) },
+		},
+		{
+			name: "SizeColumnsToFitWithExcessIn, with a column before it removed while measuring the rows' heights",
+			during: func(table *unison.Table[*tableTestRow], _, _ *tableTestRow) {
+				table.Columns = table.Columns[1:]
+			},
+			want:    []string{"a", "b"},
+			columns: []unison.ColumnInfo{{ID: 0}, {ID: 1, Minimum: 100}, {ID: 2}},
+			column:  1,
+			measure: func(table *unison.Table[*tableTestRow]) { table.SizeColumnsToFitWithExcessIn(1) },
+		},
+	} {
+		a := newRow("a")
+		b := newRow("b")
+		table = newTestTable(a, b)
+		table.Columns = slices.Clone(one.columns)
+		if table.Columns == nil {
+			table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100}}
+		}
+		table.SyncToModel()
+		ran := false
+		a.cellFactory = func(row, col int) unison.Paneler {
+			if !ran && col == one.column {
+				ran = true
+				one.during(table, a, b)
+			}
+			return sized("a", row, col)
+		}
+		panicked := true
+		c.NotPanics(func() {
+			one.measure(table)
+			panicked = false
+		}, one.name)
+		if panicked {
+			continue
+		}
+		shown := make([]string, table.LastRowIndex()+1)
+		for i := range shown {
+			shown[i] = string(table.RowFromIndex(i).ID())
+		}
+		c.Equal(one.want, shown, one.name)
+		heights := table.RowHeights()
+		table.SyncRowHeights()
+		c.Equal(table.RowHeights(), heights, "%s: the rows must be shown at the heights they measure at", one.name)
+		columns := slices.Clone(table.Columns)
+		one.measure(table)
+		c.Equal(columns, table.Columns, "%s: the columns must be as wide as measuring again makes them", one.name)
+	}
+}
+
+// TestTableToleratesChangesWhileShowingCells verifies that drawing a table, or describing it to an assistive
+// technology, finishes when the application's code run while a row is asked for a cell removes columns or syncs the
+// table down to fewer rows, and that the table is then shown as it is now.
+func TestTableToleratesChangesWhileShowingCells(t *testing.T) {
+	keepFirstColumn := func(table *unison.Table[*tableTestRow], _ []*tableTestRow) {
+		table.Columns = table.Columns[:1]
+	}
+	keepFirstRow := func(table *unison.Table[*tableTestRow], rows []*tableTestRow) {
+		table.Model.SetRootRows(rows[:1])
+		table.SyncToModel()
+	}
+	for _, one := range []struct {
+		change     func(table *unison.Table[*tableTestRow], rows []*tableTestRow)
+		name       string
+		want       []string // The cells shown afterward, by row ID and column
+		describe   bool     // Describes the table rather than drawing it
+		whileDrawn bool     // Makes the change while the cell is drawn rather than while it is asked for
+	}{
+		{name: "drawing, with columns removed", change: keepFirstColumn, want: []string{"a0", "b0"}},
+		{
+			name:       "drawing, with columns removed while a cell is drawn",
+			change:     keepFirstColumn,
+			want:       []string{"a0", "b0"},
+			whileDrawn: true,
+		},
+		{name: "drawing, with rows removed", change: keepFirstRow, want: []string{"a0", "a1", "a2"}},
+		{name: "describing, with columns removed", change: keepFirstColumn, want: []string{"a0", "b0"}, describe: true},
+		{name: "describing, with rows removed", change: keepFirstRow, want: []string{"a0", "a1", "a2"}, describe: true},
+	} {
+		t.Run(one.name, func(t *testing.T) {
+			c := check.New(t)
+			var table *unison.Table[*tableTestRow]
+			var wnd *unison.Window
+			var drawn []string
+			armed := false
+			screen := startHeadless(t, unison.HeadlessConfig{Width: 600, Height: 600},
+				unison.StartupFinishedCallback(func() {
+					rows := []*tableTestRow{newTableTestRow("a"), newTableTestRow("b")}
+					for _, row := range rows {
+						row.cellFactory = func(_, col int) unison.Paneler {
+							// Made at the first row's second cell, which has cells after it in its row and below it.
+							change := func() {
+								if armed && col == 1 {
+									armed = false
+									one.change(table, rows)
+								}
+							}
+							if !one.whileDrawn {
+								change()
+							}
+							name := string(row.ID()) + strconv.Itoa(col)
+							panel := unison.NewPanel()
+							panel.DrawCallback = func(*unison.Canvas, geom.Rect) {
+								drawn = append(drawn, name)
+								if one.whileDrawn {
+									change()
+								}
+							}
+							return panel
+						}
+					}
+					table = newTestTable(rows...)
+					table.Columns = []unison.ColumnInfo{
+						{ID: 0, Current: 100},
+						{ID: 1, Current: 100},
+						{ID: 2, Current: 100},
+					}
+					table.SyncToModel()
+					draw := table.DrawCallback
+					table.DrawCallback = func(gc *unison.Canvas, rect geom.Rect) {
+						drawn = nil
+						draw(gc, rect)
+					}
+					wnd = newHeadlessWindow(t, "changes", geom.NewRect(10, 10, 500, 400), table)
+				}))
+			c.NotNil(wnd)
+			if wnd == nil {
+				return
+			}
+			if one.describe {
+				screen.EnableAccessibility()
+			}
+			screen.Do(func() {
+				armed = true
+				if !one.describe {
+					table.MarkForRedraw()
+				}
+			})
+			var shown []string
+			if one.describe {
+				tree := screen.AccessibilityTree(wnd)
+				for _, row := range axChildNodes(tree, axMustNode(c, screen.AccessibilityNodeFor(table))) {
+					id, _, _ := strings.Cut(row.Name, ", ")
+					for _, cell := range axChildNodes(tree, row) {
+						shown = append(shown, id+strconv.Itoa(cell.ColumnIndex))
+					}
+				}
+			} else {
+				screen.Do(func() { shown = slices.Clone(drawn) })
+			}
+			c.Equal(0, len(screen.Errors()), "nothing should have panicked: %v", screen.Errors())
+			c.Equal(one.want, shown, "the table is shown as it is after the change")
+		})
+	}
+}
+
+// rebuildingTableModel is a model that builds its rows anew each time it is asked for them.
+type rebuildingTableModel struct {
+	ids []string
+}
+
+func (m *rebuildingTableModel) RootRowCount() int { return len(m.ids) }
+
+func (m *rebuildingTableModel) RootRows() []*tableTestRow {
+	rows := make([]*tableTestRow, len(m.ids))
+	for i, id := range m.ids {
+		rows[i] = newTableTestRow(id)
+	}
+	return rows
+}
+
+func (m *rebuildingTableModel) SetRootRows(rows []*tableTestRow) {
+	m.ids = make([]string, len(rows))
+	for i, row := range rows {
+		m.ids[i] = string(row.ID())
+	}
+}
+
+// TestTableHierarchicalFilterShowsTheRowsItWasGiven verifies that the rows a hierarchical filter shows are the very ones
+// that passed it, where the model builds its rows anew each time it is asked for them, so that what a row derived to
+// answer the filter is not derived a second time to show it.
+func TestTableHierarchicalFilterShowsTheRowsItWasGiven(t *testing.T) {
+	c := check.New(t)
+	table := unison.NewTable[*tableTestRow](&rebuildingTableModel{ids: []string{"a", "b"}})
+	table.SyncToModel()
+	passed := make(map[*tableTestRow]bool)
+	table.ApplyHierarchicalFilter(func(row *tableTestRow) bool {
+		passed[row] = true
+		return false
+	})
+	c.Equal(2, table.LastRowIndex()+1)
+	c.True(passed[table.RowFromIndex(0)] && passed[table.RowFromIndex(1)],
+		"the rows shown must be the ones the filter passed")
+}
+
+// sizedTestRow is a row without children that keeps the sizes the table measures for its cells, by width, and counts
+// the times it is asked for a cell.
+type sizedTestRow struct {
+	sizes  map[float32]geom.Size
+	id     tid.TID
+	cells  int
+	height float32
+}
+
+func (r *sizedTestRow) CloneForTarget(_ unison.Paneler, _ *sizedTestRow) *sizedTestRow {
+	return &sizedTestRow{id: r.id, height: r.height, sizes: make(map[float32]geom.Size)}
+}
+func (r *sizedTestRow) ID() tid.TID                   { return r.id }
+func (r *sizedTestRow) Parent() *sizedTestRow         { return nil }
+func (r *sizedTestRow) SetParent(_ *sizedTestRow)     {}
+func (r *sizedTestRow) CanHaveChildren() bool         { return false }
+func (r *sizedTestRow) Children() []*sizedTestRow     { return nil }
+func (r *sizedTestRow) SetChildren(_ []*sizedTestRow) {}
+func (r *sizedTestRow) CellDataForSort(_ int) string  { return string(r.id) }
+func (r *sizedTestRow) IsOpen() bool                  { return false }
+func (r *sizedTestRow) SetOpen(_ bool)                {}
+
+func (r *sizedTestRow) ColumnCell(_, _ int, _, _ unison.Ink, _, _, _ bool) unison.Paneler {
+	r.cells++
+	panel := unison.NewPanel()
+	panel.SetSizer(func(_ geom.Size) (minSize, prefSize, maxSize geom.Size) {
+		prefSize = geom.NewSize(50, r.height)
+		return prefSize, prefSize, prefSize
+	})
+	return panel
+}
+
+func (r *sizedTestRow) KeptCellSize(_, _ int, width float32) (size geom.Size, kept bool) {
+	size, kept = r.sizes[width]
+	return size, kept
+}
+
+func (r *sizedTestRow) KeepCellSize(_, _ int, width float32, size geom.Size) {
+	r.sizes[width] = size
+}
+
+// TestTableMeasuresARowByTheCellSizesItKeeps verifies that a row that keeps the sizes of its cells is asked for a cell
+// only to have it measured at a width the row keeps no size for, whether for the row's height or to fit a column to it.
+func TestTableMeasuresARowByTheCellSizesItKeeps(t *testing.T) {
+	c := check.New(t)
+	row := &sizedTestRow{id: "a", height: 30, sizes: make(map[float32]geom.Size)}
+	model := &unison.SimpleTableModel[*sizedTestRow]{}
+	model.SetRootRows([]*sizedTestRow{row})
+	table := unison.NewTable[*sizedTestRow](model)
+	table.Columns = []unison.ColumnInfo{{ID: 0, Current: 100}}
+	padding := table.Padding.Top + table.Padding.Bottom
+
+	table.SyncToModel()
+	c.Equal(1, row.cells, "the row is asked for its cell to have it measured")
+	c.Equal(30+padding, table.RowHeights()[0])
+	row.height = 60 // Goes unseen, since the row answers with the size it kept.
+	table.SyncToModel()
+	c.Equal(1, row.cells, "the row isn't asked for a cell it kept the size of")
+	c.Equal(30+padding, table.RowHeights()[0], "the row is as tall as the size it kept makes it")
+
+	row.height = 30
+	table.SizeColumnsToFit(false)
+	c.Equal(3, row.cells, "the cell is measured at its natural width and again at the width that gave the column")
+	width := table.Columns[0].Current
+	table.SizeColumnsToFit(false)
+	c.Equal(3, row.cells, "fitting the column again asks for no cell")
+	c.Equal(width, table.Columns[0].Current)
 }
 
 // TestTableLeftReportsOneSelectionChange verifies that a Left which closes containers reports one selection change,

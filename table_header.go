@@ -448,6 +448,12 @@ func (h *TableHeader[T]) HasSort() bool {
 
 // ApplySort sorts the table according to the current sort criteria.
 func (h *TableHeader[T]) ApplySort() {
+	h.sortRows()
+	h.table.SyncToModel()
+}
+
+// sortRows sorts the rows the table shows according to the current sort criteria, leaving the table to be synced.
+func (h *TableHeader[T]) sortRows() {
 	headers := make([]*headerWithIndex[T], len(h.ColumnHeaders))
 	for i, hdr := range h.ColumnHeaders {
 		headers[i] = &headerWithIndex[T]{
@@ -485,12 +491,11 @@ func (h *TableHeader[T]) ApplySort() {
 	default:
 		h.applySort(headers, h.table.filteredRows)
 	}
-	h.table.SyncToModel()
 }
 
 func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 	if len(headers) > 0 && len(rows) > 0 {
-		sort.Slice(rows, func(i, j int) bool {
+		sort.SliceStable(rows, func(i, j int) bool {
 			for _, hdr := range headers {
 				d1 := rows[i].CellDataForSort(hdr.index)
 				d2 := rows[j].CellDataForSort(hdr.index)
@@ -503,7 +508,9 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 					if less(d1, d2) {
 						return ascending
 					}
-					return !ascending
+					if less(d2, d1) {
+						return !ascending
+					}
 				}
 			}
 			return false
@@ -511,9 +518,7 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 		switch {
 		case h.table.hierarchicalFilter:
 			for _, row := range rows {
-				if children := h.table.filterChildren[row.ID()]; len(children) > 1 {
-					h.applySort(headers, children)
-				}
+				h.applySort(headers, h.table.filterChildren[row.ID()])
 			}
 		case h.table.filteredRows == nil:
 			for _, row := range rows {
@@ -522,6 +527,8 @@ func (h *TableHeader[T]) applySort(headers []*headerWithIndex[T], rows []T) {
 						children = slices.Clone(children)
 						h.applySort(headers, children)
 						row.SetChildren(children)
+					} else {
+						h.applySort(headers, children) // Leaves a lone child in place, but sorts its children
 					}
 				}
 			}

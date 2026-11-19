@@ -11,6 +11,7 @@ package unison
 
 import (
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -58,6 +59,13 @@ type tableCache[T TableRowConstraint[T]] struct {
 	parent int
 	depth  int
 	height float32
+}
+
+// keptRowHeight is the height a row was measured at, along with what that turned on besides what the row shows and the
+// column widths.
+type keptRowHeight struct {
+	height float32
+	indent float32 // What the row's depth took from the width of the hierarchy column
 }
 
 type tableHitRect struct {
@@ -200,7 +208,8 @@ type tableState[T TableRowConstraint[T]] struct {
 	selAnchor                tid.TID
 	lead                     tid.TID
 	rowCache                 []tableCache[T]
-	views                    []*Table[T] // The primary view first
+	rowHeights               map[tid.TID]keptRowHeight // See keepRowHeights; nil while the row cache alone has them
+	views                    []*Table[T]               // The primary view first
 	// Cells are normally ephemeral: the table points a cell's parent at itself just long enough to draw it or forward
 	// one event to it, then detaches it again. That can't work for a cell whose widget takes the keyboard focus, since
 	// the window dispatches keys, redraws and scrolling by walking up the parent chain from Window.focus, and
@@ -213,9 +222,11 @@ type tableState[T TableRowConstraint[T]] struct {
 	focusedCell    *Panel
 	focusedCellRow T
 	TableTheme
+	rowHeightsTheme          uint64 // The themeGeneration the rows were last all measured under
 	focusedCellRowIndex      int
 	focusedCellColumn        int
 	leadColumn               int
+	measuredRows             int // How many rows, from the first, of the row cache hold their heights; see measureRows
 	PreventUserColumnResize  bool
 	awaitingSizeColumnsToFit bool
 	awaitingSyncToModel      bool
@@ -761,6 +772,11 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 	rect.Y = y
 	lastX := dirty.Right()
 	t.hitRects = nil
+	// What the rest of this pass is drawn from. The application's code run for a cell may sync the table or change its
+	// columns, and going on would then draw, and compare the focused position against, what they were before, so the
+	// pass is left to a redraw instead.
+	cache := t.rowCache
+	columns := slices.Clone(t.Columns)
 	for r := startRow; r < endBeforeRow && rect.Y < lastY; r++ {
 		rect.X = x
 		rect.Height = t.rowCache[r].height
@@ -810,6 +826,10 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 				}
 			}
 			cell := t.cellFor(row, r, c)
+			if t.rowCacheReplaced(cache) || t.columnsChanged(columns) {
+				t.MarkForRedraw()
+				return
+			}
 			if t.focusedCell != nil && r == t.focusedCellRowIndex && c == t.focusedCellColumn && cell != t.focusedCell {
 				// The row presents a different panel at the focused position now, which happens when it creates a new
 				// editor on each call rather than memoizing one, or when it swaps the editor out for something else.
@@ -825,6 +845,10 @@ func (t *Table[T]) DefaultDraw(canvas *Canvas, dirty geom.Rect) {
 			cell.Draw(canvas, cellRect)
 			t.uninstallCell(cell, r, c)
 			canvas.Restore()
+			if t.rowCacheReplaced(cache) || t.columnsChanged(columns) {
+				t.MarkForRedraw()
+				return
+			}
 			rect.X += t.Columns[c].Current
 			if t.ShowColumnDivider && (t.ShowLastColumnDivider || c < len(t.Columns)-1) {
 				rect.X++
@@ -2676,9 +2700,16 @@ func (t *Table[T]) SetRootRows(rows []T) {
 	t.SyncToModel()
 }
 
-// SyncToModel causes the table to update its internal caches to reflect the current model.
+// SyncToModel causes the table to update its internal caches to reflect the current model, measuring every row it
+// shows.
 func (t *Table[T]) SyncToModel() {
-	rowCount := 0
+	t.rowHeights = nil
+	t.rowHeightsTheme = themeGeneration.Load()
+	t.syncToModel()
+}
+
+// syncToModel is SyncToModel, except that a row with a height kept for it isn't measured again (see keepRowHeights).
+func (t *Table[T]) syncToModel() {
 	roots := t.RootRows()
 	// A filter applied by ApplyFilter presents the rows that passed as a flat list: disclosedChildren shows nothing
 	// beneath any of them, whatever they are, so the table has no hierarchy while one is applied, however many
@@ -2694,13 +2725,15 @@ func (t *Table[T]) SyncToModel() {
 			}
 		}
 	}
+	// Every row is in place before any is measured, since measuring runs the application's code, which may look at the
+	// rows or change the model.
+	cache := make([]tableCache[T], 0, len(roots))
 	for _, row := range roots {
-		rowCount += t.countDisclosedRowsRecursively(row)
+		cache = t.appendRowCacheEntries(cache, row, -1, 0)
 	}
-	t.rowCache = make([]tableCache[T], rowCount)
-	j := 0
-	for _, row := range roots {
-		j = t.buildRowCacheEntry(row, -1, j, 0)
+	t.rowCache = cache
+	if !t.measureRows(cache) && t.rowCacheReplaced(cache) {
+		return // A sync made while measuring a row has done the rest, for the model as it is now.
 	}
 	t.selNeedsPrune = true
 	// The row cache was just thrown away and rebuilt, so the row the person was on may no longer be among the rows the
@@ -2711,16 +2744,6 @@ func (t *Table[T]) SyncToModel() {
 	// The row cache was just thrown away and rebuilt, so a cell that holds the keyboard focus needs to have its row
 	// located again, or be released if its row is no longer being displayed at all.
 	t.validateFocusedCell()
-}
-
-// countDisclosedRowsRecursively returns the number of rows the table shows for the row: the row itself plus every row
-// disclosed beneath it.
-func (t *Table[T]) countDisclosedRowsRecursively(row T) int {
-	count := 1
-	for _, child := range t.disclosedChildren(row) {
-		count += t.countDisclosedRowsRecursively(child)
-	}
-	return count
 }
 
 // disclosedChildren returns the children the table shows beneath the row. A filter applied by ApplyFilter shows none,
@@ -2748,22 +2771,93 @@ func (t *Table[T]) isRowDisclosed(row T) bool {
 	return t.hierarchicalFilter || row.IsOpen()
 }
 
-func (t *Table[T]) buildRowCacheEntry(row T, parentIndex, index, depth int) int {
-	t.rowCache[index].row = row
-	t.rowCache[index].parent = parentIndex
-	t.rowCache[index].depth = depth
-	t.rowCache[index].height = t.heightForColumns(row, index, depth)
-	parentIndex = index
-	index++
+// appendRowCacheEntries appends unmeasured entries for the row and the rows disclosed beneath it to the cache.
+func (t *Table[T]) appendRowCacheEntries(cache []tableCache[T], row T, parentIndex, depth int) []tableCache[T] {
+	index := len(cache)
+	cache = append(cache, tableCache[T]{row: row, parent: parentIndex, depth: depth})
 	for _, child := range t.disclosedChildren(row) {
-		index = t.buildRowCacheEntry(child, parentIndex, index, depth+1)
+		cache = t.appendRowCacheEntries(cache, child, index, depth+1)
 	}
-	return index
+	return cache
+}
+
+// measureRows measures the rows of the cache, which the table holds, through rowHeight. It returns false, leaving the
+// rest to it, if measuring a row ran another pass, which measured the rows of this cache again or replaced it.
+func (t *Table[T]) measureRows(cache []tableCache[T]) bool {
+	for i := range cache {
+		t.measuredRows = i
+		height := t.rowHeight(cache[i].row, i, cache[i].depth)
+		// Another pass ends with every row of its cache counted, which is past i when that is this cache.
+		if t.measuredRows != i || t.rowCacheReplaced(cache) {
+			return false
+		}
+		cache[i].height = height
+	}
+	t.measuredRows = len(cache)
+	return true
+}
+
+// rowCacheReplaced returns true if the table no longer holds the given row cache, as happens when measuring a row runs
+// the application's code and that syncs the table.
+func (t *Table[T]) rowCacheReplaced(cache []tableCache[T]) bool {
+	return len(t.rowCache) != len(cache) || (len(cache) != 0 && &t.rowCache[0] != &cache[0])
+}
+
+// rowHeight returns the height of the row, measuring it unless the height kept for it was measured with the row
+// indented as it is now.
+func (t *Table[T]) rowHeight(rowData T, row, depth int) float32 {
+	// Measuring runs the application's code, which may sync the table and so drop or replace the map.
+	heights := t.rowHeights
+	if heights == nil {
+		return t.heightForColumns(rowData, row, depth)
+	}
+	id := rowData.ID()
+	indent := t.CurrentHierarchyIndent() * float32(depth+1)
+	if kept, ok := heights[id]; ok && kept.indent == indent {
+		return kept.height
+	}
+	height := t.heightForColumns(rowData, row, depth)
+	heights[id] = keptRowHeight{height: height, indent: indent}
+	return height
+}
+
+// keepRowHeights has the table keep the height of each row it measures from here on, by ID, starting with those of the
+// rows it shows, until SyncToModel or SyncRowHeights measures them all again. A change of filter calls it before it
+// changes anything, since a height is kept for the indent it was measured at, and then measures only the rows it shows
+// that have none. Heights measured before the theme last changed are not kept, since the fonts may have changed with
+// it.
+func (t *Table[T]) keepRowHeights() {
+	if generation := themeGeneration.Load(); t.rowHeightsTheme != generation {
+		t.rowHeightsTheme = generation
+		t.DiscardRowHeights()
+		return
+	}
+	if t.rowHeights != nil {
+		return
+	}
+	t.rowHeights = make(map[tid.TID]keptRowHeight, t.measuredRows)
+	indent := t.CurrentHierarchyIndent()
+	// A change of filter made while a pass measures a row keeps only the heights that pass has measured.
+	for i := range t.rowCache[:t.measuredRows] {
+		t.rowHeights[t.rowCache[i].row.ID()] = keptRowHeight{
+			height: t.rowCache[i].height,
+			indent: indent * float32(t.rowCache[i].depth+1),
+		}
+	}
+}
+
+// DiscardRowHeights drops the row heights kept for the next change of filter (see ApplyFilter), which then measures
+// every row it shows. Call it when what the rows show has changed and the table is about to be synced by applying a
+// filter to them again rather than by SyncToModel().
+func (t *Table[T]) DiscardRowHeights() {
+	// Not nil, so that keepRowHeights takes none from the row cache.
+	t.rowHeights = make(map[tid.TID]keptRowHeight)
 }
 
 func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 	var height float32
-	for col := range t.Columns {
+	// Measuring a cell runs the application's code, which may change how many columns there are.
+	for col := 0; col < len(t.Columns); col++ {
 		w := t.Columns[col].Current
 		if w <= 0 {
 			continue
@@ -2783,8 +2877,20 @@ func (t *Table[T]) heightForColumns(rowData T, row, depth int) float32 {
 	return max(xmath.Ceil(height), t.MinimumRowHeight)
 }
 
+// cellPrefSize returns the preferred size of the row's cell in the column at the given width, or at any width when it is
+// 0 or less. A row that keeps the sizes of its cells (see TableRowCellSizes) is asked for the cell only when it keeps
+// no size for it.
 func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32) geom.Size {
+	sizes, keeps := any(rowData).(TableRowCellSizes)
+	if keeps {
+		if size, kept := sizes.KeptCellSize(row, col, widthConstraint); kept {
+			return size
+		}
+	}
 	_, size, _ := t.cellFor(rowData, row, col).Sizes(geom.NewSize(widthConstraint, 0))
+	if keeps {
+		sizes.KeepCellSize(row, col, widthConstraint, size)
+	}
 	return size
 }
 
@@ -2792,93 +2898,50 @@ func (t *Table[T]) cellPrefSize(rowData T, row, col int, widthConstraint float32
 // ID, which gets set to any remaining width left over. If the provided column ID doesn't exist, the first column will
 // be used instead. The width filled is this view's, so the views of a table are expected to share a width.
 func (t *Table[T]) SizeColumnsToFitWithExcessIn(columnID int) {
-	excessColumnIndex := max(t.ColumnIndexForID(columnID), 0)
-	current := make([]float32, len(t.Columns))
-	for col := range t.Columns {
-		current[col] = max(t.Columns[col].Minimum, 0)
-		t.Columns[col].Current = 0
-	}
-	for row, cache := range t.rowCache {
-		for col := range t.Columns {
+	for {
+		excessColumnIndex := max(t.ColumnIndexForID(columnID), 0)
+		current, ok := t.fittedColumnWidths(func(int) bool { return true },
+			func(col int) bool { return col != excessColumnIndex })
+		if !ok {
+			continue
+		}
+		width := t.ContentRect(false).Width
+		if t.ShowColumnDivider {
+			width -= float32(len(t.Columns)) + t.leadingColumnDividerWidth()
+			if !t.ShowLastColumnDivider && len(t.Columns) != 0 {
+				width++
+			}
+		}
+		for col := range current {
 			if col == excessColumnIndex {
 				continue
 			}
-			pref := t.cellPrefSize(cache.row, row, col, 0)
-			minimum := t.Columns[col].AutoMinimum
-			if minimum > 0 && pref.Width < minimum {
-				pref.Width = minimum
-			} else {
-				maximum := t.Columns[col].AutoMaximum
-				if maximum > 0 && pref.Width > maximum {
-					pref.Width = maximum
-				}
-			}
-			pref.Width += t.Padding.Left + t.Padding.Right
-			if t.Columns[col].ID == t.HierarchyColumnID {
-				if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
-					pref.Width += t.Padding.Left + hierarchyIndent*float32(cache.depth+1)
-				}
-			}
-			if current[col] < pref.Width {
-				current[col] = pref.Width
-			}
+			t.Columns[col].Current = current[col]
+			width -= current[col]
+		}
+		if excessColumnIndex < len(t.Columns) {
+			t.Columns[excessColumnIndex].Current = max(width, t.Columns[excessColumnIndex].Minimum)
+		}
+		if t.syncFittedRowHeights() {
+			return
 		}
 	}
-	width := t.ContentRect(false).Width
-	if t.ShowColumnDivider {
-		width -= float32(len(t.Columns)) + t.leadingColumnDividerWidth()
-		if !t.ShowLastColumnDivider && len(t.Columns) != 0 {
-			width++
-		}
-	}
-	for col := range current {
-		if col == excessColumnIndex {
-			continue
-		}
-		t.Columns[col].Current = current[col]
-		width -= current[col]
-	}
-	if excessColumnIndex < len(t.Columns) {
-		t.Columns[excessColumnIndex].Current = max(width, t.Columns[excessColumnIndex].Minimum)
-	}
-	t.SyncRowHeights()
 }
 
 // SizeColumnsToFit sizes each column to its preferred size. If 'adjust' is true, the FrameRect of each view will be set
 // to its preferred size as well, and the view marked for layout.
 func (t *Table[T]) SizeColumnsToFit(adjust bool) {
-	current := make([]float32, len(t.Columns))
-	for col := range t.Columns {
-		current[col] = max(t.Columns[col].Minimum, 0)
-		t.Columns[col].Current = 0
-	}
-	for row, cache := range t.rowCache {
-		for col := range t.Columns {
-			pref := t.cellPrefSize(cache.row, row, col, 0)
-			minimum := t.Columns[col].AutoMinimum
-			if minimum > 0 && pref.Width < minimum {
-				pref.Width = minimum
-			} else {
-				maximum := t.Columns[col].AutoMaximum
-				if maximum > 0 && pref.Width > maximum {
-					pref.Width = maximum
-				}
+	all := func(int) bool { return true }
+	for {
+		if current, ok := t.fittedColumnWidths(all, all); ok {
+			for col := range current {
+				t.Columns[col].Current = current[col]
 			}
-			pref.Width += t.Padding.Left + t.Padding.Right
-			if t.Columns[col].ID == t.HierarchyColumnID {
-				if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
-					pref.Width += t.Padding.Left + hierarchyIndent*float32(cache.depth+1)
-				}
-			}
-			if current[col] < pref.Width {
-				current[col] = pref.Width
+			if t.syncFittedRowHeights() {
+				break
 			}
 		}
 	}
-	for col := range current {
-		t.Columns[col].Current = current[col]
-	}
-	t.SyncRowHeights()
 	if adjust {
 		t.fitViewFrames()
 	}
@@ -2887,48 +2950,103 @@ func (t *Table[T]) SizeColumnsToFit(adjust bool) {
 // SizeColumnToFit sizes the specified column to its preferred size. If 'adjust' is true, the FrameRect of each view
 // will be set to its preferred size as well, and the view marked for layout.
 func (t *Table[T]) SizeColumnToFit(col int, adjust bool) {
-	if col < 0 || col >= len(t.Columns) {
-		return
-	}
-	current := max(t.Columns[col].Minimum, 0)
-	t.Columns[col].Current = 0
-	for row, cache := range t.rowCache {
-		pref := t.cellPrefSize(cache.row, row, col, 0)
-		minimum := t.Columns[col].AutoMinimum
-		if minimum > 0 && pref.Width < minimum {
-			pref.Width = minimum
-		} else {
-			maximum := t.Columns[col].AutoMaximum
-			if maximum > 0 && pref.Width > maximum {
-				pref.Width = maximum
+	only := func(c int) bool { return c == col }
+	for {
+		if col < 0 || col >= len(t.Columns) {
+			return
+		}
+		if current, ok := t.fittedColumnWidths(only, only); ok {
+			t.Columns[col].Current = current[col]
+			if t.syncFittedRowHeights() {
+				break
 			}
 		}
-		pref.Width += t.Padding.Left + t.Padding.Right
-		if t.Columns[col].ID == t.HierarchyColumnID {
-			if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
-				pref.Width += t.Padding.Left + hierarchyIndent*float32(cache.depth+1)
-			}
-		}
-		if current < pref.Width {
-			current = pref.Width
-		}
 	}
-	t.Columns[col].Current = current
-	t.SyncRowHeights()
 	if adjust {
 		t.fitViewFrames()
 	}
+}
+
+// fittedColumnWidths sets the width of each column that zero reports true for to 0, so that a cell built to its width
+// (see CellWidth) is measured at its natural width, then returns the width that fits the cells of the rows the table
+// shows for each column that fit reports true for, and the minimum width for the others. Measuring a cell runs the
+// application's code, so it returns false, for the caller to start over, if that syncs the table or changes its
+// columns, as sizing them does.
+func (t *Table[T]) fittedColumnWidths(zero, fit func(col int) bool) (widths []float32, ok bool) {
+	for col := range t.Columns {
+		if zero(col) {
+			t.Columns[col].Current = 0
+		}
+	}
+	columns := slices.Clone(t.Columns)
+	widths = make([]float32, len(t.Columns))
+	for col := range widths {
+		widths[col] = max(t.Columns[col].Minimum, 0)
+	}
+	cache := t.rowCache
+	for row := range cache {
+		for col := range t.Columns {
+			if !fit(col) {
+				continue
+			}
+			pref := t.cellPrefSize(cache[row].row, row, col, 0)
+			if t.rowCacheReplaced(cache) || t.columnsChanged(columns) {
+				return nil, false
+			}
+			minimum := t.Columns[col].AutoMinimum
+			if minimum > 0 && pref.Width < minimum {
+				pref.Width = minimum
+			} else {
+				maximum := t.Columns[col].AutoMaximum
+				if maximum > 0 && pref.Width > maximum {
+					pref.Width = maximum
+				}
+			}
+			pref.Width += t.Padding.Left + t.Padding.Right
+			if t.Columns[col].ID == t.HierarchyColumnID {
+				if hierarchyIndent := t.CurrentHierarchyIndent(); hierarchyIndent > 0 {
+					pref.Width += t.Padding.Left + hierarchyIndent*float32(cache[row].depth+1)
+				}
+			}
+			if widths[col] < pref.Width {
+				widths[col] = pref.Width
+			}
+		}
+	}
+	return widths, true
+}
+
+// syncFittedRowHeights measures the rows at the column widths just fitted, returning false if measuring a cell synced
+// the table or changed its columns, which calls for fitting them again.
+func (t *Table[T]) syncFittedRowHeights() bool {
+	cache := t.rowCache
+	columns := slices.Clone(t.Columns)
+	t.SyncRowHeights()
+	return !t.rowCacheReplaced(cache) && !t.columnsChanged(columns)
+}
+
+// columnsChanged returns true if the table's columns differ from the given copy of them. Widths are compared bit for
+// bit, so that a NaN matches itself.
+func (t *Table[T]) columnsChanged(columns []ColumnInfo) bool {
+	return !slices.EqualFunc(t.Columns, columns, func(a, b ColumnInfo) bool {
+		return a.ID == b.ID && math.Float32bits(a.Current) == math.Float32bits(b.Current) &&
+			math.Float32bits(a.Minimum) == math.Float32bits(b.Minimum) &&
+			math.Float32bits(a.Maximum) == math.Float32bits(b.Maximum) &&
+			math.Float32bits(a.AutoMinimum) == math.Float32bits(b.AutoMinimum) &&
+			math.Float32bits(a.AutoMaximum) == math.Float32bits(b.AutoMaximum)
+	})
 }
 
 // SyncRowHeights recalculates the height of each row based on the current column widths. Call this after adjusting
 // column widths directly (i.e. outside of the SizeColumns* methods) so that rows whose content wraps to a height that
 // depends on the available width are given the correct amount of vertical space.
 func (t *Table[T]) SyncRowHeights() {
-	for row, cache := range t.rowCache {
-		t.rowCache[row].height = t.heightForColumns(cache.row, row, cache.depth)
+	t.rowHeights = nil // So that every row is measured
+	t.rowHeightsTheme = themeGeneration.Load()
+	if t.measureRows(t.rowCache) {
+		// Rows have moved vertically, so a cell that holds the keyboard focus needs its frame brought up to date.
+		t.validateFocusedCell()
 	}
-	// Rows have moved vertically, so a cell that holds the keyboard focus needs its frame brought up to date.
-	t.validateFocusedCell()
 }
 
 // EventuallySizeColumnsToFit sizes each column to its preferred size after a short delay, allowing multiple
@@ -3048,14 +3166,20 @@ func (t *Table[T]) flatFilter() bool {
 // the filter. Only those that the filter returns false for will be visible in the table. When a filter is applied, no
 // hierarchy is display and no modifications to the row data should be performed. See ApplyHierarchicalFilter for a
 // filter that keeps the hierarchy. A nil filter removes the filter, whichever of the two applied it.
+//
+// A change of filter changes which rows are shown, not what they show, so it measures only the rows it shows that have
+// not been measured since SyncToModel() or SyncRowHeights() last measured them all. See DiscardRowHeights for when what
+// they show has changed.
 func (t *Table[T]) ApplyFilter(filter func(row T) bool) {
 	if filter == nil {
 		if t.filteredRows == nil {
 			return
 		}
+		t.keepRowHeights()
 		t.clearFilter()
 	} else {
-		t.collectFilteredRows(filter)
+		t.keepRowHeights()
+		t.collectFilteredRows(t.Model.RootRows(), filter)
 		t.hierarchicalFilter = false
 		t.filterMatches = nil
 		t.filterChildren = nil
@@ -3067,18 +3191,23 @@ func (t *Table[T]) ApplyFilter(filter func(row T) bool) {
 // ApplyHierarchicalFilter applies a filter to the data the way ApplyFilter does, but keeps the hierarchy: each row the
 // filter keeps is shown beneath the rows above it, and every container shown is shown open, whatever its own open
 // state, so that the rows that passed are always in view. A row shown only because a row beneath it passed is context
-// rather than a match, which IsFilterContextRow reports so that such a row can be drawn differently. The disclosure
-// triangles, the keys that open and close containers and DiscloseRow are all left alone while the filter is applied,
-// since the open states they would change have nothing to show for it. A nil filter removes the filter, as it does for
-// ApplyFilter. As with ApplyFilter, no modifications to the row data should be performed while the filter is applied.
+// rather than a match, which IsFilterContextRow reports so that such a row can be drawn differently, though in the same
+// room: as with ApplyFilter, a row already measured is not measured again, whether or not it has turned into context.
+// The disclosure triangles, the keys that open and close containers and DiscloseRow are all left alone while the filter
+// is applied, since the open states they would change have nothing to show for it. A nil filter removes the filter, as
+// it does for ApplyFilter. As with ApplyFilter, no modifications to the row data should be performed while the filter
+// is applied.
 func (t *Table[T]) ApplyHierarchicalFilter(filter func(row T) bool) {
 	if filter == nil {
 		t.ApplyFilter(nil)
 		return
 	}
-	t.collectFilteredRows(filter)
+	t.keepRowHeights()
+	// The model is asked for its rows only once, since it may build them anew each time it is asked.
+	roots := t.Model.RootRows()
+	t.collectFilteredRows(roots, filter)
 	t.hierarchicalFilter = true
-	t.rebuildFilterHierarchy()
+	t.rebuildFilterHierarchy(roots, func(row T) []T { return row.Children() })
 	t.finishFilterChange()
 }
 
@@ -3088,11 +3217,11 @@ func (t *Table[T]) IsFilterContextRow(row T) bool {
 	return t.hierarchicalFilter && !t.filterMatches[row.ID()]
 }
 
-// collectFilteredRows puts every row of the model through the filter and records those that passed, in the model's
-// order.
-func (t *Table[T]) collectFilteredRows(filter func(row T) bool) {
+// collectFilteredRows puts every row of the model, whose root rows are given, through the filter and records those that
+// passed, in the model's order.
+func (t *Table[T]) collectFilteredRows(roots []T, filter func(row T) bool) {
 	t.filteredRows = make([]T, 0)
-	for _, row := range t.Model.RootRows() {
+	for _, row := range roots {
 		t.applyFilter(row, filter)
 	}
 }
@@ -3107,12 +3236,12 @@ func (t *Table[T]) clearFilter() {
 }
 
 // finishFilterChange brings the table in line with a change to the filter, keeping the rows sorted when the header has
-// a sort in force.
+// a sort in force. They are sorted first, so that the table is synced only once.
 func (t *Table[T]) finishFilterChange() {
-	t.SyncToModel()
 	if h := t.sortHeader(); h != nil && h.HasSort() {
-		h.ApplySort()
+		h.sortRows()
 	}
+	t.syncToModel()
 }
 
 // sortHeader returns the first header among the table's views, or nil if none has one. The headers of a table's views
@@ -3129,25 +3258,26 @@ func (t *Table[T]) sortHeader() *TableHeader[T] {
 	return nil
 }
 
-// rebuildFilterHierarchy derives the rows a hierarchical filter shows from those that passed it. The model is walked so
-// that the rows come out in its order, keeping a row when it passed or when any row beneath it did.
-func (t *Table[T]) rebuildFilterHierarchy() {
+// rebuildFilterHierarchy derives the rows a hierarchical filter shows from those that passed it. The rows are walked
+// from the given roots down through the children childrenOf returns for each container, and come out in that order,
+// keeping a row when it passed or when any row beneath it did.
+func (t *Table[T]) rebuildFilterHierarchy(roots []T, childrenOf func(row T) []T) {
 	t.filterMatches = make(map[tid.TID]bool, len(t.filteredRows))
 	for _, row := range t.filteredRows {
 		t.filterMatches[row.ID()] = true
 	}
 	t.filterChildren = make(map[tid.TID][]T)
-	t.filterRoots = t.keptFilterRows(t.Model.RootRows())
+	t.filterRoots = t.keptFilterRows(roots, childrenOf)
 }
 
 // keptFilterRows returns the rows of the list that a hierarchical filter keeps, recording the children kept beneath
 // each of them along the way.
-func (t *Table[T]) keptFilterRows(rows []T) []T {
+func (t *Table[T]) keptFilterRows(rows []T, childrenOf func(row T) []T) []T {
 	kept := make([]T, 0, len(rows))
 	for _, row := range rows {
 		var children []T
 		if row.CanHaveChildren() {
-			children = t.keptFilterRows(row.Children())
+			children = t.keptFilterRows(childrenOf(row), childrenOf)
 		}
 		if t.filterMatches[row.ID()] || len(children) > 0 {
 			kept = append(kept, row)
@@ -3174,7 +3304,9 @@ func (t *Table[T]) removeRowsFromFilter(rows []T) {
 		return false
 	})
 	if t.hierarchicalFilter {
-		t.rebuildFilterHierarchy()
+		// The rows shown are walked rather than the model, so that they keep the order a sort gave them.
+		shown := t.filterChildren
+		t.rebuildFilterHierarchy(t.filterRoots, func(row T) []T { return shown[row.ID()] })
 	}
 }
 
@@ -3392,6 +3524,10 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 	var depthTops []float32
 	// The last row described, so that a row arriving without the one before it can bring its ancestors with it.
 	last := -1
+	// What the rows are described from, which the application's code run for a cell may sync or change. Only describing
+	// a row, which makes it the last, runs that code, so the rows stepped over are not checked.
+	cache := t.rowCache
+	columns := slices.Clone(t.Columns)
 	for row := start; row < end; row++ {
 		entry := &t.rowCache[row]
 		rect.Height = entry.height
@@ -3435,6 +3571,11 @@ func (t *Table[T]) ProvideAccessibility(b *AccessibilityBuilder) {
 			t.axAddRow(b, row, rect, true, titles)
 			last = row
 			described++
+		}
+		if last == row && (t.rowCacheReplaced(cache) || t.columnsChanged(columns)) {
+			// Going on would describe the table as it was before the change; the redraw has it described afresh.
+			t.MarkForRedraw()
+			return
 		}
 		rect.Y += rect.Height
 		if t.ShowRowDivider {
@@ -3650,6 +3791,9 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 				accessibility.Collapse, accessibility.ScrollIntoView)
 		})
 	}
+	// What the cells are described from, which the application's code run for a cell may sync or change.
+	cache := t.rowCache
+	columns := slices.Clone(t.Columns)
 	for col := range t.Columns {
 		frame := t.cellFrameAtY(row, col, rect.Y)
 		text := axCellText(entry.row, col)
@@ -3705,6 +3849,9 @@ func (t *Table[T]) axAddRow(b *AccessibilityBuilder, row int, rect geom.Rect, na
 					cellNode.Checked = single.Checked
 				}
 			}
+		}
+		if t.rowCacheReplaced(cache) || t.columnsChanged(columns) {
+			break // ProvideAccessibility then leaves the table to the next description.
 		}
 	}
 	return rowID

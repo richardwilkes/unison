@@ -10,6 +10,8 @@
 package unison_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/richardwilkes/toolbox/v2/check"
@@ -149,6 +151,100 @@ func TestTableHeaderSortsHierarchicalFilterInPlace(t *testing.T) {
 	c.Equal(tid.TID("a"), table.Model.RootRows()[1].ID())
 	c.Equal(tid.TID("c1"), parent.Children()[0].ID(), "the model's children must be left alone")
 	c.Equal(tid.TID("c0"), parent.Children()[1].ID())
+}
+
+// shownRowIDs returns the IDs of the rows the table shows, in order.
+func shownRowIDs(table *unison.Table[*tableTestRow]) []tid.TID {
+	ids := make([]tid.TID, table.LastRowIndex()+1)
+	for i := range ids {
+		ids[i] = table.RowFromIndex(i).ID()
+	}
+	return ids
+}
+
+// TestTableHeaderSortReachesEveryLevel verifies that a sort orders the children of every container shown, those of an
+// only child included, whether or not a hierarchical filter is in force.
+func TestTableHeaderSortReachesEveryLevel(t *testing.T) {
+	for _, filtered := range []bool{false, true} {
+		c := check.New(t)
+		inner := newTableTestRow("b")
+		inner.SetChildren([]*tableTestRow{newTableTestRow("z"), newTableTestRow("y"), newTableTestRow("x")})
+		inner.SetOpen(true)
+		outer := newTableTestRow("a")
+		outer.SetChildren([]*tableTestRow{inner})
+		outer.SetOpen(true)
+		table := newTestTable(outer)
+		colHeader := newTestColumnHeader()
+		colHeader.SetSortState(unison.SortState{Order: 0, Ascending: true, Sortable: true})
+		header := unison.NewTableHeader(table, unison.TableColumnHeader[*tableTestRow](colHeader))
+		if filtered {
+			table.ApplyHierarchicalFilter(func(*tableTestRow) bool { return false })
+		} else {
+			header.ApplySort()
+		}
+		c.Equal([]tid.TID{"a", "b", "x", "y", "z"}, shownRowIDs(table), "filtered: %v", filtered)
+	}
+}
+
+// TestTableHeaderSortKeepsTheOrderOfEqualRows verifies that a sort leaves rows whose sort keys are equal in the order
+// they were in.
+func TestTableHeaderSortKeepsTheOrderOfEqualRows(t *testing.T) {
+	c := check.New(t)
+	const count = 60 // Well over the 12 rows sort.Slice orders with a stable insertion sort
+	keys := []string{"k0", "k1", "k2"}
+	rows := make([]*tableTestRow, count)
+	want := make([]tid.TID, 0, count)
+	for i := range rows {
+		rows[i] = newTableTestRow(fmt.Sprintf("r%02d", i))
+		rows[i].cellData = func(int) string { return keys[i%len(keys)] }
+	}
+	for k := range keys {
+		for i := k; i < count; i += len(keys) {
+			want = append(want, rows[i].ID())
+		}
+	}
+	table := newTestTable(rows...)
+	colHeader := newTestColumnHeader()
+	colHeader.SetSortState(unison.SortState{Order: 0, Ascending: true, Sortable: true})
+	unison.NewTableHeader(table, unison.TableColumnHeader[*tableTestRow](colHeader)).ApplySort()
+	c.Equal(want, shownRowIDs(table))
+}
+
+// TestTableHeaderSortOrdersKeysItsLessFindsEqualByTheNextColumn verifies that rows whose keys in a sort column differ
+// but are equal by the Less in use are ordered by the next sort column, in either direction.
+func TestTableHeaderSortOrdersKeysItsLessFindsEqualByTheNextColumn(t *testing.T) {
+	c := check.New(t)
+	for _, one := range []struct {
+		want      []tid.TID
+		ascending bool
+	}{
+		{ascending: true, want: []tid.TID{"r3", "r1", "r2", "r5", "r4"}},
+		{ascending: false, want: []tid.TID{"r5", "r4", "r3", "r1", "r2"}},
+	} {
+		cells := map[tid.TID][2]string{
+			"r1": {"ab", "2"},
+			"r2": {"AB", "3"},
+			"r3": {"Ab", "1"},
+			"r4": {"c", "2"},
+			"r5": {"C", "1"},
+		}
+		rows := make([]*tableTestRow, 0, len(cells))
+		for _, id := range []tid.TID{"r1", "r2", "r3", "r4", "r5"} {
+			row := newTableTestRow(string(id))
+			row.cellData = func(col int) string { return cells[id][col] }
+			rows = append(rows, row)
+		}
+		table := newTestTable(rows...)
+		first := newTestColumnHeader()
+		first.SetSortState(unison.SortState{Order: 0, Ascending: one.ascending, Sortable: true})
+		second := newTestColumnHeader()
+		second.SetSortState(unison.SortState{Order: 1, Ascending: true, Sortable: true})
+		header := unison.NewTableHeader(table, unison.TableColumnHeader[*tableTestRow](first),
+			unison.TableColumnHeader[*tableTestRow](second))
+		header.Less = func(s1, s2 string) bool { return strings.ToLower(s1) < strings.ToLower(s2) }
+		header.ApplySort()
+		c.Equal(one.want, shownRowIDs(table), "ascending: %v", one.ascending)
+	}
 }
 
 // axCustomColumnHeader is a column header written the way the documentation describes one: it embeds a *unison.Label

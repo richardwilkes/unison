@@ -10,6 +10,7 @@
 package unison
 
 import (
+	"github.com/richardwilkes/toolbox/v2/geom"
 	"github.com/richardwilkes/toolbox/v2/tid"
 )
 
@@ -64,6 +65,23 @@ type TableRowData[T any] interface {
 type TableRowAccessibleText interface {
 	// CellDataForAccessibility returns what an assistive technology should call the specified cell.
 	CellDataForAccessibility(col int) string
+}
+
+// TableRowCellSizes is implemented by a row that keeps the preferred sizes of its cells, so that a table can measure it
+// without its cells. A table measures every row it shows, but asks only for the cells of those in view to draw them,
+// so such a row need not keep the cell of a row out of view once it has been measured, nor build it to be measured
+// again. A row that does not implement this is asked for each of its cells every time it is measured.
+//
+// The table never drops the sizes a row keeps, not even when it measures every row again, so the row must drop them
+// itself whenever its cells may change size: when what they show changes, and when the theme changes, since the fonts
+// may have changed with it (see ThemeChangedCallback).
+type TableRowCellSizes interface {
+	// KeptCellSize returns the preferred size the row keeps for its cell in the given column when the cell is as wide
+	// as 'width', or as wide as it likes when that is 0 or less, and whether it keeps one. 'row' is the row's index.
+	KeptCellSize(row, col int, width float32) (size geom.Size, kept bool)
+	// KeepCellSize hands the row the preferred size the table measured, at that width, for the cell ColumnCell just
+	// returned for the column.
+	KeepCellSize(row, col int, width float32, size geom.Size)
 }
 
 // TableRowConstraint defines the constraints required of the data type used for data rows in tables.
